@@ -1,11 +1,7 @@
 import { createRootRoute, createRoute, createRouter, Link, Outlet } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-
-async function fetchHealth(): Promise<{ ok: boolean; time: string }> {
-  const res = await fetch("/api/health");
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
+import { api } from "./api";
+import { ChatPage } from "./pages/chat";
 
 function Layout() {
   return (
@@ -13,6 +9,7 @@ function Layout() {
       <nav className="sidebar">
         <strong>Orquestador</strong>
         <Link to="/">Inicio</Link>
+        <Link to="/chat">Chat</Link>
       </nav>
       <main>
         <Outlet />
@@ -24,7 +21,7 @@ function Layout() {
 function Home() {
   const health = useQuery({
     queryKey: ["health"],
-    queryFn: fetchHealth,
+    queryFn: api.health,
     refetchInterval: 15_000,
   });
 
@@ -45,7 +42,8 @@ function Home() {
 
 const rootRoute = createRootRoute({ component: Layout });
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: Home });
-const routeTree = rootRoute.addChildren([indexRoute]);
+const chatRoute = createRoute({ getParentRoute: () => rootRoute, path: "/chat", component: ChatPage });
+const routeTree = rootRoute.addChildren([indexRoute, chatRoute]);
 
 export const router = createRouter({ routeTree });
 

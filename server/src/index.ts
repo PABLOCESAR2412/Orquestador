@@ -3,6 +3,7 @@ import { serveStatic } from "hono/bun";
 import { join } from "node:path";
 import { config } from "./config";
 import { db } from "./db";
+import { chat } from "./routes/chat";
 
 const webDist = join(import.meta.dir, "../../web/dist");
 
@@ -13,6 +14,7 @@ app.get("/api/health", (c) => {
   return c.json({ ok: row?.ok === 1, time: new Date().toISOString() });
 });
 
+app.route("/api", chat);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
 app.use("/*", serveStatic({ root: webDist }));
