@@ -134,7 +134,7 @@ export function ChatPage() {
         <div className="rail-head">
           <div className="wordmark-wrap">
             <span className="pill-dot is-live" aria-hidden="true" />
-            <span className="wordmark">orquestador</span>
+            <span className="wordmark">telo</span>
           </div>
           <button
             type="button"
@@ -182,7 +182,7 @@ export function ChatPage() {
             </svg>
           </button>
           <div className="thread-head-info">
-            <h1 className="thread-title">{current?.title ?? "Orquestador"}</h1>
+            <h1 className="thread-title">{current?.title ?? "Telo"}</h1>
             {current && (
               <span className="thread-model-badge">
                 {modelInfo?.name ?? current.model ?? "Predeterminado"}

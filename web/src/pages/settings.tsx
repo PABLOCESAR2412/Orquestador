@@ -186,13 +186,13 @@ export function SettingsPage() {
               <h2>Instalar la app</h2>
               <span className="badge badge-neutral">PWA</span>
             </div>
-            <p className="muted-note">Instala Orquestador como aplicación independiente en tu teléfono o PC.</p>
+            <p className="muted-note">Instala Telo como aplicación independiente en tu teléfono o PC.</p>
             {isStandalone() ? (
               <p className="muted-note">Ya está instalada como aplicación independiente en este dispositivo.</p>
             ) : install.canInstall ? (
               <div>
                 <button type="button" className="primary" onClick={() => void install.promptInstall()}>
-                  Instalar Orquestador
+                  Instalar Telo
                 </button>
               </div>
             ) : isIOS() ? (

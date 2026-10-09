@@ -36,12 +36,15 @@ app.get("*", async (c) => {
 
   if (!file.startsWith(webDist + sep)) return c.text("Forbidden", 403);
 
+  // index.html y version.json nunca se guardan en caché: la app los usa para detectar versiones nuevas.
+  const sinCache = { "Cache-Control": "no-cache" };
+
   if (extname(file) && (await Bun.file(file).exists())) {
-    return new Response(Bun.file(file));
+    return new Response(Bun.file(file), { headers: path === "/version.json" ? sinCache : undefined });
   }
 
   return new Response(Bun.file(indexFile), {
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+    headers: { "Content-Type": "text/html; charset=utf-8", ...sinCache },
   });
 });
 
