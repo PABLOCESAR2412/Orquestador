@@ -9,6 +9,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./api";
 import { ChatPage } from "./pages/chat";
+import { TasksPage } from "./pages/tasks";
 
 function Layout() {
   return <Outlet />;
@@ -49,7 +50,8 @@ const indexRoute = createRoute({
 });
 const chatRoute = createRoute({ getParentRoute: () => rootRoute, path: "/chat", component: ChatPage });
 const statusRoute = createRoute({ getParentRoute: () => rootRoute, path: "/estado", component: Status });
-const routeTree = rootRoute.addChildren([indexRoute, chatRoute, statusRoute]);
+const tasksRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tareas", component: TasksPage });
+const routeTree = rootRoute.addChildren([indexRoute, chatRoute, statusRoute, tasksRoute]);
 
 export const router = createRouter({ routeTree });
 

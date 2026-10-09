@@ -39,6 +39,7 @@ export async function runOpenCode(opts: {
   sessionId?: string | null;
   cwd: string;
   timeoutMs?: number;
+  signal?: AbortSignal;
 }): Promise<RunResult> {
   const args = ["opencode", "run", "--format", "json", "-m", opts.model];
   if (opts.variant) args.push("--variant", opts.variant);
@@ -48,12 +49,36 @@ export async function runOpenCode(opts: {
   const proc = Bun.spawn(args, { cwd: opts.cwd, stdout: "pipe", stderr: "pipe" });
   const timer = setTimeout(() => proc.kill(), opts.timeoutMs ?? 120_000);
 
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  clearTimeout(timer);
+  // Al cancelar: mata los hijos directos (herramientas que el agente lanzó) y
+  // al proceso. No se espera a las tuberías, porque un nieto puede seguir
+  // abriéndolas y dejaría la tarea en "running".
+  const aborted = new Promise<never>((_, reject) => {
+    const onAbort = () => {
+      try {
+        Bun.spawn(["pkill", "-TERM", "-P", String(proc.pid)]);
+      } catch {
+        // pkill no disponible: solo se mata el proceso principal
+      }
+      proc.kill();
+      reject(new Error("ejecución cancelada"));
+    };
+    if (opts.signal?.aborted) onAbort();
+    else opts.signal?.addEventListener("abort", onAbort, { once: true });
+  });
+
+  let stdout: string, stderr: string, code: number;
+  try {
+    [stdout, stderr, code] = await Promise.race([
+      Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]),
+      aborted,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 
   const events = parseEvents(stdout);
 
