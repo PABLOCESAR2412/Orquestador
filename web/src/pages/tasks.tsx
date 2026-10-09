@@ -4,6 +4,7 @@ import { api, type ModelInfo, type Task } from "../api";
 import { CostMeter, EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
 import { errorText } from "../lib/model";
+import { EVENTO_VERSION_NUEVA, hayVersionNueva } from "../lib/version";
 import { useShell } from "../components/shell-context";
 
 const isActive = (t: Task) => t.status === "queued" || t.status === "running";
@@ -53,6 +54,8 @@ export function TasksPage() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [filter, setFilter] = useState<TaskFilter>("all");
+  const [buscando, setBuscando] = useState(false);
+  const [avisoActualizar, setAvisoActualizar] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Escucha apertura desde el sidebar o atajo ⌘N
@@ -110,6 +113,31 @@ export function TasksPage() {
     onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
+  // Actualizar: vuelve a pedir las tareas y revisa si hay una versión nueva de la app.
+  const actualizar = async () => {
+    setBuscando(true);
+    setAvisoActualizar(null);
+    const [, version] = await Promise.allSettled([
+      qc.invalidateQueries({ queryKey: ["tasks"] }),
+      hayVersionNueva(),
+    ]);
+    setBuscando(false);
+    if (version.status === "rejected") {
+      setAvisoActualizar("Sin conexión. Intenta de nuevo.");
+    } else if (version.value) {
+      window.dispatchEvent(new Event(EVENTO_VERSION_NUEVA));
+    } else {
+      setAvisoActualizar("Ya tienes la versión más reciente.");
+    }
+  };
+
+  // El aviso de Actualizar desaparece solo.
+  useEffect(() => {
+    if (!avisoActualizar) return;
+    const timer = window.setTimeout(() => setAvisoActualizar(null), 4_000);
+    return () => window.clearTimeout(timer);
+  }, [avisoActualizar]);
+
   const pickModel = (m: ModelInfo | null) => {
     setPickerOpen(false);
     setModel(m?.id ?? null);
@@ -127,6 +155,8 @@ export function TasksPage() {
   const taskList = tasks.data ?? [];
   const runningCount = taskList.filter((t) => t.status === "running").length;
   const queuedCount = taskList.filter((t) => t.status === "queued").length;
+  const activasCount = runningCount + queuedCount;
+  const doneCount = taskList.filter((t) => t.status === "done").length;
   const completedTodayCount = taskList.filter(
     (t) => t.status === "done" && (isToday(t.finished_at) || isToday(t.created_at)),
   ).length;
@@ -141,7 +171,7 @@ export function TasksPage() {
 
   const filteredTasks = useMemo(() => {
     if (filter === "active") return taskList.filter(isActive);
-    if (filter === "done") return taskList.filter((t) => !isActive(t));
+    if (filter === "done") return taskList.filter((t) => t.status === "done");
     return taskList;
   }, [taskList, filter]);
 
@@ -170,9 +200,7 @@ export function TasksPage() {
 
         <div className="task-header-main">
           <div className="task-header-title-col">
-            <h1 style={{ margin: 0, fontSize: "24px", fontWeight: 600, letterSpacing: "-0.01em" }}>
-              Tareas del Servidor
-            </h1>
+            <h1 className="task-title">Tareas del Servidor</h1>
             <p className="page-desc">
               Procesos persistentes que continúan ejecutándose aunque cierres la sesión local o cambies de workspace.
             </p>
@@ -199,19 +227,13 @@ export function TasksPage() {
         <section className="panel new-task-panel">
           <div className="card-top">
             <h2>Nueva tarea</h2>
-            <button
-              type="button"
-              className="ghost"
-              style={{ padding: "4px 8px", fontSize: "12px" }}
-              onClick={() => setFormOpen(false)}
-            >
+            <button type="button" className="ghost task-mini-btn" onClick={() => setFormOpen(false)}>
               Cerrar
             </button>
           </div>
 
           <form
-            className="composer-box"
-            style={{ width: "100%", margin: 0 }}
+            className="composer-box task-composer"
             onSubmit={(e: FormEvent) => {
               e.preventDefault();
               submit();
@@ -277,7 +299,7 @@ export function TasksPage() {
           </form>
 
           {create.isError && (
-            <p className="error" role="alert" style={{ margin: 0 }}>
+            <p className="error task-form-error" role="alert">
               {errorText(create.error)}
             </p>
           )}
@@ -345,27 +367,29 @@ export function TasksPage() {
             className={`pill${filter === "active" ? " on" : ""}`}
             onClick={() => setFilter("active")}
           >
-            Activas ({runningCount + queuedCount})
+            Activas ({activasCount})
           </button>
           <button
             type="button"
             className={`pill${filter === "done" ? " on" : ""}`}
             onClick={() => setFilter("done")}
           >
-            Completadas ({taskList.filter((t) => !isActive(t)).length})
+            Completadas ({doneCount})
           </button>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "var(--ink-2)" }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
-            <span className="pill-dot is-live" style={{ width: "5px", height: "5px" }} />
-            Sync 3s
+        <div className="task-sync">
+          <span className="task-sync-label">
+            <span className={`pill-dot task-sync-dot${activasCount > 0 ? " is-live" : ""}`} aria-hidden="true" />
+            {activasCount > 0 ? "Cada 3 s" : "En reposo"}
           </span>
           <button
             type="button"
             className="task-footer-btn"
-            onClick={() => qc.invalidateQueries({ queryKey: ["tasks"] })}
-            title="Refrescar tareas"
+            onClick={() => void actualizar()}
+            disabled={buscando}
+            aria-label="Actualizar"
+            title="Actualizar tareas y buscar cambios de la app"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M23 4v6h-6" />
@@ -409,75 +433,73 @@ export function TasksPage() {
           else if (isFailed) statusText = `Falló (${formatFinishedTime(t.finished_at)})`;
           else if (t.status === "cancelled") statusText = "Cancelada";
 
+          const dotClass = isRunning
+            ? " is-live"
+            : isQueued
+              ? " task-dot-queued"
+              : isDone
+                ? " task-dot-done"
+                : isFailed
+                  ? " is-offline"
+                  : "";
+
           return (
             <li key={t.id}>
               <article className="task-card">
-                <button
-                  type="button"
-                  className="task-card-head"
-                  aria-expanded={open}
-                  onClick={() => setOpenId(open ? null : t.id)}
-                >
-                  <div className="task-card-left">
-                    <span className="task-card-icon" aria-hidden="true">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="18" cy="18" r="3" />
-                        <circle cx="6" cy="6" r="3" />
-                        <path d="M13 6h3a2 2 0 0 1 2 2v7" />
-                        <line x1="6" y1="9" x2="6" y2="21" />
-                      </svg>
-                    </span>
-                    <div className="task-card-info">
-                      <div className="task-card-title-row">
-                        <span className="task-card-title">{t.title}</span>
-                        <span className="task-card-badge">{modelName(t.model)}</span>
+                {/* El botón de cancelar va al lado, no dentro, del botón que abre la tarjeta */}
+                <div className="task-card-top">
+                  <button
+                    type="button"
+                    className="task-card-head"
+                    aria-expanded={open}
+                    onClick={() => setOpenId(open ? null : t.id)}
+                  >
+                    <div className="task-card-left">
+                      <span className="task-card-icon" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="18" cy="18" r="3" />
+                          <circle cx="6" cy="6" r="3" />
+                          <path d="M13 6h3a2 2 0 0 1 2 2v7" />
+                          <line x1="6" y1="9" x2="6" y2="21" />
+                        </svg>
+                      </span>
+                      <div className="task-card-info">
+                        <div className="task-card-title-row">
+                          <span className="task-card-title">{t.title}</span>
+                          <span className="task-card-badge">{modelName(t.model)}</span>
+                        </div>
+                        <span className="task-card-sub">uuid: {t.id.slice(0, 8)}</span>
                       </div>
-                      <span className="task-card-sub">uuid: {t.id.slice(0, 8)}</span>
                     </div>
-                  </div>
 
-                  <div className="task-card-right">
                     <div className="task-card-status">
-                      <span
-                        className={`pill-dot${isRunning ? " is-live" : isQueued ? "" : isFailed ? " is-offline" : ""}`}
-                        style={{
-                          backgroundColor: isQueued ? "var(--ink-2)" : isDone ? "var(--ink)" : undefined,
-                        }}
-                        aria-hidden="true"
-                      />
+                      <span className={`pill-dot${dotClass}`} aria-hidden="true" />
                       <span>{statusText}</span>
                     </div>
+                  </button>
 
-                    {isActive(t) && (
-                      <button
-                        type="button"
-                        className="ghost task-cancel-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          cancel.mutate(t.id);
-                        }}
-                        disabled={cancel.isPending}
-                      >
-                        Cancelar
-                      </button>
-                    )}
-                  </div>
-                </button>
+                  {isActive(t) && (
+                    <button
+                      type="button"
+                      className="ghost task-cancel-btn"
+                      onClick={() => cancel.mutate(t.id)}
+                      disabled={cancel.isPending}
+                    >
+                      Cancelar
+                    </button>
+                  )}
+                </div>
 
                 {open && (
                   <div className="task-card-body">
                     <div className="task-card-prompt">
-                      <strong style={{ color: "var(--ink)", display: "block", marginBottom: "4px" }}>
-                        Prompt:
-                      </strong>
+                      <strong className="task-card-label">Prompt:</strong>
                       {t.prompt}
                     </div>
 
                     {t.result && (
                       <div className="task-card-result">
-                        <strong style={{ color: "var(--ink)", display: "block", marginBottom: "4px", fontFamily: "var(--font)" }}>
-                          Resultado:
-                        </strong>
+                        <strong className="task-card-label">Resultado:</strong>
                         {t.result}
                       </div>
                     )}
@@ -492,8 +514,8 @@ export function TasksPage() {
                       <span className="muted-note">
                         {modelName(t.model)}
                         {t.effort ? ` · ${t.effort}` : ""}
-                        {t.started_at ? ` · Iniciada: ${new Date(t.started_at).toLocaleTimeString()}` : ""}
-                        {t.finished_at ? ` · Finalizada: ${new Date(t.finished_at).toLocaleTimeString()}` : ""}
+                        {t.started_at ? ` · Iniciada: ${formatFinishedTime(t.started_at)}` : ""}
+                        {t.finished_at ? ` · Finalizada: ${formatFinishedTime(t.finished_at)}` : ""}
                       </span>
                     </div>
                   </div>
@@ -519,19 +541,25 @@ export function TasksPage() {
           <span>{queuedCount} en espera</span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center" }}>
+        <div className="task-footer-actions">
+          {avisoActualizar && (
+            <span className="task-footer-aviso" role="status">
+              {avisoActualizar}
+            </span>
+          )}
           <button
             type="button"
             className="task-footer-btn"
-            onClick={() => qc.invalidateQueries({ queryKey: ["tasks"] })}
-            title="Actualizar estado de tareas"
+            onClick={() => void actualizar()}
+            disabled={buscando}
+            title="Actualizar tareas y buscar cambios de la app"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M23 4v6h-6" />
               <path d="M1 20v-6h6" />
               <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
             </svg>
-            <span>Actualizar</span>
+            <span>{buscando ? "Buscando…" : "Actualizar"}</span>
           </button>
         </div>
       </footer>

@@ -77,7 +77,7 @@ export function SettingsPage() {
   return (
     <main className="page">
       <header className="page-head">
-        <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+        <div className="page-title-row">
           <button
             type="button"
             className="ghost menu-btn"
@@ -89,11 +89,6 @@ export function SettingsPage() {
             </svg>
           </button>
           <div>
-            <div className="context-meta">
-              <span className="context-label">Sistema / Control</span>
-              <span className="context-dot">•</span>
-              <span className="context-sub">Instancia local</span>
-            </div>
             <h1>Ajustes</h1>
             <p className="page-desc">
               Configuración de modelos de IA, presupuesto mensual y comportamiento de la app.
@@ -119,7 +114,6 @@ export function SettingsPage() {
           <section className="panel">
             <div className="card-top">
               <h2>Modelo por defecto</h2>
-              <span className="badge badge-neutral">Preferencia global</span>
             </div>
             <p className="muted-note">Lo usan los chats nuevos y las tareas que no indican modelo específico.</p>
             <div className="anchor">
@@ -155,7 +149,6 @@ export function SettingsPage() {
           <section className="panel">
             <div className="card-top">
               <h2>Presupuesto mensual</h2>
-              <span className="badge badge-neutral">Control de costos</span>
             </div>
             <p className="muted-note">Vacío significa sin límite. Las analíticas muestran cuánto llevas acumulado.</p>
             <div className="field-row">
@@ -195,7 +188,6 @@ export function SettingsPage() {
           <section className="panel">
             <div className="card-top">
               <h2>Instalar la app</h2>
-              <span className="badge badge-neutral">PWA</span>
             </div>
             <p className="muted-note">Instala Telo como aplicación independiente en tu teléfono o PC.</p>
             {isStandalone() ? (

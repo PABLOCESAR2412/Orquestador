@@ -130,15 +130,14 @@ export function ChatPage() {
     <section className="thread">
       <header className="thread-head">
         <div className="thread-head-info">
+          {/* En móvil, «telo» abre el cajón con la navegación y los chats recientes */}
           <button
             type="button"
-            className="ghost menu-btn"
-            aria-label="Abrir menú"
+            className="thread-brand"
+            aria-label="telo: abrir navegación y chats recientes"
             onClick={toggleDrawer}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-              <path d="M4 7h16M4 12h16M4 17h10" />
-            </svg>
+            telo
           </button>
 
           <div className="thread-model-trigger-wrap">
@@ -149,7 +148,7 @@ export function ChatPage() {
               aria-expanded={pickerOpen}
               onClick={() => setPickerOpen((o) => !o)}
             >
-              <span className="pill-dot is-live" style={{ width: "6px", height: "6px" }} aria-hidden="true" />
+              <span className="pill-dot is-live thread-model-dot" aria-hidden="true" />
               <span className="thread-model-btn-name">
                 {modelInfo?.name ?? current?.model ?? "Predeterminado"}
               </span>

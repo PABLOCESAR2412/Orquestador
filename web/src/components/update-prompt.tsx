@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
+import { EVENTO_VERSION_NUEVA, hayVersionNueva } from "../lib/version";
 
 // Cada cuánto se revisa si hay una versión nueva.
 const REVISION_CADA_MS = 5 * 60_000;
@@ -21,17 +22,15 @@ export function UpdatePrompt() {
 
     async function revisar() {
       try {
-        const res = await fetch("/version.json", { cache: "no-store" });
-        const datos = (await res.json()) as { id?: string };
-        if (!activo || !datos.id || datos.id === __BUILD_ID__) return;
-        setHayNuevaVersion(true);
-        // Pide el service worker nuevo. Si cambió, queda esperando y el aviso lo activa.
-        const registro = await navigator.serviceWorker?.getRegistration();
-        void registro?.update();
+        if ((await hayVersionNueva()) && activo) setHayNuevaVersion(true);
       } catch {
         // Sin conexión, o sin version.json en desarrollo: se vuelve a intentar.
       }
     }
+
+    // El botón Actualizar de Tareas también puede pedir el aviso.
+    const alPedirAviso = () => setHayNuevaVersion(true);
+    window.addEventListener(EVENTO_VERSION_NUEVA, alPedirAviso);
 
     const timer = window.setInterval(revisar, REVISION_CADA_MS);
     const alVolver = () => {
@@ -41,6 +40,7 @@ export function UpdatePrompt() {
     return () => {
       activo = false;
       window.clearInterval(timer);
+      window.removeEventListener(EVENTO_VERSION_NUEVA, alPedirAviso);
       document.removeEventListener("visibilitychange", alVolver);
     };
   }, []);

@@ -27,7 +27,7 @@ export function StatusPage() {
   return (
     <main className="page">
       <header className="page-head">
-        <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+        <div className="page-title-row">
           <button
             type="button"
             className="ghost menu-btn"
@@ -75,7 +75,7 @@ export function StatusPage() {
               <span className="status-meta-label">Última comprobación</span>
               <span className="status-meta-value">
                 {health.data?.time
-                  ? new Date(health.data.time).toLocaleTimeString()
+                  ? new Date(health.data.time).toLocaleTimeString("es")
                   : "Pendiente"}
               </span>
             </div>

@@ -1413,3 +1413,52 @@ button:disabled { opacity: 0.4; cursor: default; }
     scroll-behavior: auto !important;
   }
 }
+
+/* Correcciones de la revisión: clases que antes eran estilos inline */
+.page-title-row { display: flex; align-items: flex-start; gap: 12px; }
+.task-title { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.01em; }
+.task-mini-btn { padding: 4px 8px; font-size: 12px; }
+.task-composer { width: 100%; margin: 0; }
+.task-form-error { margin: 0; }
+.task-dot-queued { background: var(--ink-2); }
+.task-dot-done { background: var(--ink); }
+.task-card-label { display: block; margin-bottom: 4px; color: var(--ink); }
+.task-card-result .task-card-label { font-family: var(--font); }
+.thread-model-dot { width: 6px; height: 6px; }
+
+/* Tarjeta de tarea: el botón Cancelar va al lado del botón que abre la tarjeta */
+.task-card-top { display: flex; align-items: flex-start; gap: 12px; }
+.task-card-top > .task-card-head { flex: 1; min-width: 0; }
+.task-card-top > .task-cancel-btn { flex-shrink: 0; }
+
+/* Pie y filtros de Tareas: el indicador de sincronización solo se marca con tareas activas */
+.task-filter-row { flex-wrap: wrap; row-gap: 10px; }
+.task-filter-row .period { flex-wrap: wrap; }
+.task-sync { display: flex; align-items: center; gap: 8px; margin-left: auto; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.task-sync-label { display: inline-flex; align-items: center; gap: 5px; }
+.task-sync-dot { width: 5px; height: 5px; }
+.task-footer-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.task-footer-aviso { font-size: 12px; color: var(--ink-2); }
+
+/* Cabecera del chat: en móvil, «telo» abre el cajón (sustituye al ícono de menú) */
+.thread-brand { display: none; }
+@media (max-width: 760px) {
+  .thread-brand {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    cursor: pointer;
+  }
+  .thread-brand:hover { border-color: var(--line-strong); }
+  .task-filter-row { flex-direction: column; align-items: stretch; }
+}

@@ -35,7 +35,7 @@ export function AnalyticsPage() {
   return (
     <main className="page">
       <header className="page-head">
-        <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+        <div className="page-title-row">
           <button
             type="button"
             className="ghost menu-btn"
