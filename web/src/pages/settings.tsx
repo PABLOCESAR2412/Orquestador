@@ -3,13 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ModelInfo, type Preferences } from "../api";
 import { EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
-import { AppNav } from "../components/nav";
 import { isIOS, isStandalone, useInstallPrompt } from "../lib/install";
 import { errorText } from "../lib/model";
+import { useShell } from "../components/shell-context";
 
 const ALERT_OPTIONS = [50, 60, 70, 80, 90, 100];
 
 export function SettingsPage() {
+  const { toggleDrawer } = useShell();
   const qc = useQueryClient();
   const prefs = useQuery({ queryKey: ["preferences"], queryFn: api.getPreferences });
   const models = useQuery({ queryKey: ["models"], queryFn: api.listModels, staleTime: 5 * 60_000 });
@@ -76,20 +77,30 @@ export function SettingsPage() {
   return (
     <main className="page">
       <header className="page-head">
-        <div>
-          <div className="context-meta">
-            <span className="context-label">Sistema / Control</span>
-            <span className="context-dot">•</span>
-            <span className="context-sub">Instancia local</span>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+          <button
+            type="button"
+            className="ghost menu-btn"
+            aria-label="Abrir menú"
+            onClick={toggleDrawer}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h10" />
+            </svg>
+          </button>
+          <div>
+            <div className="context-meta">
+              <span className="context-label">Sistema / Control</span>
+              <span className="context-dot">•</span>
+              <span className="context-sub">Instancia local</span>
+            </div>
+            <h1>Ajustes</h1>
+            <p className="page-desc">
+              Configuración de modelos de IA, presupuesto mensual y comportamiento de la app.
+            </p>
           </div>
-          <h1>Ajustes</h1>
-          <p className="page-desc">
-            Configuración de modelos de IA, presupuesto mensual y comportamiento de la app.
-          </p>
         </div>
       </header>
-
-      <AppNav />
 
       {prefs.isError && (
         <p className="error" role="alert">

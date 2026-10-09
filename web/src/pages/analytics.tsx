@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api, type Analytics } from "../api";
-import { AppNav } from "../components/nav";
 import { compact, DailyBars, ModelBars, shortDay } from "../components/charts";
+import { useShell } from "../components/shell-context";
 
 const PERIODS = [7, 30, 90] as const;
 
@@ -19,6 +19,7 @@ const BUDGET_LABEL: Record<"ok" | "alerta" | "excedido", string> = {
 };
 
 export function AnalyticsPage() {
+  const { toggleDrawer } = useShell();
   const [days, setDays] = useState<number>(30);
 
   // Mantiene la gráfica anterior mientras llega el nuevo periodo, sin saltos.
@@ -34,11 +35,23 @@ export function AnalyticsPage() {
   return (
     <main className="page">
       <header className="page-head">
-        <div>
-          <h1>Analíticas</h1>
-          <p className="page-desc">
-            Métricas de tokens, costo acumulado y llamadas registradas en tu servidor.
-          </p>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+          <button
+            type="button"
+            className="ghost menu-btn"
+            aria-label="Abrir menú"
+            onClick={toggleDrawer}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h10" />
+            </svg>
+          </button>
+          <div>
+            <h1>Analíticas</h1>
+            <p className="page-desc">
+              Métricas de tokens, costo acumulado y llamadas registradas en tu servidor.
+            </p>
+          </div>
         </div>
         <div className="period" role="group" aria-label="Periodo">
           {PERIODS.map((p) => (
@@ -54,8 +67,6 @@ export function AnalyticsPage() {
           ))}
         </div>
       </header>
-
-      <AppNav />
 
       {query.isError && (
         <p className="error" role="alert">
