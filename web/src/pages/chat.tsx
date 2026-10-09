@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Conversation, type ModelInfo } from "../api";
 import { CostMeter, EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
-import { errorText } from "../lib/model";
+import { errorText, formatWhen } from "../lib/model";
 import { useShell } from "../components/shell-context";
 
 type Patch = { model?: string | null; effort?: string | null };
@@ -129,60 +129,131 @@ export function ChatPage() {
   return (
     <section className="thread">
       <header className="thread-head">
-        <button
-          type="button"
-          className="ghost menu-btn"
-          aria-label="Abrir menú"
-          onClick={toggleDrawer}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-        </button>
-          <div className="thread-head-info">
-            <h1 className="thread-title">{current?.title ?? "Telo"}</h1>
-            {current && (
-              <span className="thread-model-badge">
-                {modelInfo?.name ?? current.model ?? "Predeterminado"}
+        <div className="thread-head-info">
+          <button
+            type="button"
+            className="ghost menu-btn"
+            aria-label="Abrir menú"
+            onClick={toggleDrawer}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h10" />
+            </svg>
+          </button>
+
+          <div className="thread-model-trigger-wrap">
+            <button
+              type="button"
+              className="thread-model-btn"
+              aria-haspopup="dialog"
+              aria-expanded={pickerOpen}
+              onClick={() => setPickerOpen((o) => !o)}
+            >
+              <span className="pill-dot is-live" style={{ width: "6px", height: "6px" }} aria-hidden="true" />
+              <span className="thread-model-btn-name">
+                {modelInfo?.name ?? current?.model ?? "Predeterminado"}
               </span>
+              {modelInfo && <CostMeter tier={modelInfo.costTier} />}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+
+            {pickerOpen && (
+              <ModelPicker
+                models={modelList}
+                currentId={current?.model ?? null}
+                onSelect={pickModel}
+                onClose={() => setPickerOpen(false)}
+              />
             )}
           </div>
-        </header>
 
-        {!selectedId ? (
-          <div className="empty">
-            <div className="empty-box">
-              <h2>Sin conversación activa</h2>
-              <p>Inicia un nuevo chat con tus agentes o selecciona uno de la lista.</p>
-              <button type="button" className="primary" onClick={() => create.mutate()} disabled={create.isPending}>
-                Nuevo chat
-              </button>
-            </div>
+          <span className="thread-head-sep" aria-hidden="true">•</span>
+          <h1 className="thread-title">{current?.title ?? "Nuevo chat"}</h1>
+        </div>
+      </header>
+
+      {!selectedId ? (
+        <div className="empty">
+          <div className="empty-box">
+            <h2>Sin conversación activa</h2>
+            <p>Inicia un nuevo chat con tus agentes o selecciona uno de la lista.</p>
+            <button type="button" className="primary" onClick={() => create.mutate()} disabled={create.isPending}>
+              Nuevo chat
+            </button>
           </div>
-        ) : (
-          <>
-            <div className="messages">
-              <div className="column">
-                {messages.data?.length === 0 && !send.isPending && (
-                  <p className="muted-note center">Escribe un mensaje para empezar.</p>
-                )}
-                {messages.data?.map((m) => (
-                  <div key={m.id} className={`msg msg-${m.role}`}>
-                    {m.content}
+        </div>
+      ) : (
+        <>
+          <div className="messages">
+            <div className="column">
+              {messages.data?.length === 0 && !send.isPending && (
+                <p className="muted-note center">Escribe un mensaje para empezar.</p>
+              )}
+              {messages.data?.map((m) => {
+                const isUser = m.role === "user";
+                return (
+                  <div key={m.id} className={`msg-row msg-row-${m.role}`}>
+                    <div className="msg-meta-bar">
+                      {isUser ? (
+                        <>
+                          <span className="msg-author">Tú</span>
+                          <span className="msg-meta-dot">•</span>
+                          <time className="msg-time">{formatWhen(m.created_at)}</time>
+                        </>
+                      ) : (
+                        <>
+                          <div className="msg-author-icon" aria-hidden="true">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="16 18 22 12 16 6" />
+                              <polyline points="8 6 2 12 8 18" />
+                            </svg>
+                          </div>
+                          <span className="msg-author">{modelInfo?.name ?? current?.model ?? "Asistente"}</span>
+                          <span className="msg-meta-dot">•</span>
+                          <time className="msg-time">{formatWhen(m.created_at)}</time>
+                        </>
+                      )}
+                    </div>
+                    <div className={`msg msg-${m.role}`}>
+                      {m.content}
+                    </div>
                   </div>
-                ))}
-                {send.isPending && (
-                  <>
+                );
+              })}
+              {send.isPending && (
+                <>
+                  <div className="msg-row msg-row-user">
+                    <div className="msg-meta-bar">
+                      <span className="msg-author">Tú</span>
+                      <span className="msg-meta-dot">•</span>
+                      <span className="msg-time">Ahora</span>
+                    </div>
                     <div className="msg msg-user">{send.variables}</div>
+                  </div>
+                  <div className="msg-row msg-row-assistant">
+                    <div className="msg-meta-bar">
+                      <div className="msg-author-icon" aria-hidden="true">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="16 18 22 12 16 6" />
+                          <polyline points="8 6 2 12 8 18" />
+                        </svg>
+                      </div>
+                      <span className="msg-author">{modelInfo?.name ?? current?.model ?? "Asistente"}</span>
+                      <span className="msg-meta-dot">•</span>
+                      <span className="msg-time">Pensando…</span>
+                    </div>
                     <div className="msg msg-assistant thinking" aria-live="polite">
                       <span className="dot" aria-hidden="true" />
                       <span className="muted-note">Pensando</span>
                     </div>
-                  </>
-                )}
-                <div ref={endRef} />
-              </div>
+                  </div>
+                </>
+              )}
+              <div ref={endRef} />
             </div>
+          </div>
 
             <form
               className="composer"
