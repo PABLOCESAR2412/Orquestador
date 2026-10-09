@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="es"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=JetBrains+Mono:wght@100..900&display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"on-tertiary-container":"#6a635e","on-tertiary-fixed":"#1f1b17","on-secondary-fixed":"#151c25","on-primary-container":"#636466","tertiary":"#ffffff","surface":"#121316","primary-container":"#e2e2e4","outline":"#8f9194","surface-bright":"#38393c","on-secondary":"#2a313b","surface-tint":"#c6c6c8","on-error-container":"#ffdad6","outline-variant":"#44474a","inverse-primary":"#5d5e60","surface-container-highest":"#343538","surface-variant":"#343538","tertiary-fixed":"#ebe0db","on-tertiary":"#352f2c","surface-container":"#1f1f23","primary-fixed":"#e2e2e4","tertiary-container":"#ebe0db","surface-dim":"#121316","on-surface":"#e3e2e6","surface-container-high":"#292a2d","error-container":"#93000a","primary":"#ffffff","error":"#ffb4ab","secondary-fixed-dim":"#c0c7d3","on-tertiary-fixed-variant":"#4c4641","secondary":"#c0c7d3","on-primary-fixed-variant":"#454749","secondary-fixed":"#dce3f0","on-background":"#e3e2e6","tertiary-fixed-dim":"#cec5bf","primary-fixed-dim":"#c6c6c8","on-secondary-container":"#afb5c2","background":"#121316","on-primary":"#2f3132","inverse-on-surface":"#303034","on-secondary-fixed-variant":"#404752","on-error":"#690005","surface-container-low":"#1b1b1f","secondary-container":"#404752","on-surface-variant":"#c5c7c9","inverse-surface":"#e3e2e6","surface-container-lowest":"#0d0e11","on-primary-fixed":"#1a1c1d"},borderRadius:{DEFAULT:"0.25rem",lg:"0.5rem",xl:"0.75rem",full:"9999px"},spacing:{"space-lg":"1.5rem","space-md":"1rem",margin:"2rem",gutter:"1.5rem","space-sm":"0.5rem","space-xs":"0.25rem","space-xl":"2.5rem"},fontFamily:{"body-lg":["Geist"],"body-md":["Geist"],"headline-lg":["Geist"],"headline-xl":["Geist"],"label-sm":["JetBrains Mono"],"headline-xl-mobile":["Geist"],"body-sm":["Geist"],"label-md":["JetBrains Mono"],"headline-sm":["Geist"]},fontSize:{"body-lg":["16px",{lineHeight:"26px",letterSpacing:"-0.01em",fontWeight:"400"}],"body-md":["14px",{lineHeight:"22px",letterSpacing:"0em",fontWeight:"400"}],"headline-lg":["26px",{lineHeight:"34px",letterSpacing:"-0.02em",fontWeight:"500"}],"headline-xl":["36px",{lineHeight:"44px",letterSpacing:"-0.03em",fontWeight:"600"}],"label-sm":["11px",{lineHeight:"14px",letterSpacing:"0.03em",fontWeight:"400"}],"headline-xl-mobile":["28px",{lineHeight:"34px",letterSpacing:"-0.02em",fontWeight:"600"}],"body-sm":["13px",{lineHeight:"18px",letterSpacing:"0em",fontWeight:"400"}],"label-md":["12px",{lineHeight:"16px",letterSpacing:"0.02em",fontWeight:"400"}],"headline-sm":["18px",{lineHeight:"26px",letterSpacing:"-0.01em",fontWeight:"500"}]}}}}</script></head><body class="bg-surface font-body-md text-on-surface antialiased"><aside class="fixed left-0 top-0 h-full w-[260px] bg-surface-container-lowest z-50 flex flex-col justify-between p-space-sm"><div class="flex flex-col gap-space-sm"><div class="flex items-center justify-between px-space-xs py-space-xs"><div class="flex items-center gap-space-xs"><span class="material-symbols-outlined text-primary text-[18px]">hub</span><span class="font-headline-sm text-headline-sm font-medium tracking-tight text-primary">Orquestador</span></div><button class="flex items-center justify-center p-space-xs rounded text-on-surface-variant hover:text-primary transition-colors" title="Colapsar panel"><span class="material-symbols-outlined text-[18px]">dock_to_left</span></button></div><button class="w-full flex items-center justify-between px-space-sm py-space-xs rounded-lg bg-surface-container-low text-on-surface hover:bg-surface-container hover:text-primary transition-colors"><span class="flex items-center gap-space-xs font-body-sm text-body-sm font-medium"><span class="material-symbols-outlined text-[16px]">add</span>Nueva tarea</span><span class="font-label-sm text-label-sm text-on-surface-variant">⌘N</span></button><nav class="flex flex-col gap-space-xs pt-space-xs" data-active-classes="bg-surface-container text-primary font-medium"><a aria-current="page" class="flex items-center gap-space-xs px-space-sm py-space-xs rounded-lg transition-colors bg-surface-container text-primary font-medium" data-path="chat" href="#"><span class="material-symbols-outlined text-[18px]">forum</span><span>Chat</span></a><a class="flex items-center gap-space-xs px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors font-body-sm text-body-sm" data-path="tareas" href="#"><span class="material-symbols-outlined text-[18px]">check_circle</span><span>Tareas</span></a><a class="flex items-center gap-space-xs px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors font-body-sm text-body-sm" data-path="analiticas" href="#"><span class="material-symbols-outlined text-[18px]">query_stats</span><span>Analíticas</span></a><a class="flex items-center gap-space-xs px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors font-body-sm text-body-sm" data-path="ajustes" href="#"><span class="material-symbols-outlined text-[18px]">settings</span><span>Ajustes</span></a></nav><div class="flex flex-col pt-space-sm"><div class="px-space-xs pb-space-xs flex items-center justify-between"><span class="font-label-sm text-label-sm uppercase tracking-wider text-outline">Recientes</span></div><div class="flex flex-col gap-space-xs overflow-y-auto max-h-[360px]"><div class="group flex items-center justify-between px-space-sm py-space-xs rounded-lg hover:bg-surface-container-low cursor-pointer transition-colors"><span class="truncate font-body-sm text-body-sm text-on-surface-variant group-hover:text-on-surface">Refactor AST Parser</span><span class="material-symbols-outlined text-[16px] text-outline opacity-0 group-hover:opacity-100 transition-opacity hover:text-primary">more_horiz</span></div><div class="group flex items-center justify-between px-space-sm py-space-xs rounded-lg hover:bg-surface-container-low cursor-pointer transition-colors"><span class="truncate font-body-sm text-body-sm text-on-surface-variant group-hover:text-on-surface">Migración schema Postgres</span><span class="material-symbols-outlined text-[16px] text-outline opacity-0 group-hover:opacity-100 transition-opacity hover:text-primary">more_horiz</span></div><div class="group flex items-center justify-between px-space-sm py-space-xs rounded-lg hover:bg-surface-container-low cursor-pointer transition-colors"><span class="truncate font-body-sm text-body-sm text-on-surface-variant group-hover:text-on-surface">Pipeline CI/CD</span><span class="material-symbols-outlined text-[16px] text-outline opacity-0 group-hover:opacity-100 transition-opacity hover:text-primary">more_horiz</span></div><div class="group flex items-center justify-between px-space-sm py-space-xs rounded-lg hover:bg-surface-container-low cursor-pointer transition-colors"><span class="truncate font-body-sm text-body-sm text-on-surface-variant group-hover:text-on-surface">Benchmark LLMs</span><span class="material-symbols-outlined text-[16px] text-outline opacity-0 group-hover:opacity-100 transition-opacity hover:text-primary">more_horiz</span></div></div></div></div><div class="flex flex-col gap-space-xs pt-space-xs"><div class="flex items-center justify-between p-space-xs rounded-lg hover:bg-surface-container-low cursor-pointer transition-colors"><div class="flex items-center gap-space-xs"><div class="w-6 h-6 rounded-full bg-surface-container-high flex items-center justify-center"><span class="material-symbols-outlined text-[14px] text-on-surface-variant">terminal</span></div><div class="flex flex-col"><span class="font-label-sm text-label-sm text-on-surface leading-none">dev-lead@local</span><span class="font-label-sm text-label-sm text-outline leading-none pt-space-xs">Orquestador Cloud</span></div></div><div class="w-2 h-2 rounded-full bg-surface-bright"></div></div></div></aside><div class="pl-[260px]"><header class="fixed top-0 left-[260px] right-0 h-12 bg-surface/80 backdrop-blur-xl z-40 flex items-center justify-between px-space-md shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex items-center gap-space-sm"><div class="flex items-center gap-space-xs"><span class="font-label-sm text-label-sm text-outline">v2.4</span><span class="text-outline-variant font-label-sm">•</span><span class="font-label-sm text-label-sm text-on-surface-variant">Listo</span></div></div><div class="flex items-center gap-space-sm"><button class="flex items-center gap-space-xs px-space-sm py-space-xs rounded text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined text-[16px]">tune</span><span class="font-label-sm text-label-sm">Parámetros</span></button><button class="flex items-center gap-space-xs px-space-sm py-space-xs rounded text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined text-[16px]">share</span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></header><main class="relative pt-12 min-h-screen bg-surface"><div class="flex flex-col w-full">
+<!-- Sub-header bar anchored below shell header -->
+<header class="sticky top-12 z-30 flex items-center justify-between px-margin py-space-sm bg-surface/90 backdrop-blur-md">
+<div class="flex items-center gap-space-sm">
+<div class="relative group">
+<button class="flex items-center gap-space-xs px-space-sm py-1 rounded-full bg-surface-container-low hover:bg-surface-container text-on-surface transition-all text-left" id="modelSelectorBtn">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+<span class="font-headline-sm text-body-sm font-medium tracking-tight text-primary">Codex v2.4</span>
+<span class="font-label-sm text-label-sm text-outline">128k</span>
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant">expand_more</span>
+</button>
+<!-- Dropdown Menu -->
+<div class="hidden absolute left-0 top-full mt-1.5 w-60 rounded-xl bg-surface-container-high shadow-2xl p-space-xs z-50 flex flex-col gap-1" id="modelMenu">
+<button class="w-full flex items-center justify-between px-space-sm py-space-xs rounded-lg bg-surface-container-highest text-left text-primary hover:bg-surface-container-highest">
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm font-medium">Codex v2.4</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Especializado en AST y TypeScript</span>
+</div>
+<span class="material-symbols-outlined text-[16px] text-primary">check</span>
+</button>
+<button class="w-full flex items-center justify-between px-space-sm py-space-xs rounded-lg hover:bg-surface-container text-left text-on-surface transition-colors">
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm font-medium">OpenCode 34B</span>
+<span class="font-label-sm text-label-sm text-outline">Inferencia local optimizada</span>
+</div>
+</button>
+<button class="w-full flex items-center justify-between px-space-sm py-space-xs rounded-lg hover:bg-surface-container text-left text-on-surface transition-colors">
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm font-medium">Google Gemini 1.5</span>
+<span class="font-label-sm text-label-sm text-outline">Contexto ultra-largo (1M tokens)</span>
+</div>
+</button>
+</div>
+</div>
+<span class="text-outline-variant font-label-sm">•</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant truncate max-w-[260px]">Refactor AST Parser</span>
+</div>
+<!-- Right utility controls -->
+<div class="flex items-center gap-space-xs">
+<button class="flex items-center gap-space-xs px-space-sm py-1 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container-low transition-colors" title="Compartir sesión">
+<span class="material-symbols-outlined text-[16px]">share</span>
+<span class="font-label-md text-label-md">Compartir</span>
+</button>
+<button class="flex items-center gap-space-xs px-space-sm py-1 rounded-lg text-on-surface-variant hover:text-primary hover:bg-surface-container-low transition-colors" title="Exportar transcripción">
+<span class="material-symbols-outlined text-[16px]">download</span>
+<span class="font-label-md text-label-md">Exportar</span>
+</button>
+<div class="w-px h-3 bg-surface-container-highest mx-space-xs"></div>
+<button class="flex items-center justify-center p-1.5 rounded-lg text-outline hover:text-error hover:bg-surface-container-low transition-colors" title="Limpiar hilo">
+<span class="material-symbols-outlined text-[16px]">delete_sweep</span>
+</button>
+</div>
+</header>
+<!-- Central reading column (Claude/ChatGPT constrained width) -->
+<div class="w-full max-w-3xl mx-auto px-gutter flex flex-col gap-space-xl pb-40">
+<!-- User Prompt Item -->
+<div class="flex justify-end pt-space-md">
+<div class="max-w-[85%] bg-surface-container-low rounded-2xl px-space-lg py-space-md shadow-sm">
+<p class="font-body-lg text-body-lg text-primary tracking-normal leading-relaxed">
+          Genera el visitor pattern para transformar nodos <code class="font-label-sm text-label-sm bg-surface-container-high px-1.5 py-0.5 rounded text-primary">CallExpression</code> en TypeScript sin romper compatibilidad retroactiva con compiladores legacy.
+        </p>
+</div>
+</div>
+<!-- Assistant Message Item -->
+<div class="flex flex-col gap-space-md">
+<!-- Assistant Header / Identity -->
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<div class="w-5 h-5 rounded-full bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-[13px]">code_blocks</span>
+</div>
+<span class="font-body-sm text-body-sm font-medium text-primary">Codex v2.4</span>
+<span class="font-label-sm text-label-sm text-outline">hace 2 min</span>
+</div>
+<div class="flex items-center gap-space-xs opacity-0 hover:opacity-100 transition-opacity">
+<button class="p-1 rounded text-outline hover:text-primary hover:bg-surface-container transition-colors" title="Copiar respuesta">
+<span class="material-symbols-outlined text-[16px]">content_copy</span>
+</button>
+<button class="p-1 rounded text-outline hover:text-primary hover:bg-surface-container transition-colors" title="Regenerar">
+<span class="material-symbols-outlined text-[16px]">replay</span>
+</button>
+</div>
+</div>
+<!-- Markdown Structured Response -->
+<div class="flex flex-col gap-space-md font-body-lg text-body-lg text-on-surface">
+<p class="leading-relaxed">
+          Para garantizar la coexistencia entre las versiones anteriores de TypeScript (que empleaban <code class="font-label-sm text-label-sm bg-surface-container px-1.5 py-0.5 rounded text-primary">ts.visitEachChild</code> síncrono sin factory decorators) y la API moderna de <code class="font-label-sm text-label-sm bg-surface-container px-1.5 py-0.5 rounded text-primary">TransformationContext</code>, implementamos un Visitor Polimórfico desacoplado.
+        </p>
+<!-- Understated Execution Status Badge -->
+<div class="flex items-center gap-space-sm px-space-md py-space-xs rounded-xl bg-surface-container-low text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px] text-primary">verified</span>
+<span class="font-label-md text-label-md">Verificación de compilador: 14 nodos modificados</span>
+<span class="text-outline-variant font-label-sm">•</span>
+<span class="font-label-md text-label-md text-primary">0 errores de tipado</span>
+<span class="text-outline-variant font-label-sm">•</span>
+<span class="font-label-sm text-label-sm text-outline">18.4ms</span>
+</div>
+<p class="leading-relaxed">
+          A continuación se presenta el transformador de AST con soporte para fallback de contexto y preservación de comentarios sintácticos:
+        </p>
+<!-- Code Block Artifact -->
+<div class="rounded-xl overflow-hidden bg-surface-container-lowest shadow-md">
+<!-- Code Block Header -->
+<div class="flex items-center justify-between px-space-md py-space-xs bg-surface-container-low">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-outline text-[14px]">data_object</span>
+<span class="font-label-sm text-label-sm uppercase tracking-wider text-outline">typescript</span>
+</div>
+<button class="flex items-center gap-space-xs px-space-xs py-0.5 rounded hover:bg-surface-container text-on-surface-variant hover:text-primary transition-colors" id="copyCodeBtn">
+<span class="material-symbols-outlined text-[14px]">content_copy</span>
+<span class="font-label-sm text-label-sm">Copiar código</span>
+</button>
+</div>
+<!-- Code Diff Body -->
+<pre class="p-space-md overflow-x-auto font-label-sm text-label-sm leading-relaxed text-on-surface flex flex-col gap-0.5"><code><span class="text-outline select-none pr-space-md inline-block w-8 text-right">01</span><span class="text-on-surface-variant">import * as ts from 'typescript';</span>
+<span class="text-outline select-none pr-space-md inline-block w-8 text-right">02</span>
+<span class="text-outline select-none pr-space-md inline-block w-8 text-right">03</span><span class="text-outline">// Visitor signature compatible con TS 4.x - 5.x</span>
+<span class="text-outline select-none pr-space-md inline-block w-8 text-right">04</span><span class="text-primary font-medium">export function createCallExpressionTransformer(</span>
+<span class="text-outline select-none pr-space-md inline-block w-8 text-right">05</span>    context: ts.TransformationContext
+<span class="text-outline select-none pr-space-md inline-block w-8 text-right">06</span>): ts.Transformer<ts.SourceFile> {
+<span class="text-outline select-none pr-space-md inline-block w-8 text-right">07</span>  const { factory } = context;
+<span class="text-outline select-none pr-space-md inline-block w-8 text-right">08</span>  
+<span class="text-outline select-none pr-space-md inline-block w-8 text-right">09</span>  return (sourceFile: ts.SourceFile) => {
+<span class="text-outline select-none pr-space-md inline-block w-8 text-right">10</span>    const visitor: ts.Visitor = (node: ts.Node): ts.VisitResult<ts.Node> => {
+<span class="bg-surface-container-high/60 -mx-space-md px-space-md py-0.5 flex items-center"><span class="text-outline select-none pr-space-md inline-block w-8 text-right">11</span><span class="text-outline select-none w-4">-</span><span class="text-outline">      if (ts.isCallExpression(node)) { return transformLegacy(node); }</span></span>
+<span class="bg-surface-container-highest/60 -mx-space-md px-space-md py-0.5 flex items-center"><span class="text-outline select-none pr-space-md inline-block w-8 text-right">12</span><span class="text-primary select-none w-4 font-bold">+</span><span class="text-primary">      if (ts.isCallExpression(node)) {</span></span>
+<span class="bg-surface-container-highest/60 -mx-space-md px-space-md py-0.5 flex items-center"><span class="text-outline select-none pr-space-md inline-block w-8 text-right">13</span><span class="text-primary select-none w-4 font-bold">+</span><span class="text-primary">        const updatedArgs = node.arguments.map(arg => ts.visitNode(arg, visitor));</span></span>
+<span class="bg-surface-container-highest/60 -mx-space-md px-space-md py-0.5 flex items-center"><span class="text-outline select-none pr-space-md inline-block w-8 text-right">14</span><span class="text-primary select-none w-4 font-bold">+</span><span class="text-primary">        return factory ? factory.updateCallExpression(node, node.expression, node.typeArguments, updatedArgs)</span></span>
+<span class="bg-surface-container-highest/60 -mx-space-md px-space-md py-0.5 flex items-center"><span class="text-outline select-none pr-space-md inline-block w-8 text-right">15</span><span class="text-primary select-none w-4 font-bold">+</span><span class="text-primary">                       : ts.updateCall(node, node.expression, node.typeArguments, updatedArgs);</span></span>
+<span class="bg-surface-container-highest/60 -mx-space-md px-space-md py-0.5 flex items-center"><span class="text-outline select-none pr-space-md inline-block w-8 text-right">16</span><span class="text-primary select-none w-4 font-bold">+</span><span class="text-primary">      }</span></span>
+<span class="text-outline select-none pr-space-md inline-block w-8 text-right">17</span>      return ts.visitEachChild(node, visitor, context);
+<span class="text-outline select-none pr-space-md inline-block w-8 text-right">18</span>    };
+<span class="text-outline select-none pr-space-md inline-block w-8 text-right">19</span>    return ts.visitNode(sourceFile, visitor) as ts.SourceFile;
+<span class="text-outline select-none pr-space-md inline-block w-8 text-right">20</span>  };
+<span class="text-outline select-none pr-space-md inline-block w-8 text-right">21</span>}</code></pre>
+</div>
+<!-- Analytical Breakdown Checklist -->
+<div class="flex flex-col gap-space-xs pt-space-xs">
+<div class="flex items-center gap-space-sm text-on-surface">
+<span class="material-symbols-outlined text-[16px] text-primary">check_small</span>
+<span class="font-body-sm text-body-sm"><strong class="text-primary font-medium">Compatibilidad dual:</strong> Detección runtime de <code class="font-label-sm text-label-sm bg-surface-container px-1 py-0.5 rounded text-primary">context.factory</code> frente al singleton <code class="font-label-sm text-label-sm bg-surface-container px-1 py-0.5 rounded text-primary">ts.updateCall</code>.</span>
+</div>
+<div class="flex items-center gap-space-sm text-on-surface">
+<span class="material-symbols-outlined text-[16px] text-primary">check_small</span>
+<span class="font-body-sm text-body-sm"><strong class="text-primary font-medium">Inmutabilidad:</strong> Los mapas de argumentos procesan subárboles recursivamente preservando source maps originales.</span>
+</div>
+</div>
+</div>
+<!-- Action Footer for Response -->
+<div class="flex items-center gap-space-xs pt-space-xs">
+<button class="flex items-center gap-space-xs px-space-sm py-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-low transition-colors font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[16px]">terminal</span>
+<span>Ejecutar suite de tests</span>
+</button>
+<button class="flex items-center gap-space-xs px-space-sm py-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container-low transition-colors font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[16px]">difference</span>
+<span>Aplicar diff al working tree</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Docked Bottom Floating Prompt Bar (ChatGPT / Claude style) -->
+<div class="fixed bottom-0 left-[260px] right-0 z-40 bg-gradient-to-t from-surface via-surface/90 to-transparent pt-space-lg pb-space-sm px-gutter flex flex-col items-center">
+<div class="w-full max-w-3xl flex flex-col">
+<!-- Input Card Container -->
+<div class="relative w-full rounded-2xl bg-surface-container-low shadow-xl p-space-sm flex flex-col gap-space-sm">
+<!-- Textarea area -->
+<textarea class="w-full bg-transparent resize-none outline-none font-body-md text-body-md text-primary placeholder-outline px-space-xs pt-space-xs leading-relaxed max-h-48" id="promptInput" placeholder="Envía un mensaje o escribe / para comandos (/diff, /test, /task)..." rows="2"></textarea>
+<!-- Bottom Controls Inside Input Container -->
+<div class="flex items-center justify-between pt-space-xs">
+<!-- Left Action Icons & Context Chip -->
+<div class="flex items-center gap-space-xs">
+<button class="flex items-center justify-center p-1.5 rounded-lg text-outline hover:text-primary hover:bg-surface-container transition-colors" title="Adjuntar archivo o AST">
+<span class="material-symbols-outlined text-[18px]">attach_file</span>
+</button>
+<button class="flex items-center justify-center p-1.5 rounded-lg text-outline hover:text-primary hover:bg-surface-container transition-colors" title="Modo Deep Reasoning">
+<span class="material-symbols-outlined text-[18px]">psychology</span>
+</button>
+<div class="w-px h-3.5 bg-surface-container-highest mx-space-xs"></div>
+<div class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-surface-container text-on-surface-variant">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+<span class="font-label-sm text-label-sm">Codex • 128k</span>
+</div>
+</div>
+<!-- Right Send Button -->
+<div class="flex items-center gap-space-xs">
+<span class="font-label-sm text-label-sm text-outline hidden sm:inline-block pr-space-xs">⌘ + Enter</span>
+<button class="w-8 h-8 rounded-full bg-primary text-on-primary hover:bg-on-surface transition-all flex items-center justify-center shadow-md" id="sendBtn">
+<span class="material-symbols-outlined text-[18px]">arrow_upward</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Disclaimer Footnote -->
+<p class="text-center font-label-sm text-label-sm text-outline py-space-xs">
+        Orquestador ejecuta tareas de forma persistente en servidor local. Valida cambios estructurales críticos antes de fusionar.
+      </p>
+</div>
+</div>
+</div>
+<script>
+  (function() {
+    // Model selector toggle
+    const modelBtn = document.getElementById('modelSelectorBtn');
+    const modelMenu = document.getElementById('modelMenu');
+    if (modelBtn && modelMenu) {
+      modelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        modelMenu.classList.toggle('hidden');
+      });
+      document.addEventListener('click', () => {
+        modelMenu.classList.add('hidden');
+      });
+    }
+
+    // Copy code button feedback
+    const copyBtn = document.getElementById('copyCodeBtn');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => {
+        const originalHtml = copyBtn.innerHTML;
+        copyBtn.innerHTML = '<span class="material-symbols-outlined text-[14px]">check</span><span class="font-label-sm text-label-sm">Copiado</span>';
+        setTimeout(() => {
+          copyBtn.innerHTML = originalHtml;
+        }, 2000);
+      });
+    }
+
+    // Auto-grow textarea
+    const promptInput = document.getElementById('promptInput');
+    if (promptInput) {
+      promptInput.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+      });
+    }
+  })();
+</script></main></div></body></html>

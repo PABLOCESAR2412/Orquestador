@@ -6,7 +6,6 @@ import { AppNav } from "../components/nav";
 import { compact, DailyBars, ModelBars, shortDay } from "../components/charts";
 
 const PERIODS = [7, 30, 90] as const;
-// Ids como "opencode/big-pickle" se muestran con el nombre del catálogo, si lo conocemos.
 
 export const usd = (n: number) => {
   if (n === 0) return "US$ 0.00";
@@ -35,23 +34,28 @@ export function AnalyticsPage() {
   return (
     <main className="page">
       <header className="page-head">
-        <h1>Analíticas</h1>
+        <div>
+          <h1>Analíticas</h1>
+          <p className="page-desc">
+            Métricas de tokens, costo acumulado y llamadas registradas en tu servidor.
+          </p>
+        </div>
+        <div className="period" role="group" aria-label="Periodo">
+          {PERIODS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`pill${days === p ? " on" : ""}`}
+              aria-pressed={days === p}
+              onClick={() => setDays(p)}
+            >
+              {p} días
+            </button>
+          ))}
+        </div>
       </header>
-      <AppNav />
 
-      <div className="period" role="group" aria-label="Periodo">
-        {PERIODS.map((p) => (
-          <button
-            key={p}
-            type="button"
-            className={`pill${days === p ? " on" : ""}`}
-            aria-pressed={days === p}
-            onClick={() => setDays(p)}
-          >
-            {p} días
-          </button>
-        ))}
-      </div>
+      <AppNav />
 
       {query.isError && (
         <p className="error" role="alert">
@@ -77,7 +81,14 @@ export function AnalyticsPage() {
           </section>
 
           <section className="panel">
-            <h2>Presupuesto del mes</h2>
+            <div className="card-top">
+              <h2>Presupuesto del mes</h2>
+              {data.budget && (
+                <span className={`badge ${data.budget.status === "ok" ? "badge-ok" : data.budget.status === "alerta" ? "badge-signal" : "badge-error"}`}>
+                  {BUDGET_LABEL[data.budget.status]}
+                </span>
+              )}
+            </div>
             {data.budget ? (
               <div className="budget">
                 <div className="budget-row">
@@ -98,7 +109,7 @@ export function AnalyticsPage() {
               </div>
             ) : (
               <p className="muted-note">
-                Sin presupuesto. <Link to="/ajustes">Define uno en Ajustes</Link>.
+                Sin presupuesto. <Link to="/ajustes" className="foot-link">Define uno en Ajustes</Link>.
               </p>
             )}
           </section>

@@ -76,8 +76,19 @@ export function SettingsPage() {
   return (
     <main className="page">
       <header className="page-head">
-        <h1>Ajustes</h1>
+        <div>
+          <div className="context-meta">
+            <span className="context-label">Sistema / Control</span>
+            <span className="context-dot">•</span>
+            <span className="context-sub">Instancia local</span>
+          </div>
+          <h1>Ajustes</h1>
+          <p className="page-desc">
+            Configuración de modelos de IA, presupuesto mensual y comportamiento de la app.
+          </p>
+        </div>
       </header>
+
       <AppNav />
 
       {prefs.isError && (
@@ -95,8 +106,11 @@ export function SettingsPage() {
           }}
         >
           <section className="panel">
-            <h2>Modelo por defecto</h2>
-            <p className="muted-note">Lo usan los chats nuevos y las tareas que no indican modelo.</p>
+            <div className="card-top">
+              <h2>Modelo por defecto</h2>
+              <span className="badge badge-neutral">Preferencia global</span>
+            </div>
+            <p className="muted-note">Lo usan los chats nuevos y las tareas que no indican modelo específico.</p>
             <div className="anchor">
               <button
                 type="button"
@@ -128,8 +142,11 @@ export function SettingsPage() {
           </section>
 
           <section className="panel">
-            <h2>Presupuesto mensual</h2>
-            <p className="muted-note">Vacío significa sin límite. Las analíticas muestran cuánto llevas.</p>
+            <div className="card-top">
+              <h2>Presupuesto mensual</h2>
+              <span className="badge badge-neutral">Control de costos</span>
+            </div>
+            <p className="muted-note">Vacío significa sin límite. Las analíticas muestran cuánto llevas acumulado.</p>
             <div className="field-row">
               <label className="field-label" htmlFor="budget">
                 Límite en USD
@@ -165,18 +182,24 @@ export function SettingsPage() {
           </section>
 
           <section className="panel">
-            <h2>Instalar la app</h2>
+            <div className="card-top">
+              <h2>Instalar la app</h2>
+              <span className="badge badge-neutral">PWA</span>
+            </div>
+            <p className="muted-note">Instala Telo como aplicación independiente en tu teléfono o PC.</p>
             {isStandalone() ? (
-              <p className="muted-note">Ya está instalada en este dispositivo.</p>
+              <p className="muted-note">Ya está instalada como aplicación independiente en este dispositivo.</p>
             ) : install.canInstall ? (
-              <button type="button" className="primary" onClick={() => void install.promptInstall()}>
-                Instalar Telo
-              </button>
+              <div>
+                <button type="button" className="primary" onClick={() => void install.promptInstall()}>
+                  Instalar Telo
+                </button>
+              </div>
             ) : isIOS() ? (
-              <p className="muted-note">En iPhone: toca Compartir y luego “Agregar a pantalla de inicio”.</p>
+              <p className="muted-note">En iPhone / Safari: toca Compartir y luego “Agregar a pantalla de inicio”.</p>
             ) : (
               <p className="muted-note">
-                Tu navegador no ofrece instalarla desde aquí. Usa su menú y elige “Instalar app”.
+                Tu navegador no ofrece instalarla desde aquí. Abre el menú del navegador y selecciona “Instalar app”.
               </p>
             )}
           </section>
