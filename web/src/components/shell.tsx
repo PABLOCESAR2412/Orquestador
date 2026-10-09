@@ -1,9 +1,26 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useMemo } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../api";
+import { api, type Conversation } from "../api";
 import { AppNav } from "./nav";
 import { useShell } from "./shell-context";
+
+type DateGroupTitle = "HOY" | "AYER" | "ÚLTIMOS 7 DÍAS" | "ANTERIORES";
+
+function getGroupForDate(dateStr: string | null | undefined): DateGroupTitle {
+  if (!dateStr) return "ANTERIORES";
+  const d = new Date(dateStr);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfYesterday = startOfToday - 86_400_000;
+  const startOf7Days = startOfToday - 6 * 86_400_000;
+  const time = d.getTime();
+
+  if (time >= startOfToday) return "HOY";
+  if (time >= startOfYesterday) return "AYER";
+  if (time >= startOf7Days) return "ÚLTIMOS 7 DÍAS";
+  return "ANTERIORES";
+}
 
 export function Shell({ children }: { children: ReactNode }) {
   const {
@@ -22,6 +39,22 @@ export function Shell({ children }: { children: ReactNode }) {
     queryKey: ["conversations"],
     queryFn: api.listConversations,
   });
+
+  const groupedConversations = useMemo(() => {
+    if (!conversations.data) return [];
+    const groups: { title: DateGroupTitle; items: Conversation[] }[] = [
+      { title: "HOY", items: [] },
+      { title: "AYER", items: [] },
+      { title: "ÚLTIMOS 7 DÍAS", items: [] },
+      { title: "ANTERIORES", items: [] },
+    ];
+    for (const c of conversations.data) {
+      const groupTitle = getGroupForDate(c.created_at);
+      const target = groups.find((g) => g.title === groupTitle);
+      if (target) target.items.push(c);
+    }
+    return groups.filter((g) => g.items.length > 0);
+  }, [conversations.data]);
 
   const health = useQuery({
     queryKey: ["health"],
@@ -105,21 +138,26 @@ export function Shell({ children }: { children: ReactNode }) {
               {conversations.data && conversations.data.length === 0 && (
                 <span className="sidebar-empty">Sin conversaciones</span>
               )}
-              {conversations.data?.map((c) => {
-                const isActive = currentPath === "/chat" && selectedConversationId === c.id;
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className={`sidebar-conv${isActive ? " active" : ""}`}
-                    aria-current={isActive ? "true" : undefined}
-                    onClick={() => handleSelectConv(c.id)}
-                    title={c.title}
-                  >
-                    <span className="sidebar-conv-title">{c.title}</span>
-                  </button>
-                );
-              })}
+              {groupedConversations.map((group) => (
+                <div key={group.title} className="sidebar-group">
+                  <div className="sidebar-group-title">{group.title}</div>
+                  {group.items.map((c) => {
+                    const isActive = currentPath === "/chat" && selectedConversationId === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={`sidebar-conv${isActive ? " active" : ""}`}
+                        aria-current={isActive ? "true" : undefined}
+                        onClick={() => handleSelectConv(c.id)}
+                        title={c.title}
+                      >
+                        <span className="sidebar-conv-title">{c.title}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           </div>
         </div>

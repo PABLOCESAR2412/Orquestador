@@ -89,7 +89,11 @@ export function SettingsPage() {
             </svg>
           </button>
           <div>
-            <h1>Ajustes</h1>
+            <div className="page-meta-badge">
+              <span className="pill-dot is-live" aria-hidden="true" />
+              <span>Sistema / Control</span>
+            </div>
+            <h1>Ajustes y Servidor</h1>
             <p className="page-desc">
               Configuración de modelos de IA, presupuesto mensual y comportamiento de la app.
             </p>
@@ -113,7 +117,13 @@ export function SettingsPage() {
         >
           <section className="panel">
             <div className="card-top">
-              <h2>Modelo por defecto</h2>
+              <div className="panel-title-with-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-4 4 4 4 0 0 1-4-4V6a4 4 0 0 1 4-4z" />
+                  <path d="M16 14a6 6 0 0 1 6 6v2H2v-2a6 6 0 0 1 6-6" />
+                </svg>
+                <h2>Modelo por defecto</h2>
+              </div>
             </div>
             <p className="muted-note">Lo usan los chats nuevos y las tareas que no indican modelo específico.</p>
             <div className="anchor">
@@ -148,7 +158,14 @@ export function SettingsPage() {
 
           <section className="panel">
             <div className="card-top">
-              <h2>Presupuesto mensual</h2>
+              <div className="panel-title-with-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4" />
+                  <path d="M4 6v12a2 2 0 0 0 2 2h14v-4" />
+                  <path d="M18 12a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h4v-8h-4z" />
+                </svg>
+                <h2>Presupuesto mensual</h2>
+              </div>
             </div>
             <p className="muted-note">Vacío significa sin límite. Las analíticas muestran cuánto llevas acumulado.</p>
             <div className="field-row">
@@ -187,7 +204,14 @@ export function SettingsPage() {
 
           <section className="panel">
             <div className="card-top">
-              <h2>Instalar la app</h2>
+              <div className="panel-title-with-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                <h2>Instalar la app</h2>
+              </div>
             </div>
             <p className="muted-note">Instala Telo como aplicación independiente en tu teléfono o PC.</p>
             {isStandalone() ? (

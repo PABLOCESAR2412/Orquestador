@@ -229,6 +229,26 @@ button:disabled { opacity: 0.4; cursor: default; }
   padding-right: 2px;
 }
 
+.sidebar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+.sidebar-group:first-child {
+  margin-top: 0;
+}
+
+.sidebar-group-title {
+  padding: 5px 8px 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+  opacity: 0.85;
+}
+
 .sidebar-conv {
   display: flex;
   align-items: center;
@@ -1160,14 +1180,108 @@ button:disabled { opacity: 0.4; cursor: default; }
 .app-link.active { color: var(--ink); border-bottom-color: var(--signal); }
 .app-nav-rail .app-link { font-size: 13px; }
 
-/* Periodo y tarjetas de indicadores */
+/* Meta badge en cabecera de página */
+.page-meta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+}
+
+/* Título de panel con icono y etiqueta */
+.panel-title-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.panel-title-with-icon svg {
+  color: var(--ink-2);
+  flex-shrink: 0;
+}
+.panel-tag {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Periodo y tarjetas de indicadores (KPIs tipo Stitch) */
 .period { display: flex; flex-wrap: wrap; gap: 8px; }
 .period .pill { padding: 6px 12px; font-size: 13px; }
-.kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.kpi { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); min-width: 0; }
-.kpi-label { color: var(--ink-2); font-size: 13px; }
-.kpi-value { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
-.kpi-hint { color: var(--ink-2); font-size: 12px; }
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 960px) {
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .kpis { grid-template-columns: 1fr; }
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-lowest);
+  min-width: 0;
+}
+.kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.kpi-label {
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.kpi-icon {
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.kpi-value {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  margin: 2px 0;
+}
+.kpi-foot {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
 
 /* Paneles de contenido */
 .panel { display: flex; flex-direction: column; gap: 14px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius); }
@@ -1263,7 +1377,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .savebar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
 
 @media (max-width: 560px) {
-  .kpis { grid-template-columns: 1fr 1fr; }
+  .kpis { grid-template-columns: 1fr; }
   .hrow { grid-template-columns: minmax(0, 1fr) auto; }
   .hrow-track { grid-column: 1 / -1; grid-row: 2; }
   .field-row { grid-template-columns: 1fr; gap: 8px; }
@@ -1364,8 +1478,37 @@ button:disabled { opacity: 0.4; cursor: default; }
     padding-top: max(18px, env(safe-area-inset-top));
   }
   .rail.open { transform: none; }
-  .menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; }
+  .menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+  }
+  .sidebar-link {
+    min-height: 40px;
+    padding: 9px 12px;
+  }
+  .sidebar-new-task {
+    min-height: 40px;
+    padding: 9px 12px;
+  }
+  .sidebar-conv {
+    min-height: 40px;
+    padding: 9px 12px;
+  }
+  .sidebar-close-btn {
+    display: flex;
+    min-width: 40px;
+    min-height: 40px;
+    width: 40px;
+    height: 40px;
+  }
   .thread-head { padding: 0 16px; }
+  .thread-model-btn { min-height: 40px; }
   .messages { padding: 24px 16px 12px; }
   .composer { padding: 8px 12px max(12px, env(safe-area-inset-bottom)); }
   .picker {
@@ -1379,7 +1522,7 @@ button:disabled { opacity: 0.4; cursor: default; }
     border-bottom: 0;
     padding-bottom: env(safe-area-inset-bottom);
   }
-  .model-chip { max-width: 55%; }
+  .model-chip { max-width: 55%; min-height: 40px; }
   .page {
     padding: 16px 14px 36px;
   }
@@ -1390,6 +1533,45 @@ button:disabled { opacity: 0.4; cursor: default; }
   .task-btn-nueva {
     width: 100%;
     justify-content: center;
+    min-height: 40px;
+    padding: 9px 16px;
+  }
+  .task-cancel-btn {
+    min-height: 40px;
+    padding: 8px 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .task-footer-btn {
+    min-width: 40px;
+    min-height: 40px;
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .period .pill {
+    min-height: 40px;
+    padding: 8px 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .text-input {
+    min-height: 40px;
+  }
+  .savebar button {
+    min-height: 40px;
+    padding: 8px 16px;
+  }
+  .segmented button {
+    min-height: 40px;
+    padding: 6px 14px;
+  }
+  .launch-btn {
+    min-height: 40px;
   }
   .task-card-head {
     flex-direction: column;
@@ -1447,8 +1629,9 @@ button:disabled { opacity: 0.4; cursor: default; }
     display: inline-flex;
     align-items: center;
     flex-shrink: 0;
-    height: 34px;
-    padding: 0 10px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0 12px;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: var(--surface);
