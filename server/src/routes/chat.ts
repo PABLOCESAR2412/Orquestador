@@ -15,7 +15,13 @@ type ConversationRow = {
   effort: string | null;
   runner_session_id: string | null;
 };
-type Conversation = { id: string; title: string; created_at: string };
+type Conversation = {
+  id: string;
+  title: string;
+  model: string | null;
+  effort: string | null;
+  created_at: string;
+};
 type Message = {
   id: string;
   conversation_id: string;
@@ -29,7 +35,7 @@ export const chat = new Hono();
 chat.get("/conversations", (c) => {
   const rows = db
     .query<Conversation, []>(
-      "SELECT id, title, created_at FROM conversations ORDER BY created_at DESC, rowid DESC",
+      "SELECT id, title, model, effort, created_at FROM conversations ORDER BY created_at DESC, rowid DESC",
     )
     .all();
   return c.json(rows);
