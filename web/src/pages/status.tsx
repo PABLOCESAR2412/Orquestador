@@ -57,7 +57,7 @@ export function StatusPage() {
             </span>
           </div>
           <p className="muted-note">
-            API {isOnline ? "activa" : "con errores"} en el puerto 3000.
+            API {isOnline ? "activa" : "con errores"}.
           </p>
           <div className="status-meta-list">
             <div className="status-meta-row">
@@ -78,7 +78,7 @@ export function StatusPage() {
         <section className="panel status-card">
           <div className="card-top">
             <h2>Estado de la base de datos</h2>
-            <span className="badge badge-ok">Conectada</span>
+            <span className={`badge ${isOnline ? "badge-ok" : "badge-error"}`}>{health.isPending ? "Consultando…" : isOnline ? "Conectada" : "Sin respuesta"}</span>
           </div>
           <p className="muted-note">Motor SQLite local con modo Write-Ahead Logging (WAL).</p>
           <div className="status-meta-list">
