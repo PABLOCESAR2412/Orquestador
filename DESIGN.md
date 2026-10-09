@@ -17,6 +17,7 @@ Español neutro y directo. Frases cortas, sin signos de exclamación ni jerga t�
 | `--bg` | `#111419` | fondo de página |
 | `--surface` | `#181c22` | paneles y tarjetas |
 | `--surface-2` | `#20252d` | superficies elevadas, hover, burbuja del usuario |
+| `--surface-lowest` | `#0d0e11` | fondo profundo del sidebar y bloques de código Stitch |
 | `--line` | `#2a3039` | bordes sutiles |
 | `--line-strong` | `#3a414c` | hover de bordes, divisiones fuertes |
 | `--ink` | `#e7e9ec` | texto principal |

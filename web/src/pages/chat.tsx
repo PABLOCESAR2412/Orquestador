@@ -1,18 +1,24 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { AppNav } from "../components/nav";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Conversation, type ModelInfo } from "../api";
 import { CostMeter, EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
 import { errorText } from "../lib/model";
+import { useShell } from "../components/shell-context";
 
 type Patch = { model?: string | null; effort?: string | null };
 
 export function ChatPage() {
   const qc = useQueryClient();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const {
+    selectedConversationId,
+    setSelectedConversationId,
+    toggleDrawer,
+  } = useShell();
+  const selectedId = selectedConversationId;
+  const setSelectedId = setSelectedConversationId;
+
   const [draft, setDraft] = useState("");
-  const [railOpen, setRailOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -22,10 +28,12 @@ export function ChatPage() {
     queryFn: api.listConversations,
   });
 
-  // Abre el chat más reciente al cargar, para no dejar la pantalla vacía en móvil.
+  // Abre el chat más reciente al cargar si no hay uno seleccionado
   useEffect(() => {
-    if (!selectedId && conversations.data?.length) setSelectedId(conversations.data[0].id);
-  }, [selectedId, conversations.data]);
+    if (!selectedId && conversations.data?.length) {
+      setSelectedId(conversations.data[0].id);
+    }
+  }, [selectedId, conversations.data, setSelectedId]);
 
   const models = useQuery({
     queryKey: ["models"],
@@ -49,7 +57,6 @@ export function ChatPage() {
     onSuccess: (conv) => {
       qc.invalidateQueries({ queryKey: ["conversations"] });
       setSelectedId(conv.id);
-      setRailOpen(false);
     },
   });
 
@@ -86,15 +93,6 @@ export function ChatPage() {
     },
   });
 
-  // Elegir un chat: cierra el cajón en móvil y limpia el error anterior.
-  const select = (id: string) => {
-    setSelectedId(id);
-    setRailOpen(false);
-    setPickerOpen(false);
-    send.reset();
-    configure.reset();
-  };
-
   const pickModel = (m: ModelInfo | null) => {
     setPickerOpen(false);
     if (!m) {
@@ -129,58 +127,18 @@ export function ChatPage() {
   const error = sendError ?? settingsError;
 
   return (
-    <div className="shell">
-      <aside className={`rail${railOpen ? " open" : ""}`}>
-        <div className="rail-head">
-          <div className="wordmark-wrap">
-            <span className="pill-dot is-live" aria-hidden="true" />
-            <span className="wordmark">telo</span>
-          </div>
-          <button
-            type="button"
-            className="ghost new-chat-btn"
-            onClick={() => create.mutate()}
-            disabled={create.isPending}
-            title="Crear conversación"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-            </svg>
-            <span>Nueva conversación</span>
-          </button>
-        </div>
-
-        <nav className="conv-list" aria-label="Chats">
-          {conversations.data?.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className="conv"
-              aria-current={c.id === selectedId || undefined}
-              onClick={() => select(c.id)}
-            >
-              {c.title}
-            </button>
-          ))}
-        </nav>
-
-        <AppNav variant="rail" />
-      </aside>
-
-      {railOpen && <div className="scrim dim" onClick={() => setRailOpen(false)} />}
-
-      <section className="thread">
-        <header className="thread-head">
-          <button
-            type="button"
-            className="ghost menu-btn"
-            aria-label="Abrir chats"
-            onClick={() => setRailOpen(true)}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-          </button>
+    <section className="thread">
+      <header className="thread-head">
+        <button
+          type="button"
+          className="ghost menu-btn"
+          aria-label="Abrir menú"
+          onClick={toggleDrawer}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </button>
           <div className="thread-head-info">
             <h1 className="thread-title">{current?.title ?? "Telo"}</h1>
             {current && (
@@ -302,6 +260,5 @@ export function ChatPage() {
           </>
         )}
       </section>
-    </div>
   );
 }
