@@ -170,7 +170,7 @@ export function SettingsPage() {
               <p className="muted-note">Ya está instalada en este dispositivo.</p>
             ) : install.canInstall ? (
               <button type="button" className="primary" onClick={() => void install.promptInstall()}>
-                Instalar Orquestador
+                Instalar Telo
               </button>
             ) : isIOS() ? (
               <p className="muted-note">En iPhone: toca Compartir y luego “Agregar a pantalla de inicio”.</p>

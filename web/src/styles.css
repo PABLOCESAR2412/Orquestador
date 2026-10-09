@@ -384,6 +384,18 @@ button:disabled { opacity: 0.4; cursor: default; }
 .panel h2 { margin: 0; font-size: 16px; font-weight: 600; }
 .panel > .muted-note { margin: -8px 0 0; }
 
+/* Aviso de nueva versión (modal centrado) */
+.update-dialog {
+  position: fixed;
+  z-index: 30;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(360px, calc(100vw - 32px));
+  background: var(--surface);
+}
+.update-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
 /* Gráficas SVG */
 .chart { position: relative; width: 100%; }
 .chart svg { display: block; overflow: visible; border-radius: 6px; }

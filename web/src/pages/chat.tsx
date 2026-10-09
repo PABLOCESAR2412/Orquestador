@@ -132,7 +132,7 @@ export function ChatPage() {
     <div className="shell">
       <aside className={`rail${railOpen ? " open" : ""}`}>
         <div className="rail-head">
-          <span className="wordmark">orquestador</span>
+          <span className="wordmark">telo</span>
           <button
             type="button"
             className="ghost"
@@ -174,7 +174,7 @@ export function ChatPage() {
               <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
           </button>
-          <h1 className="thread-title">{current?.title ?? "Orquestador"}</h1>
+          <h1 className="thread-title">{current?.title ?? "Telo"}</h1>
         </header>
 
         {!selectedId ? (
