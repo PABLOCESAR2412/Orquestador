@@ -5,6 +5,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import "@fontsource-variable/instrument-sans";
 import { router } from "./router";
 import { captureInstallPrompt } from "./lib/install";
+import { UpdatePrompt } from "./components/update-prompt";
 import "./styles.css";
 
 captureInstallPrompt();
@@ -17,6 +18,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
+      <UpdatePrompt />
     </QueryClientProvider>
   </StrictMode>,
 );

@@ -1,16 +1,35 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+// Identifica cada build. La app lo compara con version.json para avisar de cambios.
+const buildId = Date.now().toString(36);
+
+// Escribe version.json junto al build.
+function versionFile(): Plugin {
+  return {
+    name: "telo-version-file",
+    apply: "build",
+    generateBundle() {
+      this.emitFile({ type: "asset", fileName: "version.json", source: JSON.stringify({ id: buildId }) });
+    },
+  };
+}
+
 export default defineConfig({
+  define: {
+    __BUILD_ID__: JSON.stringify(buildId),
+  },
   plugins: [
     react(),
+    versionFile(),
     VitePWA({
-      registerType: "autoUpdate",
+      // "prompt": la versión nueva espera y la app pregunta antes de recargar.
+      registerType: "prompt",
       manifest: {
-        name: "Orquestador",
-        short_name: "Orquestador",
-        description: "Orquestador de agentes de IA",
+        name: "Telo",
+        short_name: "Telo",
+        description: "Telo, orquestador de agentes de IA",
         theme_color: "#111419",
         background_color: "#111419",
         display: "standalone",
