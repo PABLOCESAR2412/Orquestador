@@ -3,6 +3,7 @@ import { db } from "../db";
 import { validateSelection } from "../models";
 import { cancelTask, notifyWorker } from "../worker";
 import { getPreferences } from "../preferences";
+import { projectRepoPath } from "./projects";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
 const MAX_PROMPT = 10_000;
@@ -16,13 +17,14 @@ type TaskRow = {
   status: string;
   result: string | null;
   error: string | null;
+  project_id: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
 };
 
 const COLUMNS =
-  "id, title, prompt, model, effort, status, result, error, created_at, started_at, finished_at";
+  "id, title, prompt, model, effort, status, result, error, project_id, created_at, started_at, finished_at";
 
 export const tasks = new Hono();
 
@@ -43,14 +45,18 @@ tasks.get("/tasks/:id", (c) => {
   return c.json(row);
 });
 
-// POST /api/tasks  body: { prompt, model?, effort? }
+// POST /api/tasks  body: { prompt, model?, effort?, projectId? }
+// Con projectId, la tarea trabaja dentro de la carpeta de ese proyecto.
 tasks.post("/tasks", async (c) => {
   const body = await c.req
-    .json<{ prompt?: string; model?: string | null; effort?: string | null }>()
-    .catch(() => ({}) as { prompt?: string; model?: string | null; effort?: string | null });
+    .json<{ prompt?: string; model?: string | null; effort?: string | null; projectId?: string | null }>()
+    .catch(() => ({}) as { prompt?: string; model?: string | null; effort?: string | null; projectId?: string | null });
 
   const prompt = body.prompt?.trim() ?? "";
   if (!prompt || prompt.length > MAX_PROMPT) return c.json({ error: "invalid_prompt" }, 400);
+
+  const projectId = body.projectId || null;
+  if (projectId && !projectRepoPath(projectId)) return c.json({ error: "project_not_found" }, 400);
 
   // Sin modelo explícito, la tarea usa el modelo y esfuerzo por defecto de Ajustes.
   const prefs = getPreferences();
@@ -66,8 +72,8 @@ tasks.post("/tasks", async (c) => {
 
   const id = crypto.randomUUID();
   db.query(
-    "INSERT INTO tasks (id, title, prompt, model, effort, status) VALUES (?, ?, ?, ?, ?, 'queued')",
-  ).run(id, prompt.slice(0, 60), prompt, model, effort);
+    "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id) VALUES (?, ?, ?, ?, ?, 'queued', ?)",
+  ).run(id, prompt.slice(0, 60), prompt, model, effort, projectId);
 
   notifyWorker();
 

@@ -14,7 +14,13 @@ const controllers = new Map<string, AbortController>();
 const cancelRequested = new Set<string>();
 let wake: (() => void) | null = null;
 
-type QueuedTask = { id: string; prompt: string; model: string; effort: string | null };
+type QueuedTask = {
+  id: string;
+  prompt: string;
+  model: string;
+  effort: string | null;
+  repo_path: string | null;
+};
 
 // Despierta al worker cuando entra una tarea nueva.
 export function notifyWorker() {
@@ -24,7 +30,7 @@ export function notifyWorker() {
 function nextQueued(): QueuedTask | null {
   return db
     .query<QueuedTask, []>(
-      "SELECT id, prompt, model, effort FROM tasks WHERE status = 'queued' ORDER BY created_at ASC, rowid ASC LIMIT 1",
+      "SELECT t.id, t.prompt, t.model, t.effort, p.repo_path AS repo_path FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC LIMIT 1",
     )
     .get();
 }
@@ -59,9 +65,12 @@ async function runTask(task: QueuedTask) {
   const workspace = join(config.dataDir, "tasks", task.id);
   mkdirSync(workspace, { recursive: true });
 
+  // Con proyecto, la tarea trabaja dentro de la carpeta del proyecto; si no, en su carpeta temporal.
+  const cwd = task.repo_path ?? workspace;
+
   db.query(
     "UPDATE tasks SET status = 'running', started_at = datetime('now'), workspace = ? WHERE id = ?",
-  ).run(workspace, task.id);
+  ).run(cwd, task.id);
 
   const controller = new AbortController();
   controllers.set(task.id, controller);
@@ -76,7 +85,7 @@ async function runTask(task: QueuedTask) {
       prompt: task.prompt,
       model: task.model,
       variant: task.effort ?? undefined,
-      cwd: workspace,
+      cwd,
       timeoutMs: TASK_TIMEOUT_MS,
       signal: controller.signal,
     });

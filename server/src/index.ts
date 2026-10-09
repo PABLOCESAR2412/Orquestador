@@ -8,6 +8,8 @@ import { settings } from "./routes/settings";
 import { tasks } from "./routes/tasks";
 import { preferences } from "./routes/preferences";
 import { analytics } from "./routes/analytics";
+import { projects } from "./routes/projects";
+import { providers } from "./routes/providers";
 import { startWorker } from "./worker";
 
 const webDist = resolve(import.meta.dir, "../../web/dist");
@@ -26,6 +28,8 @@ app.route("/api", settings);
 app.route("/api", tasks);
 app.route("/api", preferences);
 app.route("/api", analytics);
+app.route("/api", projects);
+app.route("/api", providers);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
 startWorker();

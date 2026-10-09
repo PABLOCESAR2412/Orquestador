@@ -1449,6 +1449,44 @@ button:disabled { opacity: 0.4; cursor: default; }
 .badge-error { background: rgba(224, 107, 82, 0.15); color: var(--danger); border: 1px solid rgba(224, 107, 82, 0.3); }
 .badge-neutral { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
 
+/* Proyectos y proveedores en Ajustes */
+.project-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.project-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  min-width: 0;
+}
+.project-row .badge { flex-shrink: 0; }
+.project-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.project-name { color: var(--ink); font-size: 14px; font-weight: 500; }
+.project-path { color: var(--ink-2); font-size: 12px; overflow-wrap: anywhere; }
+.project-form { display: flex; flex-direction: column; gap: 12px; }
+.project-select {
+  max-width: 180px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.thread-project {
+  min-width: 0;
+  max-width: 40%;
+  color: var(--ink-2);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Móvil: sidebar es un cajón y el contenido ocupa todo el ancho */
 @media (max-width: 760px) {
   .shell-main {
@@ -1513,6 +1551,8 @@ button:disabled { opacity: 0.4; cursor: default; }
   }
   .thread-head { padding: 0 16px; }
   .empty-box .primary { min-height: 40px; padding: 9px 16px; }
+  .project-select { min-height: 40px; }
+  .project-row .task-mini-btn { min-height: 40px; padding: 8px 12px; }
   .messages { padding: 24px 16px 12px; }
   .composer { padding: 8px 12px max(12px, env(safe-area-inset-bottom)); }
   .picker {

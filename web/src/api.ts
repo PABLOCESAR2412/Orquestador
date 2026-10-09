@@ -3,7 +3,24 @@ export type Conversation = {
   title: string;
   model: string | null;
   effort: string | null;
+  project_id?: string | null;
+  project_name?: string | null;
   created_at: string;
+};
+
+export type Project = {
+  id: string;
+  name: string;
+  repo_path: string;
+  created_at: string;
+};
+
+export type ProviderStatus = {
+  id: string;
+  name: string;
+  configured: boolean;
+  implemented: boolean;
+  hint: string;
 };
 
 export type Message = {
@@ -42,6 +59,7 @@ export type Task = {
   status: TaskStatus;
   result: string | null;
   error: string | null;
+  project_id?: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -72,8 +90,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<{ ok: boolean; time: string }>("/api/health"),
   listConversations: () => request<Conversation[]>("/api/conversations"),
-  createConversation: () =>
-    request<Conversation>("/api/conversations", { method: "POST", body: "{}" }),
+  createConversation: (projectId?: string | null) =>
+    request<Conversation>("/api/conversations", {
+      method: "POST",
+      body: JSON.stringify({ projectId: projectId ?? null }),
+    }),
   listMessages: (id: string) => request<Message[]>(`/api/conversations/${id}/messages`),
   sendMessage: (id: string, content: string) =>
     request<{ messages: Message[] }>(`/api/conversations/${id}/messages`, {
@@ -90,10 +111,21 @@ export const api = {
       costWarning: string | null;
     }>(`/api/conversations/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   listTasks: () => request<Task[]>("/api/tasks?limit=50"),
-  createTask: (body: { prompt: string; model?: string | null; effort?: string | null }) =>
+  createTask: (body: {
+    prompt: string;
+    model?: string | null;
+    effort?: string | null;
+    projectId?: string | null;
+  }) =>
     request<Task>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
   cancelTask: (id: string) =>
     request<{ outcome: string }>(`/api/tasks/${id}/cancel`, { method: "POST", body: "{}" }),
+  listProjects: () => request<Project[]>("/api/projects"),
+  createProject: (body: { path: string; name?: string }) =>
+    request<Project>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
+  deleteProject: (id: string) =>
+    request<{ ok: boolean }>(`/api/projects/${id}`, { method: "DELETE" }),
+  listProviders: () => request<ProviderStatus[]>("/api/providers"),
   getPreferences: () => request<Preferences>("/api/preferences"),
   savePreferences: (patch: Partial<Preferences>) =>
     request<Preferences>("/api/preferences", { method: "PUT", body: JSON.stringify(patch) }),

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type ModelInfo, type Preferences } from "../api";
+import { api, type ModelInfo, type Preferences, type ProviderStatus } from "../api";
 import { EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
 import { isIOS, isStandalone, useInstallPrompt } from "../lib/install";
@@ -245,6 +245,168 @@ export function SettingsPage() {
           </div>
         </form>
       )}
+
+      {/* Fuera del formulario de preferencias: Enter en sus campos no guarda los ajustes. */}
+      <div className="settings">
+        <ProyectosPanel />
+        <ProveedoresPanel />
+      </div>
     </main>
   );
+}
+
+// Carpetas del servidor donde pueden trabajar los chats y las tareas.
+function ProyectosPanel() {
+  const qc = useQueryClient();
+  const proyectos = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
+  const [ruta, setRuta] = useState("");
+  const [nombre, setNombre] = useState("");
+
+  const crear = useMutation({
+    mutationFn: () => api.createProject({ path: ruta.trim(), name: nombre.trim() || undefined }),
+    onSuccess: () => {
+      setRuta("");
+      setNombre("");
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+
+  const quitar = useMutation({
+    mutationFn: (id: string) => api.deleteProject(id),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+
+  return (
+    <section className="panel">
+      <div className="card-top">
+        <div className="panel-title-with-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+          </svg>
+          <h2>Proyectos</h2>
+        </div>
+      </div>
+      <p className="muted-note">
+        Carpetas del servidor donde los chats y las tareas pueden trabajar. El agente puede modificar archivos dentro de ellas.
+      </p>
+
+      {proyectos.isError && <p className="error" role="alert">No se pudieron cargar los proyectos.</p>}
+      {proyectos.data?.length === 0 && <p className="muted-note">Todavía no hay proyectos.</p>}
+      {proyectos.data && proyectos.data.length > 0 && (
+        <ul className="project-list">
+          {proyectos.data.map((p) => (
+            <li key={p.id} className="project-row">
+              <div className="project-info">
+                <span className="project-name">{p.name}</span>
+                <span className="project-path">{p.repo_path}</span>
+              </div>
+              <button
+                type="button"
+                className="ghost task-mini-btn"
+                onClick={() => quitar.mutate(p.id)}
+                disabled={quitar.isPending}
+              >
+                Quitar
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form
+        className="project-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (ruta.trim()) crear.mutate();
+        }}
+      >
+        <div className="field-row">
+          <label className="field-label" htmlFor="proyecto-ruta">
+            Carpeta
+          </label>
+          <input
+            id="proyecto-ruta"
+            className="text-input"
+            placeholder="mi-proyecto"
+            value={ruta}
+            onChange={(e) => setRuta(e.target.value)}
+          />
+        </div>
+        <div className="field-row">
+          <label className="field-label" htmlFor="proyecto-nombre">
+            Nombre
+          </label>
+          <input
+            id="proyecto-nombre"
+            className="text-input"
+            placeholder="Opcional"
+            maxLength={60}
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+          />
+        </div>
+        <p className="muted-note">La carpeta va dentro de la carpeta de proyectos del servidor.</p>
+        {(crear.isError || quitar.isError) && (
+          <p className="error" role="alert">
+            {errorText(crear.error ?? quitar.error)}
+          </p>
+        )}
+        <div className="savebar">
+          <button type="submit" className="primary" disabled={!ruta.trim() || crear.isPending}>
+            Agregar proyecto
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+// Estado de cada proveedor en el servidor. Nunca muestra ni pide claves.
+function ProveedoresPanel() {
+  const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders });
+
+  return (
+    <section className="panel">
+      <div className="card-top">
+        <div className="panel-title-with-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="11" width="18" height="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <h2>Proveedores</h2>
+        </div>
+      </div>
+      <p className="muted-note">
+        Muestra si cada proveedor está listo en el servidor. Las claves se configuran en el servidor, nunca desde la app.
+      </p>
+      {proveedores.isError && (
+        <p className="error" role="alert">
+          No se pudo consultar el estado de los proveedores.
+        </p>
+      )}
+      {proveedores.data && (
+        <ul className="project-list">
+          {proveedores.data.map((p) => (
+            <li key={p.id} className="project-row">
+              <div className="project-info">
+                <span className="project-name">{p.name}</span>
+                <span className="project-path">{p.hint}</span>
+              </div>
+              <span className={`badge ${p.configured && p.implemented ? "badge-ok" : "badge-neutral"}`}>
+                {estadoProveedor(p)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function estadoProveedor(p: ProviderStatus): string {
+  if (!p.implemented) return p.configured ? "Clave lista · sin integrar" : "Sin integrar";
+  return p.configured ? "Listo" : "Sin configurar";
 }

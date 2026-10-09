@@ -51,6 +51,8 @@ export function TasksPage() {
   const [draft, setDraft] = useState("");
   const [model, setModel] = useState<string | null>(null);
   const [effort, setEffort] = useState<string | null>(null);
+  // "" significa sin proyecto: la tarea usa su carpeta temporal.
+  const [projectId, setProjectId] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [filter, setFilter] = useState<TaskFilter>("all");
@@ -98,9 +100,16 @@ export function TasksPage() {
   const modelList: ModelInfo[] = models.data?.models ?? [];
   const modelInfo = modelList.find((m) => m.id === model) ?? null;
 
+  const proyectos = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
+
   const create = useMutation({
     mutationFn: () =>
-      api.createTask({ prompt: draft.trim(), model, effort: model ? effort : null }),
+      api.createTask({
+        prompt: draft.trim(),
+        model,
+        effort: model ? effort : null,
+        projectId: projectId || null,
+      }),
     onSuccess: () => {
       setDraft("");
       setFormOpen(false);
@@ -283,6 +292,22 @@ export function TasksPage() {
                 onChange={setEffort}
               />
 
+              {(proyectos.data?.length ?? 0) > 0 && (
+                <select
+                  className="project-select"
+                  aria-label="Proyecto de la tarea"
+                  value={projectId}
+                  onChange={(e) => setProjectId(e.target.value)}
+                >
+                  <option value="">Sin proyecto</option>
+                  {proyectos.data?.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+
               <span className="char-counter" aria-live="polite">
                 {draft.length.toLocaleString()} / {MAX_PROMPT_CHARS.toLocaleString()}
               </span>
@@ -296,6 +321,9 @@ export function TasksPage() {
                 {create.isPending ? "Lanzando…" : "Lanzar tarea"}
               </button>
             </div>
+            {projectId && (
+              <p className="hint">El agente puede modificar archivos dentro de este proyecto.</p>
+            )}
           </form>
 
           {create.isError && (

@@ -20,6 +20,8 @@ export function ChatPage() {
 
   const [draft, setDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  // "" significa sin proyecto: el chat usa su carpeta temporal.
+  const [projectId, setProjectId] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -41,6 +43,8 @@ export function ChatPage() {
     staleTime: 5 * 60_000,
   });
 
+  const proyectos = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
+
   const messages = useQuery({
     queryKey: ["messages", selectedId],
     queryFn: () => api.listMessages(selectedId!),
@@ -53,7 +57,7 @@ export function ChatPage() {
   const modelInfo = modelList.find((m) => m.id === current?.model) ?? null;
 
   const create = useMutation({
-    mutationFn: api.createConversation,
+    mutationFn: (proyecto?: string | null) => api.createConversation(proyecto ?? null),
     onSuccess: (conv) => {
       qc.invalidateQueries({ queryKey: ["conversations"] });
       setSelectedId(conv.id);
@@ -142,6 +146,11 @@ export function ChatPage() {
 
           {/* El modelo se elige en el composer, no en la cabecera */}
           <h1 className="thread-title">{current?.title ?? "Nuevo chat"}</h1>
+          {current?.project_name && (
+            <span className="thread-project" title={`Proyecto: ${current.project_name}`}>
+              {current.project_name}
+            </span>
+          )}
         </div>
       </header>
 
@@ -150,7 +159,27 @@ export function ChatPage() {
           <div className="empty-box">
             <h2>Sin conversación activa</h2>
             <p>Inicia un nuevo chat con tus agentes o selecciona uno de la lista.</p>
-            <button type="button" className="primary" onClick={() => create.mutate()} disabled={create.isPending}>
+            {(proyectos.data?.length ?? 0) > 0 && (
+              <select
+                className="project-select"
+                aria-label="Proyecto del chat"
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+              >
+                <option value="">Sin proyecto</option>
+                {proyectos.data?.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button
+              type="button"
+              className="primary"
+              onClick={() => create.mutate(projectId || null)}
+              disabled={create.isPending}
+            >
               Nuevo chat
             </button>
           </div>
