@@ -80,7 +80,11 @@ chat.post("/conversations/:id/messages", async (c) => {
       timeoutMs: 180_000,
     });
   } catch (err) {
-    return c.json({ error: "runner_failed", detail: String(err) }, 502);
+    const detail = String(err);
+    if (detail.includes("Insufficient account funds")) {
+      return c.json({ error: "insufficient_funds", message: "La cuenta de OpenCode Zen no tiene saldo para este modelo. Usa un modelo gratis o agrega saldo." }, 402);
+    }
+    return c.json({ error: "runner_failed", detail }, 502);
   }
 
   const userMsg = { id: crypto.randomUUID(), role: "user" as const, content };

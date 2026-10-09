@@ -4,6 +4,7 @@ export type RunResult = { text: string; sessionId: string | null; usage: Usage |
 type OpenCodeEvent = {
   type: string;
   sessionID?: string;
+  error?: unknown;
   part?: {
     type?: string;
     text?: string;
@@ -11,6 +12,25 @@ type OpenCodeEvent = {
     tokens?: { input: number; output: number; reasoning: number; cache: { read: number } };
   };
 };
+
+function parseEvents(stdout: string): OpenCodeEvent[] {
+  const events: OpenCodeEvent[] = [];
+  for (const line of stdout.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      events.push(JSON.parse(line));
+    } catch {
+      // línea que no es JSON: se ignora
+    }
+  }
+  return events;
+}
+
+function failureDetail(stdout: string, stderr: string, events: OpenCodeEvent[]): string {
+  const errorEvent = events.find((e) => e.type === "error");
+  if (errorEvent) return JSON.stringify(errorEvent).slice(0, 800);
+  return (stderr || stdout).trim().slice(-800) || "sin salida";
+}
 
 export async function runOpenCode(opts: {
   prompt: string;
@@ -35,22 +55,17 @@ export async function runOpenCode(opts: {
   ]);
   clearTimeout(timer);
 
+  const events = parseEvents(stdout);
+
   if (code !== 0) {
-    throw new Error(`opencode salió con código ${code}: ${stderr.slice(0, 500)}`);
+    throw new Error(`opencode salió con código ${code}: ${failureDetail(stdout, stderr, events)}`);
   }
 
   let text = "";
   let sessionId: string | null = null;
   let usage: Usage | null = null;
 
-  for (const line of stdout.split("\n")) {
-    if (!line.trim()) continue;
-    let ev: OpenCodeEvent;
-    try {
-      ev = JSON.parse(line);
-    } catch {
-      continue;
-    }
+  for (const ev of events) {
     if (ev.sessionID) sessionId = ev.sessionID;
     if (ev.type === "text" && ev.part?.text) text += ev.part.text;
     if (ev.type === "step_finish" && ev.part?.tokens) {
@@ -64,6 +79,8 @@ export async function runOpenCode(opts: {
     }
   }
 
-  if (!text.trim()) throw new Error("opencode no devolvió texto");
+  if (!text.trim()) {
+    throw new Error(`opencode no devolvió texto: ${failureDetail(stdout, stderr, events)}`);
+  }
   return { text: text.trim(), sessionId, usage };
 }
