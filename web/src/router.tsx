@@ -12,8 +12,17 @@ import { SettingsPage } from "./pages/settings";
 
 import { StatusPage } from "./pages/status";
 
+import { ShellProvider } from "./components/shell-context";
+import { Shell } from "./components/shell";
+
 function Layout() {
-  return <Outlet />;
+  return (
+    <ShellProvider>
+      <Shell>
+        <Outlet />
+      </Shell>
+    </ShellProvider>
+  );
 }
 
 const rootRoute = createRootRoute({ component: Layout });

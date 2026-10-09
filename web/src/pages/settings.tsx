@@ -3,13 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ModelInfo, type Preferences } from "../api";
 import { EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
-import { AppNav } from "../components/nav";
 import { isIOS, isStandalone, useInstallPrompt } from "../lib/install";
 import { errorText } from "../lib/model";
+import { useShell } from "../components/shell-context";
 
 const ALERT_OPTIONS = [50, 60, 70, 80, 90, 100];
 
 export function SettingsPage() {
+  const { toggleDrawer } = useShell();
   const qc = useQueryClient();
   const prefs = useQuery({ queryKey: ["preferences"], queryFn: api.getPreferences });
   const models = useQuery({ queryKey: ["models"], queryFn: api.listModels, staleTime: 5 * 60_000 });
@@ -76,20 +77,29 @@ export function SettingsPage() {
   return (
     <main className="page">
       <header className="page-head">
-        <div>
-          <div className="context-meta">
-            <span className="context-label">Sistema / Control</span>
-            <span className="context-dot">•</span>
-            <span className="context-sub">Instancia local</span>
+        <div className="page-title-row">
+          <button
+            type="button"
+            className="ghost menu-btn"
+            aria-label="Abrir menú"
+            onClick={toggleDrawer}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h10" />
+            </svg>
+          </button>
+          <div>
+            <div className="page-meta-badge">
+              <span className="pill-dot is-live" aria-hidden="true" />
+              <span>Sistema / Control</span>
+            </div>
+            <h1>Ajustes y Servidor</h1>
+            <p className="page-desc">
+              Configuración de modelos de IA, presupuesto mensual y comportamiento de la app.
+            </p>
           </div>
-          <h1>Ajustes</h1>
-          <p className="page-desc">
-            Configuración de modelos de IA, presupuesto mensual y comportamiento de la app.
-          </p>
         </div>
       </header>
-
-      <AppNav />
 
       {prefs.isError && (
         <p className="error" role="alert">
@@ -107,8 +117,13 @@ export function SettingsPage() {
         >
           <section className="panel">
             <div className="card-top">
-              <h2>Modelo por defecto</h2>
-              <span className="badge badge-neutral">Preferencia global</span>
+              <div className="panel-title-with-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1-4 4 4 4 0 0 1-4-4V6a4 4 0 0 1 4-4z" />
+                  <path d="M16 14a6 6 0 0 1 6 6v2H2v-2a6 6 0 0 1 6-6" />
+                </svg>
+                <h2>Modelo por defecto</h2>
+              </div>
             </div>
             <p className="muted-note">Lo usan los chats nuevos y las tareas que no indican modelo específico.</p>
             <div className="anchor">
@@ -143,8 +158,14 @@ export function SettingsPage() {
 
           <section className="panel">
             <div className="card-top">
-              <h2>Presupuesto mensual</h2>
-              <span className="badge badge-neutral">Control de costos</span>
+              <div className="panel-title-with-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4" />
+                  <path d="M4 6v12a2 2 0 0 0 2 2h14v-4" />
+                  <path d="M18 12a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h4v-8h-4z" />
+                </svg>
+                <h2>Presupuesto mensual</h2>
+              </div>
             </div>
             <p className="muted-note">Vacío significa sin límite. Las analíticas muestran cuánto llevas acumulado.</p>
             <div className="field-row">
@@ -183,8 +204,14 @@ export function SettingsPage() {
 
           <section className="panel">
             <div className="card-top">
-              <h2>Instalar la app</h2>
-              <span className="badge badge-neutral">PWA</span>
+              <div className="panel-title-with-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                <h2>Instalar la app</h2>
+              </div>
             </div>
             <p className="muted-note">Instala Telo como aplicación independiente en tu teléfono o PC.</p>
             {isStandalone() ? (

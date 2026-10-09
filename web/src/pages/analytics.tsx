@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api, type Analytics } from "../api";
-import { AppNav } from "../components/nav";
 import { compact, DailyBars, ModelBars, shortDay } from "../components/charts";
+import { useShell } from "../components/shell-context";
 
 const PERIODS = [7, 30, 90] as const;
 
@@ -19,6 +19,7 @@ const BUDGET_LABEL: Record<"ok" | "alerta" | "excedido", string> = {
 };
 
 export function AnalyticsPage() {
+  const { toggleDrawer } = useShell();
   const [days, setDays] = useState<number>(30);
 
   // Mantiene la gráfica anterior mientras llega el nuevo periodo, sin saltos.
@@ -34,11 +35,27 @@ export function AnalyticsPage() {
   return (
     <main className="page">
       <header className="page-head">
-        <div>
-          <h1>Analíticas</h1>
-          <p className="page-desc">
-            Métricas de tokens, costo acumulado y llamadas registradas en tu servidor.
-          </p>
+        <div className="page-title-row">
+          <button
+            type="button"
+            className="ghost menu-btn"
+            aria-label="Abrir menú"
+            onClick={toggleDrawer}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h10" />
+            </svg>
+          </button>
+          <div>
+            <div className="page-meta-badge">
+              <span className="pill-dot is-live" aria-hidden="true" />
+              <span>Métricas de Infraestructura</span>
+            </div>
+            <h1>Analíticas de Consumo</h1>
+            <p className="page-desc">
+              Monitoreo de tokens, costos y tareas en tu servidor.
+            </p>
+          </div>
         </div>
         <div className="period" role="group" aria-label="Periodo">
           {PERIODS.map((p) => (
@@ -49,13 +66,11 @@ export function AnalyticsPage() {
               aria-pressed={days === p}
               onClick={() => setDays(p)}
             >
-              {p} días
+              {p}d
             </button>
           ))}
         </div>
       </header>
-
-      <AppNav />
 
       {query.isError && (
         <p className="error" role="alert">
@@ -65,24 +80,71 @@ export function AnalyticsPage() {
 
       {data && (
         <>
-          <section className="kpis" aria-label="Resumen">
-            <Kpi label="Costo" value={usd(data.totals.cost)} />
-            <Kpi label="Llamadas" value={compact(data.totals.calls)} />
+          <section className="kpis" aria-label="Resumen de consumo">
             <Kpi
-              label="Tokens"
-              value={compact(data.totals.inputTokens + data.totals.outputTokens)}
-              hint={`${compact(data.totals.inputTokens)} entrada · ${compact(data.totals.outputTokens)} salida`}
+              label="Gasto Total Estimado"
+              value={usd(data.totals.cost)}
+              hint={`Últimos ${data.days} días`}
+              icon={
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                  <line x1="12" y1="8" x2="12" y2="16" />
+                  <line x1="8" y1="12" x2="16" y2="12" />
+                </svg>
+              }
             />
             <Kpi
-              label="Tareas hechas"
-              value={String(data.tasks.done)}
-              hint={`${data.tasks.failed} fallidas · ${data.tasks.queued + data.tasks.running} activas`}
+              label="Tokens Procesados"
+              value={compact(data.totals.inputTokens + data.totals.outputTokens)}
+              hint={
+                <span>
+                  In: {compact(data.totals.inputTokens)} • Out: {compact(data.totals.outputTokens)}
+                </span>
+              }
+              icon={
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="9" />
+                  <polyline points="12 3 12 12 18 12" />
+                </svg>
+              }
+            />
+            <Kpi
+              label="Llamadas Registradas"
+              value={compact(data.totals.calls)}
+              hint="A modelos de lenguaje"
+              icon={
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+                </svg>
+              }
+            />
+            <Kpi
+              label="Tareas del Servidor"
+              value={`${data.tasks.done} hechas`}
+              hint={
+                <span>
+                  {data.tasks.failed} fallidas • {data.tasks.queued + data.tasks.running} activas
+                </span>
+              }
+              icon={
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="4 17 10 11 4 5" />
+                  <line x1="12" y1="19" x2="20" y2="19" />
+                </svg>
+              }
             />
           </section>
 
           <section className="panel">
             <div className="card-top">
-              <h2>Presupuesto del mes</h2>
+              <div className="panel-title-with-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4" />
+                  <path d="M4 6v12a2 2 0 0 0 2 2h14v-4" />
+                  <path d="M18 12a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h4v-8h-4z" />
+                </svg>
+                <h2>Presupuesto del mes</h2>
+              </div>
               {data.budget && (
                 <span className={`badge ${data.budget.status === "ok" ? "badge-ok" : data.budget.status === "alerta" ? "badge-signal" : "badge-error"}`}>
                   {BUDGET_LABEL[data.budget.status]}
@@ -115,7 +177,17 @@ export function AnalyticsPage() {
           </section>
 
           <section className="panel">
-            <h2>Costo por día</h2>
+            <div className="card-top">
+              <div className="panel-title-with-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <line x1="18" y1="20" x2="18" y2="10" />
+                  <line x1="12" y1="20" x2="12" y2="4" />
+                  <line x1="6" y1="20" x2="6" y2="14" />
+                </svg>
+                <h2>Volumen Diario de Ejecución</h2>
+              </div>
+              <span className="panel-tag">Total: {usd(data.totals.cost)}</span>
+            </div>
             <DailyBars
               data={data.byDay}
               formatValue={usd}
@@ -124,7 +196,19 @@ export function AnalyticsPage() {
           </section>
 
           <section className="panel">
-            <h2>Costo por modelo</h2>
+            <div className="card-top">
+              <div className="panel-title-with-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="3" y="11" width="18" height="10" rx="2" />
+                  <circle cx="12" cy="5" r="2" />
+                  <path d="M12 7v4" />
+                  <line x1="8" y1="16" x2="8" y2="16" />
+                  <line x1="16" y1="16" x2="16" y2="16" />
+                </svg>
+                <h2>Desglose por Agente de IA</h2>
+              </div>
+              <span className="panel-tag">{data.byModel.length} modelos registrados</span>
+            </div>
             <ModelBars
               rows={data.byModel.map((r) => ({ ...r, model: names.get(r.model) ?? r.model }))}
               formatValue={usd}
@@ -160,12 +244,25 @@ export function AnalyticsPage() {
   );
 }
 
-function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Kpi({
+  label,
+  value,
+  hint,
+  icon,
+}: {
+  label: string;
+  value: string;
+  hint?: ReactNode;
+  icon?: ReactNode;
+}) {
   return (
     <div className="kpi">
-      <span className="kpi-label">{label}</span>
-      <span className="kpi-value">{value}</span>
-      {hint && <span className="kpi-hint">{hint}</span>}
+      <div className="kpi-head">
+        <span className="kpi-label">{label}</span>
+        {icon && <span className="kpi-icon" aria-hidden="true">{icon}</span>}
+      </div>
+      <div className="kpi-value">{value}</div>
+      {hint && <div className="kpi-foot">{hint}</div>}
     </div>
   );
 }

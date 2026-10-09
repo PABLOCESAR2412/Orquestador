@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { api, type Task } from "../api";
-import { AppNav } from "../components/nav";
 import { formatWhen, STATUS_LABEL } from "../lib/model";
+import { useShell } from "../components/shell-context";
 
 export function StatusPage() {
+  const { toggleDrawer } = useShell();
   const health = useQuery({
     queryKey: ["health"],
     queryFn: api.health,
@@ -26,11 +27,23 @@ export function StatusPage() {
   return (
     <main className="page">
       <header className="page-head">
-        <div>
-          <h1>Estado</h1>
-          <p className="page-desc">
-            Estado de los servicios locales, base de datos SQLite y worker de tareas.
-          </p>
+        <div className="page-title-row">
+          <button
+            type="button"
+            className="ghost menu-btn"
+            aria-label="Abrir menú"
+            onClick={toggleDrawer}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h10" />
+            </svg>
+          </button>
+          <div>
+            <h1>Estado</h1>
+            <p className="page-desc">
+              Estado de los servicios locales, base de datos SQLite y worker de tareas.
+            </p>
+          </div>
         </div>
         <div className="status-pill-head">
           <span className={`status-pill ${isOnline ? "is-online" : "is-offline"}`}>
@@ -39,8 +52,6 @@ export function StatusPage() {
           </span>
         </div>
       </header>
-
-      <AppNav />
 
       {health.isError && (
         <p className="error" role="alert">
@@ -64,7 +75,7 @@ export function StatusPage() {
               <span className="status-meta-label">Última comprobación</span>
               <span className="status-meta-value">
                 {health.data?.time
-                  ? new Date(health.data.time).toLocaleTimeString()
+                  ? new Date(health.data.time).toLocaleTimeString("es")
                   : "Pendiente"}
               </span>
             </div>
