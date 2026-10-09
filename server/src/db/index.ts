@@ -40,6 +40,23 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    name: "002_usage",
+    sql: `
+      CREATE TABLE usage (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cost REAL NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

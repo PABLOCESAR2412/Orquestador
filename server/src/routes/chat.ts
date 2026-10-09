@@ -1,6 +1,20 @@
 import { Hono } from "hono";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { config } from "../config";
 import { db } from "../db";
+import { runOpenCode, type RunResult } from "../runners/opencode";
 
+const DEFAULT_MODEL = "opencode/big-pickle";
+const chatWorkspace = join(config.dataDir, "chat-workspace");
+mkdirSync(chatWorkspace, { recursive: true });
+
+type ConversationRow = {
+  id: string;
+  model: string | null;
+  effort: string | null;
+  runner_session_id: string | null;
+};
 type Conversation = { id: string; title: string; created_at: string };
 type Message = {
   id: string;
@@ -40,10 +54,12 @@ chat.get("/conversations/:id/messages", (c) => {
 
 chat.post("/conversations/:id/messages", async (c) => {
   const conversationId = c.req.param("id");
-  const exists = db
-    .query<{ id: string }, [string]>("SELECT id FROM conversations WHERE id = ?")
+  const conv = db
+    .query<ConversationRow, [string]>(
+      "SELECT id, model, effort, runner_session_id FROM conversations WHERE id = ?",
+    )
     .get(conversationId);
-  if (!exists) return c.json({ error: "conversation_not_found" }, 404);
+  if (!conv) return c.json({ error: "conversation_not_found" }, 404);
 
   const body = await c.req.json<{ content?: string }>().catch(() => ({}) as { content?: string });
   const content = body.content?.trim() ?? "";
@@ -51,11 +67,27 @@ chat.post("/conversations/:id/messages", async (c) => {
     return c.json({ error: "invalid_content" }, 400);
   }
 
+  const model = conv.model ?? DEFAULT_MODEL;
+
+  let result: RunResult;
+  try {
+    result = await runOpenCode({
+      prompt: content,
+      model,
+      variant: conv.effort ?? undefined,
+      sessionId: conv.runner_session_id,
+      cwd: chatWorkspace,
+      timeoutMs: 180_000,
+    });
+  } catch (err) {
+    return c.json({ error: "runner_failed", detail: String(err) }, 502);
+  }
+
   const userMsg = { id: crypto.randomUUID(), role: "user" as const, content };
   const assistantMsg = {
     id: crypto.randomUUID(),
     role: "assistant" as const,
-    content: `Eco (sin modelo todavía): ${content}`,
+    content: result.text,
   };
 
   db.transaction(() => {
@@ -64,10 +96,37 @@ chat.post("/conversations/:id/messages", async (c) => {
     );
     insert.run(userMsg.id, conversationId, userMsg.role, userMsg.content);
     insert.run(assistantMsg.id, conversationId, assistantMsg.role, assistantMsg.content);
+
     db.query("UPDATE conversations SET title = ? WHERE id = ? AND title = 'Nuevo chat'").run(
       content.slice(0, 60),
       conversationId,
     );
+
+    if (result.sessionId) {
+      db.query("UPDATE conversations SET runner_session_id = ?, model = ? WHERE id = ?").run(
+        result.sessionId,
+        model,
+        conversationId,
+      );
+    }
+
+    if (result.usage) {
+      const u = result.usage;
+      db.query(
+        `INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cost)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        crypto.randomUUID(),
+        conversationId,
+        model.split("/")[0],
+        model,
+        u.input,
+        u.output,
+        u.reasoning,
+        u.cacheRead,
+        u.cost,
+      );
+    }
   })();
 
   return c.json({ messages: [userMsg, assistantMsg] }, 201);
