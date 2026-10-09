@@ -1,0 +1,37 @@
+import { db } from "./db";
+
+// Preferencias de la app, guardadas como un solo documento JSON en app_settings.
+export type Preferences = {
+  defaultModel: string | null;
+  defaultEffort: string | null;
+  monthlyBudgetUsd: number | null;
+  budgetAlertPercent: number;
+};
+
+export const DEFAULT_PREFERENCES: Preferences = {
+  defaultModel: null,
+  defaultEffort: null,
+  monthlyBudgetUsd: null,
+  budgetAlertPercent: 80,
+};
+
+const KEY = "preferences";
+
+export function getPreferences(): Preferences {
+  const row = db
+    .query<{ value: string }, [string]>("SELECT value FROM app_settings WHERE key = ?")
+    .get(KEY);
+  if (!row) return { ...DEFAULT_PREFERENCES };
+  try {
+    return { ...DEFAULT_PREFERENCES, ...JSON.parse(row.value) };
+  } catch {
+    return { ...DEFAULT_PREFERENCES };
+  }
+}
+
+export function savePreferences(prefs: Preferences) {
+  db.query(
+    `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  ).run(KEY, JSON.stringify(prefs));
+}

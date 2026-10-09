@@ -6,6 +6,8 @@ import { chat } from "./routes/chat";
 import { modelsRoute } from "./routes/models";
 import { settings } from "./routes/settings";
 import { tasks } from "./routes/tasks";
+import { preferences } from "./routes/preferences";
+import { analytics } from "./routes/analytics";
 import { startWorker } from "./worker";
 
 const webDist = resolve(import.meta.dir, "../../web/dist");
@@ -22,6 +24,8 @@ app.route("/api", chat);
 app.route("/api", modelsRoute);
 app.route("/api", settings);
 app.route("/api", tasks);
+app.route("/api", preferences);
+app.route("/api", analytics);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
 startWorker();
