@@ -28,6 +28,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body, #root { height: 100%; }
+html, body { overflow-x: hidden; }
 body { margin: 0; background: var(--bg); }
 button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -1379,6 +1380,29 @@ button:disabled { opacity: 0.4; cursor: default; }
     padding-bottom: env(safe-area-inset-bottom);
   }
   .model-chip { max-width: 55%; }
+  .page {
+    padding: 16px 14px 36px;
+  }
+  .task-header-main {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .task-btn-nueva {
+    width: 100%;
+    justify-content: center;
+  }
+  .task-card-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .task-card-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .task-footer-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
