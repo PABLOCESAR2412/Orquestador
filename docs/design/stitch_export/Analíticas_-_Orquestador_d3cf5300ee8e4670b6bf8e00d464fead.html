@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="es"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=JetBrains+Mono:wght@100..900&display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"on-tertiary-container":"#6a635e","on-tertiary-fixed":"#1f1b17","on-secondary-fixed":"#151c25","on-primary-container":"#636466","tertiary":"#ffffff","surface":"#121316","primary-container":"#e2e2e4","outline":"#8f9194","surface-bright":"#38393c","on-secondary":"#2a313b","surface-tint":"#c6c6c8","on-error-container":"#ffdad6","outline-variant":"#44474a","inverse-primary":"#5d5e60","surface-container-highest":"#343538","surface-variant":"#343538","tertiary-fixed":"#ebe0db","on-tertiary":"#352f2c","surface-container":"#1f1f23","primary-fixed":"#e2e2e4","tertiary-container":"#ebe0db","surface-dim":"#121316","on-surface":"#e3e2e6","surface-container-high":"#292a2d","error-container":"#93000a","primary":"#ffffff","error":"#ffb4ab","secondary-fixed-dim":"#c0c7d3","on-tertiary-fixed-variant":"#4c4641","secondary":"#c0c7d3","on-primary-fixed-variant":"#454749","secondary-fixed":"#dce3f0","on-background":"#e3e2e6","tertiary-fixed-dim":"#cec5bf","primary-fixed-dim":"#c6c6c8","on-secondary-container":"#afb5c2","background":"#121316","on-primary":"#2f3132","inverse-on-surface":"#303034","on-secondary-fixed-variant":"#404752","on-error":"#690005","surface-container-low":"#1b1b1f","secondary-container":"#404752","on-surface-variant":"#c5c7c9","inverse-surface":"#e3e2e6","surface-container-lowest":"#0d0e11","on-primary-fixed":"#1a1c1d"},borderRadius:{DEFAULT:"0.25rem",lg:"0.5rem",xl:"0.75rem",full:"9999px"},spacing:{"space-lg":"1.5rem","space-md":"1rem",margin:"2rem",gutter:"1.5rem","space-sm":"0.5rem","space-xs":"0.25rem","space-xl":"2.5rem"},fontFamily:{"body-lg":["Geist"],"body-md":["Geist"],"headline-lg":["Geist"],"headline-xl":["Geist"],"label-sm":["JetBrains Mono"],"headline-xl-mobile":["Geist"],"body-sm":["Geist"],"label-md":["JetBrains Mono"],"headline-sm":["Geist"]},fontSize:{"body-lg":["16px",{lineHeight:"26px",letterSpacing:"-0.01em",fontWeight:"400"}],"body-md":["14px",{lineHeight:"22px",letterSpacing:"0em",fontWeight:"400"}],"headline-lg":["26px",{lineHeight:"34px",letterSpacing:"-0.02em",fontWeight:"500"}],"headline-xl":["36px",{lineHeight:"44px",letterSpacing:"-0.03em",fontWeight:"600"}],"label-sm":["11px",{lineHeight:"14px",letterSpacing:"0.03em",fontWeight:"400"}],"headline-xl-mobile":["28px",{lineHeight:"34px",letterSpacing:"-0.02em",fontWeight:"600"}],"body-sm":["13px",{lineHeight:"18px",letterSpacing:"0em",fontWeight:"400"}],"label-md":["12px",{lineHeight:"16px",letterSpacing:"0.02em",fontWeight:"400"}],"headline-sm":["18px",{lineHeight:"26px",letterSpacing:"-0.01em",fontWeight:"500"}]}}}}</script></head><body class="bg-surface font-body-md text-on-surface antialiased"><aside class="fixed left-0 top-0 h-full w-[260px] bg-surface-container-lowest z-50 flex flex-col justify-between p-space-sm"><div class="flex flex-col gap-space-sm"><div class="flex items-center justify-between px-space-xs py-space-xs"><div class="flex items-center gap-space-xs"><span class="material-symbols-outlined text-primary text-[18px]">hub</span><span class="font-headline-sm text-headline-sm font-medium tracking-tight text-primary">Orquestador</span></div><button class="flex items-center justify-center p-space-xs rounded text-on-surface-variant hover:text-primary transition-colors" title="Colapsar panel"><span class="material-symbols-outlined text-[18px]">dock_to_left</span></button></div><button class="w-full flex items-center justify-between px-space-sm py-space-xs rounded-lg bg-surface-container-low text-on-surface hover:bg-surface-container hover:text-primary transition-colors"><span class="flex items-center gap-space-xs font-body-sm text-body-sm font-medium"><span class="material-symbols-outlined text-[16px]">add</span>Nueva tarea</span><span class="font-label-sm text-label-sm text-on-surface-variant">⌘N</span></button><nav class="flex flex-col gap-space-xs pt-space-xs" data-active-classes="bg-surface-container text-primary font-medium"><a class="flex items-center gap-space-xs px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors font-body-sm text-body-sm" data-path="chat" href="#"><span class="material-symbols-outlined text-[18px]">forum</span><span>Chat</span></a><a class="flex items-center gap-space-xs px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors font-body-sm text-body-sm" data-path="tareas" href="#"><span class="material-symbols-outlined text-[18px]">check_circle</span><span>Tareas</span></a><a class="flex items-center gap-space-xs px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors font-body-sm text-body-sm" data-path="analiticas" href="#"><span class="material-symbols-outlined text-[18px]">query_stats</span><span>Analíticas</span></a><a class="flex items-center gap-space-xs px-space-sm py-space-xs rounded-lg text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors font-body-sm text-body-sm" data-path="ajustes" href="#"><span class="material-symbols-outlined text-[18px]">settings</span><span>Ajustes</span></a></nav><div class="flex flex-col pt-space-sm"><div class="px-space-xs pb-space-xs flex items-center justify-between"><span class="font-label-sm text-label-sm uppercase tracking-wider text-outline">Recientes</span></div><div class="flex flex-col gap-space-xs overflow-y-auto max-h-[360px]"><div class="group flex items-center justify-between px-space-sm py-space-xs rounded-lg hover:bg-surface-container-low cursor-pointer transition-colors"><span class="truncate font-body-sm text-body-sm text-on-surface-variant group-hover:text-on-surface">Refactor AST Parser</span><span class="material-symbols-outlined text-[16px] text-outline opacity-0 group-hover:opacity-100 transition-opacity hover:text-primary">more_horiz</span></div><div class="group flex items-center justify-between px-space-sm py-space-xs rounded-lg hover:bg-surface-container-low cursor-pointer transition-colors"><span class="truncate font-body-sm text-body-sm text-on-surface-variant group-hover:text-on-surface">Migración schema Postgres</span><span class="material-symbols-outlined text-[16px] text-outline opacity-0 group-hover:opacity-100 transition-opacity hover:text-primary">more_horiz</span></div><div class="group flex items-center justify-between px-space-sm py-space-xs rounded-lg hover:bg-surface-container-low cursor-pointer transition-colors"><span class="truncate font-body-sm text-body-sm text-on-surface-variant group-hover:text-on-surface">Pipeline CI/CD</span><span class="material-symbols-outlined text-[16px] text-outline opacity-0 group-hover:opacity-100 transition-opacity hover:text-primary">more_horiz</span></div><div class="group flex items-center justify-between px-space-sm py-space-xs rounded-lg hover:bg-surface-container-low cursor-pointer transition-colors"><span class="truncate font-body-sm text-body-sm text-on-surface-variant group-hover:text-on-surface">Benchmark LLMs</span><span class="material-symbols-outlined text-[16px] text-outline opacity-0 group-hover:opacity-100 transition-opacity hover:text-primary">more_horiz</span></div></div></div></div><div class="flex flex-col gap-space-xs pt-space-xs"><div class="flex items-center justify-between p-space-xs rounded-lg hover:bg-surface-container-low cursor-pointer transition-colors"><div class="flex items-center gap-space-xs"><div class="w-6 h-6 rounded-full bg-surface-container-high flex items-center justify-center"><span class="material-symbols-outlined text-[14px] text-on-surface-variant">terminal</span></div><div class="flex flex-col"><span class="font-label-sm text-label-sm text-on-surface leading-none">dev-lead@local</span><span class="font-label-sm text-label-sm text-outline leading-none pt-space-xs">Orquestador Cloud</span></div></div><div class="w-2 h-2 rounded-full bg-surface-bright"></div></div></div></aside><div class="pl-[260px]"><header class="fixed top-0 left-[260px] right-0 h-12 bg-surface/80 backdrop-blur-xl z-40 flex items-center justify-between px-space-md shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex items-center gap-space-sm"><div class="flex items-center gap-space-xs"><span class="font-label-sm text-label-sm text-outline">v2.4</span><span class="text-outline-variant font-label-sm">•</span><span class="font-label-sm text-label-sm text-on-surface-variant">Listo</span></div></div><div class="flex items-center gap-space-sm"><button class="flex items-center gap-space-xs px-space-sm py-space-xs rounded text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined text-[16px]">tune</span><span class="font-label-sm text-label-sm">Parámetros</span></button><button class="flex items-center gap-space-xs px-space-sm py-space-xs rounded text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined text-[16px]">share</span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></header><main class="relative pt-12 min-h-screen bg-surface"><div class="flex flex-col w-full">
+<div class="w-full max-w-4xl mx-auto px-space-md py-space-xl flex flex-col gap-space-xl">
+<!-- Header with Breadcrumb / Title & Quiet Range Pill -->
+<header class="flex flex-col sm:flex-row sm:items-end justify-between gap-space-md">
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center gap-space-xs">
+<span class="font-label-sm text-label-sm text-outline uppercase tracking-wider">Métricas del Sistema</span>
+<span class="text-outline-variant font-label-sm">•</span>
+<span class="font-label-sm text-label-sm text-secondary">Instancia local</span>
+</div>
+<h1 class="font-headline-xl text-headline-xl text-primary font-medium tracking-tight">Analíticas de consumo</h1>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-xl">
+          Métricas de tokens, gasto estimado y tiempo de cómputo en tu servidor.
+        </p>
+</div>
+<!-- Time range selector -->
+<nav aria-label="Intervalo de tiempo" class="self-start sm:self-auto bg-surface-container-low p-space-xs rounded-lg flex items-center gap-space-xs">
+<button class="px-space-sm py-1 rounded font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" type="button">24h</button>
+<button class="px-space-sm py-1 rounded bg-surface-container-highest text-primary font-label-md text-label-md font-medium shadow-sm transition-colors" type="button">7d</button>
+<button class="px-space-sm py-1 rounded font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" type="button">30d</button>
+<button class="px-space-sm py-1 rounded font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" type="button">Todo</button>
+</nav>
+</header>
+<!-- KPI Summary Section -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-space-sm">
+<div class="bg-surface-container-low p-space-md rounded-xl flex flex-col justify-between min-h-[120px] transition-all hover:bg-surface-container">
+<div class="flex items-center justify-between text-outline">
+<span class="font-body-sm text-body-sm font-medium">Gasto estimado</span>
+<span class="material-symbols-outlined text-[18px]">payments</span>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-lg text-headline-lg text-primary tracking-tight font-medium">$14.28</span>
+<div class="flex items-center gap-space-xs mt-space-xs">
+<span class="font-label-sm text-label-sm text-on-surface-variant">+$2.10 vs. período ant.</span>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-low p-space-md rounded-xl flex flex-col justify-between min-h-[120px] transition-all hover:bg-surface-container">
+<div class="flex items-center justify-between text-outline">
+<span class="font-body-sm text-body-sm font-medium">Tokens procesados</span>
+<span class="material-symbols-outlined text-[18px]">token</span>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-lg text-headline-lg text-primary tracking-tight font-medium">4.82M</span>
+<div class="flex items-center gap-space-xs mt-space-xs">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Prompt 3.1M / Comp 1.72M</span>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-low p-space-md rounded-xl flex flex-col justify-between min-h-[120px] transition-all hover:bg-surface-container">
+<div class="flex items-center justify-between text-outline">
+<span class="font-body-sm text-body-sm font-medium">Tiempo de cómputo</span>
+<span class="material-symbols-outlined text-[18px]">schedule</span>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-lg text-headline-lg text-primary tracking-tight font-medium">18h 42m</span>
+<div class="flex items-center gap-space-xs mt-space-xs">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Latencia media 310ms</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Usage Volume Section (Minimal Bar Chart) -->
+<section class="bg-surface-container-low p-space-lg rounded-xl flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<h2 class="font-headline-sm text-headline-sm text-primary font-medium tracking-tight">Volumen de llamadas diarias</h2>
+<span class="font-label-sm text-label-sm text-outline">Del 14 al 20 de Mayo</span>
+</div>
+<div class="flex items-center gap-space-md font-label-sm text-label-sm text-on-surface-variant">
+<span class="flex items-center gap-space-xs"><span class="w-2 h-2 rounded-full bg-outline-variant inline-block"></span>Promedio diario</span>
+<span class="flex items-center gap-space-xs"><span class="w-2 h-2 rounded-full bg-primary inline-block"></span>Día actual</span>
+</div>
+</div>
+<!-- Monochrome Daily Bar Visualization -->
+<div class="pt-space-md pb-space-xs flex flex-col gap-space-sm">
+<div class="h-44 w-full flex items-end justify-between gap-space-sm px-space-xs">
+<!-- Lun -->
+<div class="flex-1 flex flex-col items-center gap-space-xs h-full justify-end group cursor-default">
+<span class="font-label-sm text-label-sm text-outline opacity-0 group-hover:opacity-100 transition-opacity">420k</span>
+<div class="w-full bg-surface-container-high hover:bg-surface-container-highest rounded-t transition-all" style="height: 38%;"></div>
+<span class="font-label-sm text-label-sm text-outline group-hover:text-on-surface transition-colors">Lun</span>
+</div>
+<!-- Mar -->
+<div class="flex-1 flex flex-col items-center gap-space-xs h-full justify-end group cursor-default">
+<span class="font-label-sm text-label-sm text-outline opacity-0 group-hover:opacity-100 transition-opacity">680k</span>
+<div class="w-full bg-surface-container-high hover:bg-surface-container-highest rounded-t transition-all" style="height: 58%;"></div>
+<span class="font-label-sm text-label-sm text-outline group-hover:text-on-surface transition-colors">Mar</span>
+</div>
+<!-- Mié -->
+<div class="flex-1 flex flex-col items-center gap-space-xs h-full justify-end group cursor-default">
+<span class="font-label-sm text-label-sm text-outline opacity-0 group-hover:opacity-100 transition-opacity">910k</span>
+<div class="w-full bg-surface-container-high hover:bg-surface-container-highest rounded-t transition-all" style="height: 78%;"></div>
+<span class="font-label-sm text-label-sm text-outline group-hover:text-on-surface transition-colors">Mié</span>
+</div>
+<!-- Jue -->
+<div class="flex-1 flex flex-col items-center gap-space-xs h-full justify-end group cursor-default">
+<span class="font-label-sm text-label-sm text-outline opacity-0 group-hover:opacity-100 transition-opacity">530k</span>
+<div class="w-full bg-surface-container-high hover:bg-surface-container-highest rounded-t transition-all" style="height: 46%;"></div>
+<span class="font-label-sm text-label-sm text-outline group-hover:text-on-surface transition-colors">Jue</span>
+</div>
+<!-- Vie (Active Highlight Day) -->
+<div class="flex-1 flex flex-col items-center gap-space-xs h-full justify-end group cursor-default">
+<span class="font-label-sm text-label-sm text-primary font-medium opacity-100">1.24M</span>
+<div class="w-full bg-primary rounded-t shadow-sm transition-all" style="height: 96%;"></div>
+<span class="font-label-sm text-label-sm text-primary font-medium">Vie</span>
+</div>
+<!-- Sáb -->
+<div class="flex-1 flex flex-col items-center gap-space-xs h-full justify-end group cursor-default">
+<span class="font-label-sm text-label-sm text-outline opacity-0 group-hover:opacity-100 transition-opacity">310k</span>
+<div class="w-full bg-surface-container-high hover:bg-surface-container-highest rounded-t transition-all" style="height: 28%;"></div>
+<span class="font-label-sm text-label-sm text-outline group-hover:text-on-surface transition-colors">Sáb</span>
+</div>
+<!-- Dom -->
+<div class="flex-1 flex flex-col items-center gap-space-xs h-full justify-end group cursor-default">
+<span class="font-label-sm text-label-sm text-outline opacity-0 group-hover:opacity-100 transition-opacity">260k</span>
+<div class="w-full bg-surface-container-high hover:bg-surface-container-highest rounded-t transition-all" style="height: 22%;"></div>
+<span class="font-label-sm text-label-sm text-outline group-hover:text-on-surface transition-colors">Dom</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Two-column Section: Model Breakdown & Orchestration Overview -->
+<section class="grid grid-cols-1 lg:grid-cols-5 gap-space-md">
+<!-- Model Breakdown (3 cols) -->
+<div class="lg:col-span-3 bg-surface-container-low p-space-lg rounded-xl flex flex-col justify-between gap-space-md">
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<h2 class="font-headline-sm text-headline-sm text-primary font-medium tracking-tight">Distribución por modelo</h2>
+<span class="font-label-sm text-label-sm text-outline">Consumo agrupado de tokens y coste</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant font-medium">3 activos</span>
+</div>
+<div class="flex flex-col gap-space-md">
+<!-- OpenCode-v2.1 -->
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-primary font-medium">OpenCode-v2.1</span>
+<div class="flex items-center gap-space-sm font-label-sm text-label-sm">
+<span class="text-on-surface">2.4M tok</span>
+<span class="text-outline">•</span>
+<span class="text-secondary font-medium">$6.80</span>
+</div>
+</div>
+<div class="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full rounded-full" style="width: 50%;"></div>
+</div>
+</div>
+<!-- Codex-Base -->
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-primary font-medium">Codex-Base</span>
+<div class="flex items-center gap-space-sm font-label-sm text-label-sm">
+<span class="text-on-surface">1.9M tok</span>
+<span class="text-outline">•</span>
+<span class="text-secondary font-medium">$5.90</span>
+</div>
+</div>
+<div class="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden">
+<div class="bg-on-surface-variant h-full rounded-full" style="width: 39%;"></div>
+</div>
+</div>
+<!-- Google-Flash -->
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-primary font-medium">Google-Flash</span>
+<div class="flex items-center gap-space-sm font-label-sm text-label-sm">
+<span class="text-on-surface">520k tok</span>
+<span class="text-outline">•</span>
+<span class="text-secondary font-medium">$1.58</span>
+</div>
+</div>
+<div class="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden">
+<div class="bg-outline h-full rounded-full" style="width: 11%;"></div>
+</div>
+</div>
+</div>
+<div class="pt-space-xs flex items-center justify-between font-label-sm text-label-sm text-outline">
+<span>Tasa de error global: 0.02%</span>
+<span>Cuota mensual: 48.2%</span>
+</div>
+</div>
+<!-- Quick Telemetry & Status (2 cols) -->
+<div class="lg:col-span-2 bg-surface-container-low p-space-lg rounded-xl flex flex-col justify-between gap-space-md">
+<div class="flex flex-col gap-space-xs">
+<h2 class="font-headline-sm text-headline-sm text-primary font-medium tracking-tight">Eficiencia de inferencia</h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Rendimiento de los nodos ejecutores en tiempo real.</p>
+</div>
+<div class="flex flex-col gap-space-sm">
+<div class="bg-surface-container p-space-sm rounded-lg flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm text-primary">Throughput</span>
+<span class="font-label-sm text-label-sm text-outline">Tokens por segundo</span>
+</div>
+<span class="font-label-md text-label-md text-primary font-medium">84.2 t/s</span>
+</div>
+<div class="bg-surface-container p-space-sm rounded-lg flex items-center justify-between">
+<div class="flex flex-col">
+<span class="font-body-sm text-body-sm text-primary">P95 Time To First Token</span>
+<span class="font-label-sm text-label-sm text-outline">Latencia inicial</span>
+</div>
+<span class="font-label-md text-label-md text-primary font-medium">184 ms</span>
+</div>
+</div>
+<div class="flex items-center gap-space-xs font-label-sm text-label-sm text-outline">
+<span class="w-1.5 h-1.5 rounded-full bg-surface-bright"></span>
+<span>Motor de optimización vLLM activado</span>
+</div>
+</div>
+</section>
+<!-- Recent Executions Table -->
+<section class="bg-surface-container-low rounded-xl p-space-lg flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<div class="flex flex-col">
+<h2 class="font-headline-sm text-headline-sm text-primary font-medium tracking-tight">Ejecuciones recientes</h2>
+<span class="font-label-sm text-label-sm text-outline">Registros sincronizados en tiempo real</span>
+</div>
+<button class="flex items-center gap-space-xs px-space-sm py-1 rounded text-on-surface-variant hover:text-primary transition-colors font-label-sm text-label-sm" type="button">
+<span class="material-symbols-outlined text-[16px]">file_download</span>
+<span>Exportar CSV</span>
+</button>
+</div>
+<div class="overflow-x-auto w-full">
+<table class="w-full text-left font-body-sm text-body-sm">
+<thead>
+<tr class="text-outline font-label-sm text-label-sm uppercase tracking-wider">
+<th class="pb-space-sm font-normal" scope="col">Marca temporal</th>
+<th class="pb-space-sm font-normal" scope="col">Modelo / Agente</th>
+<th class="pb-space-sm font-normal" scope="col">Tokens</th>
+<th class="pb-space-sm font-normal" scope="col">Duración</th>
+<th class="pb-space-sm font-normal text-right" scope="col">Coste estimado</th>
+</tr>
+</thead>
+<tbody class="divide-y-0">
+<tr class="hover:bg-surface-container transition-colors group">
+<td class="py-space-sm font-label-sm text-label-sm text-on-surface-variant group-hover:text-primary">14:32:08</td>
+<td class="py-space-sm">
+<div class="flex items-center gap-space-xs">
+<span class="text-primary font-medium">OpenCode-v2.1</span>
+<span class="font-label-sm text-label-sm text-outline">AST Refactor</span>
+</div>
+</td>
+<td class="py-space-sm font-label-sm text-label-sm text-on-surface">14,280</td>
+<td class="py-space-sm font-label-sm text-label-sm text-outline">1.24s</td>
+<td class="py-space-sm font-label-sm text-label-sm text-secondary font-medium text-right">$0.041</td>
+</tr>
+<tr class="hover:bg-surface-container transition-colors group">
+<td class="py-space-sm font-label-sm text-label-sm text-on-surface-variant group-hover:text-primary">14:28:44</td>
+<td class="py-space-sm">
+<div class="flex items-center gap-space-xs">
+<span class="text-primary font-medium">Codex-Base</span>
+<span class="font-label-sm text-label-sm text-outline">Schema Migration</span>
+</div>
+</td>
+<td class="py-space-sm font-label-sm text-label-sm text-on-surface">8,950</td>
+<td class="py-space-sm font-label-sm text-label-sm text-outline">890ms</td>
+<td class="py-space-sm font-label-sm text-label-sm text-secondary font-medium text-right">$0.027</td>
+</tr>
+<tr class="hover:bg-surface-container transition-colors group">
+<td class="py-space-sm font-label-sm text-label-sm text-on-surface-variant group-hover:text-primary">14:15:12</td>
+<td class="py-space-sm">
+<div class="flex items-center gap-space-xs">
+<span class="text-primary font-medium">Google-Flash</span>
+<span class="font-label-sm text-label-sm text-outline">CI/CD Pipeline Doc</span>
+</div>
+</td>
+<td class="py-space-sm font-label-sm text-label-sm text-on-surface">3,420</td>
+<td class="py-space-sm font-label-sm text-label-sm text-outline">340ms</td>
+<td class="py-space-sm font-label-sm text-label-sm text-secondary font-medium text-right">$0.009</td>
+</tr>
+<tr class="hover:bg-surface-container transition-colors group">
+<td class="py-space-sm font-label-sm text-label-sm text-on-surface-variant group-hover:text-primary">13:58:30</td>
+<td class="py-space-sm">
+<div class="flex items-center gap-space-xs">
+<span class="text-primary font-medium">OpenCode-v2.1</span>
+<span class="font-label-sm text-label-sm text-outline">Unit Tests Synth</span>
+</div>
+</td>
+<td class="py-space-sm font-label-sm text-label-sm text-on-surface">22,100</td>
+<td class="py-space-sm font-label-sm text-label-sm text-outline">2.11s</td>
+<td class="py-space-sm font-label-sm text-label-sm text-secondary font-medium text-right">$0.063</td>
+</tr>
+<tr class="hover:bg-surface-container transition-colors group">
+<td class="py-space-sm font-label-sm text-label-sm text-on-surface-variant group-hover:text-primary">13:42:19</td>
+<td class="py-space-sm">
+<div class="flex items-center gap-space-xs">
+<span class="text-primary font-medium">Codex-Base</span>
+<span class="font-label-sm text-label-sm text-outline">Benchmark Routine</span>
+</div>
+</td>
+<td class="py-space-sm font-label-sm text-label-sm text-on-surface">5,140</td>
+<td class="py-space-sm font-label-sm text-label-sm text-outline">620ms</td>
+<td class="py-space-sm font-label-sm text-label-sm text-secondary font-medium text-right">$0.016</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="flex items-center justify-between pt-space-xs">
+<span class="font-label-sm text-label-sm text-outline">Mostrando 5 de 1,428 ejecuciones</span>
+<div class="flex items-center gap-space-xs">
+<button class="p-1 rounded text-outline hover:text-primary transition-colors disabled:opacity-30" disabled="" type="button">
+<span class="material-symbols-outlined text-[16px]">chevron_left</span>
+</button>
+<span class="font-label-sm text-label-sm text-on-surface-variant px-space-xs">1 / 286</span>
+<button class="p-1 rounded text-outline hover:text-primary transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+</div>
+</section>
+</div>
+</div></main></div></body></html>

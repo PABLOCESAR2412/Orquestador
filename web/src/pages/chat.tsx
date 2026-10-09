@@ -132,14 +132,21 @@ export function ChatPage() {
     <div className="shell">
       <aside className={`rail${railOpen ? " open" : ""}`}>
         <div className="rail-head">
-          <span className="wordmark">orquestador</span>
+          <div className="wordmark-wrap">
+            <span className="pill-dot is-live" aria-hidden="true" />
+            <span className="wordmark">orquestador</span>
+          </div>
           <button
             type="button"
-            className="ghost"
+            className="ghost new-chat-btn"
             onClick={() => create.mutate()}
             disabled={create.isPending}
+            title="Crear conversación"
           >
-            Nuevo chat
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+            </svg>
+            <span>Nueva conversación</span>
           </button>
         </div>
 
@@ -174,15 +181,25 @@ export function ChatPage() {
               <path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
           </button>
-          <h1 className="thread-title">{current?.title ?? "Orquestador"}</h1>
+          <div className="thread-head-info">
+            <h1 className="thread-title">{current?.title ?? "Orquestador"}</h1>
+            {current && (
+              <span className="thread-model-badge">
+                {modelInfo?.name ?? current.model ?? "Predeterminado"}
+              </span>
+            )}
+          </div>
         </header>
 
         {!selectedId ? (
           <div className="empty">
-            <p>Crea un chat para empezar.</p>
-            <button type="button" className="primary" onClick={() => create.mutate()} disabled={create.isPending}>
-              Nuevo chat
-            </button>
+            <div className="empty-box">
+              <h2>Sin conversación activa</h2>
+              <p>Inicia un nuevo chat con tus agentes o selecciona uno de la lista.</p>
+              <button type="button" className="primary" onClick={() => create.mutate()} disabled={create.isPending}>
+                Nuevo chat
+              </button>
+            </div>
           </div>
         ) : (
           <>
