@@ -157,9 +157,14 @@ export function ChatPage() {
           ))}
         </nav>
 
-        <Link to="/estado" className="rail-foot">
-          Estado del servidor
-        </Link>
+        <div className="rail-foot">
+          <Link to="/tareas" className="foot-link">
+            Tareas
+          </Link>
+          <Link to="/estado" className="foot-link">
+            Estado
+          </Link>
+        </div>
       </aside>
 
       {railOpen && <div className="scrim dim" onClick={() => setRailOpen(false)} />}

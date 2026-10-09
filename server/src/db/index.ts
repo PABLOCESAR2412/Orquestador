@@ -57,6 +57,26 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    name: "003_tasks",
+    sql: `
+      CREATE TABLE tasks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        model TEXT NOT NULL,
+        effort TEXT,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed', 'cancelled')),
+        result TEXT,
+        error TEXT,
+        workspace TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        started_at TEXT,
+        finished_at TEXT
+      );
+      CREATE INDEX tasks_status_created ON tasks (status, created_at);
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

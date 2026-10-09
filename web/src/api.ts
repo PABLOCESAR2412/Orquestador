@@ -31,6 +31,22 @@ export type ModelInfo = {
   recommended: boolean;
 };
 
+export type TaskStatus = "queued" | "running" | "done" | "failed" | "cancelled";
+
+export type Task = {
+  id: string;
+  title: string;
+  prompt: string;
+  model: string;
+  effort: string | null;
+  status: TaskStatus;
+  result: string | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -73,4 +89,9 @@ export const api = {
       costTier: CostTier | null;
       costWarning: string | null;
     }>(`/api/conversations/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  listTasks: () => request<Task[]>("/api/tasks?limit=50"),
+  createTask: (body: { prompt: string; model?: string | null; effort?: string | null }) =>
+    request<Task>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
+  cancelTask: (id: string) =>
+    request<{ outcome: string }>(`/api/tasks/${id}/cancel`, { method: "POST", body: "{}" }),
 };

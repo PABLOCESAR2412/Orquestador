@@ -1,4 +1,4 @@
-import { ApiError, type CostTier, type ModelInfo } from "../api";
+import { ApiError, type CostTier, type ModelInfo, type TaskStatus } from "../api";
 
 export const EFFORT_LABELS: Record<string, string> = {
   minimal: "Mínimo",
@@ -35,6 +35,25 @@ export function formatPrice(m: ModelInfo): string {
   return `$${m.inputUsd} / $${m.outputUsd} por M`;
 }
 
+export const STATUS_LABEL: Record<TaskStatus, string> = {
+  queued: "En cola",
+  running: "Corriendo",
+  done: "Lista",
+  failed: "Falló",
+  cancelled: "Cancelada",
+};
+
+// SQLite guarda la fecha en UTC sin zona: "2026-10-09 04:50:16".
+export function formatWhen(sqlDate: string): string {
+  const date = new Date(sqlDate.replace(" ", "T") + "Z");
+  return new Intl.DateTimeFormat("es", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 const shorten = (text: string) => text.replace(/^Error:\s*/, "").slice(0, 160);
 
 export function errorText(err: unknown): string {
@@ -47,7 +66,10 @@ export function errorText(err: unknown): string {
           ? `El modelo no respondió: ${shorten(err.detail)}`
           : "El modelo no respondió. Intenta de nuevo.";
       case "invalid_content":
-        return "El mensaje está vacío o supera los 10 000 caracteres.";
+      case "invalid_prompt":
+        return "El texto está vacío o supera los 10 000 caracteres.";
+      case "task_not_cancellable":
+        return "Esta tarea ya terminó.";
       case "conversation_not_found":
         return "Este chat ya no existe.";
       case "model_not_found":

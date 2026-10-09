@@ -5,6 +5,8 @@ import { db } from "./db";
 import { chat } from "./routes/chat";
 import { modelsRoute } from "./routes/models";
 import { settings } from "./routes/settings";
+import { tasks } from "./routes/tasks";
+import { startWorker } from "./worker";
 
 const webDist = resolve(import.meta.dir, "../../web/dist");
 const indexFile = join(webDist, "index.html");
@@ -19,7 +21,10 @@ app.get("/api/health", (c) => {
 app.route("/api", chat);
 app.route("/api", modelsRoute);
 app.route("/api", settings);
+app.route("/api", tasks);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
+
+startWorker();
 
 app.get("*", async (c) => {
   const path = c.req.path === "/" ? "/index.html" : c.req.path;
