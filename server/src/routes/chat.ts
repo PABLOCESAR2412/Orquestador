@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { config } from "../config";
 import { db } from "../db";
 import { runOpenCode, type RunResult } from "../runners/opencode";
+import { getPreferences } from "../preferences";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
 const chatWorkspace = join(config.dataDir, "chat-workspace");
@@ -73,7 +74,7 @@ chat.post("/conversations/:id/messages", async (c) => {
     return c.json({ error: "invalid_content" }, 400);
   }
 
-  const model = conv.model ?? DEFAULT_MODEL;
+  const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
 
   let result: RunResult;
   try {

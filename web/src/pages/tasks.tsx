@@ -1,8 +1,8 @@
 import { useState, type FormEvent, type KeyboardEvent } from "react";
-import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ModelInfo, type Task } from "../api";
 import { CostMeter, EffortControl } from "../components/controls";
+import { AppNav } from "../components/nav";
 import { ModelPicker } from "../components/model-picker";
 import { effortLabel, errorText, formatWhen, STATUS_LABEL } from "../lib/model";
 
@@ -61,14 +61,9 @@ export function TasksPage() {
   return (
     <main className="page">
       <header className="page-head">
-        <Link to="/chat" className="back">
-          Chat
-        </Link>
         <h1>Tareas</h1>
-        <Link to="/estado" className="back">
-          Estado
-        </Link>
       </header>
+      <AppNav />
 
       <form
         className="composer-box"

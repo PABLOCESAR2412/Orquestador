@@ -94,4 +94,30 @@ export const api = {
     request<Task>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
   cancelTask: (id: string) =>
     request<{ outcome: string }>(`/api/tasks/${id}/cancel`, { method: "POST", body: "{}" }),
+  getPreferences: () => request<Preferences>("/api/preferences"),
+  savePreferences: (patch: Partial<Preferences>) =>
+    request<Preferences>("/api/preferences", { method: "PUT", body: JSON.stringify(patch) }),
+  getAnalytics: (days: number) => request<Analytics>(`/api/analytics?days=${days}`),
+};
+
+export type Preferences = {
+  defaultModel: string | null;
+  defaultEffort: string | null;
+  monthlyBudgetUsd: number | null;
+  budgetAlertPercent: number;
+};
+
+export type Analytics = {
+  days: number;
+  totals: { calls: number; inputTokens: number; outputTokens: number; cost: number };
+  byDay: { day: string; cost: number; tokens: number; calls: number }[];
+  byModel: { model: string; cost: number; tokens: number; calls: number }[];
+  tasks: Record<TaskStatus, number>;
+  budget: {
+    monthlyUsd: number;
+    spentUsd: number;
+    percent: number;
+    alertPercent: number;
+    status: "ok" | "alerta" | "excedido";
+  } | null;
 };

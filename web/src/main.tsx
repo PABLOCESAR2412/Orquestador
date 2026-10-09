@@ -4,7 +4,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import "@fontsource-variable/instrument-sans";
 import { router } from "./router";
+import { captureInstallPrompt } from "./lib/install";
 import "./styles.css";
+
+captureInstallPrompt();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { Link } from "@tanstack/react-router";
+import { AppNav } from "../components/nav";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Conversation, type ModelInfo } from "../api";
 import { CostMeter, EffortControl } from "../components/controls";
@@ -157,14 +157,7 @@ export function ChatPage() {
           ))}
         </nav>
 
-        <div className="rail-foot">
-          <Link to="/tareas" className="foot-link">
-            Tareas
-          </Link>
-          <Link to="/estado" className="foot-link">
-            Estado
-          </Link>
-        </div>
+        <AppNav variant="rail" />
       </aside>
 
       {railOpen && <div className="scrim dim" onClick={() => setRailOpen(false)} />}

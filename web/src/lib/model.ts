@@ -70,6 +70,12 @@ export function errorText(err: unknown): string {
         return "El texto está vacío o supera los 10 000 caracteres.";
       case "task_not_cancellable":
         return "Esta tarea ya terminó.";
+      case "invalid_budget":
+        return "El presupuesto debe ser un número igual o mayor que cero.";
+      case "invalid_alert_percent":
+        return "El aviso debe estar entre 50 % y 100 %.";
+      case "unknown_field":
+        return "Hay un campo que la app no reconoce. Recarga la página.";
       case "conversation_not_found":
         return "Este chat ya no existe.";
       case "model_not_found":

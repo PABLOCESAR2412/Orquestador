@@ -77,6 +77,16 @@ const migrations: Migration[] = [
       CREATE INDEX tasks_status_created ON tasks (status, created_at);
     `,
   },
+  {
+    name: "004_settings",
+    sql: `
+      CREATE TABLE app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

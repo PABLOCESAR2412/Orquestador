@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { db } from "../db";
 import { validateSelection } from "../models";
 import { cancelTask, notifyWorker } from "../worker";
+import { getPreferences } from "../preferences";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
 const MAX_PROMPT = 10_000;
@@ -51,8 +52,10 @@ tasks.post("/tasks", async (c) => {
   const prompt = body.prompt?.trim() ?? "";
   if (!prompt || prompt.length > MAX_PROMPT) return c.json({ error: "invalid_prompt" }, 400);
 
-  const model = body.model || DEFAULT_MODEL;
-  const effort = body.effort || null;
+  // Sin modelo explícito, la tarea usa el modelo y esfuerzo por defecto de Ajustes.
+  const prefs = getPreferences();
+  const model = body.model || prefs.defaultModel || DEFAULT_MODEL;
+  const effort = body.model ? body.effort || null : body.effort || prefs.defaultEffort || null;
 
   try {
     const check = await validateSelection(model, effort);
