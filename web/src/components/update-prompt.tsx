@@ -64,15 +64,25 @@ export function UpdatePrompt() {
   }
 
   async function recargar() {
+    // Con service worker en espera, se activa y la página recarga sola.
     if (esperaActivacion) {
-      await updateServiceWorker(true);
-      return;
+      try {
+        await updateServiceWorker(true);
+        return;
+      } catch {
+        // Si falla, se sigue con la limpieza de abajo.
+      }
     }
-    // Si el service worker nuevo aún no está listo, se limpia la caché.
-    // Así la recarga no vuelve a mostrar la versión anterior.
-    const registros = (await navigator.serviceWorker?.getRegistrations()) ?? [];
-    await Promise.all(registros.map((r) => r.unregister()));
-    await Promise.all((await caches.keys()).map((k) => caches.delete(k)));
+    // Si el service worker nuevo aún no está listo, se limpia la caché para que
+    // la recarga no vuelva a mostrar la versión anterior. Sin acceso a service
+    // worker o caché (http por IP, no localhost) la limpieza no existe: igual se recarga.
+    try {
+      const registros = (await navigator.serviceWorker?.getRegistrations()) ?? [];
+      await Promise.all(registros.map((r) => r.unregister()));
+      if ("caches" in window) await Promise.all((await caches.keys()).map((k) => caches.delete(k)));
+    } catch {
+      // Sin acceso al service worker o a la caché: se recarga de todas formas.
+    }
     window.location.reload();
   }
 

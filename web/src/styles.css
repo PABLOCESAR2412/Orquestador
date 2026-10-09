@@ -36,9 +36,11 @@ button:disabled { opacity: 0.4; cursor: default; }
 :focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 
 /* Shell global: sidebar fija + contenido principal */
+/* La altura es la de la pantalla: el contenido principal hace scroll dentro de sí,
+   así el composer del chat puede quedarse fijo abajo. */
 .shell-root {
   display: flex;
-  min-height: 100dvh;
+  height: 100dvh;
   width: 100%;
   background: var(--bg);
 }
@@ -46,7 +48,9 @@ button:disabled { opacity: 0.4; cursor: default; }
 .shell-main {
   margin-left: var(--sidebar-w);
   width: calc(100% - var(--sidebar-w));
-  min-height: 100dvh;
+  height: 100dvh;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -397,7 +401,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .foot-link { color: var(--ink-2); font-size: 13px; text-decoration: none; }
 .foot-link:hover { color: var(--ink); }
 
-.thread { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+.thread { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; }
 .thread-head {
   display: flex;
   align-items: center;
@@ -1508,7 +1512,7 @@ button:disabled { opacity: 0.4; cursor: default; }
     height: 40px;
   }
   .thread-head { padding: 0 16px; }
-  .thread-model-btn { min-height: 40px; }
+  .empty-box .primary { min-height: 40px; padding: 9px 16px; }
   .messages { padding: 24px 16px 12px; }
   .composer { padding: 8px 12px max(12px, env(safe-area-inset-bottom)); }
   .picker {
@@ -1644,4 +1648,22 @@ button:disabled { opacity: 0.4; cursor: default; }
   }
   .thread-brand:hover { border-color: var(--line-strong); }
   .task-filter-row { flex-direction: column; align-items: stretch; }
+  .send { width: 40px; height: 40px; }
+  .sidebar-brand { min-height: 40px; align-items: center; }
 }
+
+/* Instalar la app desde el sidebar */
+.sidebar-install { padding: 0 12px 10px; }
+.sidebar-install-btn {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.sidebar-install-btn:hover { background: var(--surface-2); }
+.sidebar-install-hint { margin: 8px 2px 0; font-size: 12px; line-height: 1.5; color: var(--ink-2); }

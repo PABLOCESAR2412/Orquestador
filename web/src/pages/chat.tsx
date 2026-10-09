@@ -140,35 +140,7 @@ export function ChatPage() {
             telo
           </button>
 
-          <div className="thread-model-trigger-wrap">
-            <button
-              type="button"
-              className="thread-model-btn"
-              aria-haspopup="dialog"
-              aria-expanded={pickerOpen}
-              onClick={() => setPickerOpen((o) => !o)}
-            >
-              <span className="pill-dot is-live thread-model-dot" aria-hidden="true" />
-              <span className="thread-model-btn-name">
-                {modelInfo?.name ?? current?.model ?? "Predeterminado"}
-              </span>
-              {modelInfo && <CostMeter tier={modelInfo.costTier} />}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-
-            {pickerOpen && (
-              <ModelPicker
-                models={modelList}
-                currentId={current?.model ?? null}
-                onSelect={pickModel}
-                onClose={() => setPickerOpen(false)}
-              />
-            )}
-          </div>
-
-          <span className="thread-head-sep" aria-hidden="true">•</span>
+          {/* El modelo se elige en el composer, no en la cabecera */}
           <h1 className="thread-title">{current?.title ?? "Nuevo chat"}</h1>
         </div>
       </header>
