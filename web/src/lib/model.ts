@@ -102,6 +102,12 @@ export function errorText(err: unknown): string {
         return "Ese proyecto ya no existe.";
       case "invalid_project_name":
         return "El nombre del proyecto no puede tener más de 60 caracteres.";
+      case "clave_incorrecta":
+        return "La clave no es correcta.";
+      case "demasiados_intentos":
+        return "Demasiados intentos. Espera 15 minutos antes de volver a intentar.";
+      case "login_required":
+        return "Tu sesión terminó. Vuelve a entrar.";
     }
   }
   return "Algo salió mal. Intenta de nuevo.";

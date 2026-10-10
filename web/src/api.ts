@@ -81,6 +81,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
   if (!res.ok) {
+    // Sin sesión, la app va a la pantalla de entrada (salvo la propia petición de entrar).
+    if (res.status === 401 && !path.startsWith("/api/login") && location.pathname !== "/entrar") {
+      location.assign("/entrar");
+    }
     const body = (await res.json().catch(() => ({}))) as { error?: string; detail?: string };
     throw new ApiError(res.status, body.error ?? `http_${res.status}`, body.detail);
   }
@@ -89,6 +93,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<{ ok: boolean; time: string }>("/api/health"),
+  sesion: () => request<{ ok: boolean }>("/api/sesion"),
+  login: (clave: string) =>
+    request<{ ok: boolean }>("/api/login", { method: "POST", body: JSON.stringify({ clave }) }),
+  logout: () => request<{ ok: boolean }>("/api/logout", { method: "POST", body: "{}" }),
   listConversations: () => request<Conversation[]>("/api/conversations"),
   createConversation: (projectId?: string | null) =>
     request<Conversation>("/api/conversations", {

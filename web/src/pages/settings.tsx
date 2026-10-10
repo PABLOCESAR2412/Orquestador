@@ -250,6 +250,7 @@ export function SettingsPage() {
       <div className="settings">
         <ProyectosPanel />
         <ProveedoresPanel />
+        <SesionPanel />
       </div>
     </main>
   );
@@ -402,6 +403,43 @@ function ProveedoresPanel() {
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+// Cierra la sesión solo en este navegador: la cookie es sin estado en el servidor.
+function SesionPanel() {
+  const [saliendo, setSaliendo] = useState(false);
+
+  const salir = async () => {
+    setSaliendo(true);
+    try {
+      await api.logout();
+    } finally {
+      location.assign("/entrar");
+    }
+  };
+
+  return (
+    <section className="panel">
+      <div className="card-top">
+        <div className="panel-title-with-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+          <h2>Sesión</h2>
+        </div>
+      </div>
+      <p className="muted-note">
+        Cierra la sesión en este navegador. Para cerrar las sesiones de todos los dispositivos, cambia TELO_CLAVE en el servidor.
+      </p>
+      <div className="savebar">
+        <button type="button" className="ghost sesion-salir" onClick={() => void salir()} disabled={saliendo}>
+          Cerrar sesión
+        </button>
+      </div>
     </section>
   );
 }
