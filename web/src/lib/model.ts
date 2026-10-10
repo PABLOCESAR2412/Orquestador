@@ -86,6 +86,28 @@ export function errorText(err: unknown): string {
         return "Elige un modelo antes de ajustar el esfuerzo.";
       case "models_unavailable":
         return "No se pudo cargar la lista de modelos.";
+      case "projects_root_not_configured":
+        return "Los proyectos aún no están configurados en el servidor.";
+      case "invalid_project_path":
+        return "Escribe la carpeta del proyecto.";
+      case "project_path_not_found":
+        return "Esa carpeta no existe dentro de la carpeta de proyectos del servidor.";
+      case "project_path_outside_root":
+        return "La carpeta debe estar dentro de la carpeta de proyectos del servidor.";
+      case "project_path_not_directory":
+        return "Esa ruta es un archivo, no una carpeta.";
+      case "project_exists":
+        return "Ese proyecto ya está registrado.";
+      case "project_not_found":
+        return "Ese proyecto ya no existe.";
+      case "invalid_project_name":
+        return "El nombre del proyecto no puede tener más de 60 caracteres.";
+      case "clave_incorrecta":
+        return "La clave no es correcta.";
+      case "demasiados_intentos":
+        return "Demasiados intentos. Espera 15 minutos antes de volver a intentar.";
+      case "login_required":
+        return "Tu sesión terminó. Vuelve a entrar.";
     }
   }
   return "Algo salió mal. Intenta de nuevo.";

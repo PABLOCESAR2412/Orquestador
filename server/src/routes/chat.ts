@@ -5,6 +5,7 @@ import { config } from "../config";
 import { db } from "../db";
 import { runOpenCode, type RunResult } from "../runners/opencode";
 import { getPreferences } from "../preferences";
+import { projectRepoPath } from "./projects";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
 const chatWorkspace = join(config.dataDir, "chat-workspace");
@@ -15,12 +16,15 @@ type ConversationRow = {
   model: string | null;
   effort: string | null;
   runner_session_id: string | null;
+  repo_path: string | null;
 };
 type Conversation = {
   id: string;
   title: string;
   model: string | null;
   effort: string | null;
+  project_id: string | null;
+  project_name: string | null;
   created_at: string;
 };
 type Message = {
@@ -36,18 +40,28 @@ export const chat = new Hono();
 chat.get("/conversations", (c) => {
   const rows = db
     .query<Conversation, []>(
-      "SELECT id, title, model, effort, created_at FROM conversations ORDER BY created_at DESC, rowid DESC",
+      "SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name, c.created_at FROM conversations c LEFT JOIN projects p ON p.id = c.project_id ORDER BY c.created_at DESC, c.rowid DESC",
     )
     .all();
   return c.json(rows);
 });
 
+// POST /api/conversations  body: { title?, projectId? }
+// Con projectId, el chat trabaja dentro de la carpeta de ese proyecto.
 chat.post("/conversations", async (c) => {
-  const body = await c.req.json<{ title?: string }>().catch(() => ({}) as { title?: string });
+  const body = await c.req
+    .json<{ title?: string; projectId?: string | null }>()
+    .catch(() => ({}) as { title?: string; projectId?: string | null });
   const id = crypto.randomUUID();
   const title = body.title?.trim() || "Nuevo chat";
-  db.query("INSERT INTO conversations (id, title) VALUES (?, ?)").run(id, title);
-  return c.json({ id, title, created_at: new Date().toISOString() }, 201);
+  const projectId = body.projectId || null;
+  if (projectId && !projectRepoPath(projectId)) return c.json({ error: "project_not_found" }, 400);
+  db.query("INSERT INTO conversations (id, title, project_id) VALUES (?, ?, ?)").run(
+    id,
+    title,
+    projectId,
+  );
+  return c.json({ id, title, project_id: projectId, created_at: new Date().toISOString() }, 201);
 });
 
 chat.get("/conversations/:id/messages", (c) => {
@@ -63,7 +77,7 @@ chat.post("/conversations/:id/messages", async (c) => {
   const conversationId = c.req.param("id");
   const conv = db
     .query<ConversationRow, [string]>(
-      "SELECT id, model, effort, runner_session_id FROM conversations WHERE id = ?",
+      "SELECT c.id, c.model, c.effort, c.runner_session_id, p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id = c.project_id WHERE c.id = ?",
     )
     .get(conversationId);
   if (!conv) return c.json({ error: "conversation_not_found" }, 404);
@@ -83,7 +97,7 @@ chat.post("/conversations/:id/messages", async (c) => {
       model,
       variant: conv.effort ?? undefined,
       sessionId: conv.runner_session_id,
-      cwd: chatWorkspace,
+      cwd: conv.repo_path ?? chatWorkspace,
       timeoutMs: 180_000,
     });
   } catch (err) {

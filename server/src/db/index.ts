@@ -87,6 +87,12 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    name: "005_tareas_proyecto",
+    sql: `
+      ALTER TABLE tasks ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

@@ -8,7 +8,25 @@ import { settings } from "./routes/settings";
 import { tasks } from "./routes/tasks";
 import { preferences } from "./routes/preferences";
 import { analytics } from "./routes/analytics";
+import { projects } from "./routes/projects";
+import { providers } from "./routes/providers";
 import { startWorker } from "./worker";
+import { auth } from "./routes/auth";
+import { COOKIE_SESION, MIN_CARACTERES_CLAVE, sesionValida } from "./auth";
+import { getCookie } from "hono/cookie";
+
+// Sin clave, la API quedaría abierta a quien tenga la URL. Por eso el servidor no arranca sin ella.
+if (!config.clave && !config.sinClave) {
+  console.error(`Falta TELO_CLAVE en el entorno del servidor (mínimo ${MIN_CARACTERES_CLAVE} caracteres).`);
+  process.exit(1);
+}
+if (config.clave && config.clave.length < MIN_CARACTERES_CLAVE) {
+  console.error(`TELO_CLAVE debe tener al menos ${MIN_CARACTERES_CLAVE} caracteres.`);
+  process.exit(1);
+}
+if (config.sinClave) {
+  console.warn("TELO_SIN_CLAVE=1: la API no pide clave. Úsalo solo en desarrollo local.");
+}
 
 const webDist = resolve(import.meta.dir, "../../web/dist");
 const indexFile = join(webDist, "index.html");
@@ -20,12 +38,23 @@ app.get("/api/health", (c) => {
   return c.json({ ok: row?.ok === 1, time: new Date().toISOString() });
 });
 
+// Todo /api exige sesión, salvo el estado del servidor y las rutas de entrada y salida.
+const PUBLICAS = new Set(["/api/health", "/api/login", "/api/logout", "/api/sesion"]);
+app.use("/api/*", async (c, next) => {
+  if (PUBLICAS.has(c.req.path)) return next();
+  if (!sesionValida(getCookie(c, COOKIE_SESION))) return c.json({ error: "login_required" }, 401);
+  return next();
+});
+
+app.route("/api", auth);
 app.route("/api", chat);
 app.route("/api", modelsRoute);
 app.route("/api", settings);
 app.route("/api", tasks);
 app.route("/api", preferences);
 app.route("/api", analytics);
+app.route("/api", projects);
+app.route("/api", providers);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
 startWorker();

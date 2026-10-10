@@ -1,7 +1,8 @@
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Conversation } from "../api";
+import { isIOS, isStandalone, useInstallPrompt } from "../lib/install";
 import { AppNav } from "./nav";
 import { useShell } from "./shell-context";
 
@@ -28,8 +29,12 @@ export function Shell({ children }: { children: ReactNode }) {
     closeDrawer,
     selectedConversationId,
     setSelectedConversationId,
-    triggerNewTask,
   } = useShell();
+
+  // Instalar la app: en Chrome/Edge con el evento del navegador; en iPhone, con instrucciones.
+  const install = useInstallPrompt();
+  const [pistaIOS, setPistaIOS] = useState(false);
+  const mostrarInstalar = !isStandalone() && (install.canInstall || isIOS());
 
   const navigate = useNavigate();
   const routerState = useRouterState();
@@ -107,21 +112,6 @@ export function Shell({ children }: { children: ReactNode }) {
             </button>
           </div>
 
-          <button
-            type="button"
-            className="sidebar-new-task"
-            onClick={triggerNewTask}
-            title="Crear nueva tarea (⌘N)"
-          >
-            <span className="sidebar-new-task-left">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              <span>Nueva tarea</span>
-            </span>
-            <kbd className="sidebar-kbd">⌘N</kbd>
-          </button>
-
           <AppNav variant="sidebar" onItemClick={closeDrawer} />
 
           <div className="sidebar-section">
@@ -161,6 +151,23 @@ export function Shell({ children }: { children: ReactNode }) {
             </div>
           </div>
         </div>
+
+        {mostrarInstalar && (
+          <div className="sidebar-install">
+            <button
+              type="button"
+              className="sidebar-install-btn"
+              onClick={() => (install.canInstall ? void install.promptInstall() : setPistaIOS((p) => !p))}
+            >
+              Instalar Telo
+            </button>
+            {pistaIOS && !install.canInstall && (
+              <p className="sidebar-install-hint">
+                En iPhone: toca Compartir y luego «Agregar a pantalla de inicio».
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="sidebar-foot">
           <div className="sidebar-foot-card">
