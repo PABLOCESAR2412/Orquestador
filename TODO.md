@@ -7,7 +7,7 @@ Ordenado por prioridad. Marca `[x]` solo cuando esté verificado.
 - [x] Recuperar el acceso SSH al VM. El bloqueo era la regla de entrada del puerto 22, que no permitía la IP actual de la PC.
 - [x] Merge del PR `feat/proyectos-proveedores` (PR #10).
 - [x] `TELO_CLAVE` en `/etc/orquestador/orquestador.env` (root, permisos 600), cargado con un override de systemd (`EnvironmentFile=`). Sin clave, el servicio no arranca.
-- [ ] Confirmar `TELO_PROYECTOS_DIR` en el mismo archivo de entorno y que la carpeta `/home/orquestador/proyectos` existe.
+- [x] `TELO_PROYECTOS_DIR=/home/orquestador/proyectos` en el archivo de entorno, la carpeta existe y el panel de Proyectos en Ajustes carga sin errores.
 - [x] Quick Tunnel abierto solo después del merge y con el login activo.
 - [x] Verificado en el VM: `GET /api/health` responde 200 y `GET /api/conversations` responde 401 sin sesión.
 - [ ] Decidir si el servidor escucha solo en `127.0.0.1` (`hostname` en `server/src/index.ts`). Pospuesto. Hoy escucha en todas las interfaces; Azure solo deja SSH abierto.
