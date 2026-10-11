@@ -5,6 +5,9 @@ export type Conversation = {
   effort: string | null;
   project_id?: string | null;
   project_name?: string | null;
+  pinned_at?: string | null;
+  // Hay un mensaje en curso (puede venir de otro dispositivo).
+  ocupada?: boolean;
   created_at: string;
 };
 
@@ -12,6 +15,7 @@ export type Project = {
   id: string;
   name: string;
   repo_path: string;
+  pinned_at?: string | null;
   created_at: string;
 };
 
@@ -60,9 +64,51 @@ export type Task = {
   result: string | null;
   error: string | null;
   project_id?: string | null;
+  // Tarea creada como reintento de otra.
+  retry_of?: string | null;
+  // Tiene la sesión del agente: puede continuar donde quedó.
+  reanudable: boolean;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+};
+
+export type TaskEventKind =
+  | "creada"
+  | "iniciada"
+  | "sesion_asignada"
+  | "cancelacion_pedida"
+  | "interrumpida"
+  | "reanudada"
+  | "reintento_creado"
+  | "terminada";
+
+export type TaskEvent = {
+  id: number;
+  task_id: string;
+  kind: TaskEventKind;
+  detail: string | null;
+  created_at: string;
+};
+
+export type QuotaAccount = {
+  id: string;
+  label: string;
+  anotadoUsd: number;
+  limiteUsd: number | null;
+  saldoEstimadoUsd: number;
+  usoDesdeAnotacionUsd: number;
+  anotadoEn: string;
+  nota: string | null;
+  precision: "estimado";
+};
+
+export type QuotaProvider = {
+  id: string;
+  nombre: string;
+  gastoMesUsd: number;
+  cuentas: QuotaAccount[];
+  precision: "estimado" | "sin_saldo";
 };
 
 export class ApiError extends Error {
@@ -110,14 +156,33 @@ export const api = {
       body: JSON.stringify({ content }),
     }),
   listModels: () => request<{ models: ModelInfo[]; total: number }>("/api/models?all=1"),
-  updateConversation: (id: string, patch: { model?: string | null; effort?: string | null }) =>
+  updateConversation: (
+    id: string,
+    patch: { model?: string | null; effort?: string | null; title?: string; pinned?: boolean },
+  ) =>
     request<{
       id: string;
+      title: string;
       model: string | null;
       effort: string | null;
+      pinned_at: string | null;
       costTier: CostTier | null;
       costWarning: string | null;
     }>(`/api/conversations/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteConversation: (id: string) =>
+    request<{ ok: boolean }>(`/api/conversations/${id}`, { method: "DELETE" }),
+  updateProject: (id: string, patch: { name?: string; pinned?: boolean }) =>
+    request<Project>(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  listTaskEvents: (id: string) => request<TaskEvent[]>(`/api/tasks/${id}/eventos`),
+  resumeTask: (id: string) => request<Task>(`/api/tasks/${id}/reanudar`, { method: "POST", body: "{}" }),
+  retryTask: (id: string) => request<Task>(`/api/tasks/${id}/reintentar`, { method: "POST", body: "{}" }),
+  listQuotas: () =>
+    request<{ generado: string; proveedores: QuotaProvider[] }>("/api/cuotas"),
+  createQuota: (body: { provider: string; label: string; remainingUsd: number; limitUsd?: number | null }) =>
+    request<{ id: string }>("/api/cuotas", { method: "POST", body: JSON.stringify(body) }),
+  updateQuota: (id: string, body: { remainingUsd: number; limitUsd?: number | null }) =>
+    request<{ ok: boolean }>(`/api/cuotas/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteQuota: (id: string) => request<{ ok: boolean }>(`/api/cuotas/${id}`, { method: "DELETE" }),
   listTasks: () => request<Task[]>("/api/tasks?limit=50"),
   createTask: (body: {
     prompt: string;

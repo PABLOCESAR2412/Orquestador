@@ -1,3 +1,5 @@
+import { prefijoAislamiento } from "./aislamiento";
+
 export type Usage = { input: number; output: number; reasoning: number; cacheRead: number; cost: number };
 export type RunResult = { text: string; sessionId: string | null; usage: Usage | null };
 
@@ -55,6 +57,34 @@ function terminarGrupo(pgid: number) {
   setTimeout(() => enviar("SIGKILL"), 3_000).unref();
 }
 
+// Lee una tubería línea a línea mientras el proceso sigue corriendo.
+// Devuelve todo el contenido al terminar.
+async function leerLineas(
+  flujo: ReadableStream<Uint8Array>,
+  alLeerLinea: (linea: string) => void,
+): Promise<string> {
+  const lector = flujo.getReader();
+  const decodificador = new TextDecoder();
+  let todo = "";
+  let pendiente = "";
+  for (;;) {
+    const { done, value } = await lector.read();
+    if (done) break;
+    const texto = decodificador.decode(value, { stream: true });
+    todo += texto;
+    pendiente += texto;
+    let corte = pendiente.indexOf("\n");
+    while (corte !== -1) {
+      alLeerLinea(pendiente.slice(0, corte));
+      pendiente = pendiente.slice(corte + 1);
+      corte = pendiente.indexOf("\n");
+    }
+  }
+  pendiente += decodificador.decode();
+  if (pendiente) alLeerLinea(pendiente);
+  return todo;
+}
+
 export async function runOpenCode(opts: {
   prompt: string;
   model: string;
@@ -63,7 +93,12 @@ export async function runOpenCode(opts: {
   cwd: string;
   timeoutMs?: number;
   signal?: AbortSignal;
+  // Se llama en cuanto el agente informa su sesión, aunque la ejecución siga en curso.
+  onSesion?: (sessionId: string) => void;
 }): Promise<RunResult> {
+  // Lanza AislamientoError si la carpeta no es permitida o falta bubblewrap.
+  const aislamiento = prefijoAislamiento(opts.cwd);
+
   const args = ["opencode", "run", "--format", "json", "-m", opts.model];
   if (opts.variant) args.push("--variant", opts.variant);
   if (opts.sessionId) args.push("-s", opts.sessionId);
@@ -71,7 +106,7 @@ export async function runOpenCode(opts: {
 
   // `setsid` deja al agente como líder de su propio grupo (pgid == pid),
   // para poder cerrar todo su árbol de procesos de una vez.
-  const proc = Bun.spawn(["setsid", ...args], {
+  const proc = Bun.spawn(["setsid", ...aislamiento, ...args], {
     cwd: opts.cwd,
     env: entornoDelAgente(),
     stdout: "pipe",
@@ -90,11 +125,25 @@ export async function runOpenCode(opts: {
     else opts.signal?.addEventListener("abort", onAbort, { once: true });
   });
 
+  let sesionAvisada: string | null = null;
+  const alLeerLinea = (linea: string) => {
+    if (!opts.onSesion || !linea.includes("sessionID")) return;
+    try {
+      const ev = JSON.parse(linea) as OpenCodeEvent;
+      if (ev.sessionID && ev.sessionID !== sesionAvisada) {
+        sesionAvisada = ev.sessionID;
+        opts.onSesion(ev.sessionID);
+      }
+    } catch {
+      // línea incompleta o que no es JSON: se ignora
+    }
+  };
+
   let stdout: string, stderr: string, code: number;
   try {
     [stdout, stderr, code] = await Promise.race([
       Promise.all([
-        new Response(proc.stdout).text(),
+        leerLineas(proc.stdout, alLeerLinea),
         new Response(proc.stderr).text(),
         proc.exited,
       ]),

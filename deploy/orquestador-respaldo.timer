@@ -1,0 +1,13 @@
+# Respaldo diario a las 03:30 UTC, con hasta 5 minutos de azar.
+# Persistent=true: si el VM estaba apagado a esa hora, el respaldo corre al arrancar.
+[Unit]
+Description=Respaldo diario de Telo
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+RandomizedDelaySec=300
+Persistent=true
+Unit=orquestador-respaldo.service
+
+[Install]
+WantedBy=timers.target

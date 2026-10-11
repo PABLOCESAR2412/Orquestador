@@ -122,6 +122,49 @@ const migrations: Migration[] = [
       CREATE INDEX tasks_status_created ON tasks (status, created_at);
     `,
   },
+  {
+    // Anclar: un chat o proyecto anclado tiene fecha; sin fecha, no está anclado.
+    name: "007_gestion_chats",
+    sql: `
+      ALTER TABLE conversations ADD COLUMN pinned_at TEXT;
+      ALTER TABLE projects ADD COLUMN pinned_at TEXT;
+    `,
+  },
+  {
+    // Cuota o saldo que el usuario anota por cuenta o clave. El saldo restante se
+    // recalcula restando el uso registrado desde `updated_at`.
+    name: "008_cuotas",
+    sql: `
+      CREATE TABLE quota_accounts (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        label TEXT NOT NULL,
+        remaining_usd REAL NOT NULL,
+        limit_usd REAL,
+        note TEXT,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX quota_accounts_provider ON quota_accounts (provider);
+    `,
+  },
+  {
+    // Historial por tarea (para depurar y auditar) y la sesión del agente, para reanudar.
+    // retry_of apunta a la tarea original cuando una tarea es un reintento.
+    name: "009_eventos_tareas",
+    sql: `
+      CREATE TABLE task_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        detail TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX task_events_task ON task_events (task_id, id);
+      ALTER TABLE tasks ADD COLUMN provider_session_id TEXT;
+      ALTER TABLE tasks ADD COLUMN retry_of TEXT;
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

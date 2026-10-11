@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../config";
 import { db } from "../db";
+import { AislamientoError } from "../runners/aislamiento";
 import { runOpenCode, type RunResult } from "../runners/opencode";
 import { getPreferences } from "../preferences";
 import { projectRepoPath } from "./projects";
@@ -10,6 +11,9 @@ import { projectRepoPath } from "./projects";
 const DEFAULT_MODEL = "opencode/big-pickle";
 const chatWorkspace = join(config.dataDir, "chat-workspace");
 mkdirSync(chatWorkspace, { recursive: true });
+
+// Chats con un mensaje en curso. Un chat ocupado no acepta otro envío (desde otro dispositivo, por ejemplo).
+const enCurso = new Set<string>();
 
 type ConversationRow = {
   id: string;
@@ -25,6 +29,7 @@ type Conversation = {
   effort: string | null;
   project_id: string | null;
   project_name: string | null;
+  pinned_at: string | null;
   created_at: string;
 };
 type Message = {
@@ -37,13 +42,14 @@ type Message = {
 
 export const chat = new Hono();
 
+// Anclados primero (el más reciente anclado, arriba); luego los demás por fecha.
 chat.get("/conversations", (c) => {
   const rows = db
     .query<Conversation, []>(
-      "SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name, c.created_at FROM conversations c LEFT JOIN projects p ON p.id = c.project_id ORDER BY c.created_at DESC, c.rowid DESC",
+      "SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name, c.pinned_at, c.created_at FROM conversations c LEFT JOIN projects p ON p.id = c.project_id ORDER BY (c.pinned_at IS NULL), c.pinned_at DESC, c.created_at DESC, c.rowid DESC",
     )
     .all();
-  return c.json(rows);
+  return c.json(rows.map((r) => ({ ...r, ocupada: enCurso.has(r.id) })));
 });
 
 // POST /api/conversations  body: { title?, projectId? }
@@ -62,6 +68,15 @@ chat.post("/conversations", async (c) => {
     projectId,
   );
   return c.json({ id, title, project_id: projectId, created_at: new Date().toISOString() }, 201);
+});
+
+// DELETE /api/conversations/:id  -> borra el chat y sus mensajes. El uso registrado se conserva para las analíticas.
+chat.delete("/conversations/:id", (c) => {
+  const id = c.req.param("id");
+  if (enCurso.has(id)) return c.json({ error: "conversation_busy" }, 409);
+  const result = db.query("DELETE FROM conversations WHERE id = ?").run(id);
+  if (result.changes === 0) return c.json({ error: "conversation_not_found" }, 404);
+  return c.json({ ok: true });
 });
 
 chat.get("/conversations/:id/messages", (c) => {
@@ -87,10 +102,28 @@ chat.post("/conversations/:id/messages", async (c) => {
   if (!content || content.length > 10_000) {
     return c.json({ error: "invalid_content" }, 400);
   }
+  if (enCurso.has(conversationId)) return c.json({ error: "conversation_busy" }, 409);
 
   const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
 
+  // El mensaje del usuario se guarda antes de ejecutar: así aparece en los demás dispositivos
+  // y no se pierde si el agente falla.
+  const userMsg = { id: crypto.randomUUID(), role: "user" as const, content };
+  db.transaction(() => {
+    db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)").run(
+      userMsg.id,
+      conversationId,
+      userMsg.role,
+      userMsg.content,
+    );
+    db.query("UPDATE conversations SET title = ? WHERE id = ? AND title = 'Nuevo chat'").run(
+      content.slice(0, 60),
+      conversationId,
+    );
+  })();
+
   let result: RunResult;
+  enCurso.add(conversationId);
   try {
     result = await runOpenCode({
       prompt: content,
@@ -101,14 +134,18 @@ chat.post("/conversations/:id/messages", async (c) => {
       timeoutMs: 180_000,
     });
   } catch (err) {
+    if (err instanceof AislamientoError) {
+      return c.json({ error: err.code, message: err.message }, 503);
+    }
     const detail = String(err);
     if (detail.includes("Insufficient account funds")) {
       return c.json({ error: "insufficient_funds", message: "La cuenta de OpenCode Zen no tiene saldo para este modelo. Usa un modelo gratis o agrega saldo." }, 402);
     }
     return c.json({ error: "runner_failed", detail }, 502);
+  } finally {
+    enCurso.delete(conversationId);
   }
 
-  const userMsg = { id: crypto.randomUUID(), role: "user" as const, content };
   const assistantMsg = {
     id: crypto.randomUUID(),
     role: "assistant" as const,
@@ -116,16 +153,9 @@ chat.post("/conversations/:id/messages", async (c) => {
   };
 
   db.transaction(() => {
-    const insert = db.query(
+    db.query(
       "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)",
-    );
-    insert.run(userMsg.id, conversationId, userMsg.role, userMsg.content);
-    insert.run(assistantMsg.id, conversationId, assistantMsg.role, assistantMsg.content);
-
-    db.query("UPDATE conversations SET title = ? WHERE id = ? AND title = 'Nuevo chat'").run(
-      content.slice(0, 60),
-      conversationId,
-    );
+    ).run(assistantMsg.id, conversationId, assistantMsg.role, assistantMsg.content);
 
     if (result.sessionId) {
       db.query("UPDATE conversations SET runner_session_id = ?, model = ? WHERE id = ?").run(

@@ -280,6 +280,17 @@ function ProyectosPanel() {
     },
   });
 
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [nombreEditado, setNombreEditado] = useState("");
+  const editar = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: { name?: string; pinned?: boolean } }) =>
+      api.updateProject(id, body),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+
   return (
     <section className="panel">
       <div className="card-top">
@@ -300,18 +311,69 @@ function ProyectosPanel() {
         <ul className="project-list">
           {proyectos.data.map((p) => (
             <li key={p.id} className="project-row">
-              <div className="project-info">
-                <span className="project-name">{p.name}</span>
-                <span className="project-path">{p.repo_path}</span>
-              </div>
-              <button
-                type="button"
-                className="ghost task-mini-btn"
-                onClick={() => quitar.mutate(p.id)}
-                disabled={quitar.isPending}
-              >
-                Quitar
-              </button>
+              {editandoId === p.id ? (
+                <form
+                  className="conv-rename"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const nuevo = nombreEditado.trim();
+                    if (nuevo && nuevo !== p.name) editar.mutate({ id: p.id, body: { name: nuevo } });
+                    setEditandoId(null);
+                  }}
+                >
+                  <input
+                    className="conv-rename-input"
+                    aria-label="Nuevo nombre del proyecto"
+                    value={nombreEditado}
+                    maxLength={60}
+                    onChange={(e) => setNombreEditado(e.target.value)}
+                  />
+                  <div className="conv-rename-acciones">
+                    <button type="submit" className="primary task-mini-btn">Guardar</button>
+                    <button type="button" className="ghost task-mini-btn" onClick={() => setEditandoId(null)}>
+                      Cancelar
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  <div className="project-info">
+                    <span className="project-name">
+                      {p.name}
+                      {p.pinned_at && <span className="project-anclado"> · anclado</span>}
+                    </span>
+                    <span className="project-path">{p.repo_path}</span>
+                  </div>
+                  <div className="project-acciones">
+                    <button
+                      type="button"
+                      className="ghost task-mini-btn"
+                      onClick={() => {
+                        setEditandoId(p.id);
+                        setNombreEditado(p.name);
+                      }}
+                    >
+                      Renombrar
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost task-mini-btn"
+                      onClick={() => editar.mutate({ id: p.id, body: { pinned: !p.pinned_at } })}
+                      disabled={editar.isPending}
+                    >
+                      {p.pinned_at ? "Quitar ancla" : "Anclar"}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost task-mini-btn"
+                      onClick={() => quitar.mutate(p.id)}
+                      disabled={quitar.isPending}
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                </>
+              )}
             </li>
           ))}
         </ul>

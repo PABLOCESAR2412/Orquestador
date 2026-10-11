@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "./config";
 import { db } from "./db";
+import { registrarEvento } from "./eventos";
 import { runOpenCode, type Usage } from "./runners/opencode";
 
 // Un solo worker: ejecuta una tarea a la vez, en orden de llegada.
@@ -9,6 +10,7 @@ import { runOpenCode, type Usage } from "./runners/opencode";
 // el teléfono o el navegador estén apagados.
 
 const TASK_TIMEOUT_MS = 30 * 60_000;
+const MENSAJE_INTERRUMPIDA = "El servidor se reinició mientras la tarea corría. Puedes reanudarla o reintentarla.";
 
 const controllers = new Map<string, AbortController>();
 const cancelRequested = new Set<string>();
@@ -20,6 +22,7 @@ type QueuedTask = {
   model: string;
   effort: string | null;
   repo_path: string | null;
+  provider_session_id: string | null;
 };
 
 // Despierta al worker cuando entra una tarea nueva.
@@ -30,7 +33,7 @@ export function notifyWorker() {
 function nextQueued(): QueuedTask | null {
   return db
     .query<QueuedTask, []>(
-      "SELECT t.id, t.prompt, t.model, t.effort, p.repo_path AS repo_path FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC LIMIT 1",
+      "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, p.repo_path AS repo_path FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC LIMIT 1",
     )
     .get();
 }
@@ -40,9 +43,12 @@ function finish(
   status: "done" | "failed" | "cancelled",
   fields: { result?: string; error?: string },
 ) {
-  db.query(
-    "UPDATE tasks SET status = ?, result = ?, error = ?, finished_at = datetime('now') WHERE id = ?",
-  ).run(status, fields.result ?? null, fields.error ?? null, id);
+  db.transaction(() => {
+    db.query(
+      "UPDATE tasks SET status = ?, result = ?, error = ?, finished_at = datetime('now') WHERE id = ?",
+    ).run(status, fields.result ?? null, fields.error ?? null, id);
+    registrarEvento(id, "terminada", fields.error ? `${status}: ${fields.error}` : status);
+  })();
 }
 
 function recordUsage(model: string, u: Usage) {
@@ -69,8 +75,13 @@ async function runTask(task: QueuedTask) {
   const cwd = task.repo_path ?? workspace;
 
   db.query(
-    "UPDATE tasks SET status = 'running', started_at = datetime('now'), workspace = ? WHERE id = ?",
+    "UPDATE tasks SET status = 'running', started_at = datetime('now'), finished_at = NULL, workspace = ? WHERE id = ?",
   ).run(cwd, task.id);
+  registrarEvento(
+    task.id,
+    "iniciada",
+    `Modelo ${task.model}${task.provider_session_id ? " · continúa la sesión anterior" : ""}`,
+  );
 
   const controller = new AbortController();
   controllers.set(task.id, controller);
@@ -85,9 +96,17 @@ async function runTask(task: QueuedTask) {
       prompt: task.prompt,
       model: task.model,
       variant: task.effort ?? undefined,
+      sessionId: task.provider_session_id,
       cwd,
       timeoutMs: TASK_TIMEOUT_MS,
       signal: controller.signal,
+      // Guarda la sesión apenas aparece, para poder reanudar si el servidor se reinicia a mitad.
+      onSesion: (sid) => {
+        if (sid === task.provider_session_id) return;
+        task.provider_session_id = sid;
+        db.query("UPDATE tasks SET provider_session_id = ? WHERE id = ?").run(sid, task.id);
+        registrarEvento(task.id, "sesion_asignada", sid);
+      },
     });
     finish(task.id, "done", { result: result.text });
     if (result.usage) recordUsage(task.model, result.usage);
@@ -97,7 +116,7 @@ async function runTask(task: QueuedTask) {
     } else if (timedOut) {
       finish(task.id, "failed", { error: "La tarea superó los 30 minutos." });
     } else {
-      finish(task.id, "failed", { error: String(err) });
+      finish(task.id, "failed", { error: err instanceof Error ? err.message : String(err) });
     }
   } finally {
     clearTimeout(timer);
@@ -130,9 +149,13 @@ async function loop() {
 export function startWorker() {
   // Una tarea "running" al arrancar quedó sin proceso por un reinicio: se marca
   // como interrumpida, no como fallida, para que el usuario decida qué hacer.
-  db.query(
-    "UPDATE tasks SET status = 'interrupted', error = ? WHERE status = 'running'",
-  ).run("El servidor se reinició mientras la tarea corría. Puedes cancelarla.");
+  db.transaction(() => {
+    const enCurso = db.query<{ id: string }, []>("SELECT id FROM tasks WHERE status = 'running'").all();
+    db.query("UPDATE tasks SET status = 'interrupted', error = ? WHERE status = 'running'").run(
+      MENSAJE_INTERRUMPIDA,
+    );
+    for (const t of enCurso) registrarEvento(t.id, "interrumpida", MENSAJE_INTERRUMPIDA);
+  })();
   void loop();
 }
 
@@ -149,6 +172,7 @@ export function cancelTask(id: string): CancelOutcome {
   }
   if (row.status === "running") {
     cancelRequested.add(id);
+    registrarEvento(id, "cancelacion_pedida");
     controllers.get(id)?.abort();
     return "cancelling";
   }

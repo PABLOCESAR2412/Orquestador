@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Conversation, type ModelInfo } from "../api";
+import { api, ApiError, type Conversation, type ModelInfo } from "../api";
 import { CostMeter, EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
+import { CuotasPanel } from "../components/cuotas-panel";
 import { errorText, formatWhen } from "../lib/model";
 import { useShell } from "../components/shell-context";
 
 type Patch = { model?: string | null; effort?: string | null };
+
+// Errores en los que el servidor ya guardó el mensaje del usuario (no hay que reenviarlo).
+const GUARDADO_EN_ERROR = ["runner_failed", "insufficient_funds", "aislamiento_no_disponible"];
 
 export function ChatPage() {
   const qc = useQueryClient();
@@ -22,6 +26,7 @@ export function ChatPage() {
   const [pickerOpen, setPickerOpen] = useState(false);
   // "" significa sin proyecto: el chat usa su carpeta temporal.
   const [projectId, setProjectId] = useState("");
+  const [usoAbierto, setUsoAbierto] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -45,10 +50,12 @@ export function ChatPage() {
 
   const proyectos = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
 
+  // Cada 4 s mientras la pestaña está visible: los mensajes que llegan desde otro dispositivo aparecen solos.
   const messages = useQuery({
     queryKey: ["messages", selectedId],
     queryFn: () => api.listMessages(selectedId!),
     enabled: !!selectedId,
+    refetchInterval: 4_000,
   });
 
   const current: Conversation | null =
@@ -92,6 +99,13 @@ export function ChatPage() {
     mutationFn: (content: string) => api.sendMessage(selectedId!, content),
     onSuccess: () => {
       setDraft("");
+    },
+    // El servidor guarda el mensaje antes de responder: aunque el agente falle, el mensaje ya está en el chat.
+    onError: (err) => {
+      const guardado = err instanceof ApiError && GUARDADO_EN_ERROR.includes(err.code);
+      if (guardado) setDraft("");
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["messages", selectedId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
     },
@@ -130,6 +144,12 @@ export function ChatPage() {
   const settingsError = configure.isError ? errorText(configure.error) : null;
   const error = sendError ?? settingsError;
 
+  // El mensaje que se envió desde este dispositivo ya puede estar en la lista (el sondeo lo trae antes de terminar).
+  const ultimoMensaje = messages.data?.at(-1);
+  const yaGuardado = send.isPending && ultimoMensaje?.role === "user" && ultimoMensaje.content === send.variables;
+  // Pensando: se envió aquí o el chat está ocupado (otro dispositivo lo envió).
+  const pensando = send.isPending || !!current?.ocupada;
+
   return (
     <section className="thread">
       <header className="thread-head">
@@ -152,7 +172,19 @@ export function ChatPage() {
             </span>
           )}
         </div>
+        {selectedId && (
+          <button
+            type="button"
+            className="ghost thread-uso-btn"
+            aria-expanded={usoAbierto}
+            onClick={() => setUsoAbierto((o) => !o)}
+          >
+            Uso
+          </button>
+        )}
       </header>
+
+      {usoAbierto && <CuotasPanel onCerrar={() => setUsoAbierto(false)} />}
 
       {!selectedId ? (
         <div className="empty">
@@ -222,16 +254,17 @@ export function ChatPage() {
                   </div>
                 );
               })}
-              {send.isPending && (
-                <>
-                  <div className="msg-row msg-row-user">
-                    <div className="msg-meta-bar">
-                      <span className="msg-author">Tú</span>
-                      <span className="msg-meta-dot">•</span>
-                      <span className="msg-time">Ahora</span>
-                    </div>
-                    <div className="msg msg-user">{send.variables}</div>
+              {send.isPending && !yaGuardado && (
+                <div className="msg-row msg-row-user">
+                  <div className="msg-meta-bar">
+                    <span className="msg-author">Tú</span>
+                    <span className="msg-meta-dot">•</span>
+                    <span className="msg-time">Ahora</span>
                   </div>
+                  <div className="msg msg-user">{send.variables}</div>
+                </div>
+              )}
+              {pensando && (
                   <div className="msg-row msg-row-assistant">
                     <div className="msg-meta-bar">
                       <div className="msg-author-icon" aria-hidden="true">
@@ -249,7 +282,6 @@ export function ChatPage() {
                       <span className="muted-note">Pensando</span>
                     </div>
                   </div>
-                </>
               )}
               <div ref={endRef} />
             </div>
@@ -319,7 +351,7 @@ export function ChatPage() {
                     type="submit"
                     className="send"
                     aria-label="Enviar"
-                    disabled={!draft.trim() || send.isPending}
+                    disabled={!draft.trim() || send.isPending || !!current?.ocupada}
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                       <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />

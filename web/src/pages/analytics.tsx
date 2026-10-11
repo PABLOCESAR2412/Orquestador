@@ -4,12 +4,13 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api, type Analytics } from "../api";
 import { compact, DailyBars, ModelBars, shortDay } from "../components/charts";
 import { useShell } from "../components/shell-context";
+import { formatUsd } from "../lib/model";
 
 const PERIODS = [7, 30, 90] as const;
 
 export const usd = (n: number) => {
   if (n === 0) return "US$ 0.00";
-  return n < 0.01 ? `US$ ${n.toFixed(4)}` : `US$ ${n.toFixed(2)}`;
+  return formatUsd(n);
 };
 
 const BUDGET_LABEL: Record<"ok" | "alerta" | "excedido", string> = {

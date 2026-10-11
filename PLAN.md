@@ -31,7 +31,7 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - **Criterio:** las cinco pantallas revisadas a 390 px y 1440 px. Contraste AA. Solo tokens de color. Sin cambios de comportamiento.
 
 ### 5. Analizador y obrero por tarea: diseño listo (`AGENTS.md`)
-- Separar planificación y ejecución. Migración `007` (las `005` y `006` ya están usadas): estados `planning`, `waiting_approval`, `executing`, `waiting_user` y `completed`, además de los actuales. Tablas para versiones del plan, aprobaciones y eventos por tarea.
+- Separar planificación y ejecución. Migración `010` (de la `005` a la `009` ya están usadas): estados `planning`, `waiting_approval`, `executing`, `waiting_user` y `completed`, además de los actuales. Tablas para versiones del plan, aprobaciones y eventos por tarea.
 - Cada tarea tiene un `task_id` propio. Cada proveedor guarda su `provider_session_id`, así cambiar de proveedor no cambia la identidad de la tarea.
 - Si el obrero necesita desviarse del plan aprobado, la tarea vuelve a `waiting_approval`. No reinterpreta el plan por su cuenta.
 - **Criterio:** el analizador produce un JSON válido. El obrero ejecuta solo el plan aprobado. El reporte queda guardado. "Continuar" reanuda la misma sesión y el mismo workspace.
@@ -61,6 +61,7 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - Por ahora no se usa Funnel (acceso público): exigiría endurecer la app antes de publicarla.
 
 ### 10. Cuota y saldo de proveedores
+- Primera versión en `feat/chats-gestion` (migración `008`): el usuario anota el saldo de cada cuenta o clave y Telo resta el uso que registró después. Es estimado. Ningún proveedor se consulta en vivo.
 - Panel con saldo o cuota restante por cuenta o API (OpenCode, OpenRouter, Groq, NVIDIA, Google, Codex) y tiempo restante estimado.
 - Decisión del usuario: consultar saldo o cuota antes que poner un tope de gasto por tarea.
 - **Criterio:** cada proveedor muestra la fecha de su última consulta. Si no hay API de saldo, se marca como manual.
@@ -86,16 +87,20 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - Uso personal, con un solo usuario.
 - El agente nunca recibe variables `TELO_*` (la clave de acceso).
 - Una tarea que estaba corriendo al reiniciar el servidor queda `interrupted`, no `failed`.
+- El agente corre dentro de bubblewrap, que solo le deja ver su carpeta de trabajo. Sin bubblewrap no se ejecuta (falla cerrado).
+- Mensajes y tareas: el mensaje del usuario se guarda antes de correr el agente, y un chat ocupado no acepta otro envío. Así los demás dispositivos lo ven.
+- Reanudar continúa la sesión del agente en la misma carpeta. Reintentar crea una tarea nueva con el mismo prompt.
+- Respaldos: copia diaria en el VM con `VACUUM INTO` y copia a la PC por Tailscale. Los respaldos no se guardan en el repo.
 
 ## Orden de trabajo
 
 Según la revisión del 10 de octubre, el núcleo es el motor de tareas, el aislamiento del runner, la aprobación y la recuperación. Antes de ampliar proveedores o interfaz:
 
 1. Seguridad del runner: entorno sin secretos, cancelación por grupo de procesos. (`fix/runner-seguridad`)
-2. Estados formales y recuperación: `interrupted`, reanudar, reintentar o cancelar. (migración `006` aplicada parcialmente: falta reanudar y reintentar.)
-3. Registro de eventos por tarea, para depurar, auditar y alimentar notificaciones.
+2. Estados formales y recuperación: `interrupted`, reanudar, reintentar o cancelar. (`006` aplicada. Reanudar y reintentar, en `feat/chats-gestion`, pendiente de revisión.)
+3. Registro de eventos por tarea, para depurar, auditar y alimentar notificaciones. (`009`, en `feat/chats-gestion`.)
 4. Fase 5 (analizador y obrero) y fase 6 (Git con aprobación en el backend).
-5. Respaldos de la base y del workspace fuera del VM.
+5. Respaldos de la base y del workspace fuera del VM. (`server/scripts/respaldo.ts`, timer en `deploy/` y copia a la PC. Probado en local; falta probar el timer en el VM.)
 6. Fase 9 (acceso por Tailscale) y pendientes de la sección de acceso.
 7. Fases 10, 8 y 13: cuota con niveles de precisión, notificaciones por eventos y panel del VM sin terminal web.
 8. Fase 4 (rediseño visual) y proveedores adicionales.

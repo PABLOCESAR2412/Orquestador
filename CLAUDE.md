@@ -20,9 +20,18 @@ Es de uso personal, con un solo usuario y sin cuentas. Todavía no tiene login: 
 ## Estructura
 
 - `server/src/index.ts`: entrada. Monta las rutas bajo `/api`, sirve `web/dist` y arranca el worker.
-- `server/src/worker.ts`: cola de tareas. Corre una a la vez, cancela con AbortController y, al arrancar, marca como interrumpidas (`interrupted`) las tareas que quedaron en ejecución.
-- `server/src/runners/opencode.ts`: ejecuta `opencode run --format json` en su propio grupo de procesos (`setsid`) y sin variables `TELO_*`. Al cancelar o agotar el tiempo, termina el grupo completo (agente, herramientas y nietos).
-- `server/src/routes/`: `chat`, `tasks`, `preferences`, `analytics`, `models`, `settings`.
+- `server/src/worker.ts`: cola de tareas. Corre una a la vez, cancela con AbortController y, al arrancar, marca como interrumpidas (`interrupted`) las tareas que quedaron en ejecución. Registra cada transición en `task_events` (`server/src/eventos.ts`) y guarda el id de sesión del agente para poder reanudar.
+- `server/src/runners/opencode.ts`: ejecuta `opencode run --format json` en su propio grupo de procesos (`setsid`), dentro del aislamiento de `runners/aislamiento.ts`, y sin variables `TELO_*`. Al cancelar o agotar el tiempo, termina el grupo completo (agente, herramientas y nietos).
+- `server/src/runners/aislamiento.ts`: envuelve al agente en bubblewrap (`bwrap`). Solo ve su carpeta de trabajo (proyecto, o carpeta temporal de chat o tarea) y el estado de OpenCode. No ve el repo, `DATA_DIR`, otros proyectos, el resto del HOME ni los procesos del servidor.
+- `server/src/routes/`: `chat`, `tasks`, `preferences`, `analytics`, `models`, `settings` (también el `PATCH` de conversaciones: modelo, esfuerzo, título y anclar), `projects`, `cuotas`.
+- `server/scripts/respaldo.ts`: copia de la base (`VACUUM INTO`) y del espacio de trabajo. Ver la sección "Respaldos".
+
+## Aislamiento de los agentes
+
+- Sin `bwrap` en el servidor, el agente no corre: la tarea o el chat fallan con un mensaje claro. Instalar en el VM con `sudo apt install bubblewrap`.
+- `TELO_AISLAMIENTO=desactivado` lo apaga. Solo para desarrollo local, nunca en el VM.
+- Si `opencode` vive fuera de `~/.opencode`, `~/.local/bin` o `~/.bun` (por ejemplo, bajo `~/.nvm`), añade la carpeta raíz de esa instalación en `TELO_LECTURA_EXTRA` del archivo de entorno del VM, separada por `:`. Solo lectura. Nunca apuntes a la carpeta del repo, a `DATA_DIR` ni a la de proyectos.
+- Una carpeta de trabajo que no sea un proyecto registrado ni la carpeta temporal de un chat o tarea se rechaza antes de correr el agente.
 - `server/src/preferences.ts`: preferencias guardadas en `app_settings` (clave `preferences`).
 - `web/src/api.ts`: cliente HTTP y tipos. Todo fetch pasa por ahí.
 - `web/src/pages/`: `chat`, `tasks`, `analytics`, `settings`. Rutas en `web/src/router.tsx`.
@@ -65,6 +74,25 @@ No hay suite de pruebas en el repo todavía. Las pruebas actuales viven fuera de
 - Desde la PC: `ssh -L 3000:localhost:3000 -L 9090:localhost:9090 -i <tu_clave> orquestador@<IP>`. Luego abre `http://127.0.0.1:3000`. El puerto 9090 es Cockpit.
 - Actualizar el VM: `cd ~/orquestador && git switch main && git pull --ff-only && cd web && bun run build && cd .. && sudo systemctl restart orquestador`.
 - No abras puertos en Azure sin login. El siguiente paso es Cloudflare Tunnel con Access.
+
+## Respaldos
+
+- En el VM, `deploy/orquestador-respaldo.timer` corre cada día a las 03:30 UTC `server/scripts/respaldo.ts`, con el servicio encendido. Guarda en `/home/orquestador/respaldos`: `orquestador-<sello>.db` (copia con `VACUUM INTO`, revisada con `integrity_check`) y `espacio-<sello>.tar.gz` (`chat-workspace` y `tasks`). Conserva las últimas `TELO_RESPALDOS_CONSERVAR` (14) de cada tipo.
+- La PC copia esa carpeta por Tailscale con `deploy/copiar-respaldo-pc.ps1`. Los respaldos nunca van al repo. La PC no poda sus copias.
+- Instalar en el VM (una vez):
+  ```
+  sudo install -d -o orquestador -g orquestador /home/orquestador/respaldos
+  sudo cp ~/orquestador/deploy/orquestador-respaldo.service ~/orquestador/deploy/orquestador-respaldo.timer /etc/systemd/system/
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now orquestador-respaldo.timer
+  ```
+  Probar: `sudo systemctl start orquestador-respaldo.service` y `journalctl -u orquestador-respaldo.service -n 20`.
+- Programar la copia en la PC (una vez, en PowerShell). La hora debe ser local y posterior a las 03:30 UTC:
+  ```
+  $accion = New-ScheduledTaskAction -Execute "powershell.exe" -Argument '-NoProfile -ExecutionPolicy Bypass -File "C:\ruta\copiar-respaldo-pc.ps1" -Servidor orquestador@NOMBRE-DEL-VM -Clave "C:\ruta\TU_CLAVE"'
+  Register-ScheduledTask -TaskName "Telo respaldo" -Action $accion -Trigger (New-ScheduledTaskTrigger -Daily -At 06:00) -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable)
+  ```
+- Restaurar, con el servicio parado: copiar la `.db` elegida a `server/data/orquestador.db`, borrar `orquestador.db-wal` y `orquestador.db-shm` si existen, y extraer el `espacio-*.tar.gz` con `tar -xzf ... -C server/data`. Luego arrancar.
 
 ## Definición de terminado
 

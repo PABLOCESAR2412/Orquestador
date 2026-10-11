@@ -1722,3 +1722,117 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .sidebar-install-btn:hover { background: var(--surface-2); }
 .sidebar-install-hint { margin: 8px 2px 0; font-size: 12px; line-height: 1.5; color: var(--ink-2); }
+
+/* Gestión de chats: menú de la barra lateral, renombrar y eliminar */
+.conv-item { display: flex; flex-direction: column; }
+.conv-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.conv-row .sidebar-conv { flex: 1; min-width: 0; }
+.conv-busy { margin-left: auto; flex-shrink: 0; }
+.conv-more {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-2);
+}
+.conv-more:hover,
+.conv-more[aria-expanded="true"] { color: var(--ink); background: var(--surface); }
+.conv-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0 6px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.conv-menu > button {
+  text-align: left;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+}
+.conv-menu > button:hover { background: var(--surface-2); }
+.conv-menu > button.danger { color: var(--danger); }
+.conv-confirm { padding: 8px 10px; gap: 8px; }
+.conv-confirm p { margin: 0; }
+.danger-solid { background: var(--danger); color: var(--bg); border: 0; font-weight: 500; }
+.conv-rename { display: flex; flex-direction: column; gap: 6px; padding: 4px 2px; }
+.conv-rename-input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-size: 14px;
+}
+.conv-rename-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+.sidebar-error { margin: 4px 8px; font-size: 12px; }
+.thread-uso-btn { margin-left: auto; padding: 4px 10px; font-size: 13px; flex-shrink: 0; }
+
+/* Proyectos en Ajustes: anclar y renombrar */
+.project-row { flex-wrap: wrap; }
+.project-acciones { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.project-anclado { color: var(--ink-2); font-weight: 400; font-size: 12px; }
+
+/* Tareas: reanudar, reintentar e historial */
+.task-card-acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.task-historial { margin-top: 12px; font-size: 13px; color: var(--ink-2); }
+.task-historial > summary { cursor: pointer; color: var(--ink); width: max-content; }
+.task-historial-lista {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0 0 0 10px;
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.task-historial-lista li { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
+.task-historial-hora { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.task-historial-evento { color: var(--ink); }
+.task-historial-detalle { flex-basis: 100%; color: var(--ink-2); font-size: 12px; overflow-wrap: anywhere; }
+
+/* Uso y saldo por proveedor */
+.cuotas { margin: 12px 16px 0; max-height: min(70vh, 640px); overflow-y: auto; }
+.cuotas input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-size: 14px;
+}
+.cuota-proveedor { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.cuota-proveedor-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.cuota-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cuota-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.cuota-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cuota-saldo { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
+.cuota-acciones,
+.cuota-editar { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.cuota-editar input { width: 140px; }
+.cuota-form { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.cuota-campo { display: flex; flex-direction: column; gap: 4px; }

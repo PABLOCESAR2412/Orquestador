@@ -7,7 +7,13 @@ import { db } from "../db";
 // Un proyecto es una carpeta del servidor dentro de TELO_PROYECTOS_DIR.
 // Los chats y las tareas que lo usan trabajan dentro de esa carpeta.
 
-export type ProjectRow = { id: string; name: string; repo_path: string; created_at: string };
+export type ProjectRow = {
+  id: string;
+  name: string;
+  repo_path: string;
+  pinned_at: string | null;
+  created_at: string;
+};
 
 export class ProjectPathError extends Error {
   constructor(
@@ -54,14 +60,16 @@ export function projectRepoPath(id: string): string | null {
   return row?.repo_path ?? null;
 }
 
-const COLUMNS = "id, name, repo_path, created_at";
+const COLUMNS = "id, name, repo_path, pinned_at, created_at";
 
 export const projects = new Hono();
 
-// GET /api/projects -> proyectos más recientes primero
+// GET /api/projects -> anclados primero; luego los más recientes
 projects.get("/projects", (c) => {
   const rows = db
-    .query<ProjectRow, []>(`SELECT ${COLUMNS} FROM projects ORDER BY created_at DESC, rowid DESC`)
+    .query<ProjectRow, []>(
+      `SELECT ${COLUMNS} FROM projects ORDER BY (pinned_at IS NULL), pinned_at DESC, created_at DESC, rowid DESC`,
+    )
     .all();
   return c.json(rows);
 });
@@ -102,4 +110,28 @@ projects.delete("/projects/:id", (c) => {
   const result = db.query("DELETE FROM projects WHERE id = ?").run(c.req.param("id"));
   if (result.changes === 0) return c.json({ error: "project_not_found" }, 404);
   return c.json({ ok: true });
+});
+
+// PATCH /api/projects/:id  body: { name?, pinned? }  -> renombrar o anclar. La carpeta no cambia.
+projects.patch("/projects/:id", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req
+    .json<{ name?: string; pinned?: boolean }>()
+    .catch(() => ({}) as { name?: string; pinned?: boolean });
+
+  if (!projectRepoPath(id)) return c.json({ error: "project_not_found" }, 404);
+
+  if (body.name !== undefined) {
+    const nombre = typeof body.name === "string" ? body.name.trim() : "";
+    if (!nombre || nombre.length > 60) return c.json({ error: "invalid_project_name" }, 400);
+    db.query("UPDATE projects SET name = ? WHERE id = ?").run(nombre, id);
+  }
+  if (body.pinned !== undefined) {
+    db.query(
+      "UPDATE projects SET pinned_at = CASE WHEN ? THEN COALESCE(pinned_at, datetime('now')) ELSE NULL END WHERE id = ?",
+    ).run(body.pinned ? 1 : 0, id);
+  }
+
+  const row = db.query<ProjectRow, [string]>(`SELECT ${COLUMNS} FROM projects WHERE id = ?`).get(id);
+  return c.json(row);
 });
