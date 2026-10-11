@@ -32,6 +32,29 @@ function failureDetail(stdout: string, stderr: string, events: OpenCodeEvent[]):
   return (stderr || stdout).trim().slice(-800) || "sin salida";
 }
 
+// Variables de Telo que el agente nunca debe heredar (la clave de acceso, por ejemplo).
+function entornoDelAgente(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [clave, valor] of Object.entries(process.env)) {
+    if (valor !== undefined && !clave.startsWith("TELO_")) env[clave] = valor;
+  }
+  return env;
+}
+
+// Cierra el grupo de procesos completo: el agente, sus herramientas y sus nietos.
+// Primero pide SIGTERM y, si algo sigue vivo tras 3 s, usa SIGKILL.
+function terminarGrupo(pgid: number) {
+  const enviar = (señal: NodeJS.Signals) => {
+    try {
+      process.kill(-pgid, señal);
+    } catch {
+      // El grupo ya no existe.
+    }
+  };
+  enviar("SIGTERM");
+  setTimeout(() => enviar("SIGKILL"), 3_000).unref();
+}
+
 export async function runOpenCode(opts: {
   prompt: string;
   model: string;
@@ -46,20 +69,21 @@ export async function runOpenCode(opts: {
   if (opts.sessionId) args.push("-s", opts.sessionId);
   args.push(opts.prompt);
 
-  const proc = Bun.spawn(args, { cwd: opts.cwd, stdout: "pipe", stderr: "pipe" });
-  const timer = setTimeout(() => proc.kill(), opts.timeoutMs ?? 120_000);
+  // `setsid` deja al agente como líder de su propio grupo (pgid == pid),
+  // para poder cerrar todo su árbol de procesos de una vez.
+  const proc = Bun.spawn(["setsid", ...args], {
+    cwd: opts.cwd,
+    env: entornoDelAgente(),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const timer = setTimeout(() => terminarGrupo(proc.pid), opts.timeoutMs ?? 120_000);
 
-  // Al cancelar: mata los hijos directos (herramientas que el agente lanzó) y
-  // al proceso. No se espera a las tuberías, porque un nieto puede seguir
-  // abriéndolas y dejaría la tarea en "running".
+  // Al cancelar se cierra el grupo entero. No se espera a las tuberías, porque
+  // un proceso del agente puede seguir abriéndolas y dejaría la tarea en "running".
   const aborted = new Promise<never>((_, reject) => {
     const onAbort = () => {
-      try {
-        Bun.spawn(["pkill", "-TERM", "-P", String(proc.pid)]);
-      } catch {
-        // pkill no disponible: solo se mata el proceso principal
-      }
-      proc.kill();
+      terminarGrupo(proc.pid);
       reject(new Error("ejecución cancelada"));
     };
     if (opts.signal?.aborted) onAbort();

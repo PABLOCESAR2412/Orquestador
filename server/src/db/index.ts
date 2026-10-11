@@ -8,6 +8,8 @@ mkdirSync(config.dataDir, { recursive: true });
 export const db = new Database(join(config.dataDir, "orquestador.db"), { create: true });
 db.exec("PRAGMA journal_mode = WAL;");
 db.exec("PRAGMA foreign_keys = ON;");
+// Si otra escritura tiene el archivo bloqueado, espera hasta 5 s antes de fallar.
+db.exec("PRAGMA busy_timeout = 5000;");
 
 type Migration = { name: string; sql: string };
 
@@ -91,6 +93,33 @@ const migrations: Migration[] = [
     name: "005_tareas_proyecto",
     sql: `
       ALTER TABLE tasks ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+    `,
+  },
+  {
+    // SQLite no cambia un CHECK con ALTER, así que la tabla se reconstruye.
+    // Nada referencia a tasks, por eso se puede borrar y renombrar sin riesgo.
+    name: "006_tareas_interrumpidas",
+    sql: `
+      CREATE TABLE tasks_nueva (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        model TEXT NOT NULL,
+        effort TEXT,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'interrupted', 'done', 'failed', 'cancelled')),
+        result TEXT,
+        error TEXT,
+        workspace TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        started_at TEXT,
+        finished_at TEXT,
+        project_id TEXT REFERENCES projects(id) ON DELETE SET NULL
+      );
+      INSERT INTO tasks_nueva (id, title, prompt, model, effort, status, result, error, workspace, created_at, started_at, finished_at, project_id)
+        SELECT id, title, prompt, model, effort, status, result, error, workspace, created_at, started_at, finished_at, project_id FROM tasks;
+      DROP TABLE tasks;
+      ALTER TABLE tasks_nueva RENAME TO tasks;
+      CREATE INDEX tasks_status_created ON tasks (status, created_at);
     `,
   },
 ];

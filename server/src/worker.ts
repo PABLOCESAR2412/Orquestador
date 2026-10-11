@@ -128,10 +128,11 @@ async function loop() {
 
 // Llamar una sola vez al arrancar el servidor.
 export function startWorker() {
-  // Una tarea "running" al arrancar quedó huérfana por un reinicio.
+  // Una tarea "running" al arrancar quedó sin proceso por un reinicio: se marca
+  // como interrumpida, no como fallida, para que el usuario decida qué hacer.
   db.query(
-    "UPDATE tasks SET status = 'failed', error = ?, finished_at = datetime('now') WHERE status = 'running'",
-  ).run("El servidor se reinició mientras la tarea corría.");
+    "UPDATE tasks SET status = 'interrupted', error = ? WHERE status = 'running'",
+  ).run("El servidor se reinició mientras la tarea corría. Puedes cancelarla.");
   void loop();
 }
 
@@ -141,7 +142,8 @@ export function cancelTask(id: string): CancelOutcome {
   const row = db.query<{ status: string }, [string]>("SELECT status FROM tasks WHERE id = ?").get(id);
   if (!row) return "not_found";
 
-  if (row.status === "queued") {
+  // Una tarea interrumpida no tiene proceso: se cierra directamente.
+  if (row.status === "queued" || row.status === "interrupted") {
     finish(id, "cancelled", { error: "Cancelada por el usuario." });
     return "cancelled";
   }

@@ -48,7 +48,7 @@ export type ModelInfo = {
   recommended: boolean;
 };
 
-export type TaskStatus = "queued" | "running" | "done" | "failed" | "cancelled";
+export type TaskStatus = "queued" | "running" | "interrupted" | "done" | "failed" | "cancelled";
 
 export type Task = {
   id: string;
