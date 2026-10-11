@@ -39,6 +39,7 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
   queued: "En cola",
   running: "Corriendo",
   done: "Lista",
+  interrupted: "Interrumpida",
   failed: "Falló",
   cancelled: "Cancelada",
 };

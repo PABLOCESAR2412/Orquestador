@@ -460,6 +460,7 @@ export function TasksPage() {
           else if (isDone) statusText = `Completada (${formatFinishedTime(t.finished_at)})`;
           else if (isFailed) statusText = `Falló (${formatFinishedTime(t.finished_at)})`;
           else if (t.status === "cancelled") statusText = "Cancelada";
+          else if (t.status === "interrupted") statusText = "Interrumpida";
 
           const dotClass = isRunning
             ? " is-live"
@@ -467,7 +468,7 @@ export function TasksPage() {
               ? " task-dot-queued"
               : isDone
                 ? " task-dot-done"
-                : isFailed
+                : isFailed || t.status === "interrupted"
                   ? " is-offline"
                   : "";
 
@@ -506,7 +507,7 @@ export function TasksPage() {
                     </div>
                   </button>
 
-                  {isActive(t) && (
+                  {(isActive(t) || t.status === "interrupted") && (
                     <button
                       type="button"
                       className="ghost task-cancel-btn"
