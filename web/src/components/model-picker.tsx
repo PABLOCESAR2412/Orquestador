@@ -1,21 +1,60 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useRef, useState, type RefObject } from "react";
 import type { ModelInfo } from "../api";
-import { formatPrice } from "../lib/model";
-import { CostMeter } from "./controls";
+import { effortLabel, formatPrice } from "../lib/model";
+import { CostMeter, useDialogo } from "./controls";
 
 type Props = {
   models: ModelInfo[];
   currentId: string | null;
-  onSelect: (model: ModelInfo | null) => void;
+  // Con conEsfuerzo, cada modelo lista sus niveles debajo; elegir uno fija modelo y esfuerzo a la vez.
+  conEsfuerzo?: boolean;
+  currentEffort?: string | null;
+  // El esfuerzo solo llega cuando conEsfuerzo está activo. null significa "Auto".
+  onSelect: (model: ModelInfo | null, effort?: string | null) => void;
   onClose: () => void;
+  // Chip o botón que abrió el selector: recibe el foco al cerrar.
+  disparador?: RefObject<HTMLElement | null>;
+  cargando?: boolean;
+  error?: string | null;
+  onReintentar?: () => void;
 };
 
 const MAX_RESULTS = 120;
 
-export function ModelPicker({ models, currentId, onSelect, onClose }: Props) {
+export function ModelPicker({
+  models,
+  currentId,
+  conEsfuerzo = false,
+  currentEffort = null,
+  onSelect,
+  onClose,
+  disparador,
+  cargando = false,
+  error = null,
+  onReintentar,
+}: Props) {
   const [query, setQuery] = useState("");
   const [onlyFree, setOnlyFree] = useState(false);
   const q = query.trim().toLowerCase();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // Si no hay disparador, vuelve el elemento que tenía el foco al abrir.
+  const [previo] = useState(() => document.activeElement as HTMLElement | null);
+
+  const devolverFoco = () => (disparador?.current ?? previo)?.focus();
+  const cerrar = () => {
+    devolverFoco();
+    onClose();
+  };
+  useDialogo(dialogRef, cerrar);
+
+  const elegir = (m: ModelInfo | null, esfuerzo: string | null = null) => {
+    devolverFoco();
+    onSelect(m, conEsfuerzo ? esfuerzo : undefined);
+  };
+
+  // Al cambiar de modelo se conserva el esfuerzo si el nuevo también lo admite.
+  const conservado = (m: ModelInfo) => (currentEffort && m.variants.includes(currentEffort) ? currentEffort : null);
+  const esActual = (m: ModelInfo) => m.id === currentId;
 
   const groups = useMemo(() => {
     const matches = models.filter((m) => {
@@ -33,18 +72,30 @@ export function ModelPicker({ models, currentId, onSelect, onClose }: Props) {
     return [...byGroup.entries()];
   }, [models, q, onlyFree]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const fila = (m: ModelInfo, esfuerzo: string | null) => (
+    <button
+      type="button"
+      className="picker-item"
+      aria-current={esActual(m) || undefined}
+      onClick={() => elegir(m, esfuerzo)}
+    >
+      <span className="picker-main">
+        <span className="picker-name">{m.name}</span>
+        <span className="picker-id">{m.id}</span>
+      </span>
+      <span className="picker-meta">
+        <CostMeter tier={m.costTier} />
+        <span className="picker-price" title="Precio de entrada / salida por millón de tokens">
+          {formatPrice(m)}
+        </span>
+      </span>
+    </button>
+  );
 
   return (
     <>
-      <div className="scrim" onClick={onClose} />
-      <div className="picker" role="dialog" aria-label="Elegir modelo">
+      <div className="scrim" onClick={cerrar} />
+      <div className="picker" role="dialog" aria-modal="true" aria-label="Elegir modelo" ref={dialogRef}>
         <div className="picker-head">
           <input
             className="picker-search"
@@ -70,7 +121,7 @@ export function ModelPicker({ models, currentId, onSelect, onClose }: Props) {
               type="button"
               className="picker-item"
               aria-current={currentId === null || undefined}
-              onClick={() => onSelect(null)}
+              onClick={() => elegir(null)}
             >
               <span className="picker-main">
                 <span className="picker-name">Predeterminado</span>
@@ -79,33 +130,64 @@ export function ModelPicker({ models, currentId, onSelect, onClose }: Props) {
             </button>
           )}
 
-          {groups.length === 0 && <p className="muted-note pad">Ningún modelo coincide.</p>}
+          {cargando && <p className="muted-note pad">Cargando modelos…</p>}
 
-          {groups.map(([group, items]) => (
-            <section key={group}>
-              <h2 className="group-title">{group}</h2>
-              {items.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  className="picker-item"
-                  aria-current={m.id === currentId || undefined}
-                  onClick={() => onSelect(m)}
-                >
-                  <span className="picker-main">
-                    <span className="picker-name">{m.name}</span>
-                    <span className="picker-id">{m.id}</span>
-                  </span>
-                  <span className="picker-meta">
-                    <CostMeter tier={m.costTier} />
-                    <span className="picker-price" title="Precio de entrada / salida por millón de tokens">
-                      {formatPrice(m)}
-                    </span>
-                  </span>
+          {!cargando && error && (
+            <div className="picker-estado">
+              <p className="error" role="alert">
+                {error}
+              </p>
+              {onReintentar && (
+                <button type="button" className="ghost" onClick={onReintentar}>
+                  Reintentar
                 </button>
-              ))}
-            </section>
-          ))}
+              )}
+            </div>
+          )}
+
+          {!cargando && !error && groups.length === 0 && (
+            <p className="muted-note pad">Ningún modelo coincide.</p>
+          )}
+
+          {!cargando &&
+            !error &&
+            groups.map(([group, items]) => (
+              <section key={group}>
+                <h3 className="group-title">{group}</h3>
+                {items.map((m) =>
+                  conEsfuerzo && m.variants.length > 0 ? (
+                    <div key={m.id} className="picker-modelo">
+                      {fila(m, conservado(m))}
+                      <div className="picker-niveles" role="group" aria-label={`Esfuerzo de ${m.name}`}>
+                        <button
+                          type="button"
+                          className="picker-nivel"
+                          aria-pressed={esActual(m) && !currentEffort}
+                          onClick={() => elegir(m, null)}
+                        >
+                          Auto
+                        </button>
+                        {m.variants.map((v) => (
+                          <button
+                            key={v}
+                            type="button"
+                            className="picker-nivel"
+                            aria-pressed={esActual(m) && currentEffort === v}
+                            onClick={() => elegir(m, v)}
+                          >
+                            {effortLabel(v)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={m.id} className="picker-modelo">
+                      {fila(m, null)}
+                    </div>
+                  ),
+                )}
+              </section>
+            ))}
         </div>
       </div>
     </>

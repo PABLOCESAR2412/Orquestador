@@ -1,3 +1,4 @@
+import { useEffect, useRef, type RefObject } from "react";
 import type { CostTier } from "../api";
 import { effortLabel, tierBars, TIER_LABEL } from "../lib/model";
 
@@ -44,4 +45,46 @@ export function EffortControl({ variants, value, disabled, onChange }: EffortPro
       ))}
     </div>
   );
+}
+
+// Elementos a los que Tab puede llegar dentro de un diálogo.
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// Diálogos y hojas: Escape llama a onCerrar y el Tab no sale del diálogo mientras está abierto.
+// Quien cierra se encarga de devolver el foco a su disparador.
+export function useDialogo(ref: RefObject<HTMLElement | null>, onCerrar: () => void) {
+  const cerrarRef = useRef(onCerrar);
+  cerrarRef.current = onCerrar;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cerrarRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const el = ref.current;
+      if (!el) return;
+      const items = [...el.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      if (items.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const primero = items[0];
+      const ultimo = items[items.length - 1];
+      const activo = document.activeElement;
+      const fuera = !activo || !el.contains(activo);
+      if (e.shiftKey && (fuera || activo === primero)) {
+        e.preventDefault();
+        ultimo.focus();
+      } else if (!e.shiftKey && (fuera || activo === ultimo)) {
+        e.preventDefault();
+        primero.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [ref]);
 }

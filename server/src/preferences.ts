@@ -4,6 +4,8 @@ import { db } from "./db";
 export type Preferences = {
   defaultModel: string | null;
   defaultEffort: string | null;
+  // Modelo de respaldo si el principal responde 429 o 5xx. Null: sin respaldo.
+  fallbackModel: string | null;
   monthlyBudgetUsd: number | null;
   budgetAlertPercent: number;
 };
@@ -11,6 +13,7 @@ export type Preferences = {
 export const DEFAULT_PREFERENCES: Preferences = {
   defaultModel: null,
   defaultEffort: null,
+  fallbackModel: null,
   monthlyBudgetUsd: null,
   budgetAlertPercent: 80,
 };

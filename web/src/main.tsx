@@ -5,10 +5,13 @@ import { RouterProvider } from "@tanstack/react-router";
 import "@fontsource-variable/instrument-sans";
 import { router } from "./router";
 import { captureInstallPrompt } from "./lib/install";
+import { aplicarTema } from "./lib/tema";
 import { UpdatePrompt } from "./components/update-prompt";
 import "./styles.css";
 
 captureInstallPrompt();
+// Aplica el tema guardado en este dispositivo antes de montar la app.
+aplicarTema();
 
 // Al volver a la app (teléfono o pestaña) los datos se actualizan solos. Sin esto, un mensaje
 // enviado desde la PC no aparecía en el teléfono hasta cambiar de chat.

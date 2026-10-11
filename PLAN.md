@@ -31,28 +31,33 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - **Criterio:** las cinco pantallas revisadas a 390 px y 1440 px. Contraste AA. Solo tokens de color. Sin cambios de comportamiento.
 
 ### 5. Analizador y obrero por tarea: diseño listo (`AGENTS.md`)
+- Estado (`feat/revision-agentes`, sin merge): las migraciones 010–012 cubren lo que no es el analizador (Git por tarea, aprobaciones, secretos, programadas). El analizador y sus estados `planning`, `waiting_approval`, `executing` y `waiting_user` pasan a la **migración 013**. Pendiente.
 - Separar planificación y ejecución. Migración `010` (de la `005` a la `009` ya están usadas): estados `planning`, `waiting_approval`, `executing`, `waiting_user` y `completed`, además de los actuales. Tablas para versiones del plan, aprobaciones y eventos por tarea.
 - Cada tarea tiene un `task_id` propio. Cada proveedor guarda su `provider_session_id`, así cambiar de proveedor no cambia la identidad de la tarea.
 - Si el obrero necesita desviarse del plan aprobado, la tarea vuelve a `waiting_approval`. No reinterpreta el plan por su cuenta.
 - **Criterio:** el analizador produce un JSON válido. El obrero ejecuta solo el plan aprobado. El reporte queda guardado. "Continuar" reanuda la misma sesión y el mismo workspace.
 
 ### 6. Proyectos de GitHub
+- Estado (`feat/revision-agentes`): cada tarea de un proyecto Git trabaja en su clon (`telo/<id8>`). Aprobación de commit y push ligada al hash del diff; escaneo de secretos antes del commit; push solo a `github.com` por HTTPS con `GITHUB_TOKEN` como secreto del proyecto. Pendiente: probar un push real a GitHub y un agente real en el VM.
 - Token de acceso personal fine-grained, cifrado con AES-256-GCM. La clave maestra vive en el archivo de entorno del servicio, fuera del repo.
 - Clonar repos en el VM. Cada tarea corre en el workspace de su proyecto.
 - Antes de commit, push o PR, mostrar el diff en la app y pedir aprobación.
 - **Criterio:** el token nunca aparece en logs ni en respuestas de la API. No hay push sin aprobación registrada.
 
 ### 7. Login de proveedores desde la app
+- Estado: pendiente. Hoy la app muestra si cada clave existe y si llega a los agentes (sin valores). Google y Codex necesitan un flujo de inicio de sesión que requiere crear credenciales OAuth en la cuenta de Google y decisión del usuario.
 - Flujo guiado: la app inicia el login del CLI en el VM (OpenCode, Google, Codex), muestra el enlace y el código, y espera la confirmación. Estado por proveedor.
 - Incluye Google aunque la cuenta gratuita no sirva para el servidor.
 - **Criterio:** al terminar el flujo, el proveedor aparece como conectado. Ninguna clave se pega en la interfaz.
 - **Antes de implementar:** investigar los comandos de login de cada CLI en el VM.
 
 ### 8. Notificaciones
+- Estado: pendiente. Telegram y Discord quedan fuera por decisión del usuario.
 - Web Push (u otro canal) al fallar, al necesitar aprobación y al terminar una tarea.
 - **Criterio:** cada evento notifica una vez. Reabrir la app no repite las notificaciones.
 
 ### 9. Acceso seguro (Tailscale)
+- Estado: el servidor escucha en `127.0.0.1` por defecto (`TELO_ESCUCHAR`). Pendiente en el VM: probar desde el teléfono, confirmar que `tailscale serve` sigue activo tras reiniciar y desactivar la expiración de la clave.
 - Telo corre en el VM y solo es accesible desde los dispositivos de la red privada de Tailscale, con HTTPS por `tailscale serve`.
 - El login de Telo (`TELO_CLAVE`) sigue activo como segunda capa: Tailscale decide quién llega al servidor; Telo decide quién puede operarlo.
 - Verificado desde la PC: la cookie sale con `Secure`, `HttpOnly` y `SameSite=Strict` a través de `serve`.
@@ -61,20 +66,24 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - Por ahora no se usa Funnel (acceso público): exigiría endurecer la app antes de publicarla.
 
 ### 10. Cuota y saldo de proveedores
+- Estado: `GET /api/uso` y el botón «Uso» junto al modelo muestran el gasto y los tokens de las últimas 5 horas y de los últimos 7 días medidos por Telo. Los límites del proveedor no se leen de su API; se muestran como «medido por Telo».
 - Primera versión en `feat/chats-gestion` (migración `008`): el usuario anota el saldo de cada cuenta o clave y Telo resta el uso que registró después. Es estimado. Ningún proveedor se consulta en vivo.
 - Panel con saldo o cuota restante por cuenta o API (OpenCode, OpenRouter, Groq, NVIDIA, Google, Codex) y tiempo restante estimado.
 - Decisión del usuario: consultar saldo o cuota antes que poner un tope de gasto por tarea.
 - **Criterio:** cada proveedor muestra la fecha de su última consulta. Si no hay API de saldo, se marca como manual.
 
 ### 11. Proyectos: memoria, skills y AGENTS.md
+- Estado: instrucciones por proyecto (se añaden al prompt de sus agentes) y sección única de Proyectos con archivos de solo lectura. Pendiente: skills `SKILL.md` y memoria que el sistema actualiza.
 - Cada proyecto tiene su configuración: skills en formato `SKILL.md`, memoria que el sistema actualiza sola y su propio `AGENTS.md`.
 - **Criterio:** una tarea del proyecto X usa sus skills y su memoria. Cambiar de proyecto no mezcla contexto.
 
 ### 12. Runners por proyecto
+- Estado: pendiente. Sigue sin empezar, como estaba previsto (después de las fases 5, 6 y 11).
 - Agy y Codex en contenedores por proyecto, con la misma interfaz de runner. Agy debe poder editar y subir archivos como lo hace Antigravity. La integración de Codex queda lista aunque no se use.
 - Se empieza solo cuando las fases 5, 6 y 11 estén cerradas.
 
 ### 13. Panel del VM
+- Estado: la vista `/servidor` muestra estado del proceso, carpetas y tamaños, herramientas instaladas, costos, uso y latencia medida en el navegador. Pendiente: terminal web (no se decide aún si reemplaza a Cockpit).
 - Configuraciones del servidor desde la app y terminal web integrada. Evaluar si reemplaza a Cockpit (puerto 9090) o solo lo enlaza.
 
 ## Decisiones tomadas
@@ -91,6 +100,10 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - Mensajes y tareas: el mensaje del usuario se guarda antes de correr el agente, y un chat ocupado no acepta otro envío. Así los demás dispositivos lo ven.
 - Reanudar continúa la sesión del agente en la misma carpeta. Reintentar crea una tarea nueva con el mismo prompt.
 - Respaldos: copia diaria en el VM con `VACUUM INTO` y copia a la PC por Tailscale. Los respaldos no se guardan en el repo.
+- Git: cada tarea de un proyecto trabaja en su clon. Ningún comando del servidor usa un repo que el agente pudo escribir sin quitarle antes la configuración peligrosa (`gitSeguro`).
+- Aprobaciones: commit y push se aprueban contra el hash del diff revisado. Si el diff cambia, la aprobación se rechaza.
+- Secretos por proyecto cifrados con AES-256-GCM. Sus valores no salen por la API, y el agente de ese proyecto los recibe como variables.
+- El servidor escucha en `127.0.0.1`. Tailscale Serve entrega el tráfico desde el mismo equipo.
 
 ## Orden de trabajo
 

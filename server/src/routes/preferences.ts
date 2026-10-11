@@ -2,7 +2,13 @@ import { Hono } from "hono";
 import { getPreferences, savePreferences, type Preferences } from "../preferences";
 import { validateSelection } from "../models";
 
-const ALLOWED_FIELDS = new Set(["defaultModel", "defaultEffort", "monthlyBudgetUsd", "budgetAlertPercent"]);
+const ALLOWED_FIELDS = new Set([
+  "defaultModel",
+  "defaultEffort",
+  "fallbackModel",
+  "monthlyBudgetUsd",
+  "budgetAlertPercent",
+]);
 
 export const preferences = new Hono();
 
@@ -34,6 +40,19 @@ preferences.put("/preferences", async (c) => {
     try {
       const check = await validateSelection(next.defaultModel, next.defaultEffort);
       if (!check.ok) return c.json({ error: check.error }, 400);
+    } catch (err) {
+      return c.json({ error: "models_unavailable", detail: String(err) }, 503);
+    }
+  }
+
+  // El respaldo se valida solo si la petición lo trae: no bloquea guardar otros campos.
+  if (body.fallbackModel !== undefined && next.fallbackModel !== null) {
+    if (typeof next.fallbackModel !== "string" || !next.fallbackModel) {
+      return c.json({ error: "invalid_model" }, 400);
+    }
+    try {
+      const check = await validateSelection(next.fallbackModel, null);
+      if (!check.ok) return c.json({ error: "invalid_model" }, 400);
     } catch (err) {
       return c.json({ error: "models_unavailable", detail: String(err) }, 503);
     }

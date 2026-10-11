@@ -1,10 +1,19 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { db } from "../db";
-import { listarEventos, registrarEvento } from "../eventos";
+import { listarEventos, publicarEstado, registrarEvento } from "../eventos";
 import { validateSelection } from "../models";
 import { cancelTask, notifyWorker } from "../worker";
 import { getPreferences } from "../preferences";
 import { projectRepoPath } from "./projects";
+import { crearTarea } from "../tareas";
+import {
+  aprobarTarea,
+  diffDeTarea,
+  ErrorTarea,
+  esIdTarea,
+  leerSalida,
+  mensajeSeguro,
+} from "../workspace";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
 const MAX_PROMPT = 10_000;
@@ -21,14 +30,19 @@ type TaskRow = {
   project_id: string | null;
   retry_of: string | null;
   reanudable: number;
+  rama: string | null;
+  base_commit: string | null;
+  project_name: string | null;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
 };
 
 // reanudable: la tarea tiene la sesión del agente, así que puede continuar donde quedó.
+// rama y base_commit: solo tareas de un proyecto con Git.
 const COLUMNS =
-  "id, title, prompt, model, effort, status, result, error, project_id, retry_of, (provider_session_id IS NOT NULL) AS reanudable, created_at, started_at, finished_at";
+  "t.id, t.title, t.prompt, t.model, t.effort, t.status, t.result, t.error, t.project_id, t.retry_of, (t.provider_session_id IS NOT NULL) AS reanudable, t.rama, t.base_commit, p.name AS project_name, t.created_at, t.started_at, t.finished_at";
+const DESDE = "FROM tasks t LEFT JOIN projects p ON p.id = t.project_id";
 
 const ESTADOS_REANUDABLES = ["interrupted", "failed"];
 const ESTADOS_REINTENTABLES = ["interrupted", "failed", "cancelled"];
@@ -41,15 +55,23 @@ function aTarea(row: TaskRow) {
 }
 
 function leerTarea(id: string) {
-  const row = db.query<TaskRow, [string]>(`SELECT ${COLUMNS} FROM tasks WHERE id = ?`).get(id);
+  const row = db.query<TaskRow, [string]>(`SELECT ${COLUMNS} ${DESDE} WHERE t.id = ?`).get(id);
   return row ? aTarea(row) : null;
+}
+
+// Traduce los errores de tareas y de Git a la forma { error, detail? } de la API.
+function respuestaDeError(c: Context, err: unknown) {
+  if (err instanceof ErrorTarea) {
+    return c.json(err.detail ? { error: err.code, detail: err.detail } : { error: err.code }, err.status);
+  }
+  return c.json({ error: "tarea_error", detail: mensajeSeguro(err) }, 500);
 }
 
 // GET /api/tasks?limit=50  -> tareas más recientes primero
 tasks.get("/tasks", (c) => {
   const limit = Math.min(Number(c.req.query("limit")) || 50, 200);
   const rows = db
-    .query<TaskRow, [number]>(`SELECT ${COLUMNS} FROM tasks ORDER BY created_at DESC, rowid DESC LIMIT ?`)
+    .query<TaskRow, [number]>(`SELECT ${COLUMNS} ${DESDE} ORDER BY t.created_at DESC, t.rowid DESC LIMIT ?`)
     .all(limit);
   return c.json(rows.map(aTarea));
 });
@@ -65,6 +87,53 @@ tasks.get("/tasks/:id/eventos", (c) => {
   const id = c.req.param("id");
   if (!leerTarea(id)) return c.json({ error: "task_not_found" }, 404);
   return c.json(listarEventos(id));
+});
+
+// GET /api/tasks/:id/salida -> últimas 512 KB de la salida del agente (líneas JSON, sin procesar)
+tasks.get("/tasks/:id/salida", async (c) => {
+  const id = c.req.param("id");
+  if (!esIdTarea(id) || !leerTarea(id)) return c.json({ error: "task_not_found" }, 404);
+  try {
+    return c.json(await leerSalida(id));
+  } catch (err) {
+    return respuestaDeError(c, err);
+  }
+});
+
+// GET /api/tasks/:id/diff -> cambios del clon frente a base_commit, con el hash que exige aprobar
+tasks.get("/tasks/:id/diff", async (c) => {
+  const id = c.req.param("id");
+  if (!esIdTarea(id) || !leerTarea(id)) return c.json({ error: "task_not_found" }, 404);
+  try {
+    return c.json(await diffDeTarea(id));
+  } catch (err) {
+    return respuestaDeError(c, err);
+  }
+});
+
+// POST /api/tasks/:id/aprobar  body: { accion: "commit" | "push", hash, mensaje? }
+tasks.post("/tasks/:id/aprobar", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req
+    .json<{ accion?: unknown; hash?: unknown; mensaje?: unknown }>()
+    .catch(() => ({}) as { accion?: unknown; hash?: unknown; mensaje?: unknown });
+
+  if (body.accion !== "commit" && body.accion !== "push") return c.json({ error: "invalid_accion" }, 400);
+  if (typeof body.hash !== "string" || !/^[0-9a-f]{64}$/i.test(body.hash)) {
+    return c.json({ error: "invalid_hash" }, 400);
+  }
+  if (!esIdTarea(id) || !leerTarea(id)) return c.json({ error: "task_not_found" }, 404);
+
+  try {
+    const resultado = await aprobarTarea(id, {
+      accion: body.accion,
+      hash: body.hash.toLowerCase(),
+      mensaje: body.mensaje,
+    });
+    return c.json(resultado);
+  } catch (err) {
+    return respuestaDeError(c, err);
+  }
 });
 
 // POST /api/tasks  body: { prompt, model?, effort?, projectId? }
@@ -92,16 +161,7 @@ tasks.post("/tasks", async (c) => {
     return c.json({ error: "models_unavailable", detail: String(err) }, 503);
   }
 
-  const id = crypto.randomUUID();
-  db.transaction(() => {
-    db.query(
-      "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id) VALUES (?, ?, ?, ?, ?, 'queued', ?)",
-    ).run(id, prompt.slice(0, 60), prompt, model, effort, projectId);
-    registrarEvento(id, "creada", `Modelo ${model}`);
-  })();
-
-  notifyWorker();
-
+  const id = crearTarea({ prompt, model, effort, projectId });
   return c.json(leerTarea(id), 201);
 });
 
@@ -115,7 +175,7 @@ tasks.post("/tasks/:id/cancel", (c) => {
 });
 
 // POST /api/tasks/:id/reanudar
-// Vuelve a la cola y continúa la misma sesión del agente, en la misma carpeta.
+// Vuelve a la cola y continúa la misma sesión del agente, en la misma carpeta (y el mismo clon).
 tasks.post("/tasks/:id/reanudar", (c) => {
   const id = c.req.param("id");
   const row = leerTarea(id);
@@ -130,6 +190,7 @@ tasks.post("/tasks/:id/reanudar", (c) => {
     registrarEvento(id, "reanudada", `Estaba ${row.status === "interrupted" ? "interrumpida" : "fallida"}`);
   })();
 
+  publicarEstado(id);
   notifyWorker();
   return c.json(leerTarea(id));
 });
@@ -141,23 +202,13 @@ tasks.post("/tasks/:id/reintentar", (c) => {
   if (!original) return c.json({ error: "task_not_found" }, 404);
   if (!ESTADOS_REINTENTABLES.includes(original.status)) return c.json({ error: "task_not_retryable" }, 409);
 
-  const nueva = crypto.randomUUID();
-  db.transaction(() => {
-    db.query(
-      "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id, retry_of) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)",
-    ).run(
-      nueva,
-      original.title,
-      original.prompt,
-      original.model,
-      original.effort,
-      original.project_id,
-      original.id,
-    );
-    registrarEvento(nueva, "creada", `Reintento de ${original.id.slice(0, 8)}`);
-    registrarEvento(original.id, "reintento_creado", `Nueva tarea ${nueva.slice(0, 8)}`);
-  })();
-
-  notifyWorker();
+  const nueva = crearTarea({
+    prompt: original.prompt,
+    model: original.model,
+    effort: original.effort,
+    projectId: original.project_id,
+    titulo: original.title,
+    retryOf: original.id,
+  });
   return c.json(leerTarea(nueva), 201);
 });

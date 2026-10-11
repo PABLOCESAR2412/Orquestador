@@ -1,16 +1,35 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Conversation, type ModelInfo } from "../api";
-import { CostMeter, EffortControl } from "../components/controls";
+import { CostMeter } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
-import { CuotasPanel } from "../components/cuotas-panel";
-import { errorText, formatWhen } from "../lib/model";
+import { UsoPanel } from "../components/uso-panel";
+import { effortLabel, errorText, formatWhen } from "../lib/model";
 import { useShell } from "../components/shell-context";
 
 type Patch = { model?: string | null; effort?: string | null };
 
 // Errores en los que el servidor ya guardó el mensaje del usuario (no hay que reenviarlo).
 const GUARDADO_EN_ERROR = ["runner_failed", "insufficient_funds", "aislamiento_no_disponible"];
+
+// Borrador por chat, guardado en este navegador: sobrevive a cambiar de pantalla o a una señal caída.
+// Si el navegador no deja guardar, el borrador solo vive en la pantalla.
+const claveBorrador = (id: string) => `telo:borrador:${id}`;
+function leerBorrador(id: string): string {
+  try {
+    return localStorage.getItem(claveBorrador(id)) ?? "";
+  } catch {
+    return "";
+  }
+}
+function guardarBorrador(id: string, texto: string) {
+  try {
+    if (texto) localStorage.setItem(claveBorrador(id), texto);
+    else localStorage.removeItem(claveBorrador(id));
+  } catch {
+    // Sin almacenamiento disponible: se ignora.
+  }
+}
 
 export function ChatPage() {
   const qc = useQueryClient();
@@ -23,12 +42,23 @@ export function ChatPage() {
   const setSelectedId = setSelectedConversationId;
 
   const [draft, setDraft] = useState("");
+  // Al cambiar de chat, carga el borrador de ese chat (no se guarda en un efecto para no mezclar chats).
+  useEffect(() => {
+    if (selectedId) setDraft(leerBorrador(selectedId));
+  }, [selectedId]);
+  const cambiarBorrador = (texto: string) => {
+    setDraft(texto);
+    if (selectedId) guardarBorrador(selectedId, texto);
+  };
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [usoAbierto, setUsoAbierto] = useState(false);
   // "" significa sin proyecto: el chat usa su carpeta temporal.
   const [projectId, setProjectId] = useState("");
-  const [usoAbierto, setUsoAbierto] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  // Botones que abren el selector y el panel de uso: reciben el foco al cerrar.
+  const chipRef = useRef<HTMLButtonElement>(null);
+  const usoRef = useRef<HTMLButtonElement>(null);
 
   const conversations = useQuery({
     queryKey: ["conversations"],
@@ -96,14 +126,18 @@ export function ChatPage() {
   });
 
   const send = useMutation({
-    mutationFn: (content: string) => api.sendMessage(selectedId!, content),
-    onSuccess: () => {
-      setDraft("");
+    mutationFn: ({ id, content }: { id: string; content: string }) => api.sendMessage(id, content),
+    onSuccess: (_data, { id }) => {
+      guardarBorrador(id, "");
+      if (id === selectedId) setDraft("");
     },
     // El servidor guarda el mensaje antes de responder: aunque el agente falle, el mensaje ya está en el chat.
-    onError: (err) => {
+    onError: (err, { id }) => {
       const guardado = err instanceof ApiError && GUARDADO_EN_ERROR.includes(err.code);
-      if (guardado) setDraft("");
+      if (guardado) {
+        guardarBorrador(id, "");
+        if (id === selectedId) setDraft("");
+      }
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["messages", selectedId] });
@@ -111,20 +145,19 @@ export function ChatPage() {
     },
   });
 
-  const pickModel = (m: ModelInfo | null) => {
+  // Un solo control: el modelo y su nivel de esfuerzo se eligen juntos. null en esfuerzo es "Auto".
+  const elegirModelo = (m: ModelInfo | null, esfuerzo: string | null = null) => {
     setPickerOpen(false);
     if (!m) {
       configure.mutate({ model: null, effort: null });
       return;
     }
-    // Conserva el esfuerzo solo si el nuevo modelo también lo admite.
-    const effort = current?.effort && m.variants.includes(current.effort) ? current.effort : null;
-    configure.mutate({ model: m.id, effort });
+    configure.mutate({ model: m.id, effort: esfuerzo });
   };
 
   const submit = () => {
     const text = draft.trim();
-    if (text && selectedId && !send.isPending) send.mutate(text);
+    if (text && selectedId && !send.isPending) send.mutate({ id: selectedId, content: text });
   };
 
   // El campo crece con el texto hasta un máximo.
@@ -146,9 +179,21 @@ export function ChatPage() {
 
   // El mensaje que se envió desde este dispositivo ya puede estar en la lista (el sondeo lo trae antes de terminar).
   const ultimoMensaje = messages.data?.at(-1);
-  const yaGuardado = send.isPending && ultimoMensaje?.role === "user" && ultimoMensaje.content === send.variables;
+  const yaGuardado = send.isPending && ultimoMensaje?.role === "user" && ultimoMensaje.content === send.variables?.content;
   // Pensando: se envió aquí o el chat está ocupado (otro dispositivo lo envió).
   const pensando = send.isPending || !!current?.ocupada;
+
+  // Etiqueta del chip: "Nombre del modelo · Esfuerzo", o "Predeterminado" si el servidor elige.
+  const efectoActual = current?.effort ?? null;
+  const nombreModelo = current?.model ? (modelInfo?.name ?? current.model) : null;
+  const etiquetaChip =
+    nombreModelo === null
+      ? "Predeterminado"
+      : efectoActual
+        ? `${nombreModelo} · ${effortLabel(efectoActual)}`
+        : (modelInfo?.variants.length ?? 0) > 0
+          ? `${nombreModelo} · Auto`
+          : nombreModelo;
 
   return (
     <section className="thread">
@@ -164,7 +209,7 @@ export function ChatPage() {
             telo
           </button>
 
-          {/* El modelo se elige en el composer, no en la cabecera */}
+          {/* El modelo y el esfuerzo se eligen en el compositor, no en la cabecera */}
           <h1 className="thread-title">{current?.title ?? "Nuevo chat"}</h1>
           {current?.project_name && (
             <span className="thread-project" title={`Proyecto: ${current.project_name}`}>
@@ -172,54 +217,72 @@ export function ChatPage() {
             </span>
           )}
         </div>
-        {selectedId && (
-          <button
-            type="button"
-            className="ghost thread-uso-btn"
-            aria-expanded={usoAbierto}
-            onClick={() => setUsoAbierto((o) => !o)}
-          >
-            Uso
-          </button>
-        )}
       </header>
-
-      {usoAbierto && <CuotasPanel onCerrar={() => setUsoAbierto(false)} />}
 
       {!selectedId ? (
         <div className="empty">
           <div className="empty-box">
-            <h2>Sin conversación activa</h2>
-            <p>Inicia un nuevo chat con tus agentes o selecciona uno de la lista.</p>
-            {(proyectos.data?.length ?? 0) > 0 && (
-              <select
-                className="project-select"
-                aria-label="Proyecto del chat"
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-              >
-                <option value="">Sin proyecto</option>
-                {proyectos.data?.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+            {conversations.isPending ? (
+              <p>Cargando chats…</p>
+            ) : conversations.isError ? (
+              <>
+                <h2>No se pudieron cargar los chats</h2>
+                <p>Revisa la conexión e intenta de nuevo.</p>
+                <button type="button" className="ghost" onClick={() => void conversations.refetch()}>
+                  Reintentar
+                </button>
+              </>
+            ) : (
+              <>
+                <h2>Sin conversación activa</h2>
+                <p>Inicia un nuevo chat con tus agentes o selecciona uno de la lista.</p>
+                {(proyectos.data?.length ?? 0) > 0 && (
+                  <select
+                    className="project-select"
+                    aria-label="Proyecto del chat"
+                    value={projectId}
+                    onChange={(e) => setProjectId(e.target.value)}
+                  >
+                    <option value="">Sin proyecto</option>
+                    {proyectos.data?.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => create.mutate(projectId || null)}
+                  disabled={create.isPending}
+                >
+                  Nuevo chat
+                </button>
+                {create.isError && (
+                  <p className="error" role="alert">
+                    {errorText(create.error)}
+                  </p>
+                )}
+              </>
             )}
-            <button
-              type="button"
-              className="primary"
-              onClick={() => create.mutate(projectId || null)}
-              disabled={create.isPending}
-            >
-              Nuevo chat
-            </button>
           </div>
         </div>
       ) : (
         <>
           <div className="messages">
             <div className="column">
+              {messages.isPending && <p className="muted-note">Cargando mensajes…</p>}
+              {messages.isError && (
+                <div className="estado-linea">
+                  <p className="error" role="alert">
+                    No se pudieron cargar los mensajes.
+                  </p>
+                  <button type="button" className="ghost" onClick={() => void messages.refetch()}>
+                    Reintentar
+                  </button>
+                </div>
+              )}
               {messages.data?.length === 0 && !send.isPending && (
                 <p className="muted-note center">Escribe un mensaje para empezar.</p>
               )}
@@ -261,7 +324,7 @@ export function ChatPage() {
                     <span className="msg-meta-dot">•</span>
                     <span className="msg-time">Ahora</span>
                   </div>
-                  <div className="msg msg-user">{send.variables}</div>
+                  <div className="msg msg-user">{send.variables?.content}</div>
                 </div>
               )}
               {pensando && (
@@ -306,8 +369,22 @@ export function ChatPage() {
                   <ModelPicker
                     models={modelList}
                     currentId={current?.model ?? null}
-                    onSelect={pickModel}
+                    conEsfuerzo
+                    currentEffort={efectoActual}
+                    onSelect={elegirModelo}
                     onClose={() => setPickerOpen(false)}
+                    disparador={chipRef}
+                    cargando={models.isPending}
+                    error={models.isError ? errorText(models.error) : null}
+                    onReintentar={() => void models.refetch()}
+                  />
+                )}
+
+                {usoAbierto && (
+                  <UsoPanel
+                    modelo={current?.model ?? null}
+                    onCerrar={() => setUsoAbierto(false)}
+                    disparador={usoRef}
                   />
                 )}
 
@@ -317,7 +394,7 @@ export function ChatPage() {
                   value={draft}
                   placeholder="Escribe un mensaje"
                   aria-label="Mensaje"
-                  onChange={(e) => setDraft(e.target.value)}
+                  onChange={(e) => cambiarBorrador(e.target.value)}
                   onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
                     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                       e.preventDefault();
@@ -328,24 +405,33 @@ export function ChatPage() {
 
                 <div className="toolbar">
                   <button
+                    ref={chipRef}
                     type="button"
                     className="model-chip"
                     aria-haspopup="dialog"
                     aria-expanded={pickerOpen}
-                    onClick={() => setPickerOpen((o) => !o)}
+                    onClick={() => {
+                      setUsoAbierto(false);
+                      setPickerOpen((o) => !o);
+                    }}
                   >
-                    <span className="model-chip-name">
-                      {modelInfo?.name ?? current?.model ?? "Predeterminado"}
-                    </span>
+                    <span className="model-chip-name">{etiquetaChip}</span>
                     {modelInfo && <CostMeter tier={modelInfo.costTier} />}
                   </button>
 
-                  <EffortControl
-                    variants={modelInfo?.variants ?? []}
-                    value={current?.effort ?? null}
-                    disabled={!current?.model || configure.isPending}
-                    onChange={(effort) => configure.mutate({ effort })}
-                  />
+                  <button
+                    ref={usoRef}
+                    type="button"
+                    className="uso-btn"
+                    aria-haspopup="dialog"
+                    aria-expanded={usoAbierto}
+                    onClick={() => {
+                      setPickerOpen(false);
+                      setUsoAbierto((o) => !o);
+                    }}
+                  >
+                    Uso
+                  </button>
 
                   <button
                     type="submit"

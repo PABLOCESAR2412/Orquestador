@@ -1,4 +1,13 @@
 import { prefijoAislamiento } from "./aislamiento";
+import { esVariableReservada } from "../secretos";
+
+// Id de sesión de OpenCode. Empieza por letra o cifra: así nunca se lee como una opción de la CLI.
+const PATRON_SESION = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+
+// Verdadero si el id puede guardarse y reusarse con -s. Lo que no cumple se descarta.
+export function sesionValida(id: unknown): id is string {
+  return typeof id === "string" && PATRON_SESION.test(id);
+}
 
 export type Usage = { input: number; output: number; reasoning: number; cacheRead: number; cost: number };
 export type RunResult = { text: string; sessionId: string | null; usage: Usage | null };
@@ -34,11 +43,46 @@ function failureDetail(stdout: string, stderr: string, events: OpenCodeEvent[]):
   return (stderr || stdout).trim().slice(-800) || "sin salida";
 }
 
-// Variables de Telo que el agente nunca debe heredar (la clave de acceso, por ejemplo).
-function entornoDelAgente(): Record<string, string> {
+// El agente solo hereda estas variables. Todo lo demás del servidor se omite: claves de otros
+// servicios, tokens y cualquier variable que se agregue al entorno del VM en el futuro.
+const VARIABLES_PERMITIDAS = new Set([
+  "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "TERM", "TZ", "TMPDIR",
+  "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS",
+  "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+]);
+const PREFIJOS_PERMITIDOS = ["LC_", "XDG_", "OPENCODE_"];
+
+// Si un proveedor necesita una clave como variable de entorno, el operador la permite por nombre
+// en el archivo de entorno: TELO_AGENTE_VARIABLES=NOMBRE_1,NOMBRE_2. Nunca aplica a variables TELO_*.
+function variablesExtra(): Set<string> {
+  return new Set(
+    (process.env.TELO_AGENTE_VARIABLES ?? "")
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean),
+  );
+}
+
+// `propias` son variables de esta ejecución (p. ej. secretos del proyecto). Se fusionan encima
+// de las permitidas y, como todo lo demás, nunca pueden llamarse TELO_*.
+function entornoDelAgente(propias?: Record<string, string>): Record<string, string> {
+  const extra = variablesExtra();
   const env: Record<string, string> = {};
   for (const [clave, valor] of Object.entries(process.env)) {
-    if (valor !== undefined && !clave.startsWith("TELO_")) env[clave] = valor;
+    if (valor === undefined || clave.startsWith("TELO_")) continue;
+    // Una variable del operador en TELO_AGENTE_VARIABLES no puede ser de sistema, de Telo ni el token de GitHub.
+    const permitida =
+      VARIABLES_PERMITIDAS.has(clave) ||
+      PREFIJOS_PERMITIDOS.some((p) => clave.startsWith(p)) ||
+      (extra.has(clave) && !esVariableReservada(clave) && clave !== "GITHUB_TOKEN");
+    if (permitida) env[clave] = valor;
+  }
+  // Los secretos del proyecto no pueden sobrescribir nada del sistema, de Telo ni de la lista permitida.
+  for (const [clave, valor] of Object.entries(propias ?? {})) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(clave)) continue;
+    if (esVariableReservada(clave) || clave === "GITHUB_TOKEN") continue;
+    if (VARIABLES_PERMITIDAS.has(clave) || PREFIJOS_PERMITIDOS.some((p) => clave.startsWith(p))) continue;
+    env[clave] = valor;
   }
   return env;
 }
@@ -95,24 +139,34 @@ export async function runOpenCode(opts: {
   signal?: AbortSignal;
   // Se llama en cuanto el agente informa su sesión, aunque la ejecución siga en curso.
   onSesion?: (sessionId: string) => void;
+  // Una llamada por cada línea de stdout, en orden, mientras el agente corre.
+  onLinea?: (linea: string) => void;
+  // Variables extra solo para esta ejecución. Nunca se aceptan nombres TELO_*.
+  extraEnv?: Record<string, string>;
 }): Promise<RunResult> {
   // Lanza AislamientoError si la carpeta no es permitida o falta bubblewrap.
   const aislamiento = prefijoAislamiento(opts.cwd);
 
+  // Un id de sesión que no cumple el patrón se ignora: ni se pasa a -s ni se reutiliza.
+  const sesionPedida = sesionValida(opts.sessionId) ? opts.sessionId : null;
   const args = ["opencode", "run", "--format", "json", "-m", opts.model];
   if (opts.variant) args.push("--variant", opts.variant);
-  if (opts.sessionId) args.push("-s", opts.sessionId);
-  args.push(opts.prompt);
+  if (sesionPedida) args.push("-s", sesionPedida);
+  // `--` separa las opciones del mensaje: un prompt que empiece por "-" no se lee como opción.
+  args.push("--", opts.prompt);
 
   // `setsid` deja al agente como líder de su propio grupo (pgid == pid),
   // para poder cerrar todo su árbol de procesos de una vez.
   const proc = Bun.spawn(["setsid", ...aislamiento, ...args], {
     cwd: opts.cwd,
-    env: entornoDelAgente(),
+    env: entornoDelAgente(opts.extraEnv),
     stdout: "pipe",
     stderr: "pipe",
   });
   const timer = setTimeout(() => terminarGrupo(proc.pid), opts.timeoutMs ?? 120_000);
+  // Al terminar el agente, se cierra lo que quedó de su grupo (procesos en segundo plano). Así nada
+  // sigue escribiendo en la carpeta de trabajo después de la ejecución, y las tuberías se cierran.
+  void proc.exited.then(() => terminarGrupo(proc.pid));
 
   // Al cancelar se cierra el grupo entero. No se espera a las tuberías, porque
   // un proceso del agente puede seguir abriéndolas y dejaría la tarea en "running".
@@ -127,10 +181,18 @@ export async function runOpenCode(opts: {
 
   let sesionAvisada: string | null = null;
   const alLeerLinea = (linea: string) => {
+    // Un fallo del llamador (p. ej. al escribir el registro) no debe cortar al agente.
+    if (opts.onLinea) {
+      try {
+        opts.onLinea(linea);
+      } catch {
+        // se ignora: la salida sigue llegando al resultado
+      }
+    }
     if (!opts.onSesion || !linea.includes("sessionID")) return;
     try {
       const ev = JSON.parse(linea) as OpenCodeEvent;
-      if (ev.sessionID && ev.sessionID !== sesionAvisada) {
+      if (sesionValida(ev.sessionID) && ev.sessionID !== sesionAvisada) {
         sesionAvisada = ev.sessionID;
         opts.onSesion(ev.sessionID);
       }
@@ -164,7 +226,7 @@ export async function runOpenCode(opts: {
   let usage: Usage | null = null;
 
   for (const ev of events) {
-    if (ev.sessionID) sessionId = ev.sessionID;
+    if (sesionValida(ev.sessionID)) sessionId = ev.sessionID;
     if (ev.type === "text" && ev.part?.text) text += ev.part.text;
     if (ev.type === "step_finish" && ev.part?.tokens) {
       const t = ev.part.tokens;

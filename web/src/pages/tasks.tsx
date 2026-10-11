@@ -1,20 +1,29 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { api, type ModelInfo, type Task } from "../api";
 import { CostMeter, EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
 import { HistorialTarea } from "../components/task-history";
-import { errorText } from "../lib/model";
+import { ProgramadasPanel } from "../components/programadas";
+import { TareaPasos, derivarPasos } from "../components/tarea-pasos";
+import { TerminalCrudo } from "../components/tarea-terminal";
+import { RevisionCambios } from "../components/tarea-revision";
+import { cuando, hora } from "../components/tarea-formato";
+import { useEventosVivos } from "../lib/eventos-vivos";
+import { effortLabel, errorText, formatUsd, sanearDetalle, STATUS_LABEL } from "../lib/model";
 import { EVENTO_VERSION_NUEVA, hayVersionNueva } from "../lib/version";
 import { useShell } from "../components/shell-context";
+import "../styles-trabajo.css";
 
 const isActive = (t: Task) => t.status === "queued" || t.status === "running";
 const MAX_PROMPT_CHARS = 10_000;
+const MAX_LINEAS_VIVAS = 1_500;
 type TaskFilter = "all" | "active" | "done";
 
 function isToday(dateStr: string | null): boolean {
   if (!dateStr) return false;
-  const d = new Date(dateStr);
+  const d = new Date(dateStr.replace(" ", "T") + "Z");
   const now = new Date();
   return (
     d.getFullYear() === now.getFullYear() &&
@@ -23,28 +32,25 @@ function isToday(dateStr: string | null): boolean {
   );
 }
 
+// Tiempo transcurrido de una tarea en curso (SQLite guarda la fecha en UTC sin zona).
 function formatElapsed(startedAt: string | null): string {
   if (!startedAt) return "00:00:00";
-  const start = new Date(startedAt).getTime();
-  const now = Date.now();
-  const diffSec = Math.max(0, Math.floor((now - start) / 1000));
+  const start = new Date(startedAt.replace(" ", "T") + "Z").getTime();
+  const diffSec = Math.max(0, Math.floor((Date.now() - start) / 1000));
   const h = Math.floor(diffSec / 3600);
   const m = Math.floor((diffSec % 3600) / 60);
   const s = diffSec % 60;
   return [h, m, s].map((v) => String(v).padStart(2, "0")).join(":");
 }
 
-function formatFinishedTime(finishedAt: string | null): string {
-  if (!finishedAt) return "";
-  try {
-    const d = new Date(finishedAt);
-    return d.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return finishedAt;
-  }
+export function TasksPage() {
+  // /tareas/$id muestra el detalle; /tareas, la lista.
+  const params = useParams({ strict: false }) as { id?: string };
+  if (params.id) return <DetalleTarea id={params.id} />;
+  return <ListaTareas />;
 }
 
-export function TasksPage() {
+function ListaTareas() {
   const qc = useQueryClient();
   const { newTaskOpen, setNewTaskOpen, toggleDrawer } = useShell();
 
@@ -55,11 +61,23 @@ export function TasksPage() {
   // "" significa sin proyecto: la tarea usa su carpeta temporal.
   const [projectId, setProjectId] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
   const [filter, setFilter] = useState<TaskFilter>("all");
   const [buscando, setBuscando] = useState(false);
   const [avisoActualizar, setAvisoActualizar] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // "Nueva tarea en este proyecto" llega con el proyecto elegido en el estado de navegación.
+  const proyectoDesdeNavegacion = useRouterState({
+    select: (s) =>
+      (s.location.state as unknown as { proyectoId?: string } | undefined)?.proyectoId ?? null,
+  });
+
+  useEffect(() => {
+    if (!proyectoDesdeNavegacion) return;
+    setProjectId(proyectoDesdeNavegacion);
+    setFormOpen(true);
+    setTimeout(() => textareaRef.current?.focus(), 60);
+  }, [proyectoDesdeNavegacion]);
 
   // Escucha apertura desde el sidebar o atajo ⌘N
   useEffect(() => {
@@ -91,11 +109,18 @@ export function TasksPage() {
     }
   }, [prefs.data, model, effort]);
 
-  // Si hay tareas en cola o corriendo, la lista se actualiza cada 3s.
+  // Si hay tareas en cola o corriendo, la lista se actualiza cada 3s (respaldo del canal en vivo).
   const tasks = useQuery({
     queryKey: ["tasks"],
     queryFn: api.listTasks,
     refetchInterval: (q) => (q.state.data?.some(isActive) ? 3_000 : false),
+  });
+
+  // Los cambios de tareas llegan en vivo: la lista se vuelve a pedir sin esperar al sondeo.
+  const { conectado } = useEventosVivos({}, (evento) => {
+    if (evento.tipo === "tarea" || evento.tipo === "evento") {
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
+    }
   });
 
   const modelList: ModelInfo[] = models.data?.models ?? [];
@@ -120,16 +145,6 @@ export function TasksPage() {
 
   const cancel = useMutation({
     mutationFn: (id: string) => api.cancelTask(id),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
-  });
-
-  // Reanudar continúa la sesión del agente en la misma carpeta; reintentar crea una tarea nueva.
-  const reanudar = useMutation({
-    mutationFn: (id: string) => api.resumeTask(id),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
-  });
-  const reintentar = useMutation({
-    mutationFn: (id: string) => api.retryTask(id),
     onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
@@ -198,7 +213,7 @@ export function TasksPage() {
   const isOnline = Boolean(health.data?.ok);
 
   return (
-    <main className="page">
+    <main className="page tr-pagina">
       {/* Cabecera Tareas del Servidor */}
       <header className="task-header-wrap">
         <div className="task-header-meta">
@@ -214,7 +229,7 @@ export function TasksPage() {
           </button>
           <span className={`status-pill ${isOnline ? "is-online" : "is-offline"}`}>
             <span className="pill-dot" aria-hidden="true" />
-            {isOnline ? "Daemon • Activo" : "Sin conexión"}
+            {isOnline ? "Servidor activo" : "Sin conexión"}
           </span>
         </div>
 
@@ -229,6 +244,7 @@ export function TasksPage() {
           <button
             type="button"
             className="task-btn-nueva"
+            aria-expanded={formOpen}
             onClick={() => {
               setFormOpen((prev) => !prev);
               if (!formOpen) setTimeout(() => textareaRef.current?.focus(), 60);
@@ -391,12 +407,15 @@ export function TasksPage() {
         </div>
       </section>
 
+      <ProgramadasPanel />
+
       {/* Filtros: Todas, Activas, Completadas */}
       <div className="task-filter-row">
         <div className="period" role="group" aria-label="Filtro de tareas">
           <button
             type="button"
             className={`pill${filter === "all" ? " on" : ""}`}
+            aria-pressed={filter === "all"}
             onClick={() => setFilter("all")}
           >
             Todas ({taskList.length})
@@ -404,6 +423,7 @@ export function TasksPage() {
           <button
             type="button"
             className={`pill${filter === "active" ? " on" : ""}`}
+            aria-pressed={filter === "active"}
             onClick={() => setFilter("active")}
           >
             Activas ({activasCount})
@@ -411,6 +431,7 @@ export function TasksPage() {
           <button
             type="button"
             className={`pill${filter === "done" ? " on" : ""}`}
+            aria-pressed={filter === "done"}
             onClick={() => setFilter("done")}
           >
             Completadas ({doneCount})
@@ -420,7 +441,7 @@ export function TasksPage() {
         <div className="task-sync">
           <span className="task-sync-label">
             <span className={`pill-dot task-sync-dot${activasCount > 0 ? " is-live" : ""}`} aria-hidden="true" />
-            {activasCount > 0 ? "Cada 3 s" : "En reposo"}
+            {activasCount > 0 ? (conectado ? "En vivo" : "Cada 3 s") : "En reposo"}
           </span>
           <button
             type="button"
@@ -445,7 +466,20 @@ export function TasksPage() {
         </p>
       )}
 
-      {tasks.isError && <p className="error">No se pudieron cargar las tareas.</p>}
+      {tasks.isPending && <p className="muted-note">Cargando las tareas…</p>}
+
+      {tasks.isError && (
+        <>
+          <p className="error" role="alert">
+            No se pudieron cargar las tareas.
+          </p>
+          <div>
+            <button type="button" className="ghost task-mini-btn" onClick={() => void tasks.refetch()}>
+              Reintentar
+            </button>
+          </div>
+        </>
+      )}
 
       {tasks.data && filteredTasks.length === 0 && (
         <p className="muted-note">
@@ -457,19 +491,18 @@ export function TasksPage() {
         </p>
       )}
 
-      {/* Lista de tarjetas de tareas */}
+      {/* Lista de tarjetas: cada una abre el detalle en /tareas/$id */}
       <ul className="task-list">
         {filteredTasks.map((t) => {
-          const open = openId === t.id;
           const isRunning = t.status === "running";
           const isQueued = t.status === "queued";
           const isDone = t.status === "done";
           const isFailed = t.status === "failed";
 
           let statusText = "En cola";
-          if (isRunning) statusText = `Ejecutando (${formatElapsed(t.started_at)})`;
-          else if (isDone) statusText = `Completada (${formatFinishedTime(t.finished_at)})`;
-          else if (isFailed) statusText = `Falló (${formatFinishedTime(t.finished_at)})`;
+          if (isRunning) statusText = `Corriendo (${formatElapsed(t.started_at)})`;
+          else if (isDone) statusText = `Lista (${hora(t.finished_at)})`;
+          else if (isFailed) statusText = `Falló (${hora(t.finished_at)})`;
           else if (t.status === "cancelled") statusText = "Cancelada";
           else if (t.status === "interrupted") statusText = "Interrumpida";
 
@@ -486,14 +519,9 @@ export function TasksPage() {
           return (
             <li key={t.id}>
               <article className="task-card">
-                {/* El botón de cancelar va al lado, no dentro, del botón que abre la tarjeta */}
+                {/* El botón de cancelar va al lado, no dentro, del enlace que abre la tarea */}
                 <div className="task-card-top">
-                  <button
-                    type="button"
-                    className="task-card-head"
-                    aria-expanded={open}
-                    onClick={() => setOpenId(open ? null : t.id)}
-                  >
+                  <Link to="/tareas/$id" params={{ id: t.id }} className="task-card-head">
                     <div className="task-card-left">
                       <span className="task-card-icon" aria-hidden="true">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -508,7 +536,9 @@ export function TasksPage() {
                           <span className="task-card-title">{t.title}</span>
                           <span className="task-card-badge">{modelName(t.model)}</span>
                         </div>
-                        <span className="task-card-sub">uuid: {t.id.slice(0, 8)}</span>
+                        <span className="task-card-sub">
+                          {t.project_name ? `${t.project_name} · ` : ""}uuid: {t.id.slice(0, 8)}
+                        </span>
                       </div>
                     </div>
 
@@ -516,7 +546,7 @@ export function TasksPage() {
                       <span className={`pill-dot${dotClass}`} aria-hidden="true" />
                       <span>{statusText}</span>
                     </div>
-                  </button>
+                  </Link>
 
                   {(isActive(t) || t.status === "interrupted") && (
                     <button
@@ -529,68 +559,6 @@ export function TasksPage() {
                     </button>
                   )}
                 </div>
-
-                {open && (
-                  <div className="task-card-body">
-                    <div className="task-card-prompt">
-                      <strong className="task-card-label">Prompt:</strong>
-                      {t.prompt}
-                    </div>
-
-                    {t.result && (
-                      <div className="task-card-result">
-                        <strong className="task-card-label">Resultado:</strong>
-                        {t.result}
-                      </div>
-                    )}
-
-                    {t.error && (
-                      <p className="error" role="alert">
-                        <strong>Error: </strong> {t.error}
-                      </p>
-                    )}
-
-                    {(t.status === "interrupted" || t.status === "failed" || t.status === "cancelled") && (
-                      <div className="task-card-acciones">
-                        {t.reanudable && (t.status === "interrupted" || t.status === "failed") && (
-                          <button
-                            type="button"
-                            className="ghost task-mini-btn"
-                            onClick={() => reanudar.mutate(t.id)}
-                            disabled={reanudar.isPending}
-                          >
-                            Reanudar
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="ghost task-mini-btn"
-                          onClick={() => reintentar.mutate(t.id)}
-                          disabled={reintentar.isPending}
-                        >
-                          Reintentar
-                        </button>
-                      </div>
-                    )}
-                    {reanudar.isError && reanudar.variables === t.id && (
-                      <p className="error" role="alert">{errorText(reanudar.error)}</p>
-                    )}
-                    {reintentar.isError && reintentar.variables === t.id && (
-                      <p className="error" role="alert">{errorText(reintentar.error)}</p>
-                    )}
-
-                    <HistorialTarea id={t.id} />
-
-                    <div className="task-meta-bar">
-                      <span className="muted-note">
-                        {modelName(t.model)}
-                        {t.effort ? ` · ${t.effort}` : ""}
-                        {t.started_at ? ` · Iniciada: ${formatFinishedTime(t.started_at)}` : ""}
-                        {t.finished_at ? ` · Finalizada: ${formatFinishedTime(t.finished_at)}` : ""}
-                      </span>
-                    </div>
-                  </div>
-                )}
               </article>
             </li>
           );
@@ -634,6 +602,281 @@ export function TasksPage() {
           </button>
         </div>
       </footer>
+    </main>
+  );
+}
+
+// Detalle de una tarea: estado, resumen, terminal, revisión de cambios e historial.
+function DetalleTarea({ id }: { id: string }) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const { toggleDrawer } = useShell();
+  // Líneas del agente que llegaron en vivo desde la última carga del terminal.
+  const [vivas, setVivas] = useState<string[]>([]);
+
+  const tarea = useQuery({
+    queryKey: ["task", id],
+    queryFn: () => api.getTask(id),
+    refetchInterval: (q) => (q.state.data && isActive(q.state.data) ? 3_000 : false),
+  });
+  const t = tarea.data;
+  const activa = t ? isActive(t) : false;
+  const enCurso = t?.status === "running";
+  const conGit = Boolean(t?.rama);
+
+  const models = useQuery({ queryKey: ["models"], queryFn: api.listModels, staleTime: 5 * 60_000 });
+  const modelName = t ? (models.data?.models.find((m) => m.id === t.model)?.name ?? t.model) : "";
+
+  const eventos = useQuery({
+    queryKey: ["task-events", id],
+    queryFn: () => api.listTaskEvents(id),
+    refetchInterval: activa ? 4_000 : false,
+  });
+
+  // Los cambios solo se calculan cuando la tarea no está en cola ni corriendo.
+  const diff = useQuery({
+    queryKey: ["task-diff", id],
+    queryFn: () => api.taskDiff(id),
+    enabled: conGit && Boolean(t) && !activa,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+
+  const { conectado } = useEventosVivos({ tareaId: id }, (evento) => {
+    if (evento.tipo === "salida") {
+      setVivas((prev) => {
+        const base = prev.length >= MAX_LINEAS_VIVAS ? prev.slice(-MAX_LINEAS_VIVAS + 1) : prev;
+        return [...base, evento.linea];
+      });
+      return;
+    }
+    if (evento.tipo === "evento") {
+      void qc.invalidateQueries({ queryKey: ["task-events", id] });
+      void qc.invalidateQueries({ queryKey: ["task", id] });
+      return;
+    }
+    void qc.invalidateQueries({ queryKey: ["task", id] });
+    void qc.invalidateQueries({ queryKey: ["tasks"] });
+    if (evento.status !== "queued" && evento.status !== "running") {
+      void qc.invalidateQueries({ queryKey: ["task-diff", id] });
+      void qc.invalidateQueries({ queryKey: ["task-output", id] });
+    }
+  });
+
+  const refrescar = () => {
+    void qc.invalidateQueries({ queryKey: ["task", id] });
+    void qc.invalidateQueries({ queryKey: ["tasks"] });
+  };
+
+  const cancelar = useMutation({ mutationFn: () => api.cancelTask(id), onSettled: refrescar });
+  const reanudar = useMutation({ mutationFn: () => api.resumeTask(id), onSettled: refrescar });
+  const reintentar = useMutation({
+    mutationFn: () => api.retryTask(id),
+    onSuccess: (nueva) => {
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
+      void navigate({ to: "/tareas/$id", params: { id: nueva.id } });
+    },
+  });
+
+  const pasos = t
+    ? derivarPasos({
+        tarea: t,
+        eventos: eventos.data,
+        conGit,
+        diff: diff.data,
+        errorDiff: diff.isError,
+      })
+    : [];
+
+  return (
+    <main className="page tr-pagina">
+      <header className="page-head tr-cabecera">
+        <div className="page-title-row">
+          <button type="button" className="ghost menu-btn" aria-label="Abrir menú" onClick={toggleDrawer}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h10" />
+            </svg>
+          </button>
+          <div className="tr-cabecera-texto">
+            <Link to="/tareas" className="foot-link tr-volver">
+              Volver a tareas
+            </Link>
+            <h1 className="task-title">{t?.title ?? "Tarea"}</h1>
+            {t && (
+              <p className="page-desc">
+                {STATUS_LABEL[t.status]} · {modelName}
+                {t.effort ? ` · ${effortLabel(t.effort)}` : ""}
+              </p>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {tarea.isPending && <p className="muted-note">Cargando la tarea…</p>}
+
+      {tarea.isError && (
+        <section className="panel" aria-live="polite">
+          <p className="error" role="alert">
+            {errorText(tarea.error)}
+          </p>
+          <div className="tr-acciones-fila">
+            <button type="button" className="ghost task-mini-btn" onClick={() => void tarea.refetch()}>
+              Reintentar
+            </button>
+            <Link to="/tareas" className="ghost task-mini-btn tr-enlace-boton">
+              Ver todas las tareas
+            </Link>
+          </div>
+        </section>
+      )}
+
+      {t && (
+        <>
+          <section className="panel tarea-seccion" aria-labelledby="estado-titulo">
+            <div className="card-top">
+              <h2 id="estado-titulo">Estado</h2>
+              {enCurso && conectado && <span className="badge badge-neutral">En vivo</span>}
+            </div>
+            <TareaPasos pasos={pasos} />
+          </section>
+
+          <section className="panel tarea-seccion" aria-labelledby="resumen-titulo">
+            <h2 id="resumen-titulo">Resumen</h2>
+
+            <dl className="tarea-meta">
+              <div>
+                <dt>Modelo</dt>
+                <dd>{modelName}</dd>
+              </div>
+              {t.effort && (
+                <div>
+                  <dt>Esfuerzo</dt>
+                  <dd>{effortLabel(t.effort)}</dd>
+                </div>
+              )}
+              <div>
+                <dt>Proyecto</dt>
+                <dd>{t.project_name ?? "Sin proyecto"}</dd>
+              </div>
+              {t.rama && (
+                <div>
+                  <dt>Rama</dt>
+                  <dd className="tarea-codigo">{t.rama}</dd>
+                </div>
+              )}
+              {t.base_commit && (
+                <div>
+                  <dt>Commit base</dt>
+                  <dd className="tarea-codigo">{t.base_commit.slice(0, 7)}</dd>
+                </div>
+              )}
+              <div>
+                <dt>Creada</dt>
+                <dd>{cuando(t.created_at)}</dd>
+              </div>
+              {t.started_at && (
+                <div>
+                  <dt>Iniciada</dt>
+                  <dd>{cuando(t.started_at)}</dd>
+                </div>
+              )}
+              {t.finished_at && (
+                <div>
+                  <dt>Finalizada</dt>
+                  <dd>{cuando(t.finished_at)}</dd>
+                </div>
+              )}
+            </dl>
+
+            <div className="tarea-bloque">
+              <span className="tarea-etiqueta">Prompt</span>
+              <div className="tarea-texto">{t.prompt}</div>
+            </div>
+
+            {t.result && (
+              <div className="tarea-bloque">
+                <span className="tarea-etiqueta">Resultado</span>
+                <div className="tarea-texto">{t.result}</div>
+              </div>
+            )}
+
+            {t.error && (
+              <div className="tarea-bloque">
+                <span className="tarea-etiqueta">Error</span>
+                <p className="error tarea-texto" role="alert">
+                  {sanearDetalle(t.error, 600)}
+                </p>
+              </div>
+            )}
+
+            {(cancelar.isError || reanudar.isError || reintentar.isError) && (
+              <p className="error" role="alert">
+                {errorText(cancelar.error ?? reanudar.error ?? reintentar.error)}
+              </p>
+            )}
+
+            <div className="task-card-acciones tr-acciones">
+              {t.reanudable && (t.status === "interrupted" || t.status === "failed") && (
+                <button
+                  type="button"
+                  className="ghost task-mini-btn"
+                  onClick={() => reanudar.mutate()}
+                  disabled={reanudar.isPending}
+                >
+                  Reanudar
+                </button>
+              )}
+              {(t.status === "interrupted" || t.status === "failed" || t.status === "cancelled") && (
+                <button
+                  type="button"
+                  className="ghost task-mini-btn"
+                  onClick={() => reintentar.mutate()}
+                  disabled={reintentar.isPending}
+                >
+                  {reintentar.isPending ? "Creando…" : "Reintentar"}
+                </button>
+              )}
+              {(activa || t.status === "interrupted") && (
+                <button
+                  type="button"
+                  className="ghost task-cancel-btn"
+                  onClick={() => cancelar.mutate()}
+                  disabled={cancelar.isPending}
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
+          </section>
+
+          {conGit &&
+            (activa ? (
+              <section className="panel tarea-seccion" aria-labelledby="revision-titulo">
+                <h2 id="revision-titulo">Revisión de cambios</h2>
+                <p className="muted-note">Los cambios se revisan cuando la tarea termina.</p>
+              </section>
+            ) : (
+              <RevisionCambios
+                id={id}
+                datos={diff.data}
+                cargando={diff.isPending || diff.isFetching}
+                error={diff.error}
+                onRecargar={() => void diff.refetch()}
+              />
+            ))}
+
+          <section className="panel tarea-seccion" aria-labelledby="salida-titulo">
+            <h2 id="salida-titulo">Salida y historial</h2>
+            <TerminalCrudo
+              id={id}
+              vivas={vivas}
+              enCurso={enCurso}
+              onCargada={() => setVivas([])}
+            />
+            <HistorialTarea id={id} />
+          </section>
+        </>
+      )}
     </main>
   );
 }

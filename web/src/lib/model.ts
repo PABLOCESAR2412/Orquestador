@@ -54,6 +54,11 @@ export const EVENT_LABEL: Record<TaskEventKind, string> = {
   reanudada: "Reanudada",
   reintento_creado: "Reintento creado",
   terminada: "Terminada",
+  modelo_respaldo: "Modelo de respaldo",
+  clon_creado: "Copia de trabajo creada",
+  commit_aprobado: "Commit aprobado",
+  push_aprobado: "Rama subida al remoto",
+  push_fallido: "Falló la subida al remoto",
 };
 
 // Montos en dólares: centavos normales; cifras menores a un centavo con cuatro decimales.
@@ -72,7 +77,20 @@ export function formatWhen(sqlDate: string): string {
   }).format(date);
 }
 
-const shorten = (text: string) => text.replace(/^Error:\s*/, "").slice(0, 160);
+// Detalle de un error del servidor o del agente, listo para mostrar como texto.
+// Quita credenciales de URLs, valores de secretos, rutas del servidor y cadenas con forma de token.
+// Si el servidor cambia de formato, esta limpieza sigue siendo la última barrera antes de la pantalla.
+export function sanearDetalle(texto: string, maximo = 160): string {
+  return texto
+    .replace(/^Error:\s*/, "")
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, "$1")
+    .replace(/\b([\w-]*(?:token|secret|password|passwd|clave|api[_-]?key|credential)[\w-]*)(\s*[=:]\s*)\S+/gi, "$1$2[oculto]")
+    .replace(/\b(?:gh[pousr]_|github_pat_|sk-|xox[abp]-|AKIA)[A-Za-z0-9_-]{8,}/g, "[oculto]")
+    .replace(/\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{24,}\b/g, "[oculto]")
+    .replace(/[A-Za-z]:\\[^\s'"]+/g, "[ruta]")
+    .replace(/(^|[\s'"`(=])\/(?:[\w.@+-]+\/)+[\w.@+-]*/g, "$1[ruta]")
+    .slice(0, maximo);
+}
 
 export function errorText(err: unknown): string {
   if (err instanceof ApiError) {
@@ -81,7 +99,7 @@ export function errorText(err: unknown): string {
         return "Saldo insuficiente en el proveedor. Usa un modelo gratuito o recarga saldo.";
       case "runner_failed":
         return err.detail
-          ? `El modelo no respondió: ${shorten(err.detail)}`
+          ? `El modelo no respondió: ${sanearDetalle(err.detail)}`
           : "El modelo no respondió. Intenta de nuevo.";
       case "invalid_content":
       case "invalid_prompt":
@@ -131,19 +149,97 @@ export function errorText(err: unknown): string {
       case "projects_root_not_configured":
         return "Los proyectos aún no están configurados en el servidor.";
       case "invalid_project_path":
-        return "Escribe la carpeta del proyecto.";
+        return "La ruta no es válida.";
       case "project_path_not_found":
-        return "Esa carpeta no existe dentro de la carpeta de proyectos del servidor.";
+        return "Esa ruta no existe en el servidor.";
       case "project_path_outside_root":
-        return "La carpeta debe estar dentro de la carpeta de proyectos del servidor.";
+        return "La ruta queda fuera de la carpeta permitida.";
       case "project_path_not_directory":
         return "Esa ruta es un archivo, no una carpeta.";
       case "project_exists":
         return "Ese proyecto ya está registrado.";
+      case "project_folder_exists":
+        return "Ya existe una carpeta con ese nombre en la carpeta de proyectos.";
       case "project_not_found":
         return "Ese proyecto ya no existe.";
       case "invalid_project_name":
-        return "El nombre del proyecto no puede tener más de 60 caracteres.";
+        return "El nombre del proyecto debe tener entre 1 y 60 caracteres.";
+      case "invalid_instrucciones":
+        return "Las instrucciones pueden tener hasta 8 000 caracteres.";
+      case "archivo_binario":
+        return "Ese archivo no es de texto, así que no se puede mostrar.";
+      case "secretos_no_configurados":
+        return "Falta la clave de cifrado de secretos en el servidor. Los secretos no se pueden guardar.";
+      case "invalid_secret_name":
+        return "El nombre usa solo mayúsculas, números y guion bajo, y no empieza con TELO_.";
+      case "invalid_secret_value":
+        return "El valor debe tener entre 1 y 8 192 caracteres.";
+      case "secret_not_found":
+        return "Ese secreto ya no existe.";
+      case "invalid_schedule":
+        return "Revisa la frecuencia: entre 1 y 168 horas, o una hora en formato HH:MM.";
+      case "task_without_repo":
+        return "Esta tarea no tiene copia de Git, así que no hay cambios que revisar.";
+      case "task_running":
+        return "La tarea sigue corriendo. Revisa los cambios cuando termine.";
+      case "sin_cambios":
+        return "No hay cambios que guardar.";
+      case "cambios_cambiaron":
+        return "Los cambios cambiaron desde que los revisaste. Revísalos de nuevo antes de aprobar.";
+      case "commit_requerido":
+        return "Primero aprueba el commit de estos cambios.";
+      case "archivo_sensible":
+        return "Hay archivos que parecen secretos (claves o variables .env). Quítalos de la tarea antes de guardar el commit.";
+      case "sin_remoto":
+        return "El proyecto no tiene un remoto al que subir los cambios.";
+      case "invalid_accion":
+        return "La acción debe ser commit o push.";
+      case "invalid_mensaje":
+        return "El mensaje del commit debe tener entre 1 y 200 caracteres.";
+      case "push_fallido":
+        return "No se pudo subir la rama al remoto. Revisa el detalle en la tarea.";
+      case "git_failed":
+        return err.detail
+          ? `Git no pudo completar la operación: ${sanearDetalle(err.detail)}`
+          : "Git no pudo completar la operación.";
+      case "git_timeout":
+        return "Git tardó demasiado y se canceló.";
+      case "invalid_model":
+        return "Ese modelo no es válido.";
+      case "invalid_effort":
+        return "Ese nivel de esfuerzo no es válido.";
+      case "secreto_detectado":
+        return err.detail
+          ? `Se encontró un secreto en estos archivos, así que no se guardó el commit: ${err.detail}. Quítalo y vuelve a revisar.`
+          : "Se encontró un secreto en los cambios, así que no se guardó el commit. Quítalo y vuelve a revisar.";
+      case "proyecto_ocupado":
+        return "Otro chat de este proyecto está trabajando. Espera a que termine.";
+      case "programada_en_curso":
+        return "La última ejecución de esta programada todavía no termina. Espera a que acabe.";
+      case "demasiadas_conexiones":
+        return "Hay demasiadas pantallas abiertas en el servidor. Cierra algunas y vuelve a intentar.";
+      case "tarea_error":
+        return "La tarea no pudo completarse. Revisa el detalle en la tarea.";
+      case "clave_no_configurada":
+        return "El servidor no tiene configurada la clave de acceso. Revisa su archivo de entorno.";
+      case "body_too_large":
+        return "El contenido es demasiado grande para enviarlo.";
+      case "not_found":
+        return "Esa pantalla o recurso ya no existe.";
+      case "invalid_hash":
+        return "La revisión de los cambios no es válida. Vuelve a abrir la revisión.";
+      case "remoto_no_permitido":
+        return "Solo se puede subir a GitHub por HTTPS. Revisa el remoto del proyecto.";
+      case "invalid_body":
+        return "La información enviada no es válida. Intenta de nuevo.";
+      case "project_path_not_file":
+        return "Esa ruta es una carpeta, no un archivo.";
+      case "programada_not_found":
+        return "Esa tarea programada ya no existe.";
+      case "too_many_programadas":
+        return "Ya tienes 50 tareas programadas. Elimina alguna para crear otra.";
+      case "tarea_no_creada":
+        return "No se pudo crear la tarea. Intenta de nuevo.";
       case "clave_incorrecta":
         return "La clave no es correcta.";
       case "demasiados_intentos":

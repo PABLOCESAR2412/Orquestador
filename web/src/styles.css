@@ -1,5 +1,23 @@
-/* Tokens: pizarra, papel y ámbar como señal. El ámbar solo marca estado. */
+/* Tokens: pizarra, papel y ámbar como señal. El ámbar solo marca estado.
+   Tres formas de tema: oscuro (por defecto), claro (data-theme="claro") y
+   sistema (sin atributo: sigue al dispositivo). Los colores van solo aquí. */
 :root {
+  --radius: 10px;
+  --sidebar-w: 260px;
+  --rail-w: 260px;
+  --col: 720px;
+  --font: "Instrument Sans Variable", system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Oscuro: el tema de siempre, también cuando se elige explícitamente. */
+:root,
+:root[data-theme="oscuro"] {
   color-scheme: dark;
   --bg: #111419;
   --surface: #181c22;
@@ -13,17 +31,60 @@
   /* Barras: un solo tono neutro, más claro que el fondo para cumplir contraste gráfico. */
   --bar: #7b8390;
   --line-strong: #3a414c;
-  --radius: 10px;
-  --sidebar-w: 260px;
-  --rail-w: 260px;
-  --col: 720px;
-  --font: "Instrument Sans Variable", system-ui, -apple-system, sans-serif;
-  font-family: var(--font);
-  font-size: 15px;
-  line-height: 1.5;
-  background: var(--bg);
-  color: var(--ink);
-  -webkit-font-smoothing: antialiased;
+  /* Superposiciones: velo de diálogos, sombra de paneles y tintes de estado. */
+  --scrim: rgba(5, 6, 8, 0.55);
+  --shadow: rgba(0, 0, 0, 0.45);
+  --danger-soft: rgba(224, 107, 82, 0.12);
+  --danger-line: rgba(224, 107, 82, 0.3);
+  --signal-soft: rgba(217, 164, 65, 0.15);
+  --signal-line: rgba(217, 164, 65, 0.3);
+}
+
+/* Claro explícito. Contraste de texto medido: principal 16:1, secundario 5.8:1 sobre el fondo. */
+:root[data-theme="claro"] {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eceff3;
+  --surface-lowest: #eef0f3;
+  --line: #d5dae1;
+  --ink: #161a21;
+  --ink-2: #5a6170;
+  /* Ámbar oscurecido para que el texto de alerta pase 4.5:1 sobre fondo claro. */
+  --signal: #8a5a00;
+  --danger: #b03a21;
+  --bar: #6b7380;
+  --line-strong: #aeb6c1;
+  --scrim: rgba(22, 26, 33, 0.28);
+  --shadow: rgba(16, 20, 28, 0.16);
+  --danger-soft: rgba(176, 58, 33, 0.1);
+  --danger-line: rgba(176, 58, 33, 0.35);
+  --signal-soft: rgba(138, 90, 0, 0.12);
+  --signal-line: rgba(138, 90, 0, 0.35);
+}
+
+/* Sistema: sin atributo, sigue la preferencia del dispositivo. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="oscuro"]) {
+    color-scheme: light;
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #eceff3;
+    --surface-lowest: #eef0f3;
+    --line: #d5dae1;
+    --ink: #161a21;
+    --ink-2: #5a6170;
+    --signal: #8a5a00;
+    --danger: #b03a21;
+    --bar: #6b7380;
+    --line-strong: #aeb6c1;
+    --scrim: rgba(22, 26, 33, 0.28);
+    --shadow: rgba(16, 20, 28, 0.16);
+    --danger-soft: rgba(176, 58, 33, 0.1);
+    --danger-line: rgba(176, 58, 33, 0.35);
+    --signal-soft: rgba(138, 90, 0, 0.12);
+    --signal-line: rgba(138, 90, 0, 0.35);
+  }
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -592,7 +653,8 @@ button:disabled { opacity: 0.4; cursor: default; }
   background: var(--surface);
   transition: border-color 0.15s ease;
 }
-.composer-box:focus-within { border-color: var(--line-strong); }
+/* El compositor no muestra el contorno del campo: el anillo va en la caja (DESIGN: foco visible). */
+.composer-box:focus-within { border-color: var(--line-strong); outline: 2px solid var(--signal); outline-offset: 2px; }
 .composer-box textarea {
   width: 100%;
   min-height: 24px;
@@ -687,7 +749,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 18px 48px var(--shadow);
   overflow: hidden;
   animation: rise 0.18s ease-out;
 }
@@ -700,7 +762,6 @@ button:disabled { opacity: 0.4; cursor: default; }
   flex: 1;
   min-width: 0;
   border: 0;
-  outline: none;
   background: transparent;
   padding: 6px 6px;
   font-size: 15px;
@@ -740,7 +801,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .picker-price { font-size: 11px; color: var(--ink-2); white-space: nowrap; }
 
 .scrim { position: fixed; inset: 0; z-index: 20; background: transparent; }
-.scrim.dim { background: rgba(5, 6, 8, 0.55); }
+.scrim.dim { background: var(--scrim); }
 
 /* Vacío, notas y errores */
 .empty {
@@ -859,7 +920,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .status-pill.is-offline {
   color: var(--danger);
-  border-color: rgba(224, 107, 82, 0.3);
+  border-color: var(--danger-line);
 }
 .status-pill.is-offline .pill-dot {
   background: var(--danger);
@@ -887,12 +948,12 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .task-cancel-btn {
   color: var(--danger);
-  border-color: rgba(224, 107, 82, 0.3);
+  border-color: var(--danger-line);
   padding: 4px 10px;
   font-size: 12px;
 }
 .task-cancel-btn:hover:not(:disabled) {
-  background: rgba(224, 107, 82, 0.12);
+  background: var(--danger-soft);
   border-color: var(--danger);
 }
 
@@ -1159,12 +1220,12 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 .task-cancel-btn {
   color: var(--danger);
-  border-color: rgba(224, 107, 82, 0.3);
+  border-color: var(--danger-line);
   padding: 4px 10px;
   font-size: 12px;
 }
 .task-cancel-btn:hover:not(:disabled) {
-  background: rgba(224, 107, 82, 0.12);
+  background: var(--danger-soft);
   border-color: var(--danger);
 }
 
@@ -1328,7 +1389,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   background: var(--surface-2);
   white-space: nowrap;
   font-size: 12px;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 10px 24px var(--shadow);
 }
 .chart-tooltip strong { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .tooltip-day, .tooltip-meta { color: var(--ink-2); }
@@ -1373,7 +1434,6 @@ button:disabled { opacity: 0.4; cursor: default; }
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
-  outline: none;
   font-variant-numeric: tabular-nums;
 }
 .text-input::placeholder { color: var(--ink-2); }
@@ -1445,8 +1505,8 @@ button:disabled { opacity: 0.4; cursor: default; }
   font-weight: 500;
 }
 .badge-ok { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
-.badge-signal { background: rgba(217, 164, 65, 0.15); color: var(--signal); border: 1px solid rgba(217, 164, 65, 0.3); }
-.badge-error { background: rgba(224, 107, 82, 0.15); color: var(--danger); border: 1px solid rgba(224, 107, 82, 0.3); }
+.badge-signal { background: var(--signal-soft); color: var(--signal); border: 1px solid var(--signal-line); }
+.badge-error { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger-line); }
 .badge-neutral { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
 
 /* Pantalla de entrada (sin barra lateral) */
@@ -1519,7 +1579,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   }
   .sidebar.open {
     transform: none;
-    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.6);
+    box-shadow: 8px 0 32px var(--shadow);
   }
   .sidebar-close-btn {
     display: flex;
@@ -1779,7 +1839,6 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .conv-rename-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
 .sidebar-error { margin: 4px 8px; font-size: 12px; }
-.thread-uso-btn { margin-left: auto; padding: 4px 10px; font-size: 13px; flex-shrink: 0; }
 
 /* Proyectos en Ajustes: anclar y renombrar */
 .project-row { flex-wrap: wrap; }
@@ -1836,3 +1895,183 @@ button:disabled { opacity: 0.4; cursor: default; }
 .cuota-editar input { width: 140px; }
 .cuota-form { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
 .cuota-campo { display: flex; flex-direction: column; gap: 4px; }
+
+/* Chat: botón Uso junto al chip de modelo y niveles de esfuerzo en el selector */
+.uso-btn {
+  flex-shrink: 0;
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.uso-btn:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); }
+.uso-btn[aria-expanded="true"] { color: var(--ink); background: var(--surface-2); border-color: var(--line-strong); }
+.picker-modelo { display: flex; flex-direction: column; }
+.picker-niveles { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 10px 10px; }
+.picker-nivel {
+  min-height: 32px;
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.picker-nivel:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); }
+.picker-nivel[aria-pressed="true"] { color: var(--ink); background: var(--surface-2); border-color: var(--line-strong); }
+.picker-estado { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 10px; }
+
+/* Panel de uso: flota sobre el compositor, junto al chip. En móvil sube como hoja. */
+.uso-panel {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  z-index: 30;
+  width: min(360px, 100%);
+  max-height: min(70dvh, 620px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 18px 48px var(--shadow);
+  animation: rise 0.18s ease-out;
+}
+.uso-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.uso-panel h2 { margin: 0; font-size: 16px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.uso-ventanas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.uso-ventana {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-lowest);
+}
+.uso-ventana-etiqueta { font-size: 12px; color: var(--ink-2); }
+.uso-ventana strong { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.uso-ventana-meta { font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.uso-saldo { margin: 0; font-size: 13px; color: var(--ink-2); }
+.uso-saldo strong { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.uso-panel .cuotas { margin: 0; max-height: none; overflow: visible; padding: 12px; }
+@media (max-width: 340px) {
+  .uso-ventanas { grid-template-columns: 1fr; }
+}
+
+/* Paleta de comandos (Ctrl+K) */
+.paleta-capa {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: max(12vh, 16px) 16px 16px;
+  background: var(--scrim);
+}
+.paleta {
+  width: min(560px, 100%);
+  max-height: min(70dvh, 520px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 18px 48px var(--shadow);
+  overflow: hidden;
+  animation: rise 0.18s ease-out;
+}
+.paleta-buscar {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  font-size: 16px;
+}
+.paleta-buscar::placeholder { color: var(--ink-2); }
+.paleta-lista { list-style: none; margin: 0; padding: 6px; overflow-y: auto; min-height: 0; }
+.paleta-opcion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.paleta-opcion[aria-selected="true"] { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--signal); }
+.paleta-grupo { font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.paleta-vacio { margin: 0; padding: 12px 10px; }
+.paleta-pie { margin: 0; padding: 8px 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-2); }
+
+/* Analíticas: filtros en una fila sobre las gráficas */
+.analitica-filtros { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin: 0 0 16px; }
+.analitica-filtros .period { flex-wrap: wrap; }
+.filtro-campo { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; color: var(--ink-2); }
+.filtro-select {
+  flex: 0 1 200px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+}
+.filtro-select:hover { border-color: var(--line-strong); }
+
+/* Tabla de comparación por modelo: scroll interno en móvil, nunca desborda la página */
+.tabla-scroll { min-width: 0; max-width: 100%; overflow-x: auto; }
+.comparacion { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.comparacion caption { text-align: left; padding: 0 0 8px; font-size: 12px; color: var(--ink-2); }
+.comparacion th, .comparacion td { padding: 8px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.comparacion th[scope="col"] { color: var(--ink-2); font-weight: 500; font-size: 12px; }
+.comparacion th[scope="row"] { text-align: left; color: var(--ink); font-weight: 500; white-space: normal; overflow-wrap: anywhere; min-width: 160px; }
+
+/* Estados de carga, vacío y error con reintento */
+.estado-linea { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.estado-linea .error { flex: 1 1 auto; }
+
+/* Punto de estado de la barra lateral: el texto dice el estado, el color lo refuerza */
+.pill-dot.is-offline { background: var(--danger); animation: none; }
+.pill-dot.is-slow { background: var(--signal); animation: none; }
+
+/* Móvil: objetivos táctiles de 40 px; el panel de uso sube como hoja, igual que el selector */
+@media (max-width: 760px) {
+  .uso-btn { min-height: 40px; }
+  .picker-nivel { min-height: 40px; }
+  .analitica-filtros .pill { min-height: 40px; }
+  .estado-linea .ghost,
+  .estado-linea .task-mini-btn,
+  .picker-estado .ghost,
+  .uso-panel .ghost,
+  .uso-panel .task-mini-btn { min-height: 40px; }
+  .filtro-campo { width: 100%; }
+  .filtro-select { flex: 1 1 auto; width: auto; min-height: 40px; }
+  .uso-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-height: 72vh;
+    border-radius: 16px 16px 0 0;
+    border-bottom: 0;
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+  }
+  .paleta-capa { padding: max(10vh, 12px) 12px 12px; }
+}

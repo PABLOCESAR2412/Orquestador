@@ -68,7 +68,16 @@ export function CuotasPanel({ onCerrar }: { onCerrar: () => void }) {
       </p>
 
       {cuotas.isLoading && <p className="muted-note">Cargando…</p>}
-      {cuotas.isError && <p className="error" role="alert">No se pudo cargar el uso.</p>}
+      {cuotas.isError && (
+        <div className="estado-linea">
+          <p className="error" role="alert">
+            No se pudo cargar el uso.
+          </p>
+          <button type="button" className="ghost task-mini-btn" onClick={() => void cuotas.refetch()}>
+            Reintentar
+          </button>
+        </div>
+      )}
 
       {cuotas.data?.proveedores.map((p) => (
         <div key={p.id} className="cuota-proveedor">

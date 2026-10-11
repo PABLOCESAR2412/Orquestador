@@ -5,7 +5,9 @@ import { EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
 import { isIOS, isStandalone, useInstallPrompt } from "../lib/install";
 import { errorText } from "../lib/model";
+import { guardarTema, leerTema, type Tema } from "../lib/tema";
 import { useShell } from "../components/shell-context";
+import "../styles-trabajo.css";
 
 const ALERT_OPTIONS = [50, 60, 70, 80, 90, 100];
 
@@ -47,7 +49,7 @@ export function SettingsPage() {
   };
 
   const save = useMutation({
-    mutationFn: (payload: Preferences) => api.savePreferences(payload),
+    mutationFn: (payload: Partial<Preferences>) => api.savePreferences(payload),
     onSuccess: (next) => {
       setDraft(null);
       setSaved(true);
@@ -69,13 +71,15 @@ export function SettingsPage() {
       }
     }
     setLocalError(null);
-    save.mutate({ ...draft, monthlyBudgetUsd: budget });
+    // El modelo de respaldo se guarda al elegirlo en su panel: aquí no se envía, para no pisar esa elección.
+    const { fallbackModel: _respaldo, ...resto } = draft;
+    save.mutate({ ...resto, monthlyBudgetUsd: budget });
   };
 
   const dirty = draft !== null || budgetText !== (prefs.data?.monthlyBudgetUsd?.toString() ?? "");
 
   return (
-    <main className="page">
+    <main className="page tr-pagina">
       <header className="page-head">
         <div className="page-title-row">
           <button
@@ -248,223 +252,169 @@ export function SettingsPage() {
 
       {/* Fuera del formulario de preferencias: Enter en sus campos no guarda los ajustes. */}
       <div className="settings">
-        <ProyectosPanel />
         <ProveedoresPanel />
+        <ModeloRespaldoPanel />
+        <TemaPanel />
         <SesionPanel />
       </div>
     </main>
   );
 }
 
-// Carpetas del servidor donde pueden trabajar los chats y las tareas.
-function ProyectosPanel() {
-  const qc = useQueryClient();
-  const proyectos = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
-  const [ruta, setRuta] = useState("");
-  const [nombre, setNombre] = useState("");
-
-  const crear = useMutation({
-    mutationFn: () => api.createProject({ path: ruta.trim(), name: nombre.trim() || undefined }),
-    onSuccess: () => {
-      setRuta("");
-      setNombre("");
-      qc.invalidateQueries({ queryKey: ["projects"] });
-    },
-  });
-
-  const quitar = useMutation({
-    mutationFn: (id: string) => api.deleteProject(id),
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["projects"] });
-      qc.invalidateQueries({ queryKey: ["conversations"] });
-    },
-  });
-
-  const [editandoId, setEditandoId] = useState<string | null>(null);
-  const [nombreEditado, setNombreEditado] = useState("");
-  const editar = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: { name?: string; pinned?: boolean } }) =>
-      api.updateProject(id, body),
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["projects"] });
-      qc.invalidateQueries({ queryKey: ["conversations"] });
-    },
-  });
-
-  return (
-    <section className="panel">
-      <div className="card-top">
-        <div className="panel-title-with-icon">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-          </svg>
-          <h2>Proyectos</h2>
-        </div>
-      </div>
-      <p className="muted-note">
-        Carpetas del servidor donde los chats y las tareas pueden trabajar. El agente puede modificar archivos dentro de ellas.
-      </p>
-
-      {proyectos.isError && <p className="error" role="alert">No se pudieron cargar los proyectos.</p>}
-      {proyectos.data?.length === 0 && <p className="muted-note">Todavía no hay proyectos.</p>}
-      {proyectos.data && proyectos.data.length > 0 && (
-        <ul className="project-list">
-          {proyectos.data.map((p) => (
-            <li key={p.id} className="project-row">
-              {editandoId === p.id ? (
-                <form
-                  className="conv-rename"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const nuevo = nombreEditado.trim();
-                    if (nuevo && nuevo !== p.name) editar.mutate({ id: p.id, body: { name: nuevo } });
-                    setEditandoId(null);
-                  }}
-                >
-                  <input
-                    className="conv-rename-input"
-                    aria-label="Nuevo nombre del proyecto"
-                    value={nombreEditado}
-                    maxLength={60}
-                    onChange={(e) => setNombreEditado(e.target.value)}
-                  />
-                  <div className="conv-rename-acciones">
-                    <button type="submit" className="primary task-mini-btn">Guardar</button>
-                    <button type="button" className="ghost task-mini-btn" onClick={() => setEditandoId(null)}>
-                      Cancelar
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <>
-                  <div className="project-info">
-                    <span className="project-name">
-                      {p.name}
-                      {p.pinned_at && <span className="project-anclado"> · anclado</span>}
-                    </span>
-                    <span className="project-path">{p.repo_path}</span>
-                  </div>
-                  <div className="project-acciones">
-                    <button
-                      type="button"
-                      className="ghost task-mini-btn"
-                      onClick={() => {
-                        setEditandoId(p.id);
-                        setNombreEditado(p.name);
-                      }}
-                    >
-                      Renombrar
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost task-mini-btn"
-                      onClick={() => editar.mutate({ id: p.id, body: { pinned: !p.pinned_at } })}
-                      disabled={editar.isPending}
-                    >
-                      {p.pinned_at ? "Quitar ancla" : "Anclar"}
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost task-mini-btn"
-                      onClick={() => quitar.mutate(p.id)}
-                      disabled={quitar.isPending}
-                    >
-                      Quitar
-                    </button>
-                  </div>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <form
-        className="project-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (ruta.trim()) crear.mutate();
-        }}
-      >
-        <div className="field-row">
-          <label className="field-label" htmlFor="proyecto-ruta">
-            Carpeta
-          </label>
-          <input
-            id="proyecto-ruta"
-            className="text-input"
-            placeholder="mi-proyecto"
-            value={ruta}
-            onChange={(e) => setRuta(e.target.value)}
-          />
-        </div>
-        <div className="field-row">
-          <label className="field-label" htmlFor="proyecto-nombre">
-            Nombre
-          </label>
-          <input
-            id="proyecto-nombre"
-            className="text-input"
-            placeholder="Opcional"
-            maxLength={60}
-            value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
-          />
-        </div>
-        <p className="muted-note">La carpeta va dentro de la carpeta de proyectos del servidor.</p>
-        {(crear.isError || quitar.isError) && (
-          <p className="error" role="alert">
-            {errorText(crear.error ?? quitar.error)}
-          </p>
-        )}
-        <div className="savebar">
-          <button type="submit" className="primary" disabled={!ruta.trim() || crear.isPending}>
-            Agregar proyecto
-          </button>
-        </div>
-      </form>
-    </section>
-  );
-}
-
-// Estado de cada proveedor en el servidor. Nunca muestra ni pide claves.
+// Estado de cada proveedor en el servidor. Nunca muestra ni pide claves ni sus valores.
 function ProveedoresPanel() {
   const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders });
 
   return (
-    <section className="panel">
+    <section className="panel" aria-labelledby="ajustes-proveedores">
       <div className="card-top">
         <div className="panel-title-with-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <rect x="3" y="11" width="18" height="11" rx="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
-          <h2>Proveedores</h2>
+          <h2 id="ajustes-proveedores">Proveedores</h2>
         </div>
       </div>
       <p className="muted-note">
-        Muestra si cada proveedor está listo en el servidor. Las claves se configuran en el servidor, nunca desde la app.
+        Muestra si cada proveedor tiene su clave lista para los agentes. Las claves se configuran en el servidor, nunca desde la app.
       </p>
+      {proveedores.isPending && <p className="muted-note">Consultando proveedores…</p>}
       {proveedores.isError && (
         <p className="error" role="alert">
-          No se pudo consultar el estado de los proveedores.
+          {errorText(proveedores.error)}
         </p>
       )}
       {proveedores.data && (
         <ul className="project-list">
           {proveedores.data.map((p) => (
-            <li key={p.id} className="project-row">
+            <li key={p.id} className="project-row proveedor-fila">
               <div className="project-info">
                 <span className="project-name">{p.name}</span>
-                <span className="project-path">{p.hint}</span>
+                <span className="project-path">{textoProveedor(p)}</span>
+                {p.variable && p.id !== "opencode" && (
+                  <span className="project-path">Variable: {p.variable}</span>
+                )}
               </div>
-              <span className={`badge ${p.configured && p.implemented ? "badge-ok" : "badge-neutral"}`}>
-                {estadoProveedor(p)}
-              </span>
+              <span className={`badge ${claseBadgeProveedor(p)}`}>{etiquetaBadgeProveedor(p)}</span>
             </li>
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+// Modelo al que Telo recurre una vez si el principal responde con límite o error del proveedor.
+function ModeloRespaldoPanel() {
+  const qc = useQueryClient();
+  const prefs = useQuery({ queryKey: ["preferences"], queryFn: api.getPreferences });
+  const models = useQuery({ queryKey: ["models"], queryFn: api.listModels, staleTime: 5 * 60_000 });
+  const todos: ModelInfo[] = models.data?.models ?? [];
+
+  const guardar = useMutation({
+    mutationFn: (fallbackModel: string | null) => api.savePreferences({ fallbackModel }),
+    onSettled: () => void qc.invalidateQueries({ queryKey: ["preferences"] }),
+  });
+
+  const guardado = prefs.data?.fallbackModel ?? null;
+  // Mientras guarda, el select muestra la elección nueva.
+  const valor = guardar.isPending ? (guardar.variables ?? "") : (guardado ?? "");
+
+  const opciones = todos
+    .filter((m) => m.recommended)
+    .map((m) => ({ id: m.id, name: m.name }));
+  if (valor && !opciones.some((o) => o.id === valor)) {
+    opciones.unshift({ id: valor, name: todos.find((m) => m.id === valor)?.name ?? valor });
+  }
+
+  return (
+    <section className="panel" aria-labelledby="ajustes-respaldo">
+      <div className="card-top">
+        <div className="panel-title-with-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+            <polyline points="3 3 3 8 8 8" />
+          </svg>
+          <h2 id="ajustes-respaldo">Modelo de respaldo</h2>
+        </div>
+      </div>
+      <p className="muted-note">
+        Si el modelo principal responde con límite de uso o error del proveedor, Telo reintenta una vez con este.
+      </p>
+      {prefs.isError && (
+        <p className="error" role="alert">
+          {errorText(prefs.error)}
+        </p>
+      )}
+      <div className="field-row">
+        <label className="field-label" htmlFor="modelo-respaldo">
+          Modelo
+        </label>
+        <select
+          id="modelo-respaldo"
+          className="tarea-select"
+          value={valor}
+          disabled={!prefs.data || guardar.isPending}
+          onChange={(e) => guardar.mutate(e.target.value || null)}
+        >
+          <option value="">Ninguno</option>
+          {opciones.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      {guardar.isPending && <p className="muted-note" role="status">Guardando…</p>}
+      {guardar.isSuccess && !guardar.isPending && <p className="muted-note" role="status">Modelo de respaldo guardado.</p>}
+      {guardar.isError && (
+        <p className="error" role="alert">
+          {errorText(guardar.error)}
+        </p>
+      )}
+    </section>
+  );
+}
+
+const OPCIONES_TEMA: { valor: Tema; texto: string }[] = [
+  { valor: "sistema", texto: "Sistema" },
+  { valor: "oscuro", texto: "Oscuro" },
+  { valor: "claro", texto: "Claro" },
+];
+
+// El tema es de este dispositivo: se guarda en el navegador y se aplica al instante.
+function TemaPanel() {
+  const [tema, setTema] = useState<Tema>(() => leerTema());
+
+  return (
+    <section className="panel" aria-labelledby="ajustes-tema">
+      <div className="card-top">
+        <div className="panel-title-with-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="5" />
+            <line x1="12" y1="1" x2="12" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="23" />
+          </svg>
+          <h2 id="ajustes-tema">Tema</h2>
+        </div>
+      </div>
+      <p className="muted-note">Se guarda en este dispositivo. Sistema sigue el modo de tu teléfono o PC.</p>
+      <div className="segmented" role="group" aria-label="Tema de la app">
+        {OPCIONES_TEMA.map((o) => (
+          <button
+            key={o.valor}
+            type="button"
+            aria-pressed={tema === o.valor}
+            onClick={() => {
+              setTema(o.valor);
+              guardarTema(o.valor);
+            }}
+          >
+            {o.texto}
+          </button>
+        ))}
+      </div>
     </section>
   );
 }
@@ -506,7 +456,22 @@ function SesionPanel() {
   );
 }
 
-function estadoProveedor(p: ProviderStatus): string {
-  if (!p.implemented) return p.configured ? "Clave lista · sin integrar" : "Sin integrar";
-  return p.configured ? "Listo" : "Sin configurar";
+// Texto de estado del proveedor. OpenCode no usa clave del proveedor: siempre está disponible.
+function textoProveedor(p: ProviderStatus): string {
+  if (p.id === "opencode") return "Disponible";
+  if (!p.configured) return "Sin clave configurada";
+  if (p.enAgente) return "Clave configurada y disponible para los agentes";
+  return "Clave configurada, pero no llega a los agentes: agrégala a TELO_AGENTE_VARIABLES en el archivo de entorno del servidor";
+}
+
+function etiquetaBadgeProveedor(p: ProviderStatus): string {
+  if (p.id === "opencode" || (p.configured && p.enAgente)) return "Listo";
+  if (p.configured) return "Revisar";
+  return "Sin clave";
+}
+
+function claseBadgeProveedor(p: ProviderStatus): string {
+  if (p.id === "opencode" || (p.configured && p.enAgente)) return "badge-ok";
+  if (p.configured) return "badge-signal";
+  return "badge-neutral";
 }

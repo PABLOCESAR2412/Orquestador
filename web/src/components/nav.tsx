@@ -28,6 +28,15 @@ const ITEMS: NavItem[] = [
     ),
   },
   {
+    to: "/proyectos",
+    label: "Proyectos",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      </svg>
+    ),
+  },
+  {
     to: "/analiticas",
     label: "Analíticas",
     icon: (
@@ -49,8 +58,8 @@ const ITEMS: NavItem[] = [
     ),
   },
   {
-    to: "/estado",
-    label: "Estado",
+    to: "/servidor",
+    label: "Servidor",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M22 12h-4l-3 9L9 3l-3 9H2" />

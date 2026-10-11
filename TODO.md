@@ -42,16 +42,32 @@ Ordenado por prioridad. Marca `[x]` solo cuando esté verificado.
 
 - [ ] Mover las pruebas actuales (`test-analytics`, `test-tasks`, `shot-*`) a `tests/`, sin rutas locales ni datos fijos.
 - [ ] Agregar un script `test` en `server/package.json`.
-- [ ] Migración 005: nuevos estados de tarea, columnas `plan` y `resultado`, estado de aprobación.
+- [x] Migraciones 010 (Git y aprobaciones), 011 (secretos) y 012 (instrucciones y programadas) implementadas en `feat/revision-agentes`.
+- [ ] Migración 013: estados del analizador (`planning`, `waiting_approval`, `executing`, `waiting_user`), columnas `plan` y `resultado`.
 - [ ] Implementar el analizador (prompt y validación del JSON) y el obrero (ejecuta solo el plan aprobado).
 
 ## Acceso
 
 - [x] Probar el túnel SSH con la URL de la app desde la PC.
-- [ ] Configurar Cloudflare Tunnel y Access (fase 9) cuando haya URL definida.
+- [ ] Fase 9: probar el acceso por Tailscale desde el teléfono y desactivar la expiración de la clave del VM.
 
 ## Limpieza
 
 - [ ] Eliminar la rama `vm-local` si todavía existe.
 - [ ] Eliminar la clave RSA antigua de la PC (`~/.ssh/id_rsa`).
 - [ ] Azure: confirmar el presupuesto de 100 USD con alertas al 50, 80 y 100 %.
+
+## Pendiente de Pablo (antes de aprobar y hacer merge)
+
+Lo que no se puede probar desde aquí o requiere una decisión tuya:
+
+- [ ] En el VM, agregar a `/etc/orquestador/orquestador.env`: `TELO_CLAVE_CIFRADO=$(openssl rand -base64 32)`. Guárdala fuera del repo. Sin ella los secretos no se guardan.
+- [ ] Instalar `opencode` en el VM y probar un agente real dentro de bubblewrap. Aquí no está instalado, así que solo se probó con un agente falso.
+- [ ] Probar un push real a GitHub con `GITHUB_TOKEN` como secreto del proyecto (token fine-grained, solo el repo, permiso de contenido). Aquí solo se probó contra un repo local y con un token falso.
+- [ ] Después del deploy, confirmar que `tailscale serve` sigue activo y que la app abre desde el teléfono (el servidor ahora escucha solo en 127.0.0.1).
+- [ ] Reiniciar el VM y comprobar que las migraciones 010–012 aplican y que la copia previa queda en `DATA_DIR/respaldos-migracion`.
+- [ ] Desactivar la expiración de la clave de `vm-1` en Tailscale.
+- [ ] Borrar la rama remota `feat/acceso-workers-vpc` y la carpeta `edge/` (pendiente de la sesión anterior).
+- [ ] Decidir Google y Codex: iniciar sesión con Google requiere crear credenciales OAuth en Google Cloud. Mientras tanto, la app solo muestra si la clave existe y llega a los agentes.
+- [ ] Revisar la regla del push: solo `github.com` por HTTPS. Si usas otro host, hay que ampliarla.
+- [ ] Revisar el desvío de cancelación: un clon con cambios se conserva para revisión, no se borra.

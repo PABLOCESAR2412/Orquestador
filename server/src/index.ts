@@ -11,10 +11,19 @@ import { analytics } from "./routes/analytics";
 import { projects } from "./routes/projects";
 import { providers } from "./routes/providers";
 import { cuotas } from "./routes/cuotas";
+import { runner } from "./routes/runner";
+import { stream } from "./routes/stream";
+import { secretosRoute } from "./routes/secretos";
+import { programadasRoute } from "./routes/programadas";
+import { servidor } from "./routes/servidor";
+import { uso } from "./routes/uso";
+import { startScheduler } from "./programadas";
 import { startWorker } from "./worker";
 import { auth } from "./routes/auth";
 import { COOKIE_SESION, MIN_CARACTERES_CLAVE, sesionValida } from "./auth";
 import { getCookie } from "hono/cookie";
+import { bodyLimit } from "hono/body-limit";
+import { secureHeaders } from "hono/secure-headers";
 
 // Sin clave, la API quedaría abierta a quien tenga la URL. Por eso el servidor no arranca sin ella.
 if (!config.clave && !config.sinClave) {
@@ -33,6 +42,42 @@ const webDist = resolve(import.meta.dir, "../../web/dist");
 const indexFile = join(webDist, "index.html");
 
 const app = new Hono();
+
+// Cabeceras de seguridad. La política solo permite lo que usa la app: scripts y estilos del mismo origen,
+// conexiones al mismo origen (API y SSE) y nada embebido. Sin inline scripts.
+app.use(
+  "*",
+  secureHeaders({
+    xFrameOptions: "DENY",
+    xContentTypeOptions: "nosniff",
+    referrerPolicy: "no-referrer",
+    crossOriginOpenerPolicy: "same-origin",
+    crossOriginResourcePolicy: "same-origin",
+    contentSecurityPolicy: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:"],
+      connectSrc: ["'self'"],
+      workerSrc: ["'self'"],
+      manifestSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'none'"],
+      formAction: ["'self'"],
+    },
+  }),
+);
+
+// Ninguna petición de la API necesita más de 64 KB (el prompt más largo es de 10 000 caracteres).
+app.use(
+  "/api/*",
+  bodyLimit({
+    maxSize: 64 * 1024,
+    onError: (c) => c.json({ error: "body_too_large" }, 413),
+  }),
+);
 
 app.get("/api/health", (c) => {
   const row = db.query<{ ok: number }, []>("SELECT 1 AS ok").get();
@@ -57,9 +102,16 @@ app.route("/api", analytics);
 app.route("/api", projects);
 app.route("/api", providers);
 app.route("/api", cuotas);
+app.route("/api", runner);
+app.route("/api", stream);
+app.route("/api", secretosRoute);
+app.route("/api", programadasRoute);
+app.route("/api", servidor);
+app.route("/api", uso);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
 startWorker();
+startScheduler();
 
 app.get("*", async (c) => {
   const path = c.req.path === "/" ? "/index.html" : c.req.path;
@@ -83,5 +135,6 @@ console.log(`Orquestador escuchando en http://localhost:${config.port}`);
 
 export default {
   port: config.port,
+  hostname: config.hostname,
   fetch: app.fetch,
 };

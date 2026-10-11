@@ -1,0 +1,407 @@
+/* Pantallas de trabajo: Tareas, Proyectos, Servidor y Ajustes.
+   Colores y medidas salen de los tokens de styles.css. El ámbar solo marca estado activo o alerta.
+   Este archivo se carga antes que styles.css: las reglas que reemplazan otras usan dos clases. */
+
+/* Página y márgenes */
+.page.tr-pagina { min-width: 0; overflow-wrap: anywhere; }
+.tr-pagina > * { min-width: 0; }
+/* La tarjeta de tarea es un enlace: se ve igual que el botón de antes. */
+.tr-pagina a.task-card-head { text-decoration: none; }
+.tr-cabecera-texto { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tr-volver { display: inline-flex; align-items: center; width: max-content; max-width: 100%; }
+.tr-enlace-boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: var(--ink);
+}
+.tr-acciones-fila { display: flex; flex-wrap: wrap; gap: 8px; }
+.tr-valor { overflow-wrap: anywhere; text-align: right; }
+
+/* Campos compartidos */
+.text-input.tarea-campo-ancho { max-width: 100%; width: 100%; }
+.text-input.tarea-campo-corto { max-width: 160px; }
+.tarea-select {
+  width: 100%;
+  max-width: 320px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+.tarea-select:disabled { opacity: 0.4; cursor: default; }
+.tarea-textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  resize: vertical;
+}
+.tarea-textarea:focus { border-color: var(--line-strong); }
+.tarea-textarea::placeholder { color: var(--ink-2); }
+.tarea-formulario { display: flex; flex-direction: column; gap: 12px; }
+.campo { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.campo-anidado { padding-left: 12px; border-left: 1px solid var(--line); margin-left: 4px; }
+.tarea-fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.tarea-fieldset legend { padding: 0; margin-bottom: 4px; }
+.tarea-opcion { display: flex; align-items: center; gap: 10px; min-height: 40px; font-size: 14px; cursor: pointer; }
+.tarea-opcion input { width: 18px; height: 18px; margin: 0; accent-color: var(--ink); }
+
+/* Secciones y paneles */
+.tarea-seccion { min-width: 0; }
+.tarea-seccion > h2 { margin: 0; }
+.tarea-rama { max-width: 100%; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.tarea-codigo { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; }
+.tarea-bloque { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tarea-etiqueta { color: var(--ink-2); font-size: 12px; }
+.tarea-texto { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); font-size: 14px; line-height: 1.5; }
+.tarea-meta {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  font-size: 13px;
+}
+.tarea-meta > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tarea-meta dt { color: var(--ink-2); }
+.tarea-meta dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+
+/* Stepper de estado */
+.tarea-pasos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.tarea-paso {
+  position: relative;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 12px;
+  padding: 6px 0;
+}
+.tarea-paso:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 15px;
+  top: 38px;
+  bottom: -6px;
+  width: 1px;
+  background: var(--line);
+}
+.tarea-paso-marca {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.tarea-paso.is-hecho .tarea-paso-marca { color: var(--ink); background: var(--surface-2); }
+.tarea-paso.is-actual .tarea-paso-marca { color: var(--signal); border-color: var(--signal); }
+.tarea-paso.is-fallo .tarea-paso-marca { color: var(--danger); border-color: var(--danger); }
+.tarea-paso-texto {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+  padding-top: 5px;
+}
+.tarea-paso-titulo { color: var(--ink); font-weight: 500; }
+.tarea-paso.is-pendiente .tarea-paso-titulo { color: var(--ink-2); }
+.tarea-paso-estado { color: var(--ink-2); font-size: 12px; }
+.tarea-paso.is-fallo .tarea-paso-estado { color: var(--danger); }
+.tarea-paso-detalle { flex-basis: 100%; color: var(--ink-2); font-size: 12px; overflow-wrap: anywhere; }
+
+/* Bloques de texto con ajuste de línea (terminal, archivos, errores) */
+.tarea-terminal-texto,
+.archivo-texto,
+.rev-error-detalle {
+  margin: 0;
+  padding: 12px;
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.rev-error-detalle { color: var(--ink-2); max-height: 200px; }
+.tarea-terminal { border-top: 1px solid var(--line); padding-top: 10px; }
+.tarea-terminal > summary,
+.task-historial > summary { cursor: pointer; color: var(--ink); display: flex; align-items: center; min-height: 40px; width: max-content; }
+
+/* Diff unificado */
+.diff-caja { border: 1px solid var(--line); border-radius: 8px; background: var(--surface-lowest); min-width: 0; }
+.diff-caja > summary { cursor: pointer; display: flex; align-items: center; min-height: 40px; padding: 8px 12px; color: var(--ink); }
+.diff-cuerpo {
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+  padding: 8px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.diff-linea { padding: 0 12px; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.diff-linea.is-add { background: var(--surface-2); color: var(--ink); }
+.diff-linea.is-del { color: var(--danger); }
+.diff-linea.is-hunk { color: var(--ink-2); }
+.diff-linea.is-cabecera { color: var(--ink-2); }
+/* Botón de "mostrar más líneas" debajo de un bloque largo (diff o terminal). */
+.lineas-mas { padding: 8px 12px; }
+
+/* Revisión de cambios */
+.rev-archivos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rev-archivo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  min-width: 0;
+}
+.rev-archivo.is-sensible { border-color: var(--danger); }
+.rev-archivo-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 200px; }
+.rev-archivo-ruta { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; overflow-wrap: anywhere; }
+.rev-archivo-meta { color: var(--ink-2); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.rev-aprobaciones { margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.rev-aprobaciones > div { display: grid; grid-template-columns: minmax(72px, 110px) minmax(0, 1fr); gap: 12px; }
+.rev-aprobaciones dt { color: var(--ink-2); }
+.rev-aprobaciones dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.rev-commit { display: flex; flex-direction: column; gap: 12px; }
+.rev-campo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rev-acciones { display: flex; flex-wrap: wrap; gap: 8px; }
+.rev-error { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+/* Programadas */
+.programadas-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.programada {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  min-width: 0;
+}
+.programada.is-pausada .programada-titulo { color: var(--ink-2); }
+.programada-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.programada-titulo { color: var(--ink); font-weight: 500; overflow-wrap: anywhere; }
+.programada-meta { color: var(--ink-2); font-size: 12px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.programada-acciones { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.programada-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 12px 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+}
+.programada-switch:hover:not(:disabled) { border-color: var(--line-strong); }
+.programada-switch-pista {
+  position: relative;
+  display: inline-block;
+  width: 32px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  flex-shrink: 0;
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+.programada-switch[aria-checked="true"] .programada-switch-pista { background: var(--ink); border-color: var(--ink); }
+.programada-switch-bola {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ink-2);
+  transition: transform 180ms ease, background-color 180ms ease;
+}
+.programada-switch[aria-checked="true"] .programada-switch-bola { transform: translateX(14px); background: var(--bg); }
+.programada-confirmar { display: flex; flex-direction: column; gap: 8px; width: 100%; font-size: 13px; color: var(--ink); overflow-wrap: anywhere; }
+.programada-confirmar-acciones { display: flex; flex-wrap: wrap; gap: 8px; }
+.programada-form { display: flex; flex-direction: column; gap: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.programadas-lista + .programada-form { margin-top: 4px; }
+
+/* Lista de proyectos */
+.proyecto-fila { flex-wrap: wrap; }
+.proyecto-nombre-fila { display: inline; overflow-wrap: anywhere; }
+.proyecto-enlace { color: var(--ink); text-decoration: none; border-bottom: 1px solid transparent; }
+.proyecto-enlace:hover { border-bottom-color: var(--line-strong); }
+.proyecto-confirmar {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-lowest);
+  font-size: 13px;
+}
+.proyecto-confirmar p { margin: 0; overflow-wrap: anywhere; }
+.proyecto-error { flex-basis: 100%; margin: 0; }
+.proyecto-texto-largo { overflow-wrap: anywhere; text-align: right; }
+
+/* Archivos del proyecto */
+.migas { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; font-size: 13px; }
+.migas li { display: flex; align-items: center; gap: 2px; min-width: 0; max-width: 100%; }
+.migas li + li::before { content: "/"; color: var(--ink-2); padding: 0 2px; }
+.migas-btn {
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-2);
+  text-align: left;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.migas-btn:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); }
+.migas-btn[aria-current="location"] { color: var(--ink); border-color: var(--line); background: var(--surface-2); }
+.archivos-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.archivo-fila {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  text-align: left;
+}
+.archivo-fila:hover:not(:disabled) { border-color: var(--line-strong); }
+.archivo-nombre { color: var(--ink); font-size: 14px; overflow-wrap: anywhere; }
+.archivo-meta { color: var(--ink-2); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.archivo-cabecera { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
+.archivo-titulo { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; overflow-wrap: anywhere; min-width: 0; }
+
+/* Secretos (solo nombres y fechas: nunca valores) */
+.secretos-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.secreto-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  min-width: 0;
+}
+.secreto-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.secreto-nombre { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; overflow-wrap: anywhere; }
+.secreto-acciones { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* Servidor */
+.medidas-lista { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; font-size: 13px; font-variant-numeric: tabular-nums; }
+.medidas-lista li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.medida-hora { color: var(--ink-2); }
+.discos-lista { display: flex; flex-direction: column; gap: 14px; }
+.disco { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.disco-cabecera { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: 14px; }
+.disco-nombre { color: var(--ink); font-weight: 500; }
+.disco-porcentaje { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.barra { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.barra-relleno { display: block; height: 100%; min-width: 2px; border-radius: 999px; background: var(--bar); }
+.barra-relleno.is-alerta { background: var(--signal); }
+.lista-simple { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.lista-simple-fila {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  min-width: 0;
+}
+.lista-simple-nombre { color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; }
+
+/* Ajustes: proveedores */
+.proveedor-fila { align-items: flex-start; }
+
+/* Móvil: márgenes de 16 px y objetivos táctiles de 40 px */
+@media (max-width: 760px) {
+  .page.tr-pagina { padding: 16px 16px 36px; }
+  .tr-pagina .task-mini-btn,
+  .tr-pagina .ghost,
+  .tr-pagina .primary,
+  .tr-pagina .danger-solid,
+  .tr-pagina .migas-btn,
+  .tr-pagina .tr-volver,
+  .tr-pagina .tr-enlace-boton,
+  .tr-pagina .programada-switch,
+  .tr-pagina .tarea-select,
+  .tr-pagina .text-input,
+  .tr-pagina .tarea-opcion,
+  .tr-pagina .archivo-fila,
+  .tr-pagina .segmented button {
+    min-height: 40px;
+  }
+  .tr-pagina .task-mini-btn,
+  .tr-pagina .ghost,
+  .tr-pagina .primary,
+  .tr-pagina .danger-solid {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+  }
+  .tr-pagina .tarea-select { max-width: 100%; }
+  .tr-pagina .text-input.tarea-campo-corto { max-width: 100%; }
+  .tr-pagina .migas-btn { padding: 8px 10px; }
+  .tr-pagina .tarea-terminal > summary,
+  .tr-pagina .diff-caja > summary,
+  .tr-pagina .task-historial > summary { min-height: 40px; }
+  .tr-pagina a.foot-link,
+  .tr-pagina a.proyecto-enlace {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+  }
+  .tr-pagina .tarea-meta { grid-template-columns: 1fr; }
+  .tarea-paso { grid-template-columns: 32px minmax(0, 1fr); }
+  .tarea-paso-texto { padding-top: 6px; }
+  .rev-aprobaciones > div { grid-template-columns: 1fr; gap: 2px; }
+  .proyecto-texto-largo { text-align: left; }
+  .tr-valor { text-align: left; }
+  .status-meta-row { flex-wrap: wrap; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .programada-switch-pista,
+  .programada-switch-bola { transition: none; }
+}
