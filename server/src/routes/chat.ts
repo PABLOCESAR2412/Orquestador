@@ -4,22 +4,27 @@ import { join } from "node:path";
 import { config } from "../config";
 import { db } from "../db";
 import { AislamientoError } from "../runners/aislamiento";
-import { runOpenCode, type RunResult } from "../runners/opencode";
+import { ejecutarAgente, type ResultadoAgente } from "../ejecutar";
 import { getPreferences } from "../preferences";
 import { projectRepoPath } from "./projects";
+import { mensajeSeguro } from "../workspace";
+import {
+  conversacionEnCurso,
+  liberarConversacion,
+  ocuparConversacion,
+  proyectoRevisandose,
+} from "../ocupacion";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
 const chatWorkspace = join(config.dataDir, "chat-workspace");
 mkdirSync(chatWorkspace, { recursive: true });
-
-// Chats con un mensaje en curso. Un chat ocupado no acepta otro envío (desde otro dispositivo, por ejemplo).
-const enCurso = new Set<string>();
 
 type ConversationRow = {
   id: string;
   model: string | null;
   effort: string | null;
   runner_session_id: string | null;
+  project_id: string | null;
   repo_path: string | null;
 };
 type Conversation = {
@@ -49,7 +54,7 @@ chat.get("/conversations", (c) => {
       "SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name, c.pinned_at, c.created_at FROM conversations c LEFT JOIN projects p ON p.id = c.project_id ORDER BY (c.pinned_at IS NULL), c.pinned_at DESC, c.created_at DESC, c.rowid DESC",
     )
     .all();
-  return c.json(rows.map((r) => ({ ...r, ocupada: enCurso.has(r.id) })));
+  return c.json(rows.map((r) => ({ ...r, ocupada: conversacionEnCurso(r.id) })));
 });
 
 // POST /api/conversations  body: { title?, projectId? }
@@ -73,7 +78,7 @@ chat.post("/conversations", async (c) => {
 // DELETE /api/conversations/:id  -> borra el chat y sus mensajes. El uso registrado se conserva para las analíticas.
 chat.delete("/conversations/:id", (c) => {
   const id = c.req.param("id");
-  if (enCurso.has(id)) return c.json({ error: "conversation_busy" }, 409);
+  if (conversacionEnCurso(id)) return c.json({ error: "conversation_busy" }, 409);
   const result = db.query("DELETE FROM conversations WHERE id = ?").run(id);
   if (result.changes === 0) return c.json({ error: "conversation_not_found" }, 404);
   return c.json({ ok: true });
@@ -92,7 +97,7 @@ chat.post("/conversations/:id/messages", async (c) => {
   const conversationId = c.req.param("id");
   const conv = db
     .query<ConversationRow, [string]>(
-      "SELECT c.id, c.model, c.effort, c.runner_session_id, p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id = c.project_id WHERE c.id = ?",
+      "SELECT c.id, c.model, c.effort, c.runner_session_id, c.project_id, p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id = c.project_id WHERE c.id = ?",
     )
     .get(conversationId);
   if (!conv) return c.json({ error: "conversation_not_found" }, 404);
@@ -102,7 +107,9 @@ chat.post("/conversations/:id/messages", async (c) => {
   if (!content || content.length > 10_000) {
     return c.json({ error: "invalid_content" }, 400);
   }
-  if (enCurso.has(conversationId)) return c.json({ error: "conversation_busy" }, 409);
+  if (conversacionEnCurso(conversationId)) return c.json({ error: "conversation_busy" }, 409);
+  // El servidor está leyendo Git de este proyecto: el chat espera, porque trabaja en la misma carpeta.
+  if (conv.project_id && proyectoRevisandose(conv.project_id)) return c.json({ error: "proyecto_ocupado" }, 409);
 
   const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
 
@@ -122,28 +129,29 @@ chat.post("/conversations/:id/messages", async (c) => {
     );
   })();
 
-  let result: RunResult;
-  enCurso.add(conversationId);
+  let result: ResultadoAgente;
+  ocuparConversacion(conversationId);
   try {
-    result = await runOpenCode({
+    result = await ejecutarAgente({
       prompt: content,
       model,
-      variant: conv.effort ?? undefined,
+      variant: conv.effort,
       sessionId: conv.runner_session_id,
       cwd: conv.repo_path ?? chatWorkspace,
       timeoutMs: 180_000,
+      projectId: conv.project_id,
     });
   } catch (err) {
     if (err instanceof AislamientoError) {
       return c.json({ error: err.code, message: err.message }, 503);
     }
-    const detail = String(err);
-    if (detail.includes("Insufficient account funds")) {
+    if (String(err).includes("Insufficient account funds")) {
       return c.json({ error: "insufficient_funds", message: "La cuenta de OpenCode Zen no tiene saldo para este modelo. Usa un modelo gratis o agrega saldo." }, 402);
     }
-    return c.json({ error: "runner_failed", detail }, 502);
+    // Sin rutas del servidor ni fragmentos de secretos.
+    return c.json({ error: "runner_failed", detail: mensajeSeguro(err) }, 502);
   } finally {
-    enCurso.delete(conversationId);
+    liberarConversacion(conversationId);
   }
 
   const assistantMsg = {
@@ -166,20 +174,22 @@ chat.post("/conversations/:id/messages", async (c) => {
     }
 
     if (result.usage) {
+      // El uso se registra con el modelo que respondió (puede ser el de respaldo) y con el proyecto del chat.
       const u = result.usage;
       db.query(
-        `INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cost)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cost, project_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         crypto.randomUUID(),
         conversationId,
-        model.split("/")[0],
-        model,
+        result.modelo.split("/")[0],
+        result.modelo,
         u.input,
         u.output,
         u.reasoning,
         u.cacheRead,
         u.cost,
+        conv.project_id,
       );
     }
   })();

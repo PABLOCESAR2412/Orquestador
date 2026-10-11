@@ -4,8 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Conversation } from "../api";
 import { isIOS, isStandalone, useInstallPrompt } from "../lib/install";
 import { errorText } from "../lib/model";
+import { useLatencia } from "../lib/latencia";
 import { AppNav } from "./nav";
 import { ConvItem } from "./conv-item";
+import { PaletaComandos } from "./paleta-comandos";
 import { useShell } from "./shell-context";
 
 type DateGroupTitle = "ANCLADOS" | "HOY" | "AYER" | "ÚLTIMOS 7 DÍAS" | "ANTERIORES";
@@ -94,11 +96,8 @@ export function Shell({ children }: { children: ReactNode }) {
     return groups.filter((g) => g.items.length > 0);
   }, [conversations.data]);
 
-  const health = useQuery({
-    queryKey: ["health"],
-    queryFn: api.health,
-    refetchInterval: 30_000,
-  });
+  // Latencia medida desde este navegador (ida y vuelta a /api/health), cada 30 s.
+  const latencia = useLatencia();
 
   const handleSelectConv = (id: string) => {
     setSelectedConversationId(id);
@@ -108,7 +107,21 @@ export function Shell({ children }: { children: ReactNode }) {
     }
   };
 
-  const isOnline = Boolean(health.data?.ok);
+  // El estado va en texto además del color del punto: "Listo · 42 ms", "Lenta · 310 ms" o "Sin conexión".
+  const etiquetaLatencia =
+    latencia.estado === "midiendo"
+      ? "Conectando…"
+      : latencia.estado === "sin_conexion"
+        ? "Sin conexión"
+        : `${latencia.estado === "buena" ? "Listo" : "Lenta"} · ${latencia.ms} ms`;
+  const claseEstado =
+    latencia.estado === "buena"
+      ? "is-live"
+      : latencia.estado === "lenta"
+        ? "is-slow"
+        : latencia.estado === "sin_conexion"
+          ? "is-offline"
+          : "";
 
   return (
     <div className="shell-root">
@@ -156,7 +169,12 @@ export function Shell({ children }: { children: ReactNode }) {
                 <span className="sidebar-empty">Cargando…</span>
               )}
               {conversations.isError && (
-                <span className="sidebar-empty">Error al cargar</span>
+                <div className="estado-linea">
+                  <span className="sidebar-empty">Error al cargar</span>
+                  <button type="button" className="ghost task-mini-btn" onClick={() => void conversations.refetch()}>
+                    Reintentar
+                  </button>
+                </div>
               )}
               {accionError && (
                 <p className="error sidebar-error" role="alert">
@@ -207,15 +225,10 @@ export function Shell({ children }: { children: ReactNode }) {
           <div className="sidebar-foot-card">
             <div className="sidebar-foot-info">
               <div className="sidebar-foot-meta">
-                <span className="sidebar-foot-status">
-                  {health.isLoading ? "Conectando…" : isOnline ? "Listo · Servidor local" : "Sin conexión"}
-                </span>
+                <span className="sidebar-foot-status">{etiquetaLatencia}</span>
               </div>
             </div>
-            <span
-              className={`pill-dot${isOnline ? " is-live" : " is-offline"}`}
-              aria-label={isOnline ? "Servidor activo" : "Servidor desconectado"}
-            />
+            <span className={`pill-dot ${claseEstado}`} aria-hidden="true" />
           </div>
         </div>
       </aside>
@@ -227,6 +240,9 @@ export function Shell({ children }: { children: ReactNode }) {
       <div className="shell-main">
         {children}
       </div>
+
+      {/* Paleta de comandos: Ctrl+K o Cmd+K desde cualquier pantalla */}
+      <PaletaComandos />
     </div>
   );
 }

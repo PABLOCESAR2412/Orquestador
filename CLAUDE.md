@@ -6,7 +6,7 @@ Lee este archivo antes de tocar código. Complementos: `PLAN.md` (hoja de ruta),
 
 Orquestador es una app personal para lanzar tareas a agentes de IA (OpenCode hoy; Codex y Google/agy después) y dejarlas corriendo en un VM de Azure, para que sigan aunque la PC o el teléfono estén apagados. Tiene chat, cola de tareas en segundo plano, analíticas de costo y uso, y ajustes. Se instala como PWA.
 
-Es de uso personal, con un solo usuario y sin cuentas. Todavía no tiene login: el acceso es por túnel SSH hasta que se configure Cloudflare Access (fase 9 de `PLAN.md`).
+Es de uso personal, con un solo usuario y sin cuentas. Tiene login con `TELO_CLAVE`. El acceso remoto es por Tailscale, sin puertos públicos (fase 9 de `PLAN.md`).
 
 ## Stack
 
@@ -21,15 +21,25 @@ Es de uso personal, con un solo usuario y sin cuentas. Todavía no tiene login: 
 
 - `server/src/index.ts`: entrada. Monta las rutas bajo `/api`, sirve `web/dist` y arranca el worker.
 - `server/src/worker.ts`: cola de tareas. Corre una a la vez, cancela con AbortController y, al arrancar, marca como interrumpidas (`interrupted`) las tareas que quedaron en ejecución. Registra cada transición en `task_events` (`server/src/eventos.ts`) y guarda el id de sesión del agente para poder reanudar.
-- `server/src/runners/opencode.ts`: ejecuta `opencode run --format json` en su propio grupo de procesos (`setsid`), dentro del aislamiento de `runners/aislamiento.ts`, y sin variables `TELO_*`. Al cancelar o agotar el tiempo, termina el grupo completo (agente, herramientas y nietos).
+- `server/src/runners/opencode.ts`: ejecuta `opencode run --format json` en su propio grupo de procesos (`setsid`), dentro del aislamiento de `runners/aislamiento.ts`, y solo con las variables de una lista permitida (no hereda `TELO_*` ni otras claves del servidor). Al cancelar o agotar el tiempo, termina el grupo completo (agente, herramientas y nietos).
 - `server/src/runners/aislamiento.ts`: envuelve al agente en bubblewrap (`bwrap`). Solo ve su carpeta de trabajo (proyecto, o carpeta temporal de chat o tarea) y el estado de OpenCode. No ve el repo, `DATA_DIR`, otros proyectos, el resto del HOME ni los procesos del servidor.
-- `server/src/routes/`: `chat`, `tasks`, `preferences`, `analytics`, `models`, `settings` (también el `PATCH` de conversaciones: modelo, esfuerzo, título y anclar), `projects`, `cuotas`.
+- `server/src/routes/`: `chat`, `tasks`, `preferences`, `analytics`, `models`, `settings` (también el `PATCH` de conversaciones: modelo, esfuerzo, título y anclar), `projects`, `cuotas`, `runner` (estado del agente: CLI y bubblewrap).
 - `server/scripts/respaldo.ts`: copia de la base (`VACUUM INTO`) y del espacio de trabajo. Ver la sección "Respaldos".
+- `server/src/workspace.ts`: cada tarea de un proyecto Git trabaja en un clon propio (`DATA_DIR/tasks/<id>/repo`, rama `telo/<id8>`). Calcula el diff contra `base_commit`, aplica las aprobaciones de commit y push (ligadas al hash del diff) . Al cancelar, el clon se borra solo si no tiene cambios; si los tiene, se conserva para revisión. Los clones de tareas terminadas hace más de 14 días se borran. Las aprobaciones se guardan en `task_approvals`.
+- `server/src/ejecutar.ts`: punto único para correr un agente (chats y tareas). Aplica el modelo de respaldo ante 429 o 5xx, inyecta los secretos del proyecto, añade las instrucciones del proyecto y redacta la salida.
+- `server/src/bus.ts`: canal interno de cambios (tareas, eventos y líneas de salida) que alimenta `GET /api/eventos-vivos` (SSE).
+- `server/src/redaccion.ts`: quita de cualquier texto que sale del servidor (salida, errores, diffs, chats) los valores de los secretos, `TELO_CLAVE`, `TELO_CLAVE_CIFRADO` y patrones de credenciales.
+- `server/src/git.ts`: única puerta a Git. Usa `gitSeguro` en cualquier repo que el agente pudo escribir (quita de `.git/config` filtros, `url.*`, `fsmonitor` y credenciales antes de operar).
+- `server/src/secretos.ts`: secretos por proyecto cifrados con AES-256-GCM (IV aleatorio, AAD = proyecto + nombre). Los valores nunca salen por la API. `GITHUB_TOKEN` solo se usa en el push y nunca llega al agente.
+- `server/src/programadas.ts`: planificador en el mismo proceso (cada 30 s). Crea tareas vencidas con `crearTarea`, no solapa ejecuciones de una misma programada y no lanza ráfagas al arrancar.
+- `server/src/archivos-proyecto.ts`: lectura de archivos del proyecto. Resuelve enlaces, rechaza cualquier ruta que caiga en `.git`, abre con `O_NOFOLLOW` y limita el tamaño.
+- `server/src/ocupacion.ts`: marca los proyectos ocupados por un chat o una tarea, para no leer su Git mientras el agente escribe.
 
 ## Aislamiento de los agentes
 
 - Sin `bwrap` en el servidor, el agente no corre: la tarea o el chat fallan con un mensaje claro. Instalar en el VM con `sudo apt install bubblewrap`.
 - `TELO_AISLAMIENTO=desactivado` lo apaga. Solo para desarrollo local, nunca en el VM.
+- Si un proveedor necesita una clave como variable de entorno, se permite por nombre en `TELO_AGENTE_VARIABLES` (separadas por coma) en el archivo de entorno del VM. Nunca aplica a variables `TELO_*`.
 - Si `opencode` vive fuera de `~/.opencode`, `~/.local/bin` o `~/.bun` (por ejemplo, bajo `~/.nvm`), añade la carpeta raíz de esa instalación en `TELO_LECTURA_EXTRA` del archivo de entorno del VM, separada por `:`. Solo lectura. Nunca apuntes a la carpeta del repo, a `DATA_DIR` ni a la de proyectos.
 - Una carpeta de trabajo que no sea un proyecto registrado ni la carpeta temporal de un chat o tarea se rechaza antes de correr el agente.
 - `server/src/preferences.ts`: preferencias guardadas en `app_settings` (clave `preferences`).
@@ -47,7 +57,17 @@ cd web && bun run dev           # Vite; proxy de /api a :3000
 cd web && bun run build         # tsc --noEmit + vite build. Debe pasar antes de cualquier PR.
 ```
 
-No hay suite de pruebas en el repo todavía. Las pruebas actuales viven fuera del repo; moverlas a `tests/` está en `TODO.md`.
+```
+cd server && bun test           # pruebas del servidor (server/tests), con DATA_DIR temporal
+```
+
+Pruebas fuera del repo (en `scratchpad/`): la suite de gestión (`pruebas/gestion/prueba.ts`, 63 comprobaciones con un `opencode` falso y aislamiento real) y la revisión visual (`ui-final/revision.mjs`, 8 pantallas a 390 y 1440 px en oscuro y claro, sin errores de consola ni desborde de página).
+
+Variables del VM que se agregan con esta fase (en `/etc/orquestador/orquestador.env`, nunca en el repo):
+- `TELO_CLAVE_CIFRADO`: 32 bytes en base64 (`openssl rand -base64 32`). Sin ella, los secretos de proyecto no se guardan. No la pierdas: sin ella no se descifra nada.
+- `TELO_PROYECTOS_DIR`: carpeta raíz de los proyectos (ya existía).
+- `TELO_ESCUCHAR`: opcional. Por defecto `127.0.0.1`.
+- `TELO_AGENTE_VARIABLES`: solo las claves que un proveedor necesita como variable de entorno (sin cambios).
 
 ## Reglas de trabajo
 
@@ -73,11 +93,23 @@ No hay suite de pruebas en el repo todavía. Las pruebas actuales viven fuera de
 
 - Desde la PC: `ssh -L 3000:localhost:3000 -L 9090:localhost:9090 -i <tu_clave> orquestador@<IP>`. Luego abre `http://127.0.0.1:3000`. El puerto 9090 es Cockpit.
 - Actualizar el VM: `cd ~/orquestador && git switch main && git pull --ff-only && cd web && bun run build && cd .. && sudo systemctl restart orquestador`.
-- No abras puertos en Azure sin login. El siguiente paso es Cloudflare Tunnel con Access.
+- No abras puertos en Azure. El acceso remoto es por Tailscale (fase 9 de `PLAN.md`).
+
+## Seguridad
+
+- El agente corre en bubblewrap y puede escribir en su carpeta de trabajo, incluido `.git`. Todo lo que el servidor haga con Git sobre esos repos pasa por `gitSeguro`. Un repo con `.git` que no sea carpeta real se rechaza.
+- Nada sensible sale del servidor: los valores de secretos, claves, tokens y URLs con credenciales se redactan antes de guardar o de enviar (salida, eventos, errores, diffs, chats). Los errores 500 no muestran rutas ni trazas.
+- Antes de un commit se escanea el diff: si tiene un secreto conocido o un archivo sensible (`.env`, llaves), la aprobación se rechaza con `secreto_detectado` o `archivo_sensible`, sin mostrar el valor.
+- El push solo va a `github.com` por HTTPS. El token sale solo por variable de entorno al helper de credenciales, nunca por argumentos ni por la URL.
+- Variables que el agente no puede sobrescribir: `PATH`, `HOME`, `LD_*`, `GIT_*`, `TELO_*`, `NODE_*`, `PYTHON*`, `BASH_ENV`, `ENV`, `IFS`, `TERM`, `LANG`, `SSL_CERT_FILE`, proxies y `OPENCODE_*`.
+- Un secreto inyectado sí lo ve el agente de ese proyecto (lo necesita para trabajar). Guarda solo lo que el agente necesita.
+- El servidor escucha en `127.0.0.1` (`TELO_ESCUCHAR` lo cambia). Cabeceras: CSP estricta sin scripts en línea, `X-Frame-Options: DENY`, `nosniff`. Cuerpos de petición de máximo 64 KB. El SSE tiene límite de conexiones.
+- Pruebas de seguridad: `server/tests/seguridad.test.ts`. Ver también la sección de comandos.
 
 ## Respaldos
 
 - En el VM, `deploy/orquestador-respaldo.timer` corre cada día a las 03:30 UTC `server/scripts/respaldo.ts`, con el servicio encendido. Guarda en `/home/orquestador/respaldos`: `orquestador-<sello>.db` (copia con `VACUUM INTO`, revisada con `integrity_check`) y `espacio-<sello>.tar.gz` (`chat-workspace` y `tasks`). Conserva las últimas `TELO_RESPALDOS_CONSERVAR` (14) de cada tipo.
+- Antes de aplicar migraciones a una base con datos, el servidor guarda una copia en `DATA_DIR/respaldos-migracion` (`antes-<migración>-<sello>.db`). Esa carpeta no la copia el timer: revísala antes de borrarla.
 - La PC copia esa carpeta por Tailscale con `deploy/copiar-respaldo-pc.ps1`. Los respaldos nunca van al repo. La PC no poda sus copias.
 - Instalar en el VM (una vez):
   ```

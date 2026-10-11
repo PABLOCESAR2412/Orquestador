@@ -10,7 +10,7 @@ Este archivo describe cómo trabajan los agentes que Orquestador lanza para cada
 4. **Obrero.** Ejecuta el plan aprobado dentro de su workspace, prueba lo que cambió y escribe un reporte.
 5. **Cierre.** La tarea queda `done`, `failed` o `cancelled`. Se guardan el reporte, el costo y el uso. Se notifica al usuario (fase 8 de `PLAN.md`).
 
-Estados previstos (requieren la migración 005, ver `PLAN.md` fase 5):
+Estados previstos (requieren la migración 010, ver `PLAN.md` fase 5):
 
 ```
 queued → analyzing → planned → waiting_approval → running → done | failed | cancelled

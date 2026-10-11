@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api, type Analytics } from "../api";
 import { compact, DailyBars, ModelBars, shortDay } from "../components/charts";
 import { useShell } from "../components/shell-context";
-import { formatUsd } from "../lib/model";
+import { errorText, formatUsd } from "../lib/model";
 
 const PERIODS = [7, 30, 90] as const;
 
@@ -12,6 +12,18 @@ export const usd = (n: number) => {
   if (n === 0) return "US$ 0.00";
   return formatUsd(n);
 };
+
+// Duración media de las tareas: "45 s", "2 min 30 s", "1 h 5 min".
+export function formatDuracion(seg: number | null): string {
+  if (seg === null) return "—";
+  const total = Math.round(seg);
+  if (total < 60) return `${total} s`;
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return m > 0 ? `${h} h ${m} min` : `${h} h`;
+  return s > 0 ? `${m} min ${s} s` : `${m} min`;
+}
 
 const BUDGET_LABEL: Record<"ok" | "alerta" | "excedido", string> = {
   ok: "En rango",
@@ -22,16 +34,26 @@ const BUDGET_LABEL: Record<"ok" | "alerta" | "excedido", string> = {
 export function AnalyticsPage() {
   const { toggleDrawer } = useShell();
   const [days, setDays] = useState<number>(30);
+  // "" significa sin filtro.
+  const [proyecto, setProyecto] = useState("");
+  const [modelo, setModelo] = useState("");
 
-  // Mantiene la gráfica anterior mientras llega el nuevo periodo, sin saltos.
+  // Mantiene la gráfica anterior mientras llega el nuevo periodo o filtro, sin saltos.
   const query = useQuery({
-    queryKey: ["analytics", days],
-    queryFn: () => api.getAnalytics(days),
+    queryKey: ["analytics", days, proyecto, modelo],
+    queryFn: () => api.getAnalytics(days, { proyecto: proyecto || null, modelo: modelo || null }),
     placeholderData: keepPreviousData,
   });
   const data: Analytics | undefined = query.data;
   const models = useQuery({ queryKey: ["models"], queryFn: api.listModels, staleTime: 5 * 60_000 });
   const names = new Map((models.data?.models ?? []).map((m) => [m.id, m.name]));
+  const nombreModelo = (id: string) => names.get(id) ?? id;
+
+  // Opciones de los filtros: las que manda el servidor, más el modelo elegido por si ya no aparece.
+  const proyectosOpciones = data?.proyectos ?? [];
+  const modelosOpciones = data ? [...new Set([...data.modelos, ...(modelo ? [modelo] : [])])] : [];
+  const filtrado = proyecto !== "" || modelo !== "";
+  const sinUso = data !== undefined && data.totals.calls === 0;
 
   return (
     <main className="page">
@@ -58,6 +80,10 @@ export function AnalyticsPage() {
             </p>
           </div>
         </div>
+      </header>
+
+      {/* Filtros en una fila, sobre las gráficas y los indicadores */}
+      <div className="analitica-filtros">
         <div className="period" role="group" aria-label="Periodo">
           {PERIODS.map((p) => (
             <button
@@ -71,11 +97,48 @@ export function AnalyticsPage() {
             </button>
           ))}
         </div>
-      </header>
+        <label className="filtro-campo">
+          <span>Proyecto</span>
+          <select className="filtro-select" value={proyecto} onChange={(e) => setProyecto(e.target.value)}>
+            <option value="">Todos los proyectos</option>
+            {proyectosOpciones.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="filtro-campo">
+          <span>Modelo</span>
+          <select className="filtro-select" value={modelo} onChange={(e) => setModelo(e.target.value)}>
+            <option value="">Todos los modelos</option>
+            {modelosOpciones.map((id) => (
+              <option key={id} value={id}>
+                {nombreModelo(id)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {query.isPending && !data && <p className="muted-note">Cargando analíticas…</p>}
 
       {query.isError && (
-        <p className="error" role="alert">
-          No se pudieron cargar las analíticas.
+        <div className="estado-linea">
+          <p className="error" role="alert">
+            {errorText(query.error)}
+          </p>
+          <button type="button" className="ghost" onClick={() => void query.refetch()}>
+            Reintentar
+          </button>
+        </div>
+      )}
+
+      {sinUso && (
+        <p className="muted-note">
+          {filtrado
+            ? "Sin uso con estos filtros en este periodo. Prueba otro proyecto o modelo, o quita los filtros."
+            : "Todavía no hay uso en este periodo."}
         </p>
       )}
 
@@ -211,9 +274,41 @@ export function AnalyticsPage() {
               <span className="panel-tag">{data.byModel.length} modelos registrados</span>
             </div>
             <ModelBars
-              rows={data.byModel.map((r) => ({ ...r, model: names.get(r.model) ?? r.model }))}
+              rows={data.byModel.map((r) => ({ ...r, model: nombreModelo(r.model) }))}
               formatValue={usd}
             />
+
+            {data.byModel.length > 0 && (
+              <div className="tabla-scroll">
+                <table className="comparacion">
+                  <caption>Comparación por modelo en los últimos {data.days} días</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Modelo</th>
+                      <th scope="col">Costo</th>
+                      <th scope="col">Tokens</th>
+                      <th scope="col">Llamadas</th>
+                      <th scope="col">Tareas</th>
+                      <th scope="col">Duración media</th>
+                      <th scope="col">Costo por tarea</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.byModel.map((r) => (
+                      <tr key={r.model}>
+                        <th scope="row">{nombreModelo(r.model)}</th>
+                        <td>{usd(r.cost)}</td>
+                        <td>{compact(r.tokens)}</td>
+                        <td>{r.calls}</td>
+                        <td>{r.tareas}</td>
+                        <td>{formatDuracion(r.duracionMediaSeg)}</td>
+                        <td>{r.costoPorTareaUsd === null ? "—" : usd(r.costoPorTareaUsd)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
 
           <details className="panel data-table">

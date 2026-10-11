@@ -58,8 +58,14 @@ export function carpetaPermitida(cwd: string): boolean {
   return proyectos !== null && dentro(destino, proyectos);
 }
 
-// Nunca se da lectura al repo, a DATA_DIR ni a la carpeta de proyectos (los demás se ocultan).
-// El HOME sí puede ser fuente: opencode suele vivir ahí.
+// Verdadero si `raiz` es `ruta` o una carpeta que la contiene.
+function contiene(raiz: string, ruta: string): boolean {
+  return ruta === raiz || ruta.startsWith(raiz.endsWith(sep) ? raiz : raiz + sep);
+}
+
+// Nunca se da lectura al repo, a DATA_DIR ni a la carpeta de proyectos, ni a una carpeta que los
+// contenga (por ejemplo el HOME o /): eso reabriría lo que el aislamiento oculta.
+// El HOME sí puede ser fuente de una ruta concreta: opencode suele vivir ahí.
 function lecturaExtra(): string[] {
   const prohibidas = [RAIZ_REPO, config.dataDir, config.projectsDir]
     .filter((r): r is string => !!r && existsSync(r))
@@ -69,7 +75,7 @@ function lecturaExtra(): string[] {
     .map((r) => r.trim())
     .filter((r) => r.startsWith("/") && existsSync(r))
     .map((r) => rutaReal(r) ?? r);
-  return rutas.filter((r) => !prohibidas.some((p) => r === p || dentro(r, p)));
+  return rutas.filter((r) => !prohibidas.some((p) => contiene(r, p) || contiene(p, r)));
 }
 
 // Argumentos de bwrap que van antes del comando del agente. Vacío si el aislamiento está desactivado.

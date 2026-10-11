@@ -165,6 +165,72 @@ const migrations: Migration[] = [
       ALTER TABLE tasks ADD COLUMN retry_of TEXT;
     `,
   },
+  {
+    // Git por tarea: rama de trabajo y commit base del clon. Las aprobaciones de commit y push
+    // se guardan como historial (no se sobrescriben). El uso registra proyecto y tarea para
+    // poder filtrar analíticas y calcular ventanas de uso.
+    name: "010_git_aprobaciones",
+    sql: `
+      ALTER TABLE tasks ADD COLUMN rama TEXT;
+      ALTER TABLE tasks ADD COLUMN base_commit TEXT;
+      ALTER TABLE usage ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+      ALTER TABLE usage ADD COLUMN task_id TEXT;
+      UPDATE usage SET project_id = (
+        SELECT c.project_id FROM conversations c WHERE c.id = usage.conversation_id
+      ) WHERE conversation_id IS NOT NULL;
+      CREATE INDEX usage_created ON usage (created_at);
+      CREATE TABLE task_approvals (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        accion TEXT NOT NULL CHECK (accion IN ('commit', 'push')),
+        diff_hash TEXT,
+        commit_sha TEXT,
+        rama TEXT,
+        remoto TEXT,
+        detalle TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX task_approvals_task ON task_approvals (task_id, accion, created_at);
+    `,
+  },
+  {
+    // Secretos por proyecto, cifrados con AES-256-GCM. Nunca se guarda el valor en claro.
+    name: "011_secretos",
+    sql: `
+      CREATE TABLE project_secrets (
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        iv TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        value_enc TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (project_id, name)
+      );
+    `,
+  },
+  {
+    // Instrucciones por proyecto (texto que recibe cada agente del proyecto) y tareas programadas.
+    name: "012_programadas_instrucciones",
+    sql: `
+      ALTER TABLE projects ADD COLUMN instrucciones TEXT;
+      CREATE TABLE programadas (
+        id TEXT PRIMARY KEY,
+        titulo TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        model TEXT NOT NULL,
+        effort TEXT,
+        project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+        frecuencia TEXT NOT NULL CHECK (frecuencia IN ('cada_horas', 'diaria')),
+        cada_horas INTEGER,
+        hora TEXT,
+        activa INTEGER NOT NULL DEFAULT 1,
+        proxima_en TEXT NOT NULL,
+        ultima_ejecucion TEXT,
+        ultima_tarea_id TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -175,6 +241,20 @@ db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 const applied = new Set(
   db.query<{ name: string }, []>("SELECT name FROM schema_migrations").all().map((r) => r.name),
 );
+
+// Antes de cambiar una base que ya tiene datos, guarda una copia consistente (VACUUM INTO)
+// en DATA_DIR/respaldos-migracion. Una base nueva no necesita copia.
+function copiarAntesDeMigrar(primera: string) {
+  const carpeta = join(config.dataDir, "respaldos-migracion");
+  mkdirSync(carpeta, { recursive: true });
+  const sello = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
+  const destino = join(carpeta, `antes-${primera}-${sello}.db`);
+  db.query("VACUUM INTO ?").run(destino);
+  console.log(`Copia previa a las migraciones: ${destino}`);
+}
+
+const pendientes = migrations.filter((m) => !applied.has(m.name));
+if (pendientes.length > 0 && applied.size > 0) copiarAntesDeMigrar(pendientes[0].name);
 
 for (const m of migrations) {
   if (applied.has(m.name)) continue;

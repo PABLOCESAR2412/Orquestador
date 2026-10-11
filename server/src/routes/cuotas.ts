@@ -50,6 +50,23 @@ function redondear(n: number): number {
   return Math.round(n * 10_000) / 10_000;
 }
 
+// Nombre para mostrar de un proveedor (lo usa /api/uso).
+export function nombreProveedor(id: string): string {
+  return NOMBRES[id] ?? id;
+}
+
+// Saldo restante estimado de todas las cuentas anotadas de un proveedor, o null si no tiene ninguna.
+export function cuotaRestanteUsd(provider: string): number | null {
+  const cuentas = db
+    .query<CuentaRow, [string]>(
+      "SELECT id, provider, label, remaining_usd, limit_usd, note, updated_at FROM quota_accounts WHERE provider = ?",
+    )
+    .all(provider);
+  if (cuentas.length === 0) return null;
+  const total = cuentas.reduce((suma, cuenta) => suma + cuenta.remaining_usd - usoDesde(provider, cuenta.updated_at), 0);
+  return redondear(total);
+}
+
 export const cuotas = new Hono();
 
 // GET /api/cuotas -> un bloque por proveedor con uso del mes y sus cuentas

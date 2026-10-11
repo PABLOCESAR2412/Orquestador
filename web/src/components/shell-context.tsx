@@ -44,7 +44,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   // Shortcut ⌘N / Ctrl+N para nueva tarea
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
+      // Solo ⌘N o Ctrl+N: Ctrl+Shift+N (ventana privada) y Alt siguen siendo del navegador.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "n") {
         const target = e.target as HTMLElement | null;
         if (
           target &&

@@ -25,6 +25,17 @@ function esHttps(c: Context): boolean {
   );
 }
 
+// Solo es HTTP sin cifrar cuando el navegador llega directo a este equipo (túnel SSH a 127.0.0.1)
+// y no pasa por ningún proxy. En cualquier otro caso la cookie lleva Secure.
+function esLocalDirecto(c: Context): boolean {
+  const reenviado =
+    c.req.header("x-forwarded-proto") ||
+    c.req.header("x-forwarded-for") ||
+    c.req.header("cf-visitor") ||
+    c.req.header("forwarded");
+  return !reenviado && ["127.0.0.1", "localhost", "[::1]"].includes(new URL(c.req.url).hostname);
+}
+
 export const auth = new Hono();
 
 // GET /api/sesion -> 200 con sesión válida, 401 sin ella
@@ -53,7 +64,7 @@ auth.post("/login", async (c) => {
     sameSite: "Strict",
     path: "/",
     maxAge: DURACION_SESION_S,
-    secure: esHttps(c),
+    secure: esHttps(c) || !esLocalDirecto(c),
   });
   return c.json({ ok: true });
 });
