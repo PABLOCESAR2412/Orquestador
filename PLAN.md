@@ -31,7 +31,9 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - **Criterio:** las cinco pantallas revisadas a 390 px y 1440 px. Contraste AA. Solo tokens de color. Sin cambios de comportamiento.
 
 ### 5. Analizador y obrero por tarea: diseño listo (`AGENTS.md`)
-- Separar planificación y ejecución. Migración `005`: nuevos estados de tarea, columnas o tabla para el plan y el resultado, y estado de aprobación.
+- Separar planificación y ejecución. Migración `007` (las `005` y `006` ya están usadas): estados `planning`, `waiting_approval`, `executing`, `waiting_user` y `completed`, además de los actuales. Tablas para versiones del plan, aprobaciones y eventos por tarea.
+- Cada tarea tiene un `task_id` propio. Cada proveedor guarda su `provider_session_id`, así cambiar de proveedor no cambia la identidad de la tarea.
+- Si el obrero necesita desviarse del plan aprobado, la tarea vuelve a `waiting_approval`. No reinterpreta el plan por su cuenta.
 - **Criterio:** el analizador produce un JSON válido. El obrero ejecuta solo el plan aprobado. El reporte queda guardado. "Continuar" reanuda la misma sesión y el mismo workspace.
 
 ### 6. Proyectos de GitHub
@@ -50,10 +52,13 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - Web Push (u otro canal) al fallar, al necesitar aprobación y al terminar una tarea.
 - **Criterio:** cada evento notifica una vez. Reabrir la app no repite las notificaciones.
 
-### 9. Acceso seguro
-- Cloudflare Tunnel para publicar la app con HTTPS, sin abrir puertos en Azure.
-- Cloudflare Access para exigir login antes de llegar a la app.
-- **Criterio:** la URL pública pide login. La PWA se instala desde el teléfono. El puerto 3000 no está abierto en el NSG.
+### 9. Acceso seguro (Tailscale)
+- Telo corre en el VM y solo es accesible desde los dispositivos de la red privada de Tailscale, con HTTPS por `tailscale serve`.
+- El login de Telo (`TELO_CLAVE`) sigue activo como segunda capa: Tailscale decide quién llega al servidor; Telo decide quién puede operarlo.
+- Verificado desde la PC: la cookie sale con `Secure`, `HttpOnly` y `SameSite=Strict` a través de `serve`.
+- Pendiente: probar desde el teléfono; desactivar la expiración de la clave del VM; comprobar que `serve` sigue activo tras reiniciar.
+- **Criterio:** PC y teléfono abren la app desde cualquier red. Sin Tailscale, la URL no resuelve. El puerto 3000 no está abierto en el NSG.
+- Por ahora no se usa Funnel (acceso público): exigiría endurecer la app antes de publicarla.
 
 ### 10. Cuota y saldo de proveedores
 - Panel con saldo o cuota restante por cuenta o API (OpenCode, OpenRouter, Groq, NVIDIA, Google, Codex) y tiempo restante estimado.
@@ -74,14 +79,29 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 ## Decisiones tomadas
 
 - Stack: TypeScript, Bun, SQLite, PWA. Sin Next.js.
-- Acceso: túnel SSH ahora; Cloudflare Tunnel después. Sin Tailscale.
+- Acceso: Tailscale. Cloudflare se descartó (Workers VPC no está disponible en la cuenta) y el Quick Tunnel no sirve como acceso fijo.
 - Una tarea a la vez; las demás se encolan.
-- Aprobación del usuario antes de commit, push o PR.
+- Aprobación del usuario antes de commit, push o PR. La aprobación la aplica el backend, no una instrucción al agente.
 - Sin tope de gasto por tarea; se consulta saldo o cuota.
 - Uso personal, con un solo usuario.
+- El agente nunca recibe variables `TELO_*` (la clave de acceso).
+- Una tarea que estaba corriendo al reiniciar el servidor queda `interrupted`, no `failed`.
+
+## Orden de trabajo
+
+Según la revisión del 10 de octubre, el núcleo es el motor de tareas, el aislamiento del runner, la aprobación y la recuperación. Antes de ampliar proveedores o interfaz:
+
+1. Seguridad del runner: entorno sin secretos, cancelación por grupo de procesos. (`fix/runner-seguridad`)
+2. Estados formales y recuperación: `interrupted`, reanudar, reintentar o cancelar. (migración `006` aplicada parcialmente: falta reanudar y reintentar.)
+3. Registro de eventos por tarea, para depurar, auditar y alimentar notificaciones.
+4. Fase 5 (analizador y obrero) y fase 6 (Git con aprobación en el backend).
+5. Respaldos de la base y del workspace fuera del VM.
+6. Fase 9 (acceso por Tailscale) y pendientes de la sección de acceso.
+7. Fases 10, 8 y 13: cuota con niveles de precisión, notificaciones por eventos y panel del VM sin terminal web.
+8. Fase 4 (rediseño visual) y proveedores adicionales.
 
 ## Preguntas abiertas
 
-- ¿Cuál será la URL pública en Cloudflare y si habrá dominio propio?
 - ¿El panel del VM dentro de la app reemplaza a Cockpit o solo lo enlaza?
 - ¿Qué proveedores tienen API de saldo y cuáles se consultan a mano?
+- ¿La memoria del agente se actualiza sola o solo con aprobación? La revisión recomienda separar observaciones de memoria aprobada.

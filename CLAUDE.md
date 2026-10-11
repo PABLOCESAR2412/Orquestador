@@ -20,8 +20,8 @@ Es de uso personal, con un solo usuario y sin cuentas. Todavía no tiene login: 
 ## Estructura
 
 - `server/src/index.ts`: entrada. Monta las rutas bajo `/api`, sirve `web/dist` y arranca el worker.
-- `server/src/worker.ts`: cola de tareas. Corre una a la vez, cancela con AbortController y, al arrancar, marca como fallidas las tareas que quedaron en ejecución.
-- `server/src/runners/opencode.ts`: ejecuta `opencode run --format json`. Al cancelar, mata el árbol de procesos.
+- `server/src/worker.ts`: cola de tareas. Corre una a la vez, cancela con AbortController y, al arrancar, marca como interrumpidas (`interrupted`) las tareas que quedaron en ejecución.
+- `server/src/runners/opencode.ts`: ejecuta `opencode run --format json` en su propio grupo de procesos (`setsid`) y sin variables `TELO_*`. Al cancelar o agotar el tiempo, termina el grupo completo (agente, herramientas y nietos).
 - `server/src/routes/`: `chat`, `tasks`, `preferences`, `analytics`, `models`, `settings`.
 - `server/src/preferences.ts`: preferencias guardadas en `app_settings` (clave `preferences`).
 - `web/src/api.ts`: cliente HTTP y tipos. Todo fetch pasa por ahí.
