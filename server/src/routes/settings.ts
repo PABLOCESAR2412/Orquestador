@@ -3,12 +3,12 @@ import { db } from "../db";
 import { validateSelection } from "../models";
 
 type Row = { id: string; model: string | null; effort: string | null };
-type Body = { model?: string | null; effort?: string | null };
+type Body = { model?: string | null; effort?: string | null; title?: string; pinned?: boolean };
 
 export const settings = new Hono();
 
-// PATCH /api/conversations/:id  body: { model, effort }
-// Un campo omitido conserva su valor actual; null lo borra.
+// PATCH /api/conversations/:id  body: { model?, effort?, title?, pinned? }
+// Un campo omitido conserva su valor actual; null lo borra (modelo o esfuerzo).
 settings.patch("/conversations/:id", async (c) => {
   const id = c.req.param("id");
   const row = db
@@ -17,21 +17,44 @@ settings.patch("/conversations/:id", async (c) => {
   if (!row) return c.json({ error: "conversation_not_found" }, 404);
 
   const body = await c.req.json<Body>().catch(() => ({}) as Body);
-  const model = body.model === undefined ? row.model : body.model;
-  const effort = body.effort === undefined ? row.effort : body.effort;
 
-  if (!model && effort) return c.json({ error: "effort_requires_model" }, 400);
-
-  let costWarning: string | null = null;
-  let costTier: string | null = null;
-  if (model) {
-    const check = await validateSelection(model, effort);
-    if (!check.ok) return c.json({ error: check.error }, 400);
-    costWarning = check.info.costWarning;
-    costTier = check.info.costTier;
+  if (body.title !== undefined) {
+    const titulo = typeof body.title === "string" ? body.title.trim() : "";
+    if (!titulo || titulo.length > 80) return c.json({ error: "invalid_title" }, 400);
+    db.query("UPDATE conversations SET title = ? WHERE id = ?").run(titulo, id);
   }
 
-  db.query("UPDATE conversations SET model = ?, effort = ? WHERE id = ?").run(model, effort, id);
+  if (body.pinned !== undefined) {
+    // Al anclar se guarda la fecha; al desanclar, se borra.
+    db.query(
+      "UPDATE conversations SET pinned_at = CASE WHEN ? THEN COALESCE(pinned_at, datetime('now')) ELSE NULL END WHERE id = ?",
+    ).run(body.pinned ? 1 : 0, id);
+  }
 
-  return c.json({ id, model, effort, costTier, costWarning });
+  const cambiaConfiguracion = body.model !== undefined || body.effort !== undefined;
+  let costWarning: string | null = null;
+  let costTier: string | null = null;
+
+  if (cambiaConfiguracion) {
+    const model = body.model === undefined ? row.model : body.model;
+    const effort = body.effort === undefined ? row.effort : body.effort;
+
+    if (!model && effort) return c.json({ error: "effort_requires_model" }, 400);
+
+    if (model) {
+      const check = await validateSelection(model, effort);
+      if (!check.ok) return c.json({ error: check.error }, 400);
+      costWarning = check.info.costWarning;
+      costTier = check.info.costTier;
+    }
+
+    db.query("UPDATE conversations SET model = ?, effort = ? WHERE id = ?").run(model, effort, id);
+  }
+
+  const actual = db
+    .query<{ id: string; title: string; model: string | null; effort: string | null; pinned_at: string | null }, [string]>(
+      "SELECT id, title, model, effort, pinned_at FROM conversations WHERE id = ?",
+    )
+    .get(id);
+  return c.json({ ...actual, costTier, costWarning });
 });

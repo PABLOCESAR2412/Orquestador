@@ -1,0 +1,18 @@
+# Respaldo de Telo: copia la base y el espacio de trabajo. Lo dispara orquestador-respaldo.timer.
+# Instalación en el VM: ver CLAUDE.md, sección "Respaldos".
+[Unit]
+Description=Respaldo de Telo: base y espacio de trabajo
+
+[Service]
+Type=oneshot
+User=orquestador
+Group=orquestador
+WorkingDirectory=/home/orquestador/orquestador/server
+# Debe ser el mismo DATA_DIR que usa orquestador.service. Compruébalo con: systemctl show orquestador -p Environment
+Environment=DATA_DIR=/home/orquestador/orquestador/server/data
+Environment=TELO_RESPALDOS_DIR=/home/orquestador/respaldos
+Environment=TELO_RESPALDOS_CONSERVAR=14
+# Ruta de bun del usuario orquestador. Compruébala con: sudo -u orquestador which bun
+ExecStart=/home/orquestador/.bun/bin/bun scripts/respaldo.ts
+NoNewPrivileges=yes
+PrivateTmp=yes

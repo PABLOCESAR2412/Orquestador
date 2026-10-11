@@ -1,4 +1,4 @@
-import { ApiError, type CostTier, type ModelInfo, type TaskStatus } from "../api";
+import { ApiError, type CostTier, type ModelInfo, type TaskEventKind, type TaskStatus } from "../api";
 
 export const EFFORT_LABELS: Record<string, string> = {
   minimal: "Mínimo",
@@ -44,6 +44,23 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
   cancelled: "Cancelada",
 };
 
+// Historial de una tarea (tabla task_events del servidor).
+export const EVENT_LABEL: Record<TaskEventKind, string> = {
+  creada: "Creada",
+  iniciada: "Iniciada",
+  sesion_asignada: "Sesión del agente asignada",
+  cancelacion_pedida: "Cancelación pedida",
+  interrumpida: "Interrumpida",
+  reanudada: "Reanudada",
+  reintento_creado: "Reintento creado",
+  terminada: "Terminada",
+};
+
+// Montos en dólares: centavos normales; cifras menores a un centavo con cuatro decimales.
+export function formatUsd(n: number): string {
+  return n < 0.01 && n > 0 ? `US$ ${n.toFixed(4)}` : `US$ ${n.toFixed(2)}`;
+}
+
 // SQLite guarda la fecha en UTC sin zona: "2026-10-09 04:50:16".
 export function formatWhen(sqlDate: string): string {
   const date = new Date(sqlDate.replace(" ", "T") + "Z");
@@ -71,6 +88,30 @@ export function errorText(err: unknown): string {
         return "El texto está vacío o supera los 10 000 caracteres.";
       case "task_not_cancellable":
         return "Esta tarea ya terminó.";
+      case "task_not_resumable":
+        return "Solo se pueden reanudar tareas interrumpidas o fallidas.";
+      case "task_without_session":
+        return "Esta tarea no llegó a iniciar una sesión. Puedes reintentarla.";
+      case "task_not_retryable":
+        return "Esta tarea no se puede reintentar en este estado.";
+      case "task_not_found":
+        return "Esta tarea ya no existe.";
+      case "conversation_busy":
+        return "Este chat todavía está respondiendo. Espera a que termine.";
+      case "aislamiento_no_disponible":
+        return "El servidor no tiene bubblewrap, así que el agente no puede correr aislado. Pide instalarlo en el VM.";
+      case "carpeta_no_permitida":
+        return "Esa carpeta no está permitida para un agente.";
+      case "invalid_title":
+        return "El título debe tener entre 1 y 80 caracteres.";
+      case "invalid_provider":
+        return "El proveedor solo puede tener letras minúsculas, números y guiones.";
+      case "invalid_label":
+        return "Escribe un nombre para la cuenta de 60 caracteres o menos.";
+      case "quota_not_found":
+        return "Esa cuenta ya no existe.";
+      case "invalid_amount":
+        return "El saldo debe ser un número igual o mayor que cero.";
       case "invalid_budget":
         return "El presupuesto debe ser un número igual o mayor que cero.";
       case "invalid_alert_percent":

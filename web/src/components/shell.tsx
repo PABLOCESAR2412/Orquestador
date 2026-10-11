@@ -1,12 +1,14 @@
 import { type ReactNode, useMemo, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Conversation } from "../api";
 import { isIOS, isStandalone, useInstallPrompt } from "../lib/install";
+import { errorText } from "../lib/model";
 import { AppNav } from "./nav";
+import { ConvItem } from "./conv-item";
 import { useShell } from "./shell-context";
 
-type DateGroupTitle = "HOY" | "AYER" | "ÚLTIMOS 7 DÍAS" | "ANTERIORES";
+type DateGroupTitle = "ANCLADOS" | "HOY" | "AYER" | "ÚLTIMOS 7 DÍAS" | "ANTERIORES";
 
 function getGroupForDate(dateStr: string | null | undefined): DateGroupTitle {
   if (!dateStr) return "ANTERIORES";
@@ -40,21 +42,52 @@ export function Shell({ children }: { children: ReactNode }) {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
+  // Cada 5 s para ver al instante los chats creados, renombrados o ocupados desde otro dispositivo.
   const conversations = useQuery({
     queryKey: ["conversations"],
     queryFn: api.listConversations,
+    refetchInterval: 5_000,
   });
+
+  const qc = useQueryClient();
+  const invalidarChats = () => qc.invalidateQueries({ queryKey: ["conversations"] });
+
+  const renombrar = useMutation({
+    mutationFn: ({ id, title }: { id: string; title: string }) => api.updateConversation(id, { title }),
+    onSettled: () => void invalidarChats(),
+  });
+  const anclar = useMutation({
+    mutationFn: ({ id, pinned }: { id: string; pinned: boolean }) => api.updateConversation(id, { pinned }),
+    onSettled: () => void invalidarChats(),
+  });
+  const eliminar = useMutation({
+    mutationFn: (id: string) => api.deleteConversation(id),
+    onSuccess: (_data, id) => {
+      qc.removeQueries({ queryKey: ["messages", id] });
+      if (selectedConversationId === id) setSelectedConversationId(null);
+    },
+    onSettled: () => void invalidarChats(),
+  });
+
+  const accionError = renombrar.isError
+    ? errorText(renombrar.error)
+    : anclar.isError
+      ? errorText(anclar.error)
+      : eliminar.isError
+        ? errorText(eliminar.error)
+        : null;
 
   const groupedConversations = useMemo(() => {
     if (!conversations.data) return [];
     const groups: { title: DateGroupTitle; items: Conversation[] }[] = [
+      { title: "ANCLADOS", items: [] },
       { title: "HOY", items: [] },
       { title: "AYER", items: [] },
       { title: "ÚLTIMOS 7 DÍAS", items: [] },
       { title: "ANTERIORES", items: [] },
     ];
     for (const c of conversations.data) {
-      const groupTitle = getGroupForDate(c.created_at);
+      const groupTitle = c.pinned_at ? "ANCLADOS" : getGroupForDate(c.created_at);
       const target = groups.find((g) => g.title === groupTitle);
       if (target) target.items.push(c);
     }
@@ -125,27 +158,28 @@ export function Shell({ children }: { children: ReactNode }) {
               {conversations.isError && (
                 <span className="sidebar-empty">Error al cargar</span>
               )}
+              {accionError && (
+                <p className="error sidebar-error" role="alert">
+                  {accionError}
+                </p>
+              )}
               {conversations.data && conversations.data.length === 0 && (
                 <span className="sidebar-empty">Sin conversaciones</span>
               )}
               {groupedConversations.map((group) => (
                 <div key={group.title} className="sidebar-group">
                   <div className="sidebar-group-title">{group.title}</div>
-                  {group.items.map((c) => {
-                    const isActive = currentPath === "/chat" && selectedConversationId === c.id;
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        className={`sidebar-conv${isActive ? " active" : ""}`}
-                        aria-current={isActive ? "true" : undefined}
-                        onClick={() => handleSelectConv(c.id)}
-                        title={c.title}
-                      >
-                        <span className="sidebar-conv-title">{c.title}</span>
-                      </button>
-                    );
-                  })}
+                  {group.items.map((c) => (
+                    <ConvItem
+                      key={c.id}
+                      conv={c}
+                      active={currentPath === "/chat" && selectedConversationId === c.id}
+                      onSelect={handleSelectConv}
+                      onRename={(id, title) => renombrar.mutate({ id, title })}
+                      onTogglePin={(id, pinned) => anclar.mutate({ id, pinned })}
+                      onDelete={(id) => eliminar.mutate(id)}
+                    />
+                  ))}
                 </div>
               ))}
             </div>

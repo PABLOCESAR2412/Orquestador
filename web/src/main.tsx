@@ -10,8 +10,10 @@ import "./styles.css";
 
 captureInstallPrompt();
 
+// Al volver a la app (teléfono o pestaña) los datos se actualizan solos. Sin esto, un mensaje
+// enviado desde la PC no aparecía en el teléfono hasta cambiar de chat.
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true, refetchOnReconnect: true } },
 });
 
 createRoot(document.getElementById("root")!).render(

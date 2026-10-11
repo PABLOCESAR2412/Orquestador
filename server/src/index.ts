@@ -10,6 +10,7 @@ import { preferences } from "./routes/preferences";
 import { analytics } from "./routes/analytics";
 import { projects } from "./routes/projects";
 import { providers } from "./routes/providers";
+import { cuotas } from "./routes/cuotas";
 import { startWorker } from "./worker";
 import { auth } from "./routes/auth";
 import { COOKIE_SESION, MIN_CARACTERES_CLAVE, sesionValida } from "./auth";
@@ -55,6 +56,7 @@ app.route("/api", preferences);
 app.route("/api", analytics);
 app.route("/api", projects);
 app.route("/api", providers);
+app.route("/api", cuotas);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
 startWorker();

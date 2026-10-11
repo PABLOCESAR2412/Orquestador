@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { db } from "../db";
+import { listarEventos, registrarEvento } from "../eventos";
 import { validateSelection } from "../models";
 import { cancelTask, notifyWorker } from "../worker";
 import { getPreferences } from "../preferences";
@@ -18,15 +19,31 @@ type TaskRow = {
   result: string | null;
   error: string | null;
   project_id: string | null;
+  retry_of: string | null;
+  reanudable: number;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
 };
 
+// reanudable: la tarea tiene la sesión del agente, así que puede continuar donde quedó.
 const COLUMNS =
-  "id, title, prompt, model, effort, status, result, error, project_id, created_at, started_at, finished_at";
+  "id, title, prompt, model, effort, status, result, error, project_id, retry_of, (provider_session_id IS NOT NULL) AS reanudable, created_at, started_at, finished_at";
+
+const ESTADOS_REANUDABLES = ["interrupted", "failed"];
+const ESTADOS_REINTENTABLES = ["interrupted", "failed", "cancelled"];
 
 export const tasks = new Hono();
+
+// SQLite devuelve los booleanos como 0 o 1.
+function aTarea(row: TaskRow) {
+  return { ...row, reanudable: row.reanudable === 1 };
+}
+
+function leerTarea(id: string) {
+  const row = db.query<TaskRow, [string]>(`SELECT ${COLUMNS} FROM tasks WHERE id = ?`).get(id);
+  return row ? aTarea(row) : null;
+}
 
 // GET /api/tasks?limit=50  -> tareas más recientes primero
 tasks.get("/tasks", (c) => {
@@ -34,15 +51,20 @@ tasks.get("/tasks", (c) => {
   const rows = db
     .query<TaskRow, [number]>(`SELECT ${COLUMNS} FROM tasks ORDER BY created_at DESC, rowid DESC LIMIT ?`)
     .all(limit);
-  return c.json(rows);
+  return c.json(rows.map(aTarea));
 });
 
 tasks.get("/tasks/:id", (c) => {
-  const row = db
-    .query<TaskRow, [string]>(`SELECT ${COLUMNS} FROM tasks WHERE id = ?`)
-    .get(c.req.param("id"));
+  const row = leerTarea(c.req.param("id"));
   if (!row) return c.json({ error: "task_not_found" }, 404);
   return c.json(row);
+});
+
+// GET /api/tasks/:id/eventos  -> historial en orden cronológico
+tasks.get("/tasks/:id/eventos", (c) => {
+  const id = c.req.param("id");
+  if (!leerTarea(id)) return c.json({ error: "task_not_found" }, 404);
+  return c.json(listarEventos(id));
 });
 
 // POST /api/tasks  body: { prompt, model?, effort?, projectId? }
@@ -71,14 +93,16 @@ tasks.post("/tasks", async (c) => {
   }
 
   const id = crypto.randomUUID();
-  db.query(
-    "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id) VALUES (?, ?, ?, ?, ?, 'queued', ?)",
-  ).run(id, prompt.slice(0, 60), prompt, model, effort, projectId);
+  db.transaction(() => {
+    db.query(
+      "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id) VALUES (?, ?, ?, ?, ?, 'queued', ?)",
+    ).run(id, prompt.slice(0, 60), prompt, model, effort, projectId);
+    registrarEvento(id, "creada", `Modelo ${model}`);
+  })();
 
   notifyWorker();
 
-  const row = db.query<TaskRow, [string]>(`SELECT ${COLUMNS} FROM tasks WHERE id = ?`).get(id);
-  return c.json(row, 201);
+  return c.json(leerTarea(id), 201);
 });
 
 // POST /api/tasks/:id/cancel
@@ -88,4 +112,52 @@ tasks.post("/tasks/:id/cancel", (c) => {
   if (outcome === "not_found") return c.json({ error: "task_not_found" }, 404);
   if (outcome === "not_cancellable") return c.json({ error: "task_not_cancellable" }, 409);
   return c.json({ outcome }, outcome === "cancelling" ? 202 : 200);
+});
+
+// POST /api/tasks/:id/reanudar
+// Vuelve a la cola y continúa la misma sesión del agente, en la misma carpeta.
+tasks.post("/tasks/:id/reanudar", (c) => {
+  const id = c.req.param("id");
+  const row = leerTarea(id);
+  if (!row) return c.json({ error: "task_not_found" }, 404);
+  if (!ESTADOS_REANUDABLES.includes(row.status)) return c.json({ error: "task_not_resumable" }, 409);
+  if (!row.reanudable) return c.json({ error: "task_without_session" }, 409);
+
+  db.transaction(() => {
+    db.query(
+      "UPDATE tasks SET status = 'queued', result = NULL, error = NULL, finished_at = NULL WHERE id = ?",
+    ).run(id);
+    registrarEvento(id, "reanudada", `Estaba ${row.status === "interrupted" ? "interrumpida" : "fallida"}`);
+  })();
+
+  notifyWorker();
+  return c.json(leerTarea(id));
+});
+
+// POST /api/tasks/:id/reintentar
+// Crea una tarea nueva con el mismo prompt, modelo y proyecto. No continúa la sesión anterior.
+tasks.post("/tasks/:id/reintentar", (c) => {
+  const original = leerTarea(c.req.param("id"));
+  if (!original) return c.json({ error: "task_not_found" }, 404);
+  if (!ESTADOS_REINTENTABLES.includes(original.status)) return c.json({ error: "task_not_retryable" }, 409);
+
+  const nueva = crypto.randomUUID();
+  db.transaction(() => {
+    db.query(
+      "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id, retry_of) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)",
+    ).run(
+      nueva,
+      original.title,
+      original.prompt,
+      original.model,
+      original.effort,
+      original.project_id,
+      original.id,
+    );
+    registrarEvento(nueva, "creada", `Reintento de ${original.id.slice(0, 8)}`);
+    registrarEvento(original.id, "reintento_creado", `Nueva tarea ${nueva.slice(0, 8)}`);
+  })();
+
+  notifyWorker();
+  return c.json(leerTarea(nueva), 201);
 });

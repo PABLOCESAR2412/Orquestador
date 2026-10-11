@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ModelInfo, type Task } from "../api";
 import { CostMeter, EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
+import { HistorialTarea } from "../components/task-history";
 import { errorText } from "../lib/model";
 import { EVENTO_VERSION_NUEVA, hayVersionNueva } from "../lib/version";
 import { useShell } from "../components/shell-context";
@@ -119,6 +120,16 @@ export function TasksPage() {
 
   const cancel = useMutation({
     mutationFn: (id: string) => api.cancelTask(id),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+  });
+
+  // Reanudar continúa la sesión del agente en la misma carpeta; reintentar crea una tarea nueva.
+  const reanudar = useMutation({
+    mutationFn: (id: string) => api.resumeTask(id),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+  });
+  const reintentar = useMutation({
+    mutationFn: (id: string) => api.retryTask(id),
     onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
@@ -538,6 +549,37 @@ export function TasksPage() {
                         <strong>Error: </strong> {t.error}
                       </p>
                     )}
+
+                    {(t.status === "interrupted" || t.status === "failed" || t.status === "cancelled") && (
+                      <div className="task-card-acciones">
+                        {t.reanudable && (t.status === "interrupted" || t.status === "failed") && (
+                          <button
+                            type="button"
+                            className="ghost task-mini-btn"
+                            onClick={() => reanudar.mutate(t.id)}
+                            disabled={reanudar.isPending}
+                          >
+                            Reanudar
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="ghost task-mini-btn"
+                          onClick={() => reintentar.mutate(t.id)}
+                          disabled={reintentar.isPending}
+                        >
+                          Reintentar
+                        </button>
+                      </div>
+                    )}
+                    {reanudar.isError && reanudar.variables === t.id && (
+                      <p className="error" role="alert">{errorText(reanudar.error)}</p>
+                    )}
+                    {reintentar.isError && reintentar.variables === t.id && (
+                      <p className="error" role="alert">{errorText(reintentar.error)}</p>
+                    )}
+
+                    <HistorialTarea id={t.id} />
 
                     <div className="task-meta-bar">
                       <span className="muted-note">
