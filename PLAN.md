@@ -31,8 +31,8 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - **Criterio:** las cinco pantallas revisadas a 390 px y 1440 px. Contraste AA. Solo tokens de color. Sin cambios de comportamiento.
 
 ### 5. Analizador y obrero por tarea: diseño listo (`AGENTS.md`)
-- Estado (`feat/revision-agentes`, sin merge): las migraciones 010–012 cubren lo que no es el analizador (Git por tarea, aprobaciones, secretos, programadas). El analizador y sus estados `planning`, `waiting_approval`, `executing` y `waiting_user` pasan a la **migración 013**. Pendiente.
-- Separar planificación y ejecución. Migración `010` (de la `005` a la `009` ya están usadas): estados `planning`, `waiting_approval`, `executing`, `waiting_user` y `completed`, además de los actuales. Tablas para versiones del plan, aprobaciones y eventos por tarea.
+- Estado (`feat/revision-agentes`, sin merge): las migraciones 010–012 cubren lo que no es el analizador (Git por tarea, aprobaciones, secretos, programadas). La migración **013** (`013_oauth_google`) ya está: estados de inicio de sesión y conexión de Google. El analizador y sus estados `planning`, `waiting_approval`, `executing` y `waiting_user` pasan a la **migración 014**. Pendiente.
+- Separar planificación y ejecución. Migración `014` (de la `005` a la `013` ya están usadas): estados `planning`, `waiting_approval`, `executing`, `waiting_user` y `completed`, además de los actuales. Tablas para versiones del plan, aprobaciones y eventos por tarea.
 - Cada tarea tiene un `task_id` propio. Cada proveedor guarda su `provider_session_id`, así cambiar de proveedor no cambia la identidad de la tarea.
 - Si el obrero necesita desviarse del plan aprobado, la tarea vuelve a `waiting_approval`. No reinterpreta el plan por su cuenta.
 - **Criterio:** el analizador produce un JSON válido. El obrero ejecuta solo el plan aprobado. El reporte queda guardado. "Continuar" reanuda la misma sesión y el mismo workspace.
@@ -48,6 +48,7 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - Estado: pendiente. Hoy la app muestra si cada clave existe y si llega a los agentes (sin valores). Google y Codex necesitan un flujo de inicio de sesión que requiere crear credenciales OAuth en la cuenta de Google y decisión del usuario.
 - Flujo guiado: la app inicia el login del CLI en el VM (OpenCode, Google, Codex), muestra el enlace y el código, y espera la confirmación. Estado por proveedor.
 - Incluye Google aunque la cuenta gratuita no sirva para el servidor.
+- Estado de Google (`feat/revision-agentes`, sin merge): preparado con OAuth web y PKCE en lugar del login del CLI de la línea anterior. La app guarda la conexión (token de actualización cifrado) y puede desconectarla con revocación. Solo pide `openid email`. Pendiente de probar con las credenciales de Pablo; el permiso y la API de cuota se confirman en ese paso.
 - **Criterio:** al terminar el flujo, el proveedor aparece como conectado. Ninguna clave se pega en la interfaz.
 - **Antes de implementar:** investigar los comandos de login de cada CLI en el VM.
 

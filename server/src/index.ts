@@ -16,6 +16,7 @@ import { stream } from "./routes/stream";
 import { secretosRoute } from "./routes/secretos";
 import { programadasRoute } from "./routes/programadas";
 import { servidor } from "./routes/servidor";
+import { googleRoute } from "./routes/google";
 import { uso } from "./routes/uso";
 import { startScheduler } from "./programadas";
 import { startWorker } from "./worker";
@@ -84,8 +85,15 @@ app.get("/api/health", (c) => {
   return c.json({ ok: row?.ok === 1, time: new Date().toISOString() });
 });
 
-// Todo /api exige sesión, salvo el estado del servidor y las rutas de entrada y salida.
-const PUBLICAS = new Set(["/api/health", "/api/login", "/api/logout", "/api/sesion"]);
+// Todo /api exige sesión, salvo el estado del servidor, las rutas de entrada y salida y el regreso de Google
+// (Google llama desde otro sitio, así que la cookie de sesión no viaja; el estado de un solo uso lo protege).
+const PUBLICAS = new Set([
+  "/api/health",
+  "/api/login",
+  "/api/logout",
+  "/api/sesion",
+  "/api/google/callback",
+]);
 app.use("/api/*", async (c, next) => {
   if (PUBLICAS.has(c.req.path)) return next();
   if (!sesionValida(getCookie(c, COOKIE_SESION))) return c.json({ error: "login_required" }, 401);
@@ -108,6 +116,7 @@ app.route("/api", secretosRoute);
 app.route("/api", programadasRoute);
 app.route("/api", servidor);
 app.route("/api", uso);
+app.route("/api", googleRoute);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
 startWorker();

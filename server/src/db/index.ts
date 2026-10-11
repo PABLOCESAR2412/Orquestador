@@ -231,6 +231,30 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    // Inicio de sesión con Google: estados de un solo uso (PKCE) y la conexión con el token de
+    // actualización cifrado (AES-256-GCM, mismo formato que project_secrets). El token de acceso no se guarda.
+    name: "013_oauth_google",
+    sql: `
+      CREATE TABLE oauth_estados (
+        estado TEXT PRIMARY KEY,
+        verificador TEXT NOT NULL,
+        expira_en TEXT NOT NULL,
+        creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE oauth_conexiones (
+        proveedor TEXT PRIMARY KEY,
+        cuenta_email TEXT NOT NULL,
+        cuenta_id TEXT NOT NULL,
+        alcance TEXT NOT NULL,
+        iv TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        value_enc TEXT NOT NULL,
+        creado_en TEXT NOT NULL DEFAULT (datetime('now')),
+        actualizado_en TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

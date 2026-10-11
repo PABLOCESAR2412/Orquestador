@@ -43,7 +43,8 @@ Ordenado por prioridad. Marca `[x]` solo cuando esté verificado.
 - [ ] Mover las pruebas actuales (`test-analytics`, `test-tasks`, `shot-*`) a `tests/`, sin rutas locales ni datos fijos.
 - [ ] Agregar un script `test` en `server/package.json`.
 - [x] Migraciones 010 (Git y aprobaciones), 011 (secretos) y 012 (instrucciones y programadas) implementadas en `feat/revision-agentes`.
-- [ ] Migración 013: estados del analizador (`planning`, `waiting_approval`, `executing`, `waiting_user`), columnas `plan` y `resultado`.
+- [x] Migración 013 (`013_oauth_google`): estados de inicio de sesión y conexión de Google, con pruebas en `server/tests/google.test.ts`.
+- [ ] Migración 014: estados del analizador (`planning`, `waiting_approval`, `executing`, `waiting_user`), columnas `plan` y `resultado`.
 - [ ] Implementar el analizador (prompt y validación del JSON) y el obrero (ejecuta solo el plan aprobado).
 
 ## Acceso
@@ -65,9 +66,11 @@ Lo que no se puede probar desde aquí o requiere una decisión tuya:
 - [ ] Instalar `opencode` en el VM y probar un agente real dentro de bubblewrap. Aquí no está instalado, así que solo se probó con un agente falso.
 - [ ] Probar un push real a GitHub con `GITHUB_TOKEN` como secreto del proyecto (token fine-grained, solo el repo, permiso de contenido). Aquí solo se probó contra un repo local y con un token falso.
 - [ ] Después del deploy, confirmar que `tailscale serve` sigue activo y que la app abre desde el teléfono (el servidor ahora escucha solo en 127.0.0.1).
-- [ ] Reiniciar el VM y comprobar que las migraciones 010–012 aplican y que la copia previa queda en `DATA_DIR/respaldos-migracion`.
+- [ ] Reiniciar el VM y comprobar que las migraciones 010–013 aplican y que la copia previa queda en `DATA_DIR/respaldos-migracion`.
 - [ ] Desactivar la expiración de la clave de `vm-1` en Tailscale.
 - [ ] Borrar la rama remota `feat/acceso-workers-vpc` y la carpeta `edge/` (pendiente de la sesión anterior).
-- [ ] Decidir Google y Codex: iniciar sesión con Google requiere crear credenciales OAuth en Google Cloud. Mientras tanto, la app solo muestra si la clave existe y llega a los agentes.
+- [ ] Google: crear el cliente OAuth web en Google Cloud con la URI `<TELO_PUBLIC_URL>/api/google/callback`, poner `TELO_PUBLIC_URL`, `TELO_GOOGLE_CLIENT_ID` y `TELO_GOOGLE_CLIENT_SECRET` en el archivo de entorno del VM, y probar la conexión desde Ajustes. Después confirmar el permiso y la API para leer la cuota.
+- [ ] Decidir Codex (solo estado de claves, sin inicio de sesión por ahora).
+- [ ] Decidir si la cookie de sesión pasa de `SameSite=Strict` a `Lax`. Con Strict, al volver de Google hay que volver a escribir la clave (la cookie no viaja desde Google). Con Lax, no.
 - [ ] Revisar la regla del push: solo `github.com` por HTTPS. Si usas otro host, hay que ampliarla.
 - [ ] Revisar el desvío de cancelación: un clon con cambios se conserva para revisión, no se borra.
