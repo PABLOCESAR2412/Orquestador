@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="oscuro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Servidor — Orquestador</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #111419;
+  --surface: #181c22;
+  --surface-2: #20252d;
+  --surface-lowest: #0d0e11;
+  --line: #2a3039;
+  --line-strong: #3a414c;
+  --ink: #e7e9ec;
+  --ink-2: #8c94a0;
+  --signal: #d9a441;
+  --danger: #e06b52;
+  --bar: #7b8390;
+  --scrim: rgba(13, 14, 17, 0.78);
+}
+[data-theme="claro"] {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eceff3;
+  --surface-lowest: #eef0f3;
+  --line: #d5dae1;
+  --line-strong: #aeb6c1;
+  --ink: #161a21;
+  --ink-2: #5a6170;
+  --signal: #8a5a00;
+  --danger: #b03a21;
+  --bar: #6b7380;
+  --scrim: rgba(22, 26, 33, 0.45);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* Nav */
+.top-nav {
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  padding: 0 16px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.nav-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nav-inner::-webkit-scrollbar { display: none; }
+.nav-links { display: flex; align-items: center; gap: 4px; }
+.nav-link {
+  color: var(--ink-2);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 14px 10px;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.nav-link.active {
+  color: var(--ink);
+  border-bottom-color: var(--signal);
+}
+
+.container {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 80px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Header */
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--signal);
+}
+
+.theme-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  outline: none;
+  flex-shrink: 0;
+}
+.theme-btn:focus-visible { border-color: var(--signal); }
+@media (max-width: 600px) {
+  .theme-btn { width: 40px; height: 40px; }
+}
+
+/* Grid: 2 columns in desktop, 1 column < 680px */
+.server-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 680px) {
+  .server-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.panel-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.main-stat {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  gap: 8px;
+}
+.detail-label {
+  color: var(--ink-2);
+}
+.detail-value {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  width: fit-content;
+}
+.btn-ghost:focus-visible { border-color: var(--signal); }
+
+.help-note {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+</style>
+</head>
+<body>
+
+<nav class="top-nav" aria-label="Navegación principal">
+  <div class="nav-inner">
+    <div class="nav-links">
+      <a href="#" class="nav-link">Chat</a>
+      <a href="#" class="nav-link">Tareas</a>
+      <a href="#" class="nav-link">Proyectos</a>
+      <a href="#" class="nav-link">Analíticas</a>
+      <a href="#" class="nav-link">Ajustes</a>
+      <a href="#" class="nav-link active">Servidor</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container">
+  <header class="header-row">
+    <div class="title-group">
+      <h1 class="page-title">Servidor</h1>
+      <span class="status-pill">
+        <span class="status-dot"></span>
+        en línea
+      </span>
+    </div>
+    <button class="theme-btn" id="themeToggle" aria-label="Cambiar tema">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+    </button>
+  </header>
+
+  <!-- Tarjetas en dos columnas desktop, 1 col < 680px, orden estricto de spec:
+       1. Proceso, 2. Latencia, 3. Discos, 4. Carpetas, 5. Herramientas instaladas, 6. Costos, 7. Tareas, 8. Agente -->
+  <div class="server-grid">
+    
+    <!-- 1. Proceso -->
+    <section class="panel">
+      <h2 class="panel-title">Proceso</h2>
+      <div class="main-stat">PID 40912</div>
+      <div class="detail-list">
+        <div class="detail-item">
+          <span class="detail-label">Binario</span>
+          <span class="detail-value">orquestador-daemon</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Uptime</span>
+          <span class="detail-value">14d 08h 12m</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Memoria RSS</span>
+          <span class="detail-value">614 MB / 4.0 GB</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Latencia -->
+    <section class="panel">
+      <h2 class="panel-title">Latencia</h2>
+      <div class="main-stat">18 ms</div>
+      <div class="detail-list">
+        <div class="detail-item">
+          <span class="detail-label">p50</span>
+          <span class="detail-value">14 ms</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">p99</span>
+          <span class="detail-value">24 ms</span>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px; margin-top:4px;">
+        <button class="btn-ghost" type="button" id="pingBtn">Medir ahora</button>
+        <span class="help-note">Medidas con el botón en esta sesión: las medidas no se toman solas.</span>
+      </div>
+    </section>
+
+    <!-- 3. Discos -->
+    <section class="panel">
+      <h2 class="panel-title">Discos</h2>
+      <div class="main-stat">42.8 GB libres</div>
+      <div class="detail-list">
+        <div class="detail-item">
+          <span class="detail-label">Punto de montaje</span>
+          <span class="detail-value">/srv (NVMe)</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Uso total</span>
+          <span class="detail-value">28% (120 GB)</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">I/O read/write</span>
+          <span class="detail-value">1.2 MB/s · 4.8 MB/s</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Carpetas -->
+    <section class="panel">
+      <h2 class="panel-title">Carpetas</h2>
+      <div class="main-stat">3 activas</div>
+      <div class="detail-list">
+        <div class="detail-item">
+          <span class="detail-label">Directorio raíz</span>
+          <span class="detail-value">/srv/orquestador</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Logs</span>
+          <span class="detail-value">/var/log/orquestador</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Socket IPC</span>
+          <span class="detail-value">/run/orq.sock</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Herramientas instaladas -->
+    <section class="panel">
+      <h2 class="panel-title">Herramientas instaladas</h2>
+      <div class="main-stat">6 listas</div>
+      <div class="detail-list">
+        <div class="detail-item">
+          <span class="detail-label">Compilador</span>
+          <span class="detail-value">rustc 1.76.0 · cargo</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Control de versiones</span>
+          <span class="detail-value">git 2.43.0</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Entorno JS</span>
+          <span class="detail-value">node 20.11 · pnpm</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Sandbox local</span>
+          <span class="detail-value">bwrap (Bubblewrap)</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. Costos -->
+    <section class="panel">
+      <h2 class="panel-title">Costos</h2>
+      <div class="main-stat">$14.28</div>
+      <div class="detail-list">
+        <div class="detail-item">
+          <span class="detail-label">Ciclo actual</span>
+          <span class="detail-value">01 Feb – 28 Feb</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Límite mensual</span>
+          <span class="detail-value">$50.00</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Tokens totales</span>
+          <span class="detail-value">4.82M</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. Tareas -->
+    <section class="panel">
+      <h2 class="panel-title">Tareas</h2>
+      <div class="main-stat">3 en ejecución</div>
+      <div class="detail-list">
+        <div class="detail-item">
+          <span class="detail-label">En cola</span>
+          <span class="detail-value">5 pendientes</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Completadas hoy</span>
+          <span class="detail-value">14 sin fallos</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Workers asignados</span>
+          <span class="detail-value">3 / 8</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. Agente -->
+    <section class="panel">
+      <h2 class="panel-title">Agente</h2>
+      <div class="main-stat">Codex CLI</div>
+      <div class="detail-list">
+        <div class="detail-item">
+          <span class="detail-label">Motor local</span>
+          <span class="detail-value">OpenCode (q4_k_m)</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Motor remoto</span>
+          <span class="detail-value">Codex Platform v2.4</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Fallback</span>
+          <span class="detail-value">Google Vertex (1M tok)</span>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<script>
+  const toggle = document.getElementById('themeToggle');
+  toggle.addEventListener('click', () => {
+    const doc = document.documentElement;
+    const isDark = doc.getAttribute('data-theme') !== 'claro';
+    doc.setAttribute('data-theme', isDark ? 'claro' : 'oscuro');
+    toggle.innerHTML = isDark
+      ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>'
+      : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
+  });
+
+  const pingBtn = document.getElementById('pingBtn');
+  pingBtn.addEventListener('click', () => {
+    pingBtn.textContent = 'Midiendo…';
+    pingBtn.disabled = true;
+    setTimeout(() => {
+      pingBtn.textContent = 'Medir ahora';
+      pingBtn.disabled = false;
+    }, 1200);
+  });
+</script>
+</body>
+</html>

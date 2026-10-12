@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="oscuro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proyectos — Orquestador</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #111419;
+  --surface: #181c22;
+  --surface-2: #20252d;
+  --surface-lowest: #0d0e11;
+  --line: #2a3039;
+  --line-strong: #3a414c;
+  --ink: #e7e9ec;
+  --ink-2: #8c94a0;
+  --signal: #d9a441;
+  --danger: #e06b52;
+  --bar: #7b8390;
+  --scrim: rgba(13, 14, 17, 0.78);
+}
+[data-theme="claro"] {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eceff3;
+  --surface-lowest: #eef0f3;
+  --line: #d5dae1;
+  --line-strong: #aeb6c1;
+  --ink: #161a21;
+  --ink-2: #5a6170;
+  --signal: #8a5a00;
+  --danger: #b03a21;
+  --bar: #6b7380;
+  --scrim: rgba(22, 26, 33, 0.45);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100vh;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Nav */
+.top-nav {
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  padding: 0 16px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.nav-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nav-inner::-webkit-scrollbar { display: none; }
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.nav-link {
+  color: var(--ink-2);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 14px 10px;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+.nav-link:hover { color: var(--ink); }
+.nav-link.active {
+  color: var(--ink);
+  border-bottom-color: var(--signal);
+}
+
+/* Layout container: centered 720px on desktop, 16px lateral margin on mobile */
+.container {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 64px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Header */
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.25;
+}
+.theme-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  outline: none;
+}
+.theme-btn:focus-visible {
+  border-color: var(--signal);
+}
+@media (max-width: 600px) {
+  .theme-btn { width: 40px; height: 40px; }
+}
+
+/* Panel */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.panel-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Form */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form-label {
+  font-size: 13px;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.input-text {
+  background: var(--surface-lowest);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 15px;
+  outline: none;
+}
+.input-text:focus {
+  border-color: var(--signal);
+}
+.input-meta {
+  font-size: 13px;
+  color: var(--ink-2);
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+.help-note {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+/* Buttons */
+.btn-primary {
+  background: var(--signal);
+  color: var(--surface-lowest);
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  align-self: flex-start;
+  transition: opacity 0.15s;
+}
+.btn-primary:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  outline: none;
+}
+.btn-ghost:focus-visible {
+  border-color: var(--signal);
+}
+
+/* Project list */
+.project-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-lowest);
+}
+.project-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+  color: inherit;
+  background: var(--surface);
+  transition: background 0.1s;
+}
+.project-row:last-child {
+  border-bottom: none;
+}
+.project-row:hover {
+  background: var(--surface-2);
+}
+.project-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.project-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.project-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.tag-pinned {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.project-folder {
+  font-size: 13px;
+  color: var(--ink-2);
+  font-family: 'JetBrains Mono', monospace;
+}
+.empty-state {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--ink-2);
+  font-size: 14px;
+  background: var(--surface);
+}
+
+/* Error message component */
+.error-box {
+  border: 1px solid var(--danger);
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.error-text {
+  color: var(--danger);
+  font-size: 14px;
+}
+</style>
+</head>
+<body>
+
+<nav class="top-nav" aria-label="Navegación principal">
+  <div class="nav-inner">
+    <div class="nav-links">
+      <a href="#" class="nav-link">Chat</a>
+      <a href="#" class="nav-link">Tareas</a>
+      <a href="#" class="nav-link active">Proyectos</a>
+      <a href="#" class="nav-link">Analíticas</a>
+      <a href="#" class="nav-link">Ajustes</a>
+      <a href="#" class="nav-link">Servidor</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container">
+  <header class="header-row">
+    <h1 class="page-title">Proyectos</h1>
+    <button class="theme-btn" id="themeToggle" aria-label="Cambiar tema">
+      <!-- Icono luna / sol SVG plano -->
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+      </svg>
+    </button>
+  </header>
+
+  <!-- Panel Nuevo proyecto -->
+  <section class="panel">
+    <h2 class="panel-title">Nuevo proyecto</h2>
+    <div class="form-group">
+      <label class="form-label" for="projectName">Nombre del proyecto</label>
+      <input type="text" id="projectName" class="input-text" maxlength="60" placeholder="Ej. orquestador-core" value="api-gateway-rust">
+      <div class="input-meta">Carpeta resultante: /srv/orquestador/projects/api-gateway-rust</div>
+    </div>
+    <button class="btn-primary" type="button">Crear proyecto</button>
+    <p class="help-note">La carpeta no cambia: solo el nombre que ves en Telo.</p>
+  </section>
+
+  <!-- Panel Tus proyectos -->
+  <section class="panel">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2 class="panel-title">Tus proyectos</h2>
+      <span class="help-note">3 proyectos</span>
+    </div>
+
+    <div class="project-list">
+      <a href="#" class="project-row">
+        <div class="project-info">
+          <div class="project-name-wrap">
+            <span class="project-name">Orquestador Daemon</span>
+            <span class="tag-pinned">· anclado</span>
+          </div>
+          <span class="project-folder">/srv/orquestador/projects/daemon-main</span>
+        </div>
+      </a>
+
+      <a href="#" class="project-row">
+        <div class="project-info">
+          <div class="project-name-wrap">
+            <span class="project-name">Frontend PWA</span>
+            <span class="tag-pinned">· anclado</span>
+          </div>
+          <span class="project-folder">/srv/orquestador/projects/pwa-client</span>
+        </div>
+      </a>
+
+      <a href="#" class="project-row">
+        <div class="project-info">
+          <div class="project-name-wrap">
+            <span class="project-name">AST Code Generator</span>
+          </div>
+          <span class="project-folder">/srv/orquestador/projects/ast-codegen</span>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <!-- Simulación de estado de fallo con botón ghost Reintentar según spec -->
+  <div class="error-box" role="alert">
+    <span class="error-text">No se pudo sincronizar el índice remoto de proyectos. Comprueba la conexión con el servidor.</span>
+    <button class="btn-ghost" type="button">Reintentar</button>
+  </div>
+</main>
+
+<script>
+  const toggle = document.getElementById('themeToggle');
+  toggle.addEventListener('click', () => {
+    const doc = document.documentElement;
+    const isDark = doc.getAttribute('data-theme') !== 'claro';
+    doc.setAttribute('data-theme', isDark ? 'claro' : 'oscuro');
+    toggle.innerHTML = isDark
+      ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>'
+      : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
+  });
+</script>
+</body>
+</html>

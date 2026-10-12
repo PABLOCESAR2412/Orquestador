@@ -29,8 +29,8 @@ Ordenado por prioridad. Marca `[x]` solo cuando esté verificado.
 
 - [ ] Instalar impeccable en el repo: `npx impeccable install --providers=claude --scope=project`.
 - [ ] Ejecutar `/impeccable init` y revisar el `PRODUCT.md` que genera.
-- [ ] Generar las pantallas en Stitch con `docs/design/STITCH_PROMPT.md` e importar `DESIGN.md`.
-- [ ] Exportar a HTML/CSS y adaptar el resultado a las variables de `styles.css`. No usar Tailwind.
+- [x] Generar las pantallas en Stitch con `docs/design/STITCH_PROMPT.md` e importar `DESIGN.md`.
+- [x] Exportar a HTML/CSS y adaptar el resultado a las variables de `styles.css`. No usar Tailwind.
 - [ ] Revisar las cinco pantallas a 390 px y 1440 px con Playwright.
 
 ## Herramientas

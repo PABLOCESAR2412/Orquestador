@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="oscuro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chat y Paleta de Comandos — Orquestador</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #111419;
+  --surface: #181c22;
+  --surface-2: #20252d;
+  --surface-lowest: #0d0e11;
+  --line: #2a3039;
+  --line-strong: #3a414c;
+  --ink: #e7e9ec;
+  --ink-2: #8c94a0;
+  --signal: #d9a441;
+  --danger: #e06b52;
+  --bar: #7b8390;
+  --scrim: rgba(13, 14, 17, 0.78);
+}
+[data-theme="claro"] {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eceff3;
+  --surface-lowest: #eef0f3;
+  --line: #d5dae1;
+  --line-strong: #aeb6c1;
+  --ink: #161a21;
+  --ink-2: #5a6170;
+  --signal: #8a5a00;
+  --danger: #b03a21;
+  --bar: #6b7380;
+  --scrim: rgba(22, 26, 33, 0.45);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.top-nav {
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  padding: 0 16px;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+.nav-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nav-inner::-webkit-scrollbar { display: none; }
+.nav-links { display: flex; align-items: center; gap: 4px; }
+.nav-link {
+  color: var(--ink-2);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 14px 10px;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.nav-link.active {
+  color: var(--ink);
+  border-bottom-color: var(--signal);
+}
+
+.container {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 120px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  flex: 1;
+}
+
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.theme-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  outline: none;
+  flex-shrink: 0;
+}
+.theme-btn:focus-visible { border-color: var(--signal); }
+@media (max-width: 600px) {
+  .theme-btn { width: 40px; height: 40px; }
+}
+
+/* Chat thread */
+.chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.chat-msg {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.msg-meta {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+/* Composer box */
+.composer-box {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+}
+.composer-input {
+  background: var(--surface-lowest);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 15px;
+  outline: none;
+  resize: none;
+  min-height: 70px;
+  width: 100%;
+}
+.composer-input:focus { border-color: var(--signal); }
+
+/* 6. Composer bar: Chip del modelo con medidor de 5 barras, esfuerzo segmentado, botón Uso */
+.composer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.controls-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Chip modelo con 5 barras */
+.model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.cost-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.cost-bar {
+  width: 3px;
+  height: 10px;
+  border-radius: 1px;
+  background: var(--line-strong);
+}
+.cost-bar.filled {
+  background: var(--bar);
+}
+
+/* Selector de esfuerzo segmentado */
+.effort-selector {
+  display: inline-flex;
+  background: var(--surface-lowest);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 2px;
+}
+.effort-opt {
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--ink-2);
+  border: none;
+  background: transparent;
+  outline: none;
+}
+.effort-opt.active {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+/* Botón Uso */
+.btn-usage {
+  background: var(--surface-lowest);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+  outline: none;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.btn-usage:focus-visible { border-color: var(--signal); }
+
+/* Panel flotante de Uso anclado al botón */
+.usage-popover {
+  position: absolute;
+  right: 14px;
+  bottom: 60px;
+  width: 290px;
+  max-width: calc(100vw - 40px);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 30;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.usage-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px;
+}
+.usage-window {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.window-label {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.window-data {
+  font-size: 13px;
+  color: var(--ink);
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  justify-content: space-between;
+}
+.usage-note {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-2);
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+/* 4. Paleta de comandos (Ctrl+K) */
+.cmd-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--scrim);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 80px 16px 20px 16px;
+  z-index: 100;
+}
+.cmd-palette-box {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  width: 100%;
+  max-width: 540px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.cmd-input-wrap {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cmd-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 15px;
+  width: 100%;
+}
+.cmd-esc-note {
+  font-size: 11px;
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.cmd-list {
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+}
+.cmd-group-label {
+  padding: 8px 16px 4px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.cmd-item {
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  text-decoration: none;
+}
+.cmd-item:hover, .cmd-item.active {
+  background: var(--surface-2);
+  border-left-color: var(--signal);
+}
+.cmd-item-shortcut {
+  font-size: 11px;
+  color: var(--ink-2);
+  font-family: 'JetBrains Mono', monospace;
+}
+.cmd-empty {
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+</style>
+</head>
+<body>
+
+<nav class="top-nav" aria-label="Navegación principal">
+  <div class="nav-inner">
+    <div class="nav-links">
+      <a href="#" class="nav-link active">Chat</a>
+      <a href="#" class="nav-link">Tareas</a>
+      <a href="#" class="nav-link">Proyectos</a>
+      <a href="#" class="nav-link">Analíticas</a>
+      <a href="#" class="nav-link">Ajustes</a>
+      <a href="#" class="nav-link">Servidor</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container">
+  <header class="header-row">
+    <div>
+      <h1 class="page-title">Chat</h1>
+      <span style="font-size:13px; color:var(--ink-2);">Proyecto: Orquestador Daemon</span>
+    </div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button class="theme-btn" id="openPaletteBtn" title="Paleta de comandos (Ctrl+K)" style="font-family:'JetBrains Mono',monospace; font-size:11px; width:auto; padding:0 8px;">
+        Ctrl+K
+      </button>
+      <button class="theme-btn" id="themeToggle" aria-label="Cambiar tema">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mensajes de conversación -->
+  <div class="chat-thread">
+    <div class="chat-msg">
+      <span class="msg-meta">Tú · hace 5m</span>
+      <p>Verifica si el crate de sockets IPC compila sin warnings y corre el test de bind.</p>
+    </div>
+    <div class="chat-msg">
+      <span class="msg-meta">Codex CLI · hace 4m</span>
+      <p>Revisé <code>src/socket/listener.rs</code>. Se reemplazó el paquete deprecado <code>tokio_uds</code> por <code>tokio::net::UnixListener</code>. El diff está listo en la pestaña de Tareas para su revisión.</p>
+    </div>
+  </div>
+
+  <!-- 6. Composer con Modelo, esfuerzo y uso -->
+  <div class="composer-box">
+    <textarea class="composer-input" placeholder="Escribe una instrucción para el agente o pulsa Ctrl+K para comandos..."></textarea>
+    
+    <div class="composer-controls">
+      <div class="controls-left">
+        <!-- Chip de modelo con medidor de costo de 5 barras -->
+        <div class="model-chip">
+          <span>Codex v2.4</span>
+          <div class="cost-meter" title="Costo: 3 de 5">
+            <span class="cost-bar filled"></span>
+            <span class="cost-bar filled"></span>
+            <span class="cost-bar filled"></span>
+            <span class="cost-bar"></span>
+            <span class="cost-bar"></span>
+          </div>
+        </div>
+
+        <!-- Selector de esfuerzo segmentado -->
+        <div class="effort-selector" role="radiogroup" aria-label="Esfuerzo del modelo">
+          <button class="effort-opt" type="button">Bajo</button>
+          <button class="effort-opt active" type="button" aria-checked="true">Medio</button>
+          <button class="effort-opt" type="button">Alto</button>
+        </div>
+      </div>
+
+      <!-- Botón pequeño Uso -->
+      <button class="btn-usage" id="usageBtn" type="button">Uso</button>
+    </div>
+
+    <!-- Panel flotante anclado al botón Uso con las dos ventanas y nota requerida -->
+    <div class="usage-popover" id="usagePopover" style="display:none;">
+      <div class="usage-title">OpenAI / Codex</div>
+      
+      <div class="usage-window">
+        <span class="window-label">Últimas 5 horas</span>
+        <div class="window-data">
+          <span>12.4k tokens</span>
+          <span>$0.024</span>
+        </div>
+      </div>
+
+      <div class="usage-window">
+        <span class="window-label">Últimos 7 días</span>
+        <div class="window-data">
+          <span>340.2k tokens</span>
+          <span>$0.680</span>
+        </div>
+      </div>
+
+      <p class="usage-note">Los límites de 5 horas y semanales del proveedor no se leen de su API. Estas cifras son lo que Telo registró.</p>
+    </div>
+  </div>
+</main>
+
+<!-- 4. Paleta de comandos (Ctrl+K) superposición con velo --scrim -->
+<div class="cmd-palette-backdrop" id="paletteBackdrop" style="display:flex;">
+  <div class="cmd-palette-box" role="dialog" aria-modal="true" aria-label="Paleta de comandos">
+    <div class="cmd-input-wrap">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--ink-2); flex-shrink:0;">
+        <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input type="text" class="cmd-input" id="cmdInput" placeholder="Escribe un comando" autofocus>
+      <span class="cmd-esc-note">Esc</span>
+    </div>
+
+    <div class="cmd-list" id="cmdList">
+      <!-- Grupo Nuevo chat -->
+      <div class="cmd-group-label">Nuevo chat</div>
+      <div class="cmd-item active">
+        <span>Nuevo chat</span>
+        <span class="cmd-item-shortcut">Ctrl+N</span>
+      </div>
+
+      <!-- Grupo Tareas -->
+      <div class="cmd-group-label">Tareas</div>
+      <div class="cmd-item">
+        <span>Nueva tarea</span>
+        <span class="cmd-item-shortcut">Ctrl+T</span>
+      </div>
+
+      <!-- Grupo Ir a -->
+      <div class="cmd-group-label">Ir a</div>
+      <a href="#" class="cmd-item"><span>Chat</span></a>
+      <a href="#" class="cmd-item"><span>Tareas</span></a>
+      <a href="#" class="cmd-item"><span>Proyectos</span></a>
+      <a href="#" class="cmd-item"><span>Analíticas</span></a>
+      <a href="#" class="cmd-item"><span>Ajustes</span></a>
+      <a href="#" class="cmd-item"><span>Servidor</span></a>
+
+      <!-- Grupo Tema -->
+      <div class="cmd-group-label">Tema</div>
+      <div class="cmd-item"><span>Tema oscuro</span></div>
+      <div class="cmd-item"><span>Tema claro</span></div>
+      <div class="cmd-item"><span>Tema del sistema</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Tema claro / oscuro
+  const toggle = document.getElementById('themeToggle');
+  toggle.addEventListener('click', () => {
+    const doc = document.documentElement;
+    const isDark = doc.getAttribute('data-theme') !== 'claro';
+    doc.setAttribute('data-theme', isDark ? 'claro' : 'oscuro');
+    toggle.innerHTML = isDark
+      ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>'
+      : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
+  });
+
+  // Botón Uso y Popover
+  const usageBtn = document.getElementById('usageBtn');
+  const usagePopover = document.getElementById('usagePopover');
+  usageBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isShown = usagePopover.style.display !== 'none';
+    usagePopover.style.display = isShown ? 'none' : 'flex';
+  });
+  document.addEventListener('click', (e) => {
+    if (!usagePopover.contains(e.target) && e.target !== usageBtn) {
+      usagePopover.style.display = 'none';
+    }
+  });
+
+  // Paleta de comandos
+  const palette = document.getElementById('paletteBackdrop');
+  const cmdInput = document.getElementById('cmdInput');
+  const openPaletteBtn = document.getElementById('openPaletteBtn');
+  const cmdList = document.getElementById('cmdList');
+
+  function openPalette() {
+    palette.style.display = 'flex';
+    cmdInput.value = '';
+    cmdInput.focus();
+  }
+  function closePalette() {
+    palette.style.display = 'none';
+  }
+
+  openPaletteBtn.addEventListener('click', openPalette);
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      openPalette();
+    }
+    if (e.key === 'Escape' && palette.style.display !== 'none') {
+      closePalette();
+    }
+  });
+
+  palette.addEventListener('click', (e) => {
+    if (e.target === palette) closePalette();
+  });
+
+  // Filtro básico de comandos
+  cmdInput.addEventListener('input', () => {
+    const q = cmdInput.value.toLowerCase().trim();
+    const items = cmdList.querySelectorAll('.cmd-item');
+    let matches = 0;
+    items.forEach(item => {
+      const text = item.textContent.toLowerCase();
+      if (text.includes(q)) {
+        item.style.display = 'flex';
+        matches++;
+      } else {
+        item.style.display = 'none';
+      }
+    });
+
+    const emptyMsg = document.getElementById('cmdEmptyMsg');
+    if (matches === 0) {
+      if (!emptyMsg) {
+        const div = document.createElement('div');
+        div.id = 'cmdEmptyMsg';
+        div.className = 'cmd-empty';
+        div.textContent = 'Ningún comando coincide.';
+        cmdList.appendChild(div);
+      }
+    } else {
+      if (emptyMsg) emptyMsg.remove();
+    }
+  });
+</script>
+</body>
+</html>
