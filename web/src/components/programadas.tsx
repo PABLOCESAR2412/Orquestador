@@ -10,14 +10,12 @@ const MAX_PROMPT = 10_000;
 const MAX_TITULO = 80;
 const HORA_VALIDA = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-// "Cada 6 horas" o "Diaria a las 08:00".
 export function frecuenciaTexto(p: Programada): string {
   if (p.frecuencia === "diaria") return `Diaria a las ${p.hora ?? ""}`;
   const n = p.cada_horas ?? 0;
   return `Cada ${n} ${n === 1 ? "hora" : "horas"}`;
 }
 
-// Sección de tareas programadas dentro de Tareas. El servidor las lanza aunque la app esté cerrada.
 export function ProgramadasPanel() {
   const qc = useQueryClient();
   const [formAbierto, setFormAbierto] = useState(false);
@@ -52,123 +50,129 @@ export function ProgramadasPanel() {
   const [confirmarId, setConfirmarId] = useState<string | null>(null);
 
   return (
-    <section className="panel tarea-seccion" aria-labelledby="programadas-titulo">
-      <div className="card-top">
-        <h2 id="programadas-titulo">Programadas</h2>
-        <button type="button" className="ghost task-mini-btn" onClick={() => setFormAbierto((o) => !o)} aria-expanded={formAbierto}>
+    <section className="panel" aria-labelledby="programadas-titulo">
+      <div className="panel-header-row">
+        <h2 id="programadas-titulo" className="panel-title">
+          Programadas
+        </h2>
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={() => setFormAbierto((o) => !o)}
+          aria-expanded={formAbierto}
+        >
           {formAbierto ? "Cerrar" : "Nueva programada"}
         </button>
       </div>
-      <p className="muted-note">El servidor lanza estas tareas a su hora, aunque cierres la app.</p>
+
+      {formAbierto && <FormProgramada alCrear={() => setFormAbierto(false)} modelList={modelList} />}
 
       {programadas.isError && (
-        <p className="error" role="alert">
-          {errorText(programadas.error)}
-        </p>
+        <div className="error-box" role="alert">
+          <span className="error-text">{errorText(programadas.error)}</span>
+        </div>
       )}
-      {programadas.data?.length === 0 && <p className="muted-note">Todavía no hay tareas programadas.</p>}
+
+      {programadas.data?.length === 0 && !formAbierto && (
+        <p className="help-note">Todavía no hay tareas programadas.</p>
+      )}
 
       {programadas.data && programadas.data.length > 0 && (
-        <ul className="programadas-lista">
+        <div className="sched-list">
           {programadas.data.map((p) => (
-            <li key={p.id} className={`programada${p.activa ? "" : " is-pausada"}`}>
-              <div className="programada-info">
-                <span className="programada-titulo">{p.titulo || "Sin título"}</span>
-                <span className="programada-meta">
-                  {frecuenciaTexto(p)} · {nombreModelo(p.model)}
-                  {p.project_name ? ` · ${p.project_name}` : ""}
-                </span>
-                <span className="programada-meta">
-                  {p.activa ? `Próxima: ${cuando(p.proxima_en)}` : "En pausa"}
-                  {p.ultima_ejecucion ? ` · Última: ${cuando(p.ultima_ejecucion)}` : ""}
-                </span>
-                {p.ultima_tarea_id && (
-                  <Link to="/tareas/$id" params={{ id: p.ultima_tarea_id }} className="foot-link">
-                    Ver última tarea
-                  </Link>
-                )}
-                {lanzada?.programada === p.id && (
-                  <span className="programada-meta" role="status">
-                    Tarea lanzada.{" "}
-                    <Link to="/tareas/$id" params={{ id: lanzada.tarea }} className="foot-link">
-                      Ver tarea
+            <div key={p.id} className="sched-row">
+              <div className="sched-main">
+                <span className="sched-title">{p.titulo || "Sin título"}</span>
+                <div className="sched-meta">
+                  <span>Frecuencia: {frecuenciaTexto(p)}</span>
+                  <span>{p.activa ? `Próxima: ${cuando(p.proxima_en)}` : "En pausa"}</span>
+                  {p.project_name && <span>Proyecto: {p.project_name}</span>}
+                  <span>Modelo: {nombreModelo(p.model)}</span>
+                  {p.ultima_tarea_id && (
+                    <Link to="/tareas/$id" params={{ id: p.ultima_tarea_id }} style={{ color: "var(--ink)" }}>
+                      Ver última tarea
                     </Link>
-                  </span>
-                )}
+                  )}
+                  {lanzada?.programada === p.id && (
+                    <span role="status" style={{ color: "var(--ink)" }}>
+                      Tarea lanzada.{" "}
+                      <Link to="/tareas/$id" params={{ id: lanzada.tarea }}>
+                        Ver tarea
+                      </Link>
+                    </span>
+                  )}
+                </div>
               </div>
 
-              <div className="programada-acciones">
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                <span className={`badge-status${p.activa ? " active" : ""}`}>
+                  {p.activa ? "Activa" : "Pausada"}
+                </span>
+
                 <button
                   type="button"
-                  role="switch"
-                  aria-checked={p.activa}
-                  className="programada-switch"
+                  className="btn-ghost"
+                  style={{ padding: "4px 8px", fontSize: 12 }}
                   disabled={alternar.isPending && alternar.variables?.id === p.id}
                   onClick={() => alternar.mutate(p)}
                 >
-                  <span className="programada-switch-pista" aria-hidden="true">
-                    <span className="programada-switch-bola" />
-                  </span>
-                  {p.activa ? "Activa" : "Pausada"}
+                  {p.activa ? "Pausar" : "Reanudar"}
                 </button>
 
                 <button
                   type="button"
-                  className="ghost task-mini-btn"
+                  className="btn-ghost"
+                  style={{ padding: "4px 8px", fontSize: 12 }}
                   disabled={ejecutar.isPending && ejecutar.variables?.id === p.id}
                   onClick={() => ejecutar.mutate(p)}
                 >
-                  {ejecutar.isPending && ejecutar.variables?.id === p.id ? "Lanzando…" : "Ejecutar ahora"}
+                  {ejecutar.isPending && ejecutar.variables?.id === p.id ? "Lanzando…" : "Ejecutar"}
                 </button>
 
                 {confirmarId === p.id ? (
-                  <div className="programada-confirmar">
-                    <span>¿Eliminar esta programada? Las tareas que ya creó se conservan.</span>
-                    <div className="programada-confirmar-acciones">
-                      <button
-                        type="button"
-                        className="danger-solid task-mini-btn"
-                        disabled={eliminar.isPending}
-                        onClick={() => {
-                          eliminar.mutate(p.id);
-                          setConfirmarId(null);
-                        }}
-                      >
-                        Sí, eliminar
-                      </button>
-                      <button type="button" className="ghost task-mini-btn" onClick={() => setConfirmarId(null)}>
-                        No
-                      </button>
-                    </div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      style={{ background: "var(--danger)", color: "#fff", padding: "4px 8px", fontSize: 12 }}
+                      disabled={eliminar.isPending}
+                      onClick={() => {
+                        eliminar.mutate(p.id);
+                        setConfirmarId(null);
+                      }}
+                    >
+                      Sí
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      style={{ padding: "4px 8px", fontSize: 12 }}
+                      onClick={() => setConfirmarId(null)}
+                    >
+                      No
+                    </button>
                   </div>
                 ) : (
-                  <button type="button" className="ghost task-mini-btn" onClick={() => setConfirmarId(p.id)}>
-                    Eliminar
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    style={{ padding: "4px 8px", fontSize: 12, color: "var(--danger)" }}
+                    onClick={() => setConfirmarId(p.id)}
+                  >
+                    Borrar
                   </button>
                 )}
               </div>
-
-              {alternar.isError && alternar.variables?.id === p.id && (
-                <p className="error" role="alert">
-                  {errorText(alternar.error)}
-                </p>
-              )}
-              {ejecutar.isError && ejecutar.variables?.id === p.id && (
-                <p className="error" role="alert">
-                  {errorText(ejecutar.error)}
-                </p>
-              )}
-            </li>
+            </div>
           ))}
-        </ul>
-      )}
-      {eliminar.isError && (
-        <p className="error" role="alert">
-          {errorText(eliminar.error)}
-        </p>
+        </div>
       )}
 
-      {formAbierto && <FormProgramada alCrear={() => setFormAbierto(false)} modelList={modelList} />}
+      {eliminar.isError && (
+        <div className="error-box" role="alert" style={{ marginTop: 8 }}>
+          <span className="error-text">{errorText(eliminar.error)}</span>
+        </div>
+      )}
     </section>
   );
 }
@@ -183,7 +187,6 @@ function FormProgramada({ alCrear, modelList }: { alCrear: () => void; modelList
     .map((m) => ({ id: m.id, name: m.name }));
   const [titulo, setTitulo] = useState("");
   const [prompt, setPrompt] = useState("");
-  // undefined: sin elegir (usa el de Ajustes). null: "Predeterminado de Ajustes" elegido a mano.
   const [modelo, setModelo] = useState<string | null | undefined>(undefined);
   const [effort, setEffort] = useState<string | null>(null);
   const [proyecto, setProyecto] = useState("");
@@ -192,7 +195,6 @@ function FormProgramada({ alCrear, modelList }: { alCrear: () => void; modelList
   const [hora, setHora] = useState("08:00");
   const [errorLocal, setErrorLocal] = useState<string | null>(null);
 
-  // El modelo inicial es el de Ajustes; si no está en la lista de recomendados, se muestra igual.
   const modeloActual = modelo !== undefined ? (modelo ?? "") : (prefs.data?.defaultModel ?? "");
   const modeloInfo = modelList.find((m) => m.id === modeloActual) ?? null;
   const variantes = modeloInfo?.variants ?? [];
@@ -244,153 +246,121 @@ function FormProgramada({ alCrear, modelList }: { alCrear: () => void; modelList
   };
 
   return (
-    <form className="programada-form" onSubmit={enviar} aria-label="Nueva tarea programada">
-      <div className="campo">
-        <label className="field-label" htmlFor="programada-titulo">
-          Título
+    <form className="form-box" onSubmit={enviar} aria-label="Nueva tarea programada">
+      <div className="form-row">
+        <label className="form-label" htmlFor="programada-titulo">
+          Título (opcional)
         </label>
         <input
           id="programada-titulo"
-          className="text-input tarea-campo-ancho"
+          className="input-text"
           maxLength={MAX_TITULO}
-          placeholder="Opcional"
           value={titulo}
           onChange={(e) => setTitulo(e.target.value)}
+          placeholder="Ej. Auditoría nocturna de dependencias npm y SBOM"
         />
       </div>
 
-      <div className="campo">
-        <label className="field-label" htmlFor="programada-prompt">
-          Prompt
+      <div className="form-row">
+        <label className="form-label" htmlFor="programada-prompt">
+          Instrucciones para el agente
         </label>
         <textarea
           id="programada-prompt"
-          className="tarea-textarea"
-          rows={4}
+          className="textarea"
+          rows={3}
           maxLength={MAX_PROMPT}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Qué debe hacer el agente en cada ejecución"
+          placeholder="Escribe lo que el agente debe hacer en cada ejecución."
         />
-        <span className="muted-note" aria-live="polite">
-          {prompt.length.toLocaleString("es")} / {MAX_PROMPT.toLocaleString("es")}
-        </span>
       </div>
 
-      <div className="campo">
-        <label className="field-label" htmlFor="programada-modelo">
-          Modelo
-        </label>
-        <select
-          id="programada-modelo"
-          className="tarea-select"
-          value={modeloActual}
-          onChange={(e) => {
-            const nuevo = e.target.value || null;
-            setModelo(nuevo);
-            const info = modelList.find((m) => m.id === nuevo);
-            if (!info || !info.variants.includes(effort ?? "")) setEffort(null);
-          }}
-        >
-          <option value="">Predeterminado de Ajustes</option>
-          {opcionesModelo.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {variantes.length > 0 && (
-        <div className="campo">
-          <span className="field-label">Esfuerzo</span>
-          <EffortControl variants={variantes} value={effort} disabled={!modeloActual} onChange={setEffort} />
-        </div>
-      )}
-
-      <div className="campo">
-        <label className="field-label" htmlFor="programada-proyecto">
+      <div className="form-row">
+        <label className="form-label" htmlFor="programada-proyecto">
           Proyecto
         </label>
         <select
           id="programada-proyecto"
-          className="tarea-select"
+          className="select-text"
           value={proyecto}
           onChange={(e) => setProyecto(e.target.value)}
         >
-          <option value="">Sin proyecto</option>
+          <option value="">Sin proyecto (carpeta temporal)</option>
           {proyectos.data?.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name}
+              {p.name} (/srv/orquestador/projects/{p.carpeta})
             </option>
           ))}
         </select>
       </div>
 
-      <fieldset className="tarea-fieldset">
-        <legend className="field-label">Frecuencia</legend>
-        <label className="tarea-opcion">
-          <input
-            type="radio"
-            name="programada-frecuencia"
-            checked={frecuencia === "cada_horas"}
-            onChange={() => setFrecuencia("cada_horas")}
-          />
-          <span>Cada cierto número de horas</span>
-        </label>
-        {frecuencia === "cada_horas" && (
-          <div className="campo campo-anidado">
-            <label className="field-label" htmlFor="programada-horas">
-              Horas (1 a 168)
-            </label>
+      <div className="form-row">
+        <span className="form-label">Frecuencia</span>
+        <div className="radio-group">
+          <label className="radio-item">
             <input
-              id="programada-horas"
-              className="text-input tarea-campo-corto"
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={168}
-              step={1}
-              value={horas}
-              onChange={(e) => setHoras(e.target.value)}
+              type="radio"
+              name="freq"
+              checked={frecuencia === "cada_horas"}
+              onChange={() => setFrecuencia("cada_horas")}
             />
-          </div>
-        )}
-
-        <label className="tarea-opcion">
-          <input
-            type="radio"
-            name="programada-frecuencia"
-            checked={frecuencia === "diaria"}
-            onChange={() => setFrecuencia("diaria")}
-          />
-          <span>Una vez al día</span>
-        </label>
-        {frecuencia === "diaria" && (
-          <div className="campo campo-anidado">
-            <label className="field-label" htmlFor="programada-hora">
-              Hora (HH:MM, hora del servidor)
-            </label>
+            Cada cierto número de horas
+          </label>
+          {frecuencia === "cada_horas" && (
+            <div style={{ paddingLeft: 26 }}>
+              <input
+                type="number"
+                min={1}
+                max={168}
+                className="input-text"
+                style={{ width: 100 }}
+                value={horas}
+                onChange={(e) => setHoras(e.target.value)}
+              />
+            </div>
+          )}
+          <label className="radio-item">
             <input
-              id="programada-hora"
-              className="text-input tarea-campo-corto"
-              type="time"
-              value={hora}
-              onChange={(e) => setHora(e.target.value)}
+              type="radio"
+              name="freq"
+              checked={frecuencia === "diaria"}
+              onChange={() => setFrecuencia("diaria")}
             />
-          </div>
-        )}
-      </fieldset>
+            Diaria a una hora fija
+          </label>
+          {frecuencia === "diaria" && (
+            <div style={{ paddingLeft: 26 }}>
+              <input
+                type="text"
+                className="input-text"
+                style={{ width: 100 }}
+                placeholder="08:00"
+                value={hora}
+                onChange={(e) => setHora(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+      </div>
 
-      {(errorLocal || crear.isError) && (
-        <p className="error" role="alert">
-          {errorLocal ?? errorText(crear.error)}
-        </p>
+      {errorLocal && (
+        <div className="error-box" role="alert">
+          <span className="error-text">{errorLocal}</span>
+        </div>
+      )}
+      {crear.isError && (
+        <div className="error-box" role="alert">
+          <span className="error-text">{errorText(crear.error)}</span>
+        </div>
       )}
 
-      <div className="savebar">
-        <button type="submit" className="primary" disabled={crear.isPending || !prompt.trim()}>
-          {crear.isPending ? "Creando…" : "Crear programada"}
+      <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+        <button type="submit" className="btn-primary" disabled={crear.isPending}>
+          {crear.isPending ? "Guardando…" : "Guardar programación"}
+        </button>
+        <button type="button" className="btn-ghost" onClick={alCrear}>
+          Cancelar
         </button>
       </div>
     </form>

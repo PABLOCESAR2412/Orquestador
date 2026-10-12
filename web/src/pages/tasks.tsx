@@ -15,6 +15,7 @@ import { effortLabel, errorText, formatUsd, sanearDetalle, STATUS_LABEL } from "
 import { EVENTO_VERSION_NUEVA, hayVersionNueva } from "../lib/version";
 import { useShell } from "../components/shell-context";
 import { BotonTema } from "../components/tema-boton";
+import { AppNav } from "../components/nav";
 import "../styles-trabajo.css";
 
 const isActive = (t: Task) => t.status === "queued" || t.status === "running";
@@ -214,53 +215,20 @@ function ListaTareas() {
   const isOnline = Boolean(health.data?.ok);
 
   return (
-    <main className="page tr-pagina">
-      {/* Cabecera Tareas del Servidor */}
-      <header className="task-header-wrap">
-        <div className="task-header-meta">
-          <button
-            type="button"
-            className="ghost menu-btn"
-            aria-label="Abrir menú"
-            onClick={toggleDrawer}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-              <path d="M4 7h16M4 12h16M4 17h10" />
-            </svg>
-          </button>
-          <span className={`status-pill ${isOnline ? "is-online" : "is-offline"}`}>
-            <span className="pill-dot" aria-hidden="true" />
-            {isOnline ? "Servidor activo" : "Sin conexión"}
-          </span>
-          <div className="page-acciones">
+    <div className="page-wrap">
+      <AppNav variant="row" />
+
+      <main className="container">
+        <header className="header-row">
+          <h1 className="page-title">Tareas</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span className={`status-pill ${isOnline ? "is-online" : "is-offline"}`}>
+              <span className="pill-dot" aria-hidden="true" />
+              {isOnline ? "Servidor activo" : "Sin conexión"}
+            </span>
             <BotonTema />
           </div>
-        </div>
-
-        <div className="task-header-main">
-          <div className="task-header-title-col">
-            <h1 className="task-title">Tareas del Servidor</h1>
-            <p className="page-desc">
-              Procesos persistentes que continúan ejecutándose aunque cierres la sesión local o cambies de workspace.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            className="task-btn-nueva"
-            aria-expanded={formOpen}
-            onClick={() => {
-              setFormOpen((prev) => !prev);
-              if (!formOpen) setTimeout(() => textareaRef.current?.focus(), 60);
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            <span>{formOpen ? "Cerrar formulario" : "Nueva tarea"}</span>
-          </button>
-        </div>
-      </header>
+        </header>
 
       {/* Formulario de nueva tarea en panel colapsable */}
       {formOpen && (
@@ -607,7 +575,8 @@ function ListaTareas() {
         </div>
       </footer>
     </main>
-  );
+  </div>
+);
 }
 
 // Detalle de una tarea: estado, resumen, terminal, revisión de cambios e historial.
@@ -693,31 +662,32 @@ function DetalleTarea({ id }: { id: string }) {
     : [];
 
   return (
-    <main className="page tr-pagina">
-      <header className="page-head tr-cabecera">
-        <div className="page-title-row">
-          <button type="button" className="ghost menu-btn" aria-label="Abrir menú" onClick={toggleDrawer}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-              <path d="M4 7h16M4 12h16M4 17h10" />
-            </svg>
-          </button>
-          <div className="tr-cabecera-texto">
-            <Link to="/tareas" className="foot-link tr-volver">
-              Volver a tareas
-            </Link>
-            <h1 className="task-title">{t?.title ?? "Tarea"}</h1>
-            {t && (
-              <p className="page-desc">
-                {STATUS_LABEL[t.status]} · {modelName}
-                {t.effort ? ` · ${effortLabel(t.effort)}` : ""}
-              </p>
-            )}
+    <div className="page-wrap">
+      <AppNav variant="row" />
+
+      <main className="container">
+        <Link to="/tareas" className="back-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
+          </svg>
+          Volver a tareas
+        </Link>
+
+        <header className="header-main">
+          <div className="header-top">
+            <div>
+              <h1 className="page-title">{t?.title ?? "Tarea"}</h1>
+              {t && (
+                <p className="folder-note">
+                  {STATUS_LABEL[t.status]} · {modelName}
+                  {t.effort ? ` · ${effortLabel(t.effort)}` : ""}
+                </p>
+              )}
+            </div>
+            <BotonTema />
           </div>
-        </div>
-        <div className="page-acciones">
-          <BotonTema />
-        </div>
-      </header>
+        </header>
 
       {tarea.isPending && <p className="muted-note">Cargando la tarea…</p>}
 
@@ -885,5 +855,6 @@ function DetalleTarea({ id }: { id: string }) {
         </>
       )}
     </main>
-  );
+  </div>
+);
 }
