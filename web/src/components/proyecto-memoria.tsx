@@ -3,8 +3,7 @@ import { api, type ProjectDetail } from "../api";
 import { errorText } from "../lib/model";
 import { cuando } from "./tarea-formato";
 
-// Memoria del proyecto: lo que los agentes aprendieron de sus tareas. Telo la actualiza sola al
-// terminar cada tarea. Son notas del agente, no órdenes; el dueño puede revisarlas o borrarlas.
+// Memoria del proyecto: Stitch mono-block y botón ghost en header.
 export function ProyectoMemoria({ id, memoria }: { id: string; memoria: ProjectDetail["memoria"] }) {
   const qc = useQueryClient();
   const borrar = useMutation({
@@ -13,35 +12,45 @@ export function ProyectoMemoria({ id, memoria }: { id: string; memoria: ProjectD
   });
 
   return (
-    <section className="panel tarea-seccion" aria-labelledby="proyecto-memoria-titulo">
-      <h2 id="proyecto-memoria-titulo">Memoria</h2>
-      <p className="muted-note">
-        Lo que los agentes aprendieron de este proyecto: cómo se prueba y dónde está cada parte. Telo la actualiza sola al
-        terminar cada tarea. Son notas del agente, no órdenes.
+    <section className="panel" aria-labelledby="proyecto-memoria-titulo">
+      <div className="panel-header-row">
+        <h2 id="proyecto-memoria-titulo" className="panel-title">
+          Memoria
+        </h2>
+        {memoria.texto && (
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={borrar.isPending}
+            onClick={() => borrar.mutate()}
+          >
+            {borrar.isPending ? "Borrando…" : "Borrar memoria"}
+          </button>
+        )}
+      </div>
+
+      <p className="help-note">
+        Conocimiento persistente que los agentes aprendieron durante la ejecución de tareas previas.
       </p>
 
       {memoria.texto ? (
         <>
-          <pre className="memoria-texto" tabIndex={0} aria-label="Memoria del proyecto">
+          <pre className="mono-block" tabIndex={0} aria-label="Memoria del proyecto">
             {memoria.texto}
           </pre>
-          {memoria.actualizada_en && <p className="muted-note">Actualizada: {cuando(memoria.actualizada_en)}</p>}
+          {memoria.actualizada_en && (
+            <p className="help-note">Actualizada: {cuando(memoria.actualizada_en)}</p>
+          )}
         </>
       ) : (
-        <p className="muted-note">Todavía no hay memoria. Se llena al terminar la primera tarea del proyecto.</p>
-      )}
-
-      {borrar.isError && (
-        <p className="error" role="alert">
-          {errorText(borrar.error)}
+        <p className="help-note">
+          Todavía no hay memoria. Se llena al terminar la primera tarea del proyecto.
         </p>
       )}
 
-      {memoria.texto && (
-        <div className="savebar">
-          <button type="button" className="ghost" disabled={borrar.isPending} onClick={() => borrar.mutate()}>
-            {borrar.isPending ? "Borrando…" : "Borrar memoria"}
-          </button>
+      {borrar.isError && (
+        <div className="error-box" role="alert">
+          <span className="error-text">{errorText(borrar.error)}</span>
         </div>
       )}
     </section>
