@@ -6,6 +6,7 @@ import { entornoDeProyecto } from "./secretos";
 import { redactar } from "./redaccion";
 import { AislamientoError } from "./runners/aislamiento";
 import { runOpenCode, type RunResult } from "./runners/opencode";
+import { conMemoria, extraerMemoria, guardarMemoria, memoriaDelProyecto, quitarBloqueMemoria } from "./memoria";
 
 // Longitud mínima de un valor de secreto para ocultarlo en la salida. Más corto, aparecería en texto normal.
 const MINIMO_OCULTAR = 4;
@@ -26,6 +27,8 @@ export type OpcionesAgente = {
   // Solo para la tarea: registra el cambio de modelo en su historial.
   taskId?: string;
   projectId?: string | null;
+  // Solo para la tarea: pide al agente escribir la memoria del proyecto al final y la guarda.
+  aprender?: boolean;
 };
 
 // `modelo` es el que realmente respondió (puede ser el de respaldo), para registrar el uso.
@@ -106,8 +109,9 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
     sesion = id;
     opts.onSesion?.(id);
   };
+  const memoria = opts.projectId ? memoriaDelProyecto(opts.projectId).texto : null;
   const base = {
-    prompt: conInstrucciones(opts.projectId, opts.prompt),
+    prompt: conMemoria(conInstrucciones(opts.projectId, opts.prompt), memoria, opts.aprender === true),
     cwd: opts.cwd,
     timeoutMs: opts.timeoutMs,
     signal: opts.signal,
@@ -124,6 +128,23 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
     return err;
   };
 
+  // El resultado sale con los secretos ocultos. Si la tarea aprende, el bloque de memoria se guarda
+  // (ya limpio de secretos) y no se muestra en el resultado.
+  const terminar = (r: RunResult, modelo: string): ResultadoAgente => {
+    const texto = ocultarValores(r.text, ocultos);
+    if (opts.aprender && opts.projectId) {
+      const nueva = extraerMemoria(texto);
+      if (nueva) {
+        try {
+          guardarMemoria(opts.projectId, nueva);
+        } catch (err) {
+          console.error("Guardar la memoria del proyecto:", mensajeDe(err));
+        }
+      }
+    }
+    return { ...r, text: opts.aprender ? quitarBloqueMemoria(texto) : texto, modelo };
+  };
+
   const inicio = Date.now();
   try {
     const r = await runOpenCode({
@@ -132,7 +153,7 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
       variant: opts.variant ?? undefined,
       sessionId: opts.sessionId ?? null,
     });
-    return { ...r, text: ocultarValores(r.text, ocultos), modelo: opts.model };
+    return terminar(r, opts.model);
   } catch (err) {
     // Si el tiempo se agotó, no se reintenta: el intento ya consumió el presupuesto.
     const agotado = opts.timeoutMs !== undefined && Date.now() - inicio >= opts.timeoutMs;
@@ -151,7 +172,7 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
         variant: await varianteSoportada(respaldo, opts.variant),
         sessionId: sesion,
       });
-      return { ...r, text: ocultarValores(r.text, ocultos), modelo: respaldo };
+      return terminar(r, respaldo);
     } catch (errRespaldo) {
       throw limpiarError(errRespaldo);
     }
