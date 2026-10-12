@@ -1832,8 +1832,16 @@ button:disabled { opacity: 0.4; cursor: default; }
   background: var(--ink-2);
 }
 .pill-dot.is-live,
+.status-pill.is-online .pill-dot,
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  display: inline-block;
+  flex-shrink: 0;
+}
 .status-pill.is-online .pill-dot {
-  background: var(--signal);
   animation: breathe 1.4s ease-in-out infinite;
 }
 .status-pill.is-queued .pill-dot {
@@ -1846,6 +1854,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   color: var(--danger);
   border-color: var(--danger-line);
 }
+.status-pill.is-offline .status-dot,
 .status-pill.is-offline .pill-dot {
   background: var(--danger);
 }
@@ -3042,4 +3051,74 @@ button:disabled { opacity: 0.4; cursor: default; }
     padding-bottom: max(14px, env(safe-area-inset-bottom));
   }
   .paleta-capa { padding: max(10vh, 12px) 12px 12px; }
+}
+
+/* Pantalla Servidor - Stitch exacto */
+.server-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 680px) {
+  .server-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.main-stat {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  gap: 8px;
+}
+.detail-label {
+  color: var(--ink-2);
+}
+.detail-value {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.help-note {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.theme-btn,
+.header-row .tema-boton.ghost {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  outline: none;
+  flex-shrink: 0;
+  padding: 0;
+}
+.theme-btn:focus-visible,
+.header-row .tema-boton.ghost:focus-visible {
+  border-color: var(--line-strong);
+}
+@media (max-width: 600px) {
+  .theme-btn,
+  .header-row .tema-boton.ghost { width: 40px; height: 40px; }
 }
