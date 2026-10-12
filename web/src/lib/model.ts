@@ -66,9 +66,14 @@ export function formatUsd(n: number): string {
   return n < 0.01 && n > 0 ? `US$ ${n.toFixed(4)}` : `US$ ${n.toFixed(2)}`;
 }
 
-// SQLite guarda la fecha en UTC sin zona: "2026-10-09 04:50:16".
+// SQLite guarda la fecha en UTC sin zona: "2026-10-09 04:50:16", o ISO con Z.
 export function formatWhen(sqlDate: string): string {
-  const date = new Date(sqlDate.replace(" ", "T") + "Z");
+  if (!sqlDate) return "";
+  const iso = sqlDate.includes("T")
+    ? (sqlDate.endsWith("Z") ? sqlDate : sqlDate + "Z")
+    : sqlDate.replace(" ", "T") + "Z";
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return sqlDate;
   return new Intl.DateTimeFormat("es", {
     day: "numeric",
     month: "short",

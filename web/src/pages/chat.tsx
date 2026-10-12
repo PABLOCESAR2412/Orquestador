@@ -4,9 +4,10 @@ import { api, ApiError, type Conversation, type ModelInfo } from "../api";
 import { CostMeter } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
 import { UsoPanel } from "../components/uso-panel";
-import { effortLabel, errorText, formatWhen } from "../lib/model";
+import { effortLabel, errorText, formatWhen, tierBars } from "../lib/model";
 import { useShell } from "../components/shell-context";
 import { BotonTema } from "../components/tema-boton";
+import { AppNav } from "../components/nav";
 
 type Patch = { model?: string | null; effort?: string | null };
 
@@ -32,12 +33,19 @@ function guardarBorrador(id: string, texto: string) {
   }
 }
 
+const EFFORT_OPTIONS = [
+  { id: "low", label: "Bajo" },
+  { id: "medium", label: "Medio" },
+  { id: "high", label: "Alto" },
+];
+
 export function ChatPage() {
   const qc = useQueryClient();
   const {
     selectedConversationId,
     setSelectedConversationId,
     toggleDrawer,
+    triggerPalette,
   } = useShell();
   const selectedId = selectedConversationId;
   const setSelectedId = setSelectedConversationId;
@@ -197,85 +205,92 @@ export function ChatPage() {
           : nombreModelo;
 
   return (
-    <section className="thread">
-      <header className="thread-head">
-        <div className="thread-head-info">
-          {/* En móvil, «telo» abre el cajón con la navegación y los chats recientes */}
-          <button
-            type="button"
-            className="thread-brand"
-            aria-label="telo: abrir navegación y chats recientes"
-            onClick={toggleDrawer}
-          >
-            telo
-          </button>
+    <div className="page-wrap">
+      <AppNav variant="row" />
 
-          {/* El modelo y el esfuerzo se eligen en el compositor, no en la cabecera */}
-          <h1 className="thread-title">{current?.title ?? "Nuevo chat"}</h1>
-          {current?.project_name && (
-            <span className="thread-project" title={`Proyecto: ${current.project_name}`}>
-              {current.project_name}
+      <main className="container">
+        <header className="header-row">
+          <div>
+            <div className="header-title-row">
+              <button
+                type="button"
+                className="thread-brand"
+                aria-label="telo: abrir navegación y chats recientes"
+                onClick={toggleDrawer}
+              >
+                telo
+              </button>
+              <h1 className="page-title">{current?.title ?? "Chat"}</h1>
+            </div>
+            <span className="page-subtitle">
+              {current?.project_name ? `Proyecto: ${current.project_name}` : "Proyecto: Orquestador Daemon"}
             </span>
-          )}
-        </div>
-        <div className="page-acciones">
-          <BotonTema />
-        </div>
-      </header>
-
-      {!selectedId ? (
-        <div className="empty">
-          <div className="empty-box">
-            {conversations.isPending ? (
-              <p>Cargando chats…</p>
-            ) : conversations.isError ? (
-              <>
-                <h2>No se pudieron cargar los chats</h2>
-                <p>Revisa la conexión e intenta de nuevo.</p>
-                <button type="button" className="ghost" onClick={() => void conversations.refetch()}>
-                  Reintentar
-                </button>
-              </>
-            ) : (
-              <>
-                <h2>Sin conversación activa</h2>
-                <p>Inicia un nuevo chat con tus agentes o selecciona uno de la lista.</p>
-                {(proyectos.data?.length ?? 0) > 0 && (
-                  <select
-                    className="project-select"
-                    aria-label="Proyecto del chat"
-                    value={projectId}
-                    onChange={(e) => setProjectId(e.target.value)}
-                  >
-                    <option value="">Sin proyecto</option>
-                    {proyectos.data?.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={() => create.mutate(projectId || null)}
-                  disabled={create.isPending}
-                >
-                  Nuevo chat
-                </button>
-                {create.isError && (
-                  <p className="error" role="alert">
-                    {errorText(create.error)}
-                  </p>
-                )}
-              </>
-            )}
           </div>
-        </div>
-      ) : (
-        <>
-          <div className="messages">
-            <div className="column">
+          <div className="header-actions">
+            <button
+              type="button"
+              className="palette-btn"
+              title="Paleta de comandos (Ctrl+K)"
+              onClick={triggerPalette}
+            >
+              Ctrl+K
+            </button>
+            <BotonTema />
+          </div>
+        </header>
+
+        {!selectedId ? (
+          <div className="empty">
+            <div className="empty-box">
+              {conversations.isPending ? (
+                <p>Cargando chats…</p>
+              ) : conversations.isError ? (
+                <>
+                  <h2>No se pudieron cargar los chats</h2>
+                  <p>Revisa la conexión e intenta de nuevo.</p>
+                  <button type="button" className="ghost" onClick={() => void conversations.refetch()}>
+                    Reintentar
+                  </button>
+                </>
+              ) : (
+                <>
+                  <h2>Sin conversación activa</h2>
+                  <p>Inicia un nuevo chat con tus agentes o selecciona uno de la lista.</p>
+                  {(proyectos.data?.length ?? 0) > 0 && (
+                    <select
+                      className="project-select"
+                      aria-label="Proyecto del chat"
+                      value={projectId}
+                      onChange={(e) => setProjectId(e.target.value)}
+                    >
+                      <option value="">Sin proyecto</option>
+                      {proyectos.data?.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => create.mutate(projectId || null)}
+                    disabled={create.isPending}
+                  >
+                    Nuevo chat
+                  </button>
+                  {create.isError && (
+                    <p className="error" role="alert">
+                      {errorText(create.error)}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="chat-thread">
               {messages.isPending && <p className="muted-note">Cargando mensajes…</p>}
               {messages.isError && (
                 <div className="estado-linea">
@@ -288,74 +303,66 @@ export function ChatPage() {
                 </div>
               )}
               {messages.data?.length === 0 && !send.isPending && (
-                <p className="muted-note center">Escribe un mensaje para empezar.</p>
+                <div className="chat-msg">
+                  <span className="msg-meta">Asistente · Listo</span>
+                  <p>Escribe una instrucción para el agente o pulsa Ctrl+K para comandos.</p>
+                </div>
               )}
               {messages.data?.map((m) => {
                 const isUser = m.role === "user";
                 return (
-                  <div key={m.id} className={`msg-row msg-row-${m.role}`}>
-                    <div className="msg-meta-bar">
+                  <div key={m.id} className={`chat-msg${isUser ? " chat-msg-user" : " chat-msg-assistant"}`}>
+                    <div className="msg-meta">
                       {isUser ? (
-                        <>
-                          <span className="msg-author">Tú</span>
-                          <span className="msg-meta-dot">•</span>
-                          <time className="msg-time">{formatWhen(m.created_at)}</time>
-                        </>
+                        <span>Tú · {formatWhen(m.created_at)}</span>
                       ) : (
                         <>
-                          <div className="msg-author-icon" aria-hidden="true">
+                          <span className="msg-author-icon" aria-hidden="true">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                               <polyline points="16 18 22 12 16 6" />
                               <polyline points="8 6 2 12 8 18" />
                             </svg>
-                          </div>
-                          <span className="msg-author">{modelInfo?.name ?? current?.model ?? "Asistente"}</span>
-                          <span className="msg-meta-dot">•</span>
-                          <time className="msg-time">{formatWhen(m.created_at)}</time>
+                          </span>
+                          <span>{modelInfo?.name ?? current?.model ?? "Codex CLI"} · {formatWhen(m.created_at)}</span>
                         </>
                       )}
                     </div>
-                    <div className={`msg msg-${m.role}`}>
+                    <div className="msg-content">
                       {m.content}
                     </div>
                   </div>
                 );
               })}
               {send.isPending && !yaGuardado && (
-                <div className="msg-row msg-row-user">
-                  <div className="msg-meta-bar">
-                    <span className="msg-author">Tú</span>
-                    <span className="msg-meta-dot">•</span>
-                    <span className="msg-time">Ahora</span>
+                <div className="chat-msg chat-msg-user">
+                  <div className="msg-meta">
+                    <span>Tú · Ahora</span>
                   </div>
-                  <div className="msg msg-user">{send.variables?.content}</div>
+                  <div className="msg-content">{send.variables?.content}</div>
                 </div>
               )}
               {pensando && (
-                  <div className="msg-row msg-row-assistant">
-                    <div className="msg-meta-bar">
-                      <div className="msg-author-icon" aria-hidden="true">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="16 18 22 12 16 6" />
-                          <polyline points="8 6 2 12 8 18" />
-                        </svg>
-                      </div>
-                      <span className="msg-author">{modelInfo?.name ?? current?.model ?? "Asistente"}</span>
-                      <span className="msg-meta-dot">•</span>
-                      <span className="msg-time">Pensando…</span>
-                    </div>
-                    <div className="msg msg-assistant thinking" aria-live="polite">
-                      <span className="dot" aria-hidden="true" />
-                      <span className="muted-note">Pensando</span>
-                    </div>
+                <div className="chat-msg chat-msg-assistant">
+                  <div className="msg-meta">
+                    <span className="msg-author-icon" aria-hidden="true">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="16 18 22 12 16 6" />
+                        <polyline points="8 6 2 12 8 18" />
+                      </svg>
+                    </span>
+                    <span>{modelInfo?.name ?? current?.model ?? "Codex CLI"} · Pensando…</span>
                   </div>
+                  <div className="thinking" aria-live="polite">
+                    <span className="dot" aria-hidden="true" />
+                    <span className="muted-note">Pensando</span>
+                  </div>
+                </div>
               )}
               <div ref={endRef} />
             </div>
-          </div>
 
             <form
-              className="composer"
+              className="composer-form"
               onSubmit={(e: FormEvent) => {
                 e.preventDefault();
                 submit();
@@ -394,9 +401,10 @@ export function ChatPage() {
 
                 <textarea
                   ref={inputRef}
-                  rows={1}
+                  className="composer-input"
+                  rows={2}
                   value={draft}
-                  placeholder="Escribe un mensaje"
+                  placeholder="Escribe una instrucción para el agente o pulsa Ctrl+K para comandos..."
                   aria-label="Mensaje"
                   onChange={(e) => cambiarBorrador(e.target.value)}
                   onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -407,51 +415,77 @@ export function ChatPage() {
                   }}
                 />
 
-                <div className="toolbar">
-                  <button
-                    ref={chipRef}
-                    type="button"
-                    className="model-chip"
-                    aria-haspopup="dialog"
-                    aria-expanded={pickerOpen}
-                    onClick={() => {
-                      setUsoAbierto(false);
-                      setPickerOpen((o) => !o);
-                    }}
-                  >
-                    <span className="model-chip-name">{etiquetaChip}</span>
-                    {modelInfo && <CostMeter tier={modelInfo.costTier} />}
-                  </button>
+                <div className="composer-controls">
+                  <div className="controls-left">
+                    <button
+                      ref={chipRef}
+                      type="button"
+                      className="model-chip"
+                      aria-haspopup="dialog"
+                      aria-expanded={pickerOpen}
+                      onClick={() => {
+                        setUsoAbierto(false);
+                        setPickerOpen((o) => !o);
+                      }}
+                    >
+                      <span>{etiquetaChip}</span>
+                      <div className="cost-meter" title={`Costo: ${tierBars(modelInfo?.costTier ?? "medio")} de 5`}>
+                        {[0, 1, 2, 3, 4].map((i) => (
+                          <span
+                            key={i}
+                            className={`cost-bar${i < tierBars(modelInfo?.costTier ?? "medio") ? " filled" : ""}`}
+                          />
+                        ))}
+                      </div>
+                    </button>
 
-                  <button
-                    ref={usoRef}
-                    type="button"
-                    className="uso-btn"
-                    aria-haspopup="dialog"
-                    aria-expanded={usoAbierto}
-                    onClick={() => {
-                      setPickerOpen(false);
-                      setUsoAbierto((o) => !o);
-                    }}
-                  >
-                    Uso
-                  </button>
+                    <div className="effort-selector" role="radiogroup" aria-label="Esfuerzo del modelo">
+                      {EFFORT_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          className={`effort-opt${efectoActual === opt.id ? " active" : ""}`}
+                          aria-checked={efectoActual === opt.id}
+                          onClick={() => configure.mutate({ effort: efectoActual === opt.id ? null : opt.id })}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-                  <button
-                    type="submit"
-                    className="send"
-                    aria-label="Enviar"
-                    disabled={!draft.trim() || send.isPending || !!current?.ocupada}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
+                  <div className="controls-right">
+                    <button
+                      ref={usoRef}
+                      type="button"
+                      className="btn-usage"
+                      aria-haspopup="dialog"
+                      aria-expanded={usoAbierto}
+                      onClick={() => {
+                        setPickerOpen(false);
+                        setUsoAbierto((o) => !o);
+                      }}
+                    >
+                      Uso
+                    </button>
+
+                    <button
+                      type="submit"
+                      className="send"
+                      aria-label="Enviar"
+                      disabled={!draft.trim() || send.isPending || !!current?.ocupada}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             </form>
           </>
         )}
-      </section>
+      </main>
+    </div>
   );
 }

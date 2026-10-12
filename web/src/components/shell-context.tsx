@@ -18,6 +18,10 @@ interface ShellContextType {
   newTaskOpen: boolean;
   setNewTaskOpen: (open: boolean) => void;
   triggerNewTask: () => void;
+  paletteOpen: boolean;
+  setPaletteOpen: (open: boolean) => void;
+  triggerPalette: () => void;
+  closePalette: () => void;
 }
 
 const ShellContext = createContext<ShellContextType | null>(null);
@@ -26,11 +30,15 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const navigate = useNavigate();
   const routerState = useRouterState();
 
   const toggleDrawer = useCallback(() => setDrawerOpen((prev) => !prev), []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+
+  const triggerPalette = useCallback(() => setPaletteOpen(true), []);
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
 
   const triggerNewTask = useCallback(() => {
     setNewTaskOpen(true);
@@ -75,6 +83,10 @@ export function ShellProvider({ children }: { children: ReactNode }) {
         newTaskOpen,
         setNewTaskOpen,
         triggerNewTask,
+        paletteOpen,
+        setPaletteOpen,
+        triggerPalette,
+        closePalette,
       }}
     >
       {children}
