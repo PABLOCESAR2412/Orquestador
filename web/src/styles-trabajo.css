@@ -405,3 +405,28 @@
   .programada-switch-pista,
   .programada-switch-bola { transition: none; }
 }
+
+/* Clave pública de GitHub del proyecto: se selecciona entera para copiarla. */
+.clave-publica {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.clave-pasos {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+}

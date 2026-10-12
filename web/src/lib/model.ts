@@ -176,6 +176,16 @@ export function errorText(err: unknown): string {
         return "El valor debe tener entre 1 y 8 192 caracteres.";
       case "secret_not_found":
         return "Ese secreto ya no existe.";
+      case "clave_existente":
+        return "Este proyecto ya tiene una clave de GitHub. Bórrala antes de crear otra.";
+      case "clave_sin_cifrado":
+        return "Falta la clave de cifrado en el servidor, así que no se puede crear la clave de GitHub. Revisa su archivo de entorno.";
+      case "clave_no_generada":
+        return "No se pudo crear la clave de GitHub en el servidor. Intenta de nuevo.";
+      case "clave_no_encontrada":
+        return "Este proyecto no tiene clave de GitHub.";
+      case "clave_ilegible":
+        return "La clave de GitHub de este proyecto no se puede leer. Bórrala y crea otra.";
       case "invalid_schedule":
         return "Revisa la frecuencia: entre 1 y 168 horas, o una hora en formato HH:MM.";
       case "task_without_repo":
