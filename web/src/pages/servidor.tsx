@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ServidorEstado } from "../api";
 import { useShell } from "../components/shell-context";
+import { BotonTema } from "../components/tema-boton";
 import { cuando, duracion, formatBytes, porcentaje } from "../components/tarea-formato";
 import { useEventosVivos } from "../lib/eventos-vivos";
 import { errorText, formatUsd } from "../lib/model";
@@ -80,11 +81,14 @@ export function ServerPage() {
             </p>
           </div>
         </div>
-        <div className="status-pill-head">
-          <span className={`status-pill ${enLinea ? "is-online" : "is-offline"}`}>
-            <span className="pill-dot" aria-hidden="true" />
-            {latencia.estado === "midiendo" ? "Consultando…" : enLinea ? "En línea" : "Sin conexión"}
-          </span>
+        <div className="page-acciones">
+          <div className="status-pill-head">
+            <span className={`status-pill ${enLinea ? "is-online" : "is-offline"}`}>
+              <span className="pill-dot" aria-hidden="true" />
+              {latencia.estado === "midiendo" ? "Consultando…" : enLinea ? "En línea" : "Sin conexión"}
+            </span>
+          </div>
+          <BotonTema />
         </div>
       </header>
 

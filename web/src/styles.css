@@ -928,6 +928,43 @@ button:disabled { opacity: 0.4; cursor: default; }
 .page-head h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.01em; }
 .page-head .back { white-space: nowrap; }
 
+/* Acciones de la cabecera: botón de modo claro/oscuro, alineado a la derecha.
+   El título ocupa lo que sobra y solo baja a otra fila si las acciones no caben. */
+.page-head > .page-title-row { flex: 1 1 260px; min-width: 0; }
+.page-acciones {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+/* Tres clases: gana a `.tr-pagina .ghost` (relleno de móvil) en las pantallas de trabajo. */
+.page-acciones .tema-boton.ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+}
+
+/* Paginación de listas: anterior, "Página X de Y" y siguiente. */
+.paginacion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+.paginacion-estado {
+  color: var(--ink-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.paginacion-boton { min-width: 96px; }
+
 .char-counter {
   font-size: 11px;
   color: var(--ink-2);
@@ -1629,7 +1666,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   .project-row .task-mini-btn { min-height: 40px; padding: 8px 12px; }
   .login .primary, .sesion-salir { min-height: 40px; }
   .messages { padding: 24px 16px 12px; }
-  .composer { padding: 8px 12px max(12px, env(safe-area-inset-bottom)); }
+  .composer { padding: 8px 16px max(12px, env(safe-area-inset-bottom)); }
   .picker {
     position: fixed;
     left: 0;
@@ -1643,7 +1680,14 @@ button:disabled { opacity: 0.4; cursor: default; }
   }
   .model-chip { max-width: 55%; min-height: 40px; }
   .page {
-    padding: 16px 14px 36px;
+    padding: 16px 16px 36px;
+  }
+  .page-acciones .tema-boton.ghost {
+    width: 40px;
+    height: 40px;
+  }
+  .paginacion-boton {
+    min-height: 40px;
   }
   .task-header-main {
     flex-direction: column;

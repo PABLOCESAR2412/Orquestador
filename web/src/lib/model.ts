@@ -158,6 +158,8 @@ export function errorText(err: unknown): string {
         return "Esa ruta es un archivo, no una carpeta.";
       case "project_exists":
         return "Ese proyecto ya está registrado.";
+      case "sin_guias":
+        return "El repo no tiene AGENTS.md, CLAUDE.md ni README.md para sugerir instrucciones.";
       case "project_folder_exists":
         return "Ya existe una carpeta con ese nombre en la carpeta de proyectos.";
       case "project_not_found":

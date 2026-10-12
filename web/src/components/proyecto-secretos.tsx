@@ -12,6 +12,37 @@ export function nombreSecretoValido(nombre: string): boolean {
   return NOMBRE_VALIDO.test(nombre) && !nombre.startsWith("TELO_");
 }
 
+export type ParSecreto = { nombre: string; valor: string };
+
+// Lee un bloque pegado como en Vercel: una línea KEY=VALOR por secreto. Acepta «export», comillas y líneas con #.
+// Devuelve los pares válidos y los números de las líneas que no se pudieron leer (sin mostrar su contenido).
+export function parsearPegado(texto: string): { pares: ParSecreto[]; omitidas: number[] } {
+  const pares: ParSecreto[] = [];
+  const omitidas: number[] = [];
+  texto.split(/\r?\n/).forEach((crudo, i) => {
+    const linea = crudo.trim();
+    if (!linea || linea.startsWith("#")) return;
+    const sinExport = linea.replace(/^export\s+/, "");
+    const corte = sinExport.indexOf("=");
+    if (corte <= 0) {
+      omitidas.push(i + 1);
+      return;
+    }
+    const nombre = sinExport.slice(0, corte).trim();
+    let valor = sinExport.slice(corte + 1).trim();
+    const comilla = valor.charAt(0);
+    if (valor.length >= 2 && (comilla === '"' || comilla === "'") && valor.endsWith(comilla)) {
+      valor = valor.slice(1, -1);
+    }
+    if (!nombreSecretoValido(nombre) || valor === "" || valor.length > MAX_VALOR) {
+      omitidas.push(i + 1);
+      return;
+    }
+    pares.push({ nombre, valor });
+  });
+  return { pares, omitidas };
+}
+
 // Secretos del proyecto. El servidor nunca devuelve sus valores: aquí solo se escriben o se borran.
 export function ProyectoSecretos({ id }: { id: string }) {
   const qc = useQueryClient();
@@ -26,6 +57,9 @@ export function ProyectoSecretos({ id }: { id: string }) {
   const valorRef = useRef<HTMLInputElement>(null);
   // El valor viaja por esta referencia y no por las variables de la mutación: así no queda en la caché de React Query.
   const valorEnvio = useRef<string | null>(null);
+  // Bloque pegado en varias líneas: el estado solo guarda los nombres; los valores quedan en la referencia hasta guardar o cancelar.
+  const [pegado, setPegado] = useState<{ nombres: string[]; omitidas: number[] } | null>(null);
+  const paresPegado = useRef<ParSecreto[]>([]);
 
   const disponible = secretos.data?.disponible ?? false;
   const nombreMal = nombre.length > 0 && !nombreSecretoValido(nombre);
@@ -45,6 +79,26 @@ export function ProyectoSecretos({ id }: { id: string }) {
     },
   });
 
+  // Guarda los secretos del bloque uno a uno. Si uno falla, la lista se conserva para reintentar: guardar dos veces es seguro.
+  const lote = useMutation({
+    mutationFn: async () => {
+      for (const par of paresPegado.current) {
+        await api.setProjectSecret(id, par.nombre, par.valor);
+      }
+    },
+    onSuccess: () => {
+      paresPegado.current = [];
+      setPegado(null);
+      refrescar();
+    },
+  });
+
+  const cancelarPegado = () => {
+    paresPegado.current = [];
+    setPegado(null);
+    lote.reset();
+  };
+
   const quitar = useMutation({
     mutationFn: (n: string) => api.deleteProjectSecret(id, n),
     onSettled: () => {
@@ -58,6 +112,7 @@ export function ProyectoSecretos({ id }: { id: string }) {
       <h2 id="proyecto-secretos-titulo">Secretos</h2>
       <p className="muted-note">
         Los agentes de este proyecto reciben cada secreto como variable de entorno. Telo nunca vuelve a mostrar sus valores.
+        Para cargar varios a la vez, pega un bloque KEY=VALOR, una línea por secreto, en el campo Nombre.
       </p>
 
       {secretos.isPending && <p className="muted-note">Cargando los secretos…</p>}
@@ -141,6 +196,43 @@ export function ProyectoSecretos({ id }: { id: string }) {
         </p>
       )}
 
+      {pegado && (
+        <div className="secretos-pegado" role="region" aria-label="Secretos pegados, por confirmar">
+          <p>
+            Se encontraron {pegado.nombres.length} {pegado.nombres.length === 1 ? "secreto" : "secretos"}:{" "}
+            <span className="tarea-codigo">{pegado.nombres.join(", ")}</span>. Los valores no se muestran. Los que ya
+            existen se reemplazan.
+          </p>
+          {pegado.omitidas.length > 0 && (
+            <p className="muted-note">
+              Se omitieron las líneas {pegado.omitidas.join(", ")}: no tienen un nombre válido o un valor.
+            </p>
+          )}
+          {lote.isError && (
+            <p className="error" role="alert">
+              {errorText(lote.error)}
+            </p>
+          )}
+          <div className="savebar">
+            <button type="button" className="ghost" disabled={lote.isPending} onClick={cancelarPegado}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={!disponible || lote.isPending}
+              onClick={() => lote.mutate()}
+            >
+              {lote.isPending
+                ? "Guardando…"
+                : pegado.nombres.length === 1
+                  ? "Guardar secreto"
+                  : `Guardar ${pegado.nombres.length} secretos`}
+            </button>
+          </div>
+        </div>
+      )}
+
       <form
         className="tarea-formulario"
         autoComplete="off"
@@ -164,6 +256,25 @@ export function ProyectoSecretos({ id }: { id: string }) {
             maxLength={64}
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
+            onPaste={(e) => {
+              // Un bloque KEY=VALOR se reparte entre los campos (o se confirma si son varios). Otro texto se pega tal cual.
+              const texto = e.clipboardData.getData("text");
+              if (!texto.includes("=")) return;
+              const { pares, omitidas } = parsearPegado(texto);
+              if (pares.length === 0) return;
+              e.preventDefault();
+              if (pares.length === 1 && omitidas.length === 0) {
+                paresPegado.current = [];
+                setPegado(null);
+                setNombre(pares[0].nombre);
+                setValor(pares[0].valor);
+                return;
+              }
+              paresPegado.current = pares;
+              setPegado({ nombres: pares.map((p) => p.nombre), omitidas });
+              setNombre("");
+              setValor("");
+            }}
             disabled={!disponible}
             autoComplete="off"
             autoCapitalize="characters"

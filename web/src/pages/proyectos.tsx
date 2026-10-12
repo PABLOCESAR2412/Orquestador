@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Project } from "../api";
 import { errorText } from "../lib/model";
 import { useShell } from "../components/shell-context";
+import { BotonTema } from "../components/tema-boton";
 import "../styles-trabajo.css";
 
 // Misma regla que el servidor para el nombre de la carpeta: sin acentos, minúsculas y guiones.
@@ -36,7 +37,12 @@ export function ProjectsPage() {
     onSuccess: (p) => {
       setNombre("");
       refrescar();
-      void navigate({ to: "/proyectos/$id", params: { id: p.id } });
+      // El estado marca el proyecto como recién creado: su página ofrece el siguiente paso.
+      void navigate({
+        to: "/proyectos/$id",
+        params: { id: p.id },
+        state: (prev) => ({ ...prev, proyectoNuevo: true }),
+      });
     },
   });
 
@@ -62,6 +68,9 @@ export function ProjectsPage() {
               Carpetas del servidor donde trabajan los chats y las tareas. Cada proyecto es un repositorio Git.
             </p>
           </div>
+        </div>
+        <div className="page-acciones">
+          <BotonTema />
         </div>
       </header>
 

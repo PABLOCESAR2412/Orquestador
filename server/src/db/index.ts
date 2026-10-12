@@ -256,6 +256,14 @@ const migrations: Migration[] = [
     `,
   },
   {
+    // Memoria del proyecto: lo que los agentes aprenden de sus tareas. Se llena sola y el dueño puede borrarla.
+    name: "014_memoria_proyecto",
+    sql: `
+      ALTER TABLE projects ADD COLUMN memoria TEXT;
+      ALTER TABLE projects ADD COLUMN memoria_actualizada_en TEXT;
+    `,
+  },
+  {
     // Clave SSH por proyecto para subir ramas a GitHub (deploy key). La parte privada va cifrada con
     // AES-256-GCM, igual que project_secrets; la pública y su huella se pueden mostrar.
     name: "015_clave_ssh_proyecto",

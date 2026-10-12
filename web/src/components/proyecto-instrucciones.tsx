@@ -11,6 +11,8 @@ export function ProyectoInstrucciones({ proyecto }: { proyecto: Project }) {
   const original = proyecto.instrucciones ?? "";
   const [texto, setTexto] = useState(original);
   const [guardado, setGuardado] = useState(false);
+  // Archivos de los que salió la última sugerencia, para decirlo en pantalla.
+  const [fuentes, setFuentes] = useState<string[] | null>(null);
 
   // Cuando el servidor devuelve otro texto (después de guardar), el campo lo sigue.
   // Si hay cambios sin guardar, el texto del usuario se conserva.
@@ -27,6 +29,21 @@ export function ProyectoInstrucciones({ proyecto }: { proyecto: Project }) {
       void qc.invalidateQueries({ queryKey: ["project", proyecto.id] });
       void qc.invalidateQueries({ queryKey: ["projects"] });
     },
+  });
+
+  // Toma AGENTS.md, CLAUDE.md o README.md del repo y lo añade al final del campo. No guarda nada:
+  // el dueño revisa el texto y lo guarda él, porque un repo ajeno no debe dar órdenes sin revisión.
+  const sugerir = useMutation({
+    mutationFn: () => api.suggestProjectInstructions(proyecto.id),
+    onSuccess: ({ texto: sugerido, fuentes: origen }) => {
+      setGuardado(false);
+      setFuentes(origen);
+      setTexto((actual) => {
+        const previo = actual.trim();
+        return (previo ? `${previo}\n\n${sugerido}` : sugerido).slice(0, MAX_INSTRUCCIONES);
+      });
+    },
+    onError: () => setFuentes(null),
   });
 
   const cambiado = texto !== original;
@@ -70,6 +87,11 @@ export function ProyectoInstrucciones({ proyecto }: { proyecto: Project }) {
             {errorText(guardar.error)}
           </p>
         )}
+        {sugerir.isError && (
+          <p className="error" role="alert">
+            {errorText(sugerir.error)}
+          </p>
+        )}
 
         <div className="savebar">
           {guardado && !cambiado && (
@@ -77,6 +99,19 @@ export function ProyectoInstrucciones({ proyecto }: { proyecto: Project }) {
               Instrucciones guardadas.
             </span>
           )}
+          {fuentes && fuentes.length > 0 && !guardado && (
+            <span className="muted-note" role="status">
+              Añadido desde {fuentes.join(", ")}. Revísalo y guarda.
+            </span>
+          )}
+          <button
+            type="button"
+            className="ghost"
+            disabled={sugerir.isPending || guardar.isPending}
+            onClick={() => sugerir.mutate()}
+          >
+            {sugerir.isPending ? "Leyendo el repo…" : "Llenar desde el repo"}
+          </button>
           <button type="submit" className="primary" disabled={!cambiado || guardar.isPending}>
             {guardar.isPending ? "Guardando…" : "Guardar instrucciones"}
           </button>

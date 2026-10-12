@@ -34,6 +34,8 @@ export type ProjectDetail = {
     sucio: boolean;
   } | null;
   tamano_bytes: number;
+  // Lo que los agentes aprendieron del proyecto. Es nota del agente, no órdenes.
+  memoria: { texto: string | null; actualizada_en: string | null };
 };
 
 export type ProjectFileEntry = {
@@ -308,6 +310,10 @@ export const api = {
       { method: "POST", body: JSON.stringify(body) },
     ),
   getProject: (id: string) => request<ProjectDetail>(`/api/projects/${id}`),
+  // Solo sugiere: el texto se revisa en el campo de instrucciones y se guarda desde ahí.
+  suggestProjectInstructions: (id: string) =>
+    request<{ texto: string; fuentes: string[] }>(`/api/projects/${id}/instrucciones/sugeridas`),
+  clearProjectMemory: (id: string) => request<{ ok: boolean }>(`/api/projects/${id}/memoria`, { method: "DELETE" }),
   listProjectFiles: (id: string, ruta = "") =>
     request<{ ruta: string; entradas: ProjectFileEntry[] }>(
       `/api/projects/${id}/archivos?ruta=${encodeURIComponent(ruta)}`,

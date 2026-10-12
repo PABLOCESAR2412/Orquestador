@@ -158,6 +158,8 @@ async function runTask(task: QueuedTask) {
       signal: controller.signal,
       taskId: task.id,
       projectId: task.project_id,
+      // Las tareas de un proyecto aprenden de él: al terminar, guardan su memoria.
+      aprender: Boolean(task.project_id),
       // Guarda la sesión apenas aparece, para poder reanudar si el servidor se reinicia a mitad.
       onSesion: (sid) => {
         if (sid === task.provider_session_id) return;

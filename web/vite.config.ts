@@ -26,6 +26,11 @@ export default defineConfig({
     VitePWA({
       // "prompt": la versión nueva espera y la app pregunta antes de recargar.
       registerType: "prompt",
+      // El service worker no debe responder las rutas de la API: la vuelta de Google y las descargas
+      // llegan al servidor, no al index.html guardado en caché.
+      workbox: {
+        navigateFallbackDenylist: [/^\/api\//],
+      },
       manifest: {
         name: "Telo",
         short_name: "Telo",

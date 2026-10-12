@@ -7,6 +7,7 @@ import { gitOk, gitSeguro, esRepositorio, GitError, prepararRepoSeguro, tieneGit
 import { ArchivoError, leerArchivo, listarCarpeta, medirCarpeta, normalizarRuta } from "../archivos-proyecto";
 import { redactar } from "../redaccion";
 import { conProyectoRevisado } from "../ocupacion";
+import { ARCHIVOS_GUIA, componerInstrucciones, guardarMemoria } from "../memoria";
 
 // Un proyecto es una carpeta del servidor dentro de TELO_PROYECTOS_DIR.
 // Los chats y las tareas que lo usan trabajan dentro de esa carpeta.
@@ -18,6 +19,8 @@ export type ProjectRow = {
   pinned_at: string | null;
   created_at: string;
   instrucciones: string | null;
+  memoria: string | null;
+  memoria_actualizada_en: string | null;
 };
 
 export class ProjectPathError extends Error {
@@ -97,7 +100,7 @@ export function slugProyecto(nombre: string): string {
     .replace(/-+$/, "");
 }
 
-const COLUMNS = "id, name, repo_path, pinned_at, created_at, instrucciones";
+const COLUMNS = "id, name, repo_path, pinned_at, created_at, instrucciones, memoria, memoria_actualizada_en";
 
 function raizReal(): string | null {
   if (!config.projectsDir) return null;
@@ -313,6 +316,7 @@ projects.get("/projects/:id", async (c) => {
     ultima_tarea: ultima ? leerTareaApi(ultima.id) : null,
     git: datos,
     tamano_bytes: medida.bytes,
+    memoria: { texto: row.memoria, actualizada_en: row.memoria_actualizada_en },
   });
 });
 
@@ -391,4 +395,33 @@ projects.get("/projects/:id/archivo", (c) => {
   } catch (err) {
     return errorArchivo(c, err);
   }
+});
+
+// GET /api/projects/:id/instrucciones/sugeridas -> texto con AGENTS.md, CLAUDE.md y README.md del repo.
+// Solo sugiere: el dueño lo revisa en el campo de instrucciones y lo guarda él. Nada se escribe aquí.
+projects.get("/projects/:id/instrucciones/sugeridas", (c) => {
+  const row = leerProyecto(c.req.param("id"));
+  if (!row) return c.json({ error: "project_not_found" }, 404);
+
+  const docs: { nombre: string; texto: string }[] = [];
+  for (const nombre of ARCHIVOS_GUIA) {
+    try {
+      docs.push({ nombre, texto: leerArchivo(row.repo_path, [nombre]).texto });
+    } catch (err) {
+      // Un archivo que no existe no es un error: se prueba el siguiente.
+      if (!(err instanceof ArchivoError)) throw err;
+    }
+  }
+
+  const { texto, fuentes } = componerInstrucciones(docs, MAX_INSTRUCCIONES);
+  if (!texto) return c.json({ error: "sin_guias" }, 404);
+  return c.json({ texto, fuentes });
+});
+
+// DELETE /api/projects/:id/memoria -> borra la memoria aprendida. La siguiente tarea empieza sin ella.
+projects.delete("/projects/:id/memoria", (c) => {
+  const id = c.req.param("id");
+  if (!leerProyecto(id)) return c.json({ error: "project_not_found" }, 404);
+  guardarMemoria(id, null);
+  return c.json({ ok: true });
 });
