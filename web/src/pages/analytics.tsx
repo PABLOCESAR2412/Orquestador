@@ -3,10 +3,14 @@ import { Link } from "@tanstack/react-router";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api, type Analytics } from "../api";
 import { compact, DailyBars, ModelBars, shortDay } from "../components/charts";
+import { BotonTema } from "../components/tema-boton";
+import { Paginacion } from "../components/paginacion";
 import { useShell } from "../components/shell-context";
 import { errorText, formatUsd } from "../lib/model";
 
 const PERIODS = [7, 30, 90] as const;
+// Filas por página en la tabla de datos diarios.
+const FILAS_POR_PAGINA = 10;
 
 export const usd = (n: number) => {
   if (n === 0) return "US$ 0.00";
@@ -37,6 +41,7 @@ export function AnalyticsPage() {
   // "" significa sin filtro.
   const [proyecto, setProyecto] = useState("");
   const [modelo, setModelo] = useState("");
+  const [pagina, setPagina] = useState(1);
 
   // Mantiene la gráfica anterior mientras llega el nuevo periodo o filtro, sin saltos.
   const query = useQuery({
@@ -54,6 +59,12 @@ export function AnalyticsPage() {
   const modelosOpciones = data ? [...new Set([...data.modelos, ...(modelo ? [modelo] : [])])] : [];
   const filtrado = proyecto !== "" || modelo !== "";
   const sinUso = data !== undefined && data.totals.calls === 0;
+
+  // Tabla de datos diarios: el día más reciente primero, de 10 en 10.
+  const diasTabla = data ? [...data.byDay].reverse() : [];
+  const totalPaginas = Math.max(1, Math.ceil(diasTabla.length / FILAS_POR_PAGINA));
+  const paginaTabla = Math.min(pagina, totalPaginas);
+  const filasTabla = diasTabla.slice((paginaTabla - 1) * FILAS_POR_PAGINA, paginaTabla * FILAS_POR_PAGINA);
 
   return (
     <main className="page">
@@ -80,6 +91,9 @@ export function AnalyticsPage() {
             </p>
           </div>
         </div>
+        <div className="page-acciones">
+          <BotonTema />
+        </div>
       </header>
 
       {/* Filtros en una fila, sobre las gráficas y los indicadores */}
@@ -91,7 +105,10 @@ export function AnalyticsPage() {
               type="button"
               className={`pill${days === p ? " on" : ""}`}
               aria-pressed={days === p}
-              onClick={() => setDays(p)}
+              onClick={() => {
+                setDays(p);
+                setPagina(1);
+              }}
             >
               {p}d
             </button>
@@ -323,7 +340,7 @@ export function AnalyticsPage() {
                 </tr>
               </thead>
               <tbody>
-                {[...data.byDay].reverse().map((d) => (
+                {filasTabla.map((d) => (
                   <tr key={d.day}>
                     <td>{shortDay(d.day)}</td>
                     <td>{usd(d.cost)}</td>
@@ -333,6 +350,12 @@ export function AnalyticsPage() {
                 ))}
               </tbody>
             </table>
+            <Paginacion
+              pagina={paginaTabla}
+              total={diasTabla.length}
+              porPagina={FILAS_POR_PAGINA}
+              onCambio={setPagina}
+            />
           </details>
         </>
       )}

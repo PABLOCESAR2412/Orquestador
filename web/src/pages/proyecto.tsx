@@ -1,12 +1,15 @@
-import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { useState } from "react";
+import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { errorText } from "../lib/model";
 import { useShell } from "../components/shell-context";
+import { BotonTema } from "../components/tema-boton";
 import { ProyectoResumen } from "../components/proyecto-resumen";
 import { ProyectoInstrucciones } from "../components/proyecto-instrucciones";
 import { ProyectoArchivos } from "../components/proyecto-archivos";
 import { ProyectoSecretos } from "../components/proyecto-secretos";
+import { ProyectoSiguientePaso } from "../components/proyecto-siguiente";
 import "../styles-trabajo.css";
 
 // Vista general de un proyecto: resumen, instrucciones, archivos y secretos.
@@ -23,6 +26,12 @@ export function ProjectDetailPage() {
 
   const datos = detalle.data;
   const proyecto = datos?.project;
+
+  // Un proyecto recién creado abre con su paso siguiente: tarea opcional y chat del proyecto.
+  const recienCreado = useRouterState({
+    select: (s) => (s.location.state as unknown as { proyectoNuevo?: boolean } | undefined)?.proyectoNuevo === true,
+  });
+  const [siguienteAbierto, setSiguienteAbierto] = useState(recienCreado);
 
   return (
     <main className="page tr-pagina">
@@ -42,22 +51,29 @@ export function ProjectDetailPage() {
           </div>
         </div>
 
-        {proyecto && (
-          <button
-            type="button"
-            className="primary"
-            onClick={() =>
-              void navigate({
-                to: "/tareas",
-                // La pantalla de tareas abre el formulario con este proyecto elegido.
-                state: (prev) => ({ ...prev, proyectoId: proyecto.id }),
-              })
-            }
-          >
-            Tarea nueva en este proyecto
-          </button>
-        )}
+        <div className="page-acciones">
+          {proyecto && (
+            <button
+              type="button"
+              className="primary"
+              onClick={() =>
+                void navigate({
+                  to: "/tareas",
+                  // La pantalla de tareas abre el formulario con este proyecto elegido.
+                  state: (prev) => ({ ...prev, proyectoId: proyecto.id }),
+                })
+              }
+            >
+              Tarea nueva en este proyecto
+            </button>
+          )}
+          <BotonTema />
+        </div>
       </header>
+
+      {siguienteAbierto && proyecto && (
+        <ProyectoSiguientePaso proyectoId={proyecto.id} onCerrar={() => setSiguienteAbierto(false)} />
+      )}
 
       {detalle.isPending && <p className="muted-note">Cargando el proyecto…</p>}
 
