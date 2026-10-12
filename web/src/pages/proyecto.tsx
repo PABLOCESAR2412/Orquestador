@@ -11,6 +11,7 @@ import { ProyectoMemoria } from "../components/proyecto-memoria";
 import { ProyectoArchivos } from "../components/proyecto-archivos";
 import { ProyectoSecretos } from "../components/proyecto-secretos";
 import { ProyectoSiguientePaso } from "../components/proyecto-siguiente";
+import { ProyectoClave } from "../components/proyecto-clave";
 import "../styles-trabajo.css";
 
 // Vista general de un proyecto: resumen, instrucciones, archivos y secretos.
@@ -101,6 +102,7 @@ export function ProjectDetailPage() {
           <ProyectoMemoria id={proyecto.id} memoria={datos.memoria} />
           <ProyectoArchivos id={proyecto.id} />
           <ProyectoSecretos id={proyecto.id} />
+          <ProyectoClave id={proyecto.id} />
         </>
       )}
     </main>

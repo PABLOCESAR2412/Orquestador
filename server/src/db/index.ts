@@ -263,6 +263,22 @@ const migrations: Migration[] = [
       ALTER TABLE projects ADD COLUMN memoria_actualizada_en TEXT;
     `,
   },
+  {
+    // Clave SSH por proyecto para subir ramas a GitHub (deploy key). La parte privada va cifrada con
+    // AES-256-GCM, igual que project_secrets; la pública y su huella se pueden mostrar.
+    name: "015_clave_ssh_proyecto",
+    sql: `
+      CREATE TABLE project_ssh_keys (
+        project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        public_key TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        iv TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        value_enc TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

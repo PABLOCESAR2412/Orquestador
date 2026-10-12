@@ -18,6 +18,7 @@ import { join, resolve } from "node:path";
 import { config } from "./config";
 import { db } from "./db";
 import { registrarEvento } from "./eventos";
+import { clavePublicaDe, conClaveSsh, urlSshDeGithub } from "./clave-ssh";
 import {
   esRepositorio,
   gitOk,
@@ -36,7 +37,8 @@ import { valorSecreto, valoresDeProyecto } from "./secretos";
 // El clon lo escribe un agente que corre aislado, así que su .git no es de confianza: antes de
 // cada operación de Git se sanea su configuración. La subida nunca usa el remoto del clon: usa la
 // URL que se guardó al crear el clon en remoto.txt (DATA_DIR/tasks/<id>, fuera del alcance del
-// agente), y solo se admite https://github.com/<dueño>/<repo>.
+// agente), y solo se admite https://github.com/<dueño>/<repo>. Si el proyecto tiene clave SSH
+// (clave-ssh.ts), la subida va por SSH con esa clave; si no, por HTTPS con su GITHUB_TOKEN.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -544,14 +546,28 @@ async function subirAprobado(taskId: string, ctx: Contexto, hash: string): Promi
   if (estado.hash !== hash) throw new ErrorTarea("cambios_cambiaron", 409);
 
   // Sin force: un push rechazado por no ser fast-forward no pisa nada.
-  const token = ctx.projectId ? valorSecreto(ctx.projectId, "GITHUB_TOKEN") || null : null;
+  // Con clave SSH del proyecto, la subida va por SSH con esa clave. Sin ella, va por HTTPS con el
+  // GITHUB_TOKEN del proyecto, si existe. La clave tiene prioridad: el token no se usa si hay clave.
+  const refspec = `${head}:refs/heads/${ctx.rama}`;
+  const destinoSsh = ctx.projectId && clavePublicaDe(ctx.projectId) ? urlSshDeGithub(remoto) : null;
+  const token = ctx.projectId && !destinoSsh ? valorSecreto(ctx.projectId, "GITHUB_TOKEN") || null : null;
   const credenciales = opcionesDeCredenciales(token);
   try {
-    await gitOkSeguro([...credenciales.args, "push", remoto, `${head}:refs/heads/${ctx.rama}`], {
-      cwd: ctx.clon,
-      env: credenciales.env,
-      timeoutMs: TIEMPO_PUSH_MS,
-    });
+    if (destinoSsh && ctx.projectId) {
+      await conClaveSsh(ctx.projectId, (entorno) =>
+        gitOkSeguro([...opcionesDeCredenciales(null).args, "push", destinoSsh, refspec], {
+          cwd: ctx.clon,
+          env: entorno,
+          timeoutMs: TIEMPO_PUSH_MS,
+        }),
+      );
+    } else {
+      await gitOkSeguro([...credenciales.args, "push", remoto, refspec], {
+        cwd: ctx.clon,
+        env: credenciales.env,
+        timeoutMs: TIEMPO_PUSH_MS,
+      });
+    }
   } catch (err) {
     const detalle = mensajeSeguro(err, token).slice(0, 600);
     registrarEvento(taskId, "push_fallido", detalle);

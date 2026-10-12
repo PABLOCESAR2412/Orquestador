@@ -51,6 +51,15 @@ export type ProjectSecretsList = {
   secretos: { nombre: string; actualizado_en: string }[];
 };
 
+// Clave SSH del proyecto (deploy key). La privada nunca llega al navegador.
+export type ProjectSshKey = {
+  disponible: boolean;
+  existe: boolean;
+  publica: string | null;
+  huella: string | null;
+  creada_en: string | null;
+};
+
 export type Programada = {
   id: string;
   titulo: string;
@@ -321,6 +330,10 @@ export const api = {
     ),
   deleteProjectSecret: (id: string, nombre: string) =>
     request<{ ok: boolean }>(`/api/projects/${id}/secretos/${encodeURIComponent(nombre)}`, { method: "DELETE" }),
+  getProjectSshKey: (id: string) => request<ProjectSshKey>(`/api/projects/${id}/clave-ssh`),
+  createProjectSshKey: (id: string) => request<ProjectSshKey>(`/api/projects/${id}/clave-ssh`, { method: "POST" }),
+  deleteProjectSshKey: (id: string) =>
+    request<{ ok: boolean }>(`/api/projects/${id}/clave-ssh`, { method: "DELETE" }),
   listProgramadas: () => request<Programada[]>("/api/programadas"),
   createProgramada: (body: ProgramadaInput) =>
     request<Programada>("/api/programadas", { method: "POST", body: JSON.stringify(body) }),
