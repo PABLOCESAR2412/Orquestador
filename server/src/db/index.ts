@@ -255,6 +255,14 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    // Memoria del proyecto: lo que los agentes aprenden de sus tareas. Se llena sola y el dueño puede borrarla.
+    name: "014_memoria_proyecto",
+    sql: `
+      ALTER TABLE projects ADD COLUMN memoria TEXT;
+      ALTER TABLE projects ADD COLUMN memoria_actualizada_en TEXT;
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

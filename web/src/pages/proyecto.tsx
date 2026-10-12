@@ -7,6 +7,7 @@ import { useShell } from "../components/shell-context";
 import { BotonTema } from "../components/tema-boton";
 import { ProyectoResumen } from "../components/proyecto-resumen";
 import { ProyectoInstrucciones } from "../components/proyecto-instrucciones";
+import { ProyectoMemoria } from "../components/proyecto-memoria";
 import { ProyectoArchivos } from "../components/proyecto-archivos";
 import { ProyectoSecretos } from "../components/proyecto-secretos";
 import { ProyectoSiguientePaso } from "../components/proyecto-siguiente";
@@ -97,6 +98,7 @@ export function ProjectDetailPage() {
         <>
           <ProyectoResumen detalle={datos} />
           <ProyectoInstrucciones proyecto={proyecto} />
+          <ProyectoMemoria id={proyecto.id} memoria={datos.memoria} />
           <ProyectoArchivos id={proyecto.id} />
           <ProyectoSecretos id={proyecto.id} />
         </>
