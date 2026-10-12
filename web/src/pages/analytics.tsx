@@ -1,23 +1,23 @@
 import { useState, type ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { api, type Analytics } from "../api";
-import { compact, DailyBars, ModelBars, shortDay } from "../components/charts";
-import { BotonTema } from "../components/tema-boton";
+import { api, type Analytics, type Task } from "../api";
+import { compact } from "../components/charts";
+import { diaCompleto, VolumenLlamadas } from "../components/an-volumen";
 import { Paginacion } from "../components/paginacion";
-import { useShell } from "../components/shell-context";
+import { cuando } from "../components/tarea-formato";
+import { agenteDeTarea, duracionSeg, fechaUtc, nombreAgente } from "../lib/tareas-vista";
 import { errorText, formatUsd } from "../lib/model";
+import "../styles-analiticas.css";
 
 const PERIODS = [7, 30, 90] as const;
-// Filas por página en la tabla de datos diarios.
 const FILAS_POR_PAGINA = 10;
+const DIA_MS = 86_400_000;
 
 export const usd = (n: number) => {
   if (n === 0) return "US$ 0.00";
   return formatUsd(n);
 };
 
-// Duración media de las tareas: "45 s", "2 min 30 s", "1 h 5 min".
 export function formatDuracion(seg: number | null): string {
   if (seg === null) return "—";
   const total = Math.round(seg);
@@ -35,15 +35,22 @@ const BUDGET_LABEL: Record<"ok" | "alerta" | "excedido", string> = {
   excedido: "Excedido",
 };
 
+// Tiempo de cómputo estimado: duración media de cada modelo (ponderada por sus tareas) × tareas hechas.
+// El servidor no suma la duración de cada tarea, así que es una estimación y se muestra como tal.
+export function tiempoComputoSeg(data: Analytics): number | null {
+  const medidos = data.byModel.filter((m) => m.duracionMediaSeg !== null && m.tareas > 0);
+  const pesos = medidos.reduce((s, m) => s + m.tareas, 0);
+  if (pesos === 0 || data.tasks.done === 0) return null;
+  const media = medidos.reduce((s, m) => s + (m.duracionMediaSeg ?? 0) * m.tareas, 0) / pesos;
+  return media * data.tasks.done;
+}
+
 export function AnalyticsPage() {
-  const { toggleDrawer } = useShell();
   const [days, setDays] = useState<number>(30);
-  // "" significa sin filtro.
   const [proyecto, setProyecto] = useState("");
   const [modelo, setModelo] = useState("");
   const [pagina, setPagina] = useState(1);
 
-  // Mantiene la gráfica anterior mientras llega el nuevo periodo o filtro, sin saltos.
   const query = useQuery({
     queryKey: ["analytics", days, proyecto, modelo],
     queryFn: () => api.getAnalytics(days, { proyecto: proyecto || null, modelo: modelo || null }),
@@ -51,337 +58,365 @@ export function AnalyticsPage() {
   });
   const data: Analytics | undefined = query.data;
   const models = useQuery({ queryKey: ["models"], queryFn: api.listModels, staleTime: 5 * 60_000 });
+  const tareas = useQuery({ queryKey: ["tasks"], queryFn: api.listTasks });
   const names = new Map((models.data?.models ?? []).map((m) => [m.id, m.name]));
   const nombreModelo = (id: string) => names.get(id) ?? id;
 
-  // Opciones de los filtros: las que manda el servidor, más el modelo elegido por si ya no aparece.
   const proyectosOpciones = data?.proyectos ?? [];
   const modelosOpciones = data ? [...new Set([...data.modelos, ...(modelo ? [modelo] : [])])] : [];
   const filtrado = proyecto !== "" || modelo !== "";
   const sinUso = data !== undefined && data.totals.calls === 0;
 
-  // Tabla de datos diarios: el día más reciente primero, de 10 en 10.
-  const diasTabla = data ? [...data.byDay].reverse() : [];
-  const totalPaginas = Math.max(1, Math.ceil(diasTabla.length / FILAS_POR_PAGINA));
+  // Ejecuciones: las tareas del periodo con los mismos filtros. La lista llega con las 50 más recientes.
+  const inicioPeriodo = Date.now() - days * DIA_MS;
+  const ejecuciones: Task[] = (tareas.data ?? []).filter(
+    (t) =>
+      fechaUtc(t.created_at).getTime() >= inicioPeriodo &&
+      (!proyecto || t.project_id === proyecto) &&
+      (!modelo || t.model === modelo),
+  );
+  const totalPaginas = Math.max(1, Math.ceil(ejecuciones.length / FILAS_POR_PAGINA));
   const paginaTabla = Math.min(pagina, totalPaginas);
-  const filasTabla = diasTabla.slice((paginaTabla - 1) * FILAS_POR_PAGINA, paginaTabla * FILAS_POR_PAGINA);
+  const filasTabla = ejecuciones.slice((paginaTabla - 1) * FILAS_POR_PAGINA, paginaTabla * FILAS_POR_PAGINA);
+
+  const tiempo = data ? tiempoComputoSeg(data) : null;
+  const primerDia = data?.byDay[0]?.day;
+  const ultimoDia = data?.byDay.at(-1)?.day;
+  const rango = primerDia && ultimoDia ? `Del ${diaCompleto(primerDia)} al ${diaCompleto(ultimoDia)}` : "";
+  const maxModelo = data ? Math.max(0, ...data.byModel.map((r) => r.tokens)) : 0;
+  const totalCosto = data ? data.byModel.reduce((s, r) => s + r.cost, 0) : 0;
 
   return (
-    <main className="page">
-      <header className="page-head">
-        <div className="page-title-row">
-          <button
-            type="button"
-            className="ghost menu-btn"
-            aria-label="Abrir menú"
-            onClick={toggleDrawer}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-              <path d="M4 7h16M4 12h16M4 17h10" />
-            </svg>
-          </button>
-          <div>
-            <div className="page-meta-badge">
-              <span className="pill-dot is-live" aria-hidden="true" />
-              <span>Métricas de Infraestructura</span>
-            </div>
-            <h1>Analíticas de Consumo</h1>
-            <p className="page-desc">
-              Monitoreo de tokens, costos y tareas en tu servidor.
+    <div className="page-wrap an-pagina">
+      <main className="container an-principal">
+        <header className="an-cabecera">
+          <div className="an-cabecera-texto">
+            <p className="an-eyebrow">
+              <span>Métricas del sistema</span>
+              <span className="an-eyebrow-sep" aria-hidden="true">·</span>
+              <span>Instancia local</span>
             </p>
+            <h1 className="an-titulo">Analíticas de consumo</h1>
+            <p className="an-subtitulo">Métricas de tokens, gasto estimado y tiempo de cómputo en tu servidor.</p>
           </div>
+          <div className="an-cabecera-acciones">
+            <nav aria-label="Periodo" className="an-segmentado" role="group">
+              {PERIODS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className="an-periodo"
+                  aria-pressed={days === p}
+                  aria-label={`${p} días`}
+                  onClick={() => {
+                    setDays(p);
+                    setPagina(1);
+                  }}
+                >
+                  {p}d
+                </button>
+              ))}
+            </nav>
+          </div>
+        </header>
+
+        <div className="an-filtros">
+          <label className="an-campo">
+            <span className="an-campo-etiqueta">Proyecto</span>
+            <select className="an-select" value={proyecto} onChange={(e) => setProyecto(e.target.value)}>
+              <option value="">Todos los proyectos</option>
+              {proyectosOpciones.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="an-campo">
+            <span className="an-campo-etiqueta">Modelo</span>
+            <select className="an-select" value={modelo} onChange={(e) => setModelo(e.target.value)}>
+              <option value="">Todos los modelos</option>
+              {modelosOpciones.map((id) => (
+                <option key={id} value={id}>
+                  {nombreModelo(id)}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
-        <div className="page-acciones">
-          <BotonTema />
-        </div>
-      </header>
 
-      {/* Filtros en una fila, sobre las gráficas y los indicadores */}
-      <div className="analitica-filtros">
-        <div className="period" role="group" aria-label="Periodo">
-          {PERIODS.map((p) => (
-            <button
-              key={p}
-              type="button"
-              className={`pill${days === p ? " on" : ""}`}
-              aria-pressed={days === p}
-              onClick={() => {
-                setDays(p);
-                setPagina(1);
-              }}
-            >
-              {p}d
-            </button>
-          ))}
-        </div>
-        <label className="filtro-campo">
-          <span>Proyecto</span>
-          <select className="filtro-select" value={proyecto} onChange={(e) => setProyecto(e.target.value)}>
-            <option value="">Todos los proyectos</option>
-            {proyectosOpciones.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="filtro-campo">
-          <span>Modelo</span>
-          <select className="filtro-select" value={modelo} onChange={(e) => setModelo(e.target.value)}>
-            <option value="">Todos los modelos</option>
-            {modelosOpciones.map((id) => (
-              <option key={id} value={id}>
-                {nombreModelo(id)}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+        {query.isPending && !data && <p className="muted-note">Cargando analíticas…</p>}
 
-      {query.isPending && !data && <p className="muted-note">Cargando analíticas…</p>}
-
-      {query.isError && (
-        <div className="estado-linea">
-          <p className="error" role="alert">
-            {errorText(query.error)}
-          </p>
-          <button type="button" className="ghost" onClick={() => void query.refetch()}>
-            Reintentar
-          </button>
-        </div>
-      )}
-
-      {sinUso && (
-        <p className="muted-note">
-          {filtrado
-            ? "Sin uso con estos filtros en este periodo. Prueba otro proyecto o modelo, o quita los filtros."
-            : "Todavía no hay uso en este periodo."}
-        </p>
-      )}
-
-      {data && (
-        <>
-          <section className="kpis" aria-label="Resumen de consumo">
-            <Kpi
-              label="Gasto Total Estimado"
-              value={usd(data.totals.cost)}
-              hint={`Últimos ${data.days} días`}
-              icon={
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="4" width="20" height="16" rx="2" />
-                  <line x1="12" y1="8" x2="12" y2="16" />
-                  <line x1="8" y1="12" x2="16" y2="12" />
-                </svg>
-              }
-            />
-            <Kpi
-              label="Tokens Procesados"
-              value={compact(data.totals.inputTokens + data.totals.outputTokens)}
-              hint={
-                <span>
-                  In: {compact(data.totals.inputTokens)} • Out: {compact(data.totals.outputTokens)}
-                </span>
-              }
-              icon={
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="9" />
-                  <polyline points="12 3 12 12 18 12" />
-                </svg>
-              }
-            />
-            <Kpi
-              label="Llamadas Registradas"
-              value={compact(data.totals.calls)}
-              hint="A modelos de lenguaje"
-              icon={
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                </svg>
-              }
-            />
-            <Kpi
-              label="Tareas del Servidor"
-              value={`${data.tasks.done} hechas`}
-              hint={
-                <span>
-                  {data.tasks.failed} fallidas • {data.tasks.queued + data.tasks.running} activas
-                </span>
-              }
-              icon={
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="4 17 10 11 4 5" />
-                  <line x1="12" y1="19" x2="20" y2="19" />
-                </svg>
-              }
-            />
+        {query.isError && (
+          <section className="an-panel" aria-live="polite">
+            <p className="error" role="alert">
+              {errorText(query.error)}
+            </p>
+            <div>
+              <button type="button" className="an-boton" onClick={() => void query.refetch()}>
+                Reintentar
+              </button>
+            </div>
           </section>
+        )}
 
-          <section className="panel">
-            <div className="card-top">
-              <div className="panel-title-with-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4" />
-                  <path d="M4 6v12a2 2 0 0 0 2 2h14v-4" />
-                  <path d="M18 12a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h4v-8h-4z" />
-                </svg>
-                <h2>Presupuesto del mes</h2>
+        {sinUso && (
+          <p className="muted-note">
+            {filtrado
+              ? "Sin uso con estos filtros en este periodo. Prueba otro proyecto o modelo, o quita los filtros."
+              : "Todavía no hay uso en este periodo."}
+          </p>
+        )}
+
+        {data && (
+          <>
+            <section className="an-kpis" aria-label="Resumen de consumo">
+              <Kpi
+                etiqueta="Gasto estimado"
+                valor={usd(data.totals.cost)}
+                pie={`Últimos ${data.days} días`}
+                icono={
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="6" width="20" height="12" rx="2" />
+                    <circle cx="12" cy="12" r="2.5" />
+                  </svg>
+                }
+              />
+              <Kpi
+                etiqueta="Tokens procesados"
+                valor={compact(data.totals.inputTokens + data.totals.outputTokens)}
+                pie={`Prompt ${compact(data.totals.inputTokens)} · Completion ${compact(data.totals.outputTokens)}`}
+                icono={
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                    <line x1="12" y1="22.08" x2="12" y2="12" />
+                  </svg>
+                }
+              />
+              <Kpi
+                etiqueta="Tiempo de cómputo"
+                valor={formatDuracion(tiempo)}
+                pie={
+                  data.tasks.done > 0
+                    ? `Estimado: ${data.tasks.done} ${data.tasks.done === 1 ? "tarea hecha" : "tareas hechas"}`
+                    : "Sin tareas terminadas"
+                }
+                icono={
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                }
+              />
+            </section>
+
+            <section className="an-panel" aria-labelledby="an-volumen-titulo">
+              <div className="an-panel-cabeza">
+                <div className="an-panel-texto">
+                  <h2 id="an-volumen-titulo" className="an-panel-titulo">Volumen de llamadas diarias</h2>
+                  <p className="an-panel-sub">{rango ? `${rango} · ${data.days} días` : `${data.days} días`}</p>
+                </div>
+                <div className="an-leyenda" aria-hidden="true">
+                  <span>
+                    <i className="an-leyenda-punto is-hoy" />
+                    Día actual
+                  </span>
+                  <span>
+                    <i className="an-leyenda-punto" />
+                    Otros días
+                  </span>
+                </div>
               </div>
+              <VolumenLlamadas
+                data={data.byDay}
+                titulo={`Llamadas por día en los últimos ${data.days} días`}
+              />
+            </section>
+
+            <div className={`an-rejilla${data.budget ? " es-doble" : ""}`}>
+              <section className="an-panel" aria-labelledby="an-modelos-titulo">
+                <div className="an-panel-cabeza">
+                  <div className="an-panel-texto">
+                    <h2 id="an-modelos-titulo" className="an-panel-titulo">Distribución por modelo</h2>
+                    <p className="an-panel-sub">Consumo agrupado de tokens y coste</p>
+                  </div>
+                  <span className="an-chip">{data.byModel.length} activos</span>
+                </div>
+
+                {data.byModel.length === 0 ? (
+                  <p className="muted-note">Todavía no hay uso en este periodo.</p>
+                ) : (
+                  <ul className="an-modelos" aria-label="Uso por modelo">
+                    {data.byModel.map((r) => {
+                      const proporcion = totalCosto > 0 ? r.cost / totalCosto : maxModelo > 0 ? r.tokens / maxModelo : 0;
+                      return (
+                        <li key={r.model} className="an-modelo">
+                          <div className="an-modelo-linea">
+                            <span className="an-modelo-nombre" title={r.model}>
+                              {nombreModelo(r.model)}
+                            </span>
+                            <span className="an-modelo-valor">
+                              {compact(r.tokens)} tok • {usd(r.cost)}
+                            </span>
+                          </div>
+                          <div className="an-pista" aria-hidden="true">
+                            <span className="an-pista-relleno" style={{ width: `${Math.round(proporcion * 100)}%` }} />
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+
               {data.budget && (
-                <span className={`badge ${data.budget.status === "ok" ? "badge-ok" : data.budget.status === "alerta" ? "badge-signal" : "badge-error"}`}>
-                  {BUDGET_LABEL[data.budget.status]}
-                </span>
+                <section className="an-panel" aria-labelledby="an-presupuesto-titulo">
+                  <div className="an-panel-cabeza">
+                    <div className="an-panel-texto">
+                      <h2 id="an-presupuesto-titulo" className="an-panel-titulo">Presupuesto del mes</h2>
+                      <p className="an-panel-sub">Mes calendario en UTC</p>
+                    </div>
+                    <span
+                      className={`badge ${data.budget.status === "ok" ? "badge-ok" : data.budget.status === "alerta" ? "badge-signal" : "badge-error"}`}
+                    >
+                      {BUDGET_LABEL[data.budget.status]}
+                    </span>
+                  </div>
+                  <div className="budget">
+                    <div className="budget-row">
+                      <span>
+                        {usd(data.budget.spentUsd)} de {usd(data.budget.monthlyUsd)}
+                      </span>
+                      <span className={`budget-status is-${data.budget.status}`}>
+                        {data.budget.percent} %
+                      </span>
+                    </div>
+                    <div className="budget-track" aria-hidden="true">
+                      <div
+                        className={`budget-fill is-${data.budget.status}`}
+                        style={{ width: `${Math.min(data.budget.percent, 100)}%` }}
+                      />
+                    </div>
+                    <p className="an-nota">Aviso al {data.budget.alertPercent} %.</p>
+                  </div>
+                </section>
               )}
             </div>
-            {data.budget ? (
-              <div className="budget">
-                <div className="budget-row">
-                  <span>
-                    {usd(data.budget.spentUsd)} de {usd(data.budget.monthlyUsd)}
-                  </span>
-                  <span className={`budget-status is-${data.budget.status}`}>
-                    {BUDGET_LABEL[data.budget.status]} · {data.budget.percent} %
-                  </span>
+
+            <section className="an-panel" aria-labelledby="an-ejecuciones-titulo">
+              <div className="an-panel-cabeza">
+                <div className="an-panel-texto">
+                  <h2 id="an-ejecuciones-titulo" className="an-panel-titulo">Ejecuciones recientes</h2>
+                  <p className="an-panel-sub">Tareas del periodo, de las 50 más recientes</p>
                 </div>
-                <div className="budget-track" aria-hidden="true">
-                  <div
-                    className={`budget-fill is-${data.budget.status}`}
-                    style={{ width: `${Math.min(data.budget.percent, 100)}%` }}
-                  />
-                </div>
-                <p className="muted-note">Aviso al {data.budget.alertPercent} %.</p>
+                <button
+                  type="button"
+                  className="an-boton"
+                  disabled
+                  title="La exportación a CSV todavía no está disponible en este servidor."
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                  </svg>
+                  Exportar CSV
+                </button>
               </div>
-            ) : (
-              <p className="muted-note">
-                Sin presupuesto. <Link to="/ajustes" className="foot-link">Define uno en Ajustes</Link>.
-              </p>
-            )}
-          </section>
 
-          <section className="panel">
-            <div className="card-top">
-              <div className="panel-title-with-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <line x1="18" y1="20" x2="18" y2="10" />
-                  <line x1="12" y1="20" x2="12" y2="4" />
-                  <line x1="6" y1="20" x2="6" y2="14" />
-                </svg>
-                <h2>Volumen Diario de Ejecución</h2>
-              </div>
-              <span className="panel-tag">Total: {usd(data.totals.cost)}</span>
-            </div>
-            <DailyBars
-              data={data.byDay}
-              formatValue={usd}
-              title={`Costo por día en los últimos ${data.days} días`}
-            />
-          </section>
-
-          <section className="panel">
-            <div className="card-top">
-              <div className="panel-title-with-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <rect x="3" y="11" width="18" height="10" rx="2" />
-                  <circle cx="12" cy="5" r="2" />
-                  <path d="M12 7v4" />
-                  <line x1="8" y1="16" x2="8" y2="16" />
-                  <line x1="16" y1="16" x2="16" y2="16" />
-                </svg>
-                <h2>Desglose por Agente de IA</h2>
-              </div>
-              <span className="panel-tag">{data.byModel.length} modelos registrados</span>
-            </div>
-            <ModelBars
-              rows={data.byModel.map((r) => ({ ...r, model: nombreModelo(r.model) }))}
-              formatValue={usd}
-            />
-
-            {data.byModel.length > 0 && (
-              <div className="tabla-scroll">
-                <table className="comparacion">
-                  <caption>Comparación por modelo en los últimos {data.days} días</caption>
+              <div className="an-tabla-caja">
+                <table className="an-tabla" aria-labelledby="an-ejecuciones-titulo">
                   <thead>
                     <tr>
-                      <th scope="col">Modelo</th>
-                      <th scope="col">Costo</th>
-                      <th scope="col">Tokens</th>
-                      <th scope="col">Llamadas</th>
-                      <th scope="col">Tareas</th>
-                      <th scope="col">Duración media</th>
-                      <th scope="col">Costo por tarea</th>
+                      <th scope="col">Marca temporal</th>
+                      <th scope="col">Modelo / agente</th>
+                      <th scope="col" className="an-numero">Tokens</th>
+                      <th scope="col" className="an-numero">Duración</th>
+                      <th scope="col" className="an-numero">Coste estimado</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.byModel.map((r) => (
-                      <tr key={r.model}>
-                        <th scope="row">{nombreModelo(r.model)}</th>
-                        <td>{usd(r.cost)}</td>
-                        <td>{compact(r.tokens)}</td>
-                        <td>{r.calls}</td>
-                        <td>{r.tareas}</td>
-                        <td>{formatDuracion(r.duracionMediaSeg)}</td>
-                        <td>{r.costoPorTareaUsd === null ? "—" : usd(r.costoPorTareaUsd)}</td>
+                    {filasTabla.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="an-tabla-vacia">
+                          Sin ejecuciones en este periodo.
+                        </td>
                       </tr>
-                    ))}
+                    )}
+                    {filasTabla.map((t) => {
+                      const seg = duracionSeg(t);
+                      const duracionTexto = t.status === "running" ? "en curso" : formatDuracion(seg);
+                      return (
+                        <tr key={t.id}>
+                          <th scope="row" data-etiqueta="Marca temporal">
+                            {cuando(t.started_at ?? t.created_at)}
+                          </th>
+                          <td data-etiqueta="Modelo / agente" className="an-celda-modelo">
+                            <span className="an-modelo-nombre">{nombreModelo(t.model)}</span>
+                            <span className="an-chip">{nombreAgente(agenteDeTarea(t))}</span>
+                          </td>
+                          <td data-etiqueta="Tokens" className="an-numero an-sin-dato" title="El servidor no guarda el uso por tarea">
+                            —
+                          </td>
+                          <td data-etiqueta="Duración" className="an-numero">
+                            {duracionTexto}
+                          </td>
+                          <td data-etiqueta="Coste estimado" className="an-numero an-sin-dato" title="El servidor no guarda el coste por tarea">
+                            —
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
-            )}
-          </section>
 
-          <details className="panel data-table">
-            <summary>Ver datos en tabla</summary>
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Día</th>
-                  <th scope="col">Costo</th>
-                  <th scope="col">Tokens</th>
-                  <th scope="col">Llamadas</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filasTabla.map((d) => (
-                  <tr key={d.day}>
-                    <td>{shortDay(d.day)}</td>
-                    <td>{usd(d.cost)}</td>
-                    <td>{compact(d.tokens)}</td>
-                    <td>{d.calls}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <Paginacion
-              pagina={paginaTabla}
-              total={diasTabla.length}
-              porPagina={FILAS_POR_PAGINA}
-              onCambio={setPagina}
-            />
-          </details>
-        </>
-      )}
-    </main>
+              <div className="an-pie-tabla">
+                <span className="an-pie-estado">
+                  {ejecuciones.length === 0
+                    ? "Sin ejecuciones"
+                    : `Mostrando ${(paginaTabla - 1) * FILAS_POR_PAGINA + 1}–${Math.min(paginaTabla * FILAS_POR_PAGINA, ejecuciones.length)} de ${ejecuciones.length} ejecuciones`}
+                </span>
+                <Paginacion
+                  pagina={paginaTabla}
+                  total={ejecuciones.length}
+                  porPagina={FILAS_POR_PAGINA}
+                  onCambio={setPagina}
+                />
+              </div>
+              <p className="an-nota">
+                El servidor no entrega tokens ni coste por tarea. Los totales de arriba sí vienen del uso registrado.
+              </p>
+            </section>
+          </>
+        )}
+      </main>
+    </div>
   );
 }
 
 function Kpi({
-  label,
-  value,
-  hint,
-  icon,
+  etiqueta,
+  valor,
+  pie,
+  icono,
 }: {
-  label: string;
-  value: string;
-  hint?: ReactNode;
-  icon?: ReactNode;
+  etiqueta: string;
+  valor: string;
+  pie?: ReactNode;
+  icono?: ReactNode;
 }) {
   return (
-    <div className="kpi">
-      <div className="kpi-head">
-        <span className="kpi-label">{label}</span>
-        {icon && <span className="kpi-icon" aria-hidden="true">{icon}</span>}
+    <div className="an-kpi">
+      <div className="an-kpi-cabeza">
+        <span className="an-kpi-etiqueta">{etiqueta}</span>
+        {icono && (
+          <span className="an-kpi-icono" aria-hidden="true">
+            {icono}
+          </span>
+        )}
       </div>
-      <div className="kpi-value">{value}</div>
-      {hint && <div className="kpi-foot">{hint}</div>}
+      <div className="an-kpi-valor">{valor}</div>
+      {pie && <div className="an-kpi-pie">{pie}</div>}
     </div>
   );
 }

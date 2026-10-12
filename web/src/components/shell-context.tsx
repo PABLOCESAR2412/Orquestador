@@ -3,7 +3,6 @@ import {
   useContext,
   useState,
   useCallback,
-  useEffect,
   type ReactNode,
 } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
@@ -18,6 +17,10 @@ interface ShellContextType {
   newTaskOpen: boolean;
   setNewTaskOpen: (open: boolean) => void;
   triggerNewTask: () => void;
+  paletteOpen: boolean;
+  setPaletteOpen: (open: boolean) => void;
+  triggerPalette: () => void;
+  closePalette: () => void;
 }
 
 const ShellContext = createContext<ShellContextType | null>(null);
@@ -26,11 +29,15 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const navigate = useNavigate();
   const routerState = useRouterState();
 
   const toggleDrawer = useCallback(() => setDrawerOpen((prev) => !prev), []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+
+  const triggerPalette = useCallback(() => setPaletteOpen(true), []);
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
 
   const triggerNewTask = useCallback(() => {
     setNewTaskOpen(true);
@@ -41,28 +48,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     }
   }, [closeDrawer, navigate, routerState.location.pathname]);
 
-  // Shortcut ⌘N / Ctrl+N para nueva tarea
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Solo ⌘N o Ctrl+N: Ctrl+Shift+N (ventana privada) y Alt siguen siendo del navegador.
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "n") {
-        const target = e.target as HTMLElement | null;
-        if (
-          target &&
-          (target.tagName === "INPUT" ||
-            target.tagName === "TEXTAREA" ||
-            target.isContentEditable)
-        ) {
-          return;
-        }
-        e.preventDefault();
-        triggerNewTask();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [triggerNewTask]);
-
+  // El atajo ⌘N / Ctrl+N vive en Shell: según la pantalla crea un chat o abre una tarea.
   return (
     <ShellContext.Provider
       value={{
@@ -75,6 +61,10 @@ export function ShellProvider({ children }: { children: ReactNode }) {
         newTaskOpen,
         setNewTaskOpen,
         triggerNewTask,
+        paletteOpen,
+        setPaletteOpen,
+        triggerPalette,
+        closePalette,
       }}
     >
       {children}

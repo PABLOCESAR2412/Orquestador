@@ -44,14 +44,14 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
   let cuerpo: ReactNode;
   if (!proveedorId) {
     cuerpo = (
-      <p className="muted-note">
+      <p className="usage-note">
         {modelo
           ? "No se reconoce el proveedor de este modelo."
           : "El modelo predeterminado lo elige el servidor. Elige un modelo para ver el uso de su proveedor."}
       </p>
     );
   } else if (uso.isPending) {
-    cuerpo = <p className="muted-note">Cargando uso…</p>;
+    cuerpo = <p className="usage-note">Cargando uso…</p>;
   } else if (uso.isError) {
     cuerpo = (
       <div className="estado-linea">
@@ -64,20 +64,53 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
       </div>
     );
   } else if (!proveedor || proveedor.precision === "sin_datos") {
-    cuerpo = <p className="muted-note">Todavía no hay uso registrado de este proveedor.</p>;
+    cuerpo = (
+      <>
+        <div className="usage-window">
+          <span className="window-label">Últimas 5 horas</span>
+          <div className="window-data">
+            <span>0 tokens</span>
+            <span>$0.00</span>
+          </div>
+        </div>
+        <div className="usage-window">
+          <span className="window-label">Últimos 7 días</span>
+          <div className="window-data">
+            <span>0 tokens</span>
+            <span>$0.00</span>
+          </div>
+        </div>
+        <p className="usage-note">
+          Los límites de 5 horas y semanales del proveedor no se leen de su API. Estas cifras son lo que Telo registró.
+        </p>
+      </>
+    );
   } else {
     cuerpo = (
       <>
-        <div className="uso-ventanas">
-          <VentanaUso titulo="Últimas 5 horas" datos={proveedor.ultimas5h} />
-          <VentanaUso titulo="Últimos 7 días" datos={proveedor.ultimos7d} />
+        <div className="usage-window">
+          <span className="window-label">Últimas 5 horas</span>
+          <div className="window-data">
+            <span>{compact(proveedor.ultimas5h.tokens)} tokens</span>
+            <span>{formatUsd(proveedor.ultimas5h.costoUsd)}</span>
+          </div>
+        </div>
+        <div className="usage-window">
+          <span className="window-label">Últimos 7 días</span>
+          <div className="window-data">
+            <span>{compact(proveedor.ultimos7d.tokens)} tokens</span>
+            <span>{formatUsd(proveedor.ultimos7d.costoUsd)}</span>
+          </div>
         </div>
         {proveedor.cuotaRestanteUsd !== null && (
-          <p className="uso-saldo">
-            Saldo restante estimado: <strong>{formatUsd(proveedor.cuotaRestanteUsd)}</strong>
-          </p>
+          <div className="usage-window">
+            <span className="window-label">Saldo restante estimado</span>
+            <div className="window-data">
+              <span>{formatUsd(proveedor.cuotaRestanteUsd)}</span>
+            </div>
+          </div>
         )}
-        <p className="muted-note">
+        <p className="usage-note">
           Los límites de 5 horas y semanales del proveedor no se leen de su API. Estas cifras son lo que Telo registró.
         </p>
       </>
@@ -87,19 +120,18 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
   return (
     <>
       <div className="scrim" onClick={cerrar} />
-      <div className="uso-panel" role="dialog" aria-label="Uso del proveedor" ref={ref}>
-        <div className="uso-panel-head">
-          <h2>{proveedor?.nombre ?? proveedorId ?? "Uso"}</h2>
-          {medido && <span className="badge badge-neutral">Medido por Telo</span>}
+      <div className="usage-popover" role="dialog" aria-label="Uso del proveedor" ref={ref}>
+        <div className="usage-title-row">
+          <span className="usage-title">{proveedor?.nombre ?? proveedorId ?? "Uso de proveedor"}</span>
           <button type="button" className="ghost task-mini-btn" onClick={cerrar}>
-            Cerrar
+            ✕
           </button>
         </div>
 
         {cuerpo}
 
-        <button type="button" className="ghost" aria-expanded={anotando} onClick={() => setAnotando((v) => !v)}>
-          {anotando ? "Ocultar saldos" : "Anotar saldo de una cuenta o clave"}
+        <button type="button" className="ghost usage-toggle-saldos" aria-expanded={anotando} onClick={() => setAnotando((v) => !v)}>
+          {anotando ? "Ocultar saldos" : "Anotar saldo"}
         </button>
         {anotando && <CuotasPanel onCerrar={() => setAnotando(false)} />}
       </div>

@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { errorText } from "../lib/model";
-import { cuando, formatBytes } from "./tarea-formato";
+import { formatBytes } from "./tarea-formato";
 
-// Explorador de solo lectura dentro de la carpeta del proyecto.
+// Explorador de archivos con tabla y visor de código en mono-block tipo Stitch.
 export function ProyectoArchivos({ id }: { id: string }) {
   const [ruta, setRuta] = useState("");
   const [archivo, setArchivo] = useState<string | null>(null);
@@ -29,107 +29,131 @@ export function ProyectoArchivos({ id }: { id: string }) {
   };
 
   return (
-    <section className="panel tarea-seccion" aria-labelledby="proyecto-archivos-titulo">
-      <h2 id="proyecto-archivos-titulo">Archivos</h2>
+    <section className="panel" aria-labelledby="proyecto-archivos-titulo">
+      <h2 id="proyecto-archivos-titulo" className="panel-title">
+        Archivos
+      </h2>
 
       {archivo === null ? (
         <>
-          <nav aria-label="Ruta dentro del proyecto">
-            <ol className="migas">
-              <li>
-                <button type="button" className="migas-btn" onClick={() => irA("")} aria-current={partes.length === 0 ? "location" : undefined}>
-                  Raíz
-                </button>
-              </li>
-              {partes.map((parte, i) => {
-                const destino = partes.slice(0, i + 1).join("/");
-                const actual = i === partes.length - 1;
-                return (
-                  <li key={destino}>
-                    <button
-                      type="button"
-                      className="migas-btn"
-                      onClick={() => irA(destino)}
-                      aria-current={actual ? "location" : undefined}
-                    >
-                      {parte}
-                    </button>
-                  </li>
-                );
-              })}
-            </ol>
-          </nav>
-
-          {listado.isPending && <p className="muted-note">Cargando la carpeta…</p>}
-          {listado.isError && (
-            <>
-              <p className="error" role="alert">
-                {errorText(listado.error)}
-              </p>
-              <div>
-                <button type="button" className="ghost" onClick={() => void listado.refetch()}>
-                  Reintentar
-                </button>
-              </div>
-            </>
-          )}
-          {listado.data && listado.data.entradas.length === 0 && (
-            <p className="muted-note">Esta carpeta está vacía.</p>
-          )}
-          {listado.data && listado.data.entradas.length > 0 && (
-            <ul className="archivos-lista" aria-label="Contenido de la carpeta">
-              {listado.data.entradas.map((e) => (
-                <li key={e.ruta}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13 }}>
+            <button
+              type="button"
+              className="btn-ghost"
+              style={{ padding: "4px 8px", fontSize: 12 }}
+              onClick={() => irA("")}
+            >
+              Raíz
+            </button>
+            {partes.map((parte, i) => {
+              const destino = partes.slice(0, i + 1).join("/");
+              return (
+                <span key={destino} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ opacity: 0.5 }}>/</span>
                   <button
                     type="button"
-                    className="archivo-fila"
-                    onClick={() => (e.tipo === "carpeta" ? irA(e.ruta) : setArchivo(e.ruta))}
+                    className="btn-ghost"
+                    style={{ padding: "4px 8px", fontSize: 12 }}
+                    onClick={() => irA(destino)}
                   >
-                    <span className="archivo-nombre">
-                      {e.tipo === "carpeta" ? `${e.nombre}/` : e.nombre}
-                    </span>
-                    <span className="archivo-meta">
-                      {e.tipo === "carpeta" ? "Carpeta" : formatBytes(e.tamano ?? 0)}
-                      {e.modificado ? ` · ${cuando(e.modificado)}` : ""}
-                    </span>
+                    {parte}
                   </button>
-                </li>
-              ))}
-            </ul>
+                </span>
+              );
+            })}
+          </div>
+
+          {listado.isPending && <p className="help-note">Cargando la carpeta…</p>}
+          {listado.isError && (
+            <div className="error-box" role="alert">
+              <span className="error-text">{errorText(listado.error)}</span>
+              <button type="button" className="btn-ghost" onClick={() => void listado.refetch()}>
+                Reintentar
+              </button>
+            </div>
+          )}
+
+          {listado.data && listado.data.entradas.length === 0 && (
+            <p className="help-note">Esta carpeta está vacía.</p>
+          )}
+
+          {listado.data && listado.data.entradas.length > 0 && (
+            <div style={{ border: "1px solid var(--line)", borderRadius: 10, overflowX: "auto" }}>
+              <table className="files-table">
+                <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Tamaño</th>
+                    <th>Tipo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {listado.data.entradas.map((e) => (
+                    <tr
+                      key={e.ruta}
+                      onClick={() => (e.tipo === "carpeta" ? irA(e.ruta) : setArchivo(e.ruta))}
+                    >
+                      <td>
+                        <span className="file-name">
+                          {e.tipo === "carpeta" ? (
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                            </svg>
+                          ) : (
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                              <polyline points="13 2 13 9 20 9" />
+                            </svg>
+                          )}
+                          {e.nombre}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="file-meta">
+                          {e.tipo === "carpeta" ? "—" : formatBytes(e.tamano ?? 0)}
+                        </span>
+                      </td>
+                      <td>
+                        <span className="file-meta">{e.tipo === "carpeta" ? "Carpeta" : "Archivo"}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </>
       ) : (
         <>
-          <div className="archivo-cabecera">
-            <button type="button" className="ghost task-mini-btn" onClick={() => setArchivo(null)}>
-              Volver a la carpeta
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <button type="button" className="btn-ghost" onClick={() => setArchivo(null)}>
+              ← Volver a la carpeta
             </button>
-            <span className="archivo-titulo">{archivo}</span>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: "var(--ink)" }}>
+              {archivo}
+            </span>
           </div>
 
-          {contenido.isPending && <p className="muted-note">Cargando el archivo…</p>}
+          {contenido.isPending && <p className="help-note">Cargando el archivo…</p>}
           {contenido.isError && (
-            <>
-              <p className="error" role="alert">
-                {errorText(contenido.error)}
-              </p>
-              <div>
-                <button type="button" className="ghost" onClick={() => void contenido.refetch()}>
-                  Reintentar
-                </button>
-              </div>
-            </>
+            <div className="error-box" role="alert">
+              <span className="error-text">{errorText(contenido.error)}</span>
+              <button type="button" className="btn-ghost" onClick={() => void contenido.refetch()}>
+                Reintentar
+              </button>
+            </div>
           )}
+
           {contenido.data && (
-            <>
-              <p className="muted-note">
-                {formatBytes(contenido.data.tamano)}
-                {contenido.data.truncado ? " · Se muestran los primeros 256 KB del archivo." : ""}
-              </p>
-              <pre className="archivo-texto" tabIndex={0} aria-label={`Contenido de ${archivo}`}>
+            <div className="file-preview">
+              <div className="file-preview-header">
+                <span>Contenido de {archivo} ({formatBytes(contenido.data.tamano)})</span>
+                <span>{contenido.data.truncado ? "Truncado (256 KB)" : "Lectura"}</span>
+              </div>
+              <pre className="mono-block" style={{ border: "none", borderRadius: 0, margin: 0 }}>
                 {contenido.data.texto}
               </pre>
-            </>
+            </div>
           )}
         </>
       )}

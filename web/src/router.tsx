@@ -13,7 +13,6 @@ import { AnalyticsPage } from "./pages/analytics";
 import { SettingsPage } from "./pages/settings";
 import { ProjectsPage } from "./pages/proyectos";
 import { ProjectDetailPage } from "./pages/proyecto";
-import { ServerPage } from "./pages/servidor";
 
 import { ShellProvider } from "./components/shell-context";
 import { Shell } from "./components/shell";
@@ -48,7 +47,14 @@ const statusRoute = createRoute({
     throw redirect({ to: "/servidor" });
   },
 });
-const serverRoute = createRoute({ getParentRoute: () => rootRoute, path: "/servidor", component: ServerPage });
+// /servidor vive ahora como pestaña de Ajustes y Servidor.
+const serverRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/servidor",
+  beforeLoad: () => {
+    throw redirect({ to: "/ajustes", search: { pestana: "servidor" } });
+  },
+});
 const tasksRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tareas", component: TasksPage });
 const taskDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tareas/$id", component: TasksPage });
 const projectsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/proyectos", component: ProjectsPage });
@@ -58,7 +64,19 @@ const projectDetailRoute = createRoute({
   component: ProjectDetailPage,
 });
 const analyticsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/analiticas", component: AnalyticsPage });
-const settingsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/ajustes", component: SettingsPage });
+// La pestaña va en la URL (?pestana=) para que se pueda enlazar y el redirect de /servidor la abra.
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/ajustes",
+  component: SettingsPage,
+  // Opcional: sin pestaña, se abre "Proveedores IA" (así siguen válidos los enlaces sin parámetros).
+  validateSearch: (busqueda: Record<string, unknown>): { pestana?: "proveedores" | "servidor" | "almacenamiento" } => ({
+    pestana:
+      busqueda.pestana === "proveedores" || busqueda.pestana === "servidor" || busqueda.pestana === "almacenamiento"
+        ? busqueda.pestana
+        : undefined,
+  }),
+});
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: "/entrar", component: LoginPage });
 const routeTree = rootRoute.addChildren([
   indexRoute,

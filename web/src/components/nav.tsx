@@ -75,9 +75,31 @@ export function AppNav({
   variant?: "sidebar" | "row" | "rail";
   onItemClick?: () => void;
 }) {
-  if (variant !== "sidebar") {
+  if (variant === "row") {
     return (
-      <nav className={`app-nav app-nav-${variant}`} aria-label="Principal">
+      <nav className="top-nav" aria-label="Navegación principal">
+        <div className="nav-inner">
+          <div className="nav-links">
+            {ITEMS.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                className="nav-link"
+                activeProps={{ className: "nav-link active", "aria-current": "page" as const }}
+                onClick={onItemClick}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </nav>
+    );
+  }
+
+  if (variant === "rail") {
+    return (
+      <nav className="app-nav app-nav-rail" aria-label="Principal">
         {ITEMS.map((item) => (
           <Link
             key={item.to}
@@ -93,9 +115,10 @@ export function AppNav({
     );
   }
 
+  // En el riel, Servidor ya no es un ítem: su pantalla se une a Ajustes.
   return (
     <nav className="sidebar-nav" aria-label="Navegación principal">
-      {ITEMS.map((item) => (
+      {ITEMS.filter((item) => item.to !== "/servidor").map((item) => (
         <Link
           key={item.to}
           to={item.to}

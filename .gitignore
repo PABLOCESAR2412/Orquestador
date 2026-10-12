@@ -3,3 +3,7 @@ node_modules/
 data/
 *.db*
 dist/
+scratch/
+web/scratch/
+test-visual-runner.mjs
+web/test-visual-runner.mjs

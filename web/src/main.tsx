@@ -2,6 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
+import "@fontsource/geist-sans";
+import "@fontsource/jetbrains-mono";
 import "@fontsource-variable/instrument-sans";
 import { router } from "./router";
 import { captureInstallPrompt } from "./lib/install";

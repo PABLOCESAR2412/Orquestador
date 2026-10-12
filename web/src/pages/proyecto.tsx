@@ -3,8 +3,6 @@ import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-ro
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { errorText } from "../lib/model";
-import { useShell } from "../components/shell-context";
-import { BotonTema } from "../components/tema-boton";
 import { ProyectoResumen } from "../components/proyecto-resumen";
 import { ProyectoInstrucciones } from "../components/proyecto-instrucciones";
 import { ProyectoMemoria } from "../components/proyecto-memoria";
@@ -12,13 +10,11 @@ import { ProyectoArchivos } from "../components/proyecto-archivos";
 import { ProyectoSecretos } from "../components/proyecto-secretos";
 import { ProyectoSiguientePaso } from "../components/proyecto-siguiente";
 import { ProyectoClave } from "../components/proyecto-clave";
-import "../styles-trabajo.css";
 
-// Vista general de un proyecto: resumen, instrucciones, archivos y secretos.
+// Vista general de un proyecto: resumen, instrucciones, memoria, archivos y secretos exactos Stitch.
 export function ProjectDetailPage() {
   const { id = "" } = useParams({ strict: false }) as { id?: string };
   const navigate = useNavigate();
-  const { toggleDrawer } = useShell();
 
   const detalle = useQuery({
     queryKey: ["project", id],
@@ -36,75 +32,74 @@ export function ProjectDetailPage() {
   const [siguienteAbierto, setSiguienteAbierto] = useState(recienCreado);
 
   return (
-    <main className="page tr-pagina">
-      <header className="page-head tr-cabecera">
-        <div className="page-title-row">
-          <button type="button" className="ghost menu-btn" aria-label="Abrir menú" onClick={toggleDrawer}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-              <path d="M4 7h16M4 12h16M4 17h10" />
-            </svg>
-          </button>
-          <div className="tr-cabecera-texto">
-            <Link to="/proyectos" className="foot-link tr-volver">
-              Volver a proyectos
-            </Link>
-            <h1>{proyecto?.name ?? "Proyecto"}</h1>
-            {proyecto && <p className="page-desc">Carpeta: {proyecto.carpeta}</p>}
+    <div className="page-wrap">
+      <main className="container">
+        <Link to="/proyectos" className="back-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <line x1="19" y1="12" x2="5" y2="12" />
+            <polyline points="12 19 5 12 12 5" />
+          </svg>
+          Volver a proyectos
+        </Link>
+
+        <header className="header-main">
+          <div className="header-top">
+            <div>
+              <h1 className="page-title">{proyecto?.name ?? "Proyecto"}</h1>
+              {proyecto && (
+                <p className="folder-note">Carpeta: /srv/orquestador/projects/{proyecto.carpeta}</p>
+              )}
+            </div>
           </div>
-        </div>
-
-        <div className="page-acciones">
-          {proyecto && (
-            <button
-              type="button"
-              className="primary"
-              onClick={() =>
-                void navigate({
-                  to: "/tareas",
-                  // La pantalla de tareas abre el formulario con este proyecto elegido.
-                  state: (prev) => ({ ...prev, proyectoId: proyecto.id }),
-                })
-              }
-            >
-              Tarea nueva en este proyecto
-            </button>
-          )}
-          <BotonTema />
-        </div>
-      </header>
-
-      {siguienteAbierto && proyecto && (
-        <ProyectoSiguientePaso proyectoId={proyecto.id} onCerrar={() => setSiguienteAbierto(false)} />
-      )}
-
-      {detalle.isPending && <p className="muted-note">Cargando el proyecto…</p>}
-
-      {detalle.isError && (
-        <section className="panel">
-          <p className="error" role="alert">
-            {errorText(detalle.error)}
-          </p>
-          <div className="tr-acciones-fila">
-            <button type="button" className="ghost task-mini-btn" onClick={() => void detalle.refetch()}>
-              Reintentar
-            </button>
-            <Link to="/proyectos" className="ghost task-mini-btn tr-enlace-boton">
-              Ver todos los proyectos
-            </Link>
+          <div className="header-actions">
+            {proyecto && (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() =>
+                  void navigate({
+                    to: "/tareas",
+                    state: (prev) => ({ ...prev, proyectoId: proyecto.id }),
+                  })
+                }
+              >
+                Tarea nueva en este proyecto
+              </button>
+            )}
           </div>
-        </section>
-      )}
+        </header>
 
-      {datos && proyecto && (
-        <>
-          <ProyectoResumen detalle={datos} />
-          <ProyectoInstrucciones proyecto={proyecto} />
-          <ProyectoMemoria id={proyecto.id} memoria={datos.memoria} />
-          <ProyectoArchivos id={proyecto.id} />
-          <ProyectoSecretos id={proyecto.id} />
-          <ProyectoClave id={proyecto.id} />
-        </>
-      )}
-    </main>
+        {siguienteAbierto && proyecto && (
+          <ProyectoSiguientePaso proyectoId={proyecto.id} onCerrar={() => setSiguienteAbierto(false)} />
+        )}
+
+        {detalle.isPending && <p className="help-note">Cargando el proyecto…</p>}
+
+        {detalle.isError && (
+          <div className="error-box" role="alert">
+            <span className="error-text">{errorText(detalle.error)}</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" className="btn-ghost" onClick={() => void detalle.refetch()}>
+                Reintentar
+              </button>
+              <Link to="/proyectos" className="btn-ghost" style={{ textDecoration: "none" }}>
+                Ver todos los proyectos
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {datos && proyecto && (
+          <>
+            <ProyectoResumen detalle={datos} />
+            <ProyectoInstrucciones proyecto={proyecto} />
+            <ProyectoMemoria id={proyecto.id} memoria={datos.memoria} />
+            <ProyectoArchivos id={proyecto.id} />
+            <ProyectoSecretos id={proyecto.id} />
+            <ProyectoClave id={proyecto.id} />
+          </>
+        )}
+      </main>
+    </div>
   );
 }
