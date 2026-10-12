@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type ModelInfo, type Preferences, type ProviderStatus } from "../api";
+import { api, ApiError, type ModelInfo, type Preferences, type ProviderStatus } from "../api";
 import { EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
 import { isIOS, isStandalone, useInstallPrompt } from "../lib/install";
@@ -253,6 +253,7 @@ export function SettingsPage() {
       {/* Fuera del formulario de preferencias: Enter en sus campos no guarda los ajustes. */}
       <div className="settings">
         <ProveedoresPanel />
+        <GooglePanel />
         <ModeloRespaldoPanel />
         <TemaPanel />
         <SesionPanel />
@@ -451,6 +452,83 @@ function SesionPanel() {
         <button type="button" className="ghost sesion-salir" onClick={() => void salir()} disabled={saliendo}>
           Cerrar sesión
         </button>
+      </div>
+    </section>
+  );
+}
+
+// Conexión con Google para leer el uso de sus modelos. Solo guarda el correo y un permiso que se puede revocar.
+function GooglePanel() {
+  const qc = useQueryClient();
+  // Al volver de Google, el servidor deja un código fijo en la URL. Se lee una vez al montar.
+  const [llegada] = useState(() => new URLSearchParams(location.search));
+  const [aviso, setAviso] = useState<string | null>(() =>
+    llegada.get("google") === "ok" ? "Cuenta de Google conectada." : null,
+  );
+  const [error, setError] = useState<string | null>(() =>
+    llegada.get("google") === "error" ? errorText(new ApiError(400, llegada.get("motivo") ?? "")) : null,
+  );
+
+  const estado = useQuery({ queryKey: ["google"], queryFn: api.googleEstado });
+
+  const conectar = useMutation({
+    mutationFn: api.googleConectar,
+    onSuccess: ({ url }) => location.assign(url),
+    onError: (e) => setError(errorText(e)),
+  });
+  const desconectar = useMutation({
+    mutationFn: api.googleDesconectar,
+    onSuccess: () => {
+      setError(null);
+      setAviso("Cuenta de Google desconectada.");
+      void qc.invalidateQueries({ queryKey: ["google"] });
+    },
+    onError: (e) => setError(errorText(e)),
+  });
+
+  const datos = estado.data;
+
+  return (
+    <section className="panel" aria-labelledby="ajustes-google">
+      <div className="card-top">
+        <div className="panel-title-with-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4 21a8 8 0 0 1 16 0" />
+          </svg>
+          <h2 id="ajustes-google">Cuenta de Google</h2>
+        </div>
+      </div>
+      <p className="muted-note">
+        Inicia sesión con tu cuenta de Google para leer el uso de sus modelos. Por ahora solo se guarda tu correo y un permiso que puedes revocar.
+      </p>
+      {estado.isPending && <p className="muted-note">Revisando la conexión…</p>}
+      {estado.isError && <p className="error" role="alert">{errorText(estado.error)}</p>}
+      {datos && !datos.configurado && (
+        <p className="muted-note">Faltan variables en el servidor: {datos.faltantes.join(", ")}.</p>
+      )}
+      {datos?.conectado && (
+        <p>
+          Conectado como <strong>{datos.cuenta}</strong>
+        </p>
+      )}
+      {aviso && <p className="muted-note" role="status">{aviso}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
+      <div className="savebar">
+        {datos?.conectado ? (
+          <button type="button" className="ghost" onClick={() => desconectar.mutate()} disabled={desconectar.isPending}>
+            {desconectar.isPending ? "Desconectando…" : "Desconectar"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="primary"
+            onClick={() => conectar.mutate()}
+            disabled={!datos?.configurado || conectar.isPending}
+          >
+            {conectar.isPending ? "Abriendo Google…" : "Conectar con Google"}
+          </button>
+        )}
       </div>
     </section>
   );
