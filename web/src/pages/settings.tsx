@@ -7,6 +7,7 @@ import { isIOS, isStandalone, useInstallPrompt } from "../lib/install";
 import { errorText } from "../lib/model";
 import { guardarTema, leerTema, type Tema } from "../lib/tema";
 import { useShell } from "../components/shell-context";
+import { BotonTema } from "../components/tema-boton";
 import "../styles-trabajo.css";
 
 const ALERT_OPTIONS = [50, 60, 70, 80, 90, 100];
@@ -102,6 +103,9 @@ export function SettingsPage() {
               Configuración de modelos de IA, presupuesto mensual y comportamiento de la app.
             </p>
           </div>
+        </div>
+        <div className="page-acciones">
+          <BotonTema />
         </div>
       </header>
 

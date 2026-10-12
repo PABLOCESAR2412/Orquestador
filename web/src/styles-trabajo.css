@@ -309,6 +309,17 @@
 
 /* Secretos (solo nombres y fechas: nunca valores) */
 .secretos-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+/* Bloque pegado (KEY=VALOR) pendiente de confirmar: muestra nombres, nunca valores. */
+.secretos-pegado {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.secretos-pegado p { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
 .secreto-fila {
   display: flex;
   flex-wrap: wrap;

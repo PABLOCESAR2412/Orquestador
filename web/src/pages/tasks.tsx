@@ -14,6 +14,7 @@ import { useEventosVivos } from "../lib/eventos-vivos";
 import { effortLabel, errorText, formatUsd, sanearDetalle, STATUS_LABEL } from "../lib/model";
 import { EVENTO_VERSION_NUEVA, hayVersionNueva } from "../lib/version";
 import { useShell } from "../components/shell-context";
+import { BotonTema } from "../components/tema-boton";
 import "../styles-trabajo.css";
 
 const isActive = (t: Task) => t.status === "queued" || t.status === "running";
@@ -231,6 +232,9 @@ function ListaTareas() {
             <span className="pill-dot" aria-hidden="true" />
             {isOnline ? "Servidor activo" : "Sin conexión"}
           </span>
+          <div className="page-acciones">
+            <BotonTema />
+          </div>
         </div>
 
         <div className="task-header-main">
@@ -709,6 +713,9 @@ function DetalleTarea({ id }: { id: string }) {
               </p>
             )}
           </div>
+        </div>
+        <div className="page-acciones">
+          <BotonTema />
         </div>
       </header>
 

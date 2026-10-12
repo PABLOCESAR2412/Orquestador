@@ -6,6 +6,7 @@ import { ModelPicker } from "../components/model-picker";
 import { UsoPanel } from "../components/uso-panel";
 import { effortLabel, errorText, formatWhen } from "../lib/model";
 import { useShell } from "../components/shell-context";
+import { BotonTema } from "../components/tema-boton";
 
 type Patch = { model?: string | null; effort?: string | null };
 
@@ -216,6 +217,9 @@ export function ChatPage() {
               {current.project_name}
             </span>
           )}
+        </div>
+        <div className="page-acciones">
+          <BotonTema />
         </div>
       </header>
 
