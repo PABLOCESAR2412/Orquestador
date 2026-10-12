@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="oscuro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tareas y Programadas — Orquestador</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #111419;
+  --surface: #181c22;
+  --surface-2: #20252d;
+  --surface-lowest: #0d0e11;
+  --line: #2a3039;
+  --line-strong: #3a414c;
+  --ink: #e7e9ec;
+  --ink-2: #8c94a0;
+  --signal: #d9a441;
+  --danger: #e06b52;
+  --bar: #7b8390;
+  --scrim: rgba(13, 14, 17, 0.78);
+}
+[data-theme="claro"] {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eceff3;
+  --surface-lowest: #eef0f3;
+  --line: #d5dae1;
+  --line-strong: #aeb6c1;
+  --ink: #161a21;
+  --ink-2: #5a6170;
+  --signal: #8a5a00;
+  --danger: #b03a21;
+  --bar: #6b7380;
+  --scrim: rgba(22, 26, 33, 0.45);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+.top-nav {
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  padding: 0 16px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.nav-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nav-inner::-webkit-scrollbar { display: none; }
+.nav-links { display: flex; align-items: center; gap: 4px; }
+.nav-link {
+  color: var(--ink-2);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 14px 10px;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.nav-link.active {
+  color: var(--ink);
+  border-bottom-color: var(--signal);
+}
+
+.container {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 80px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.theme-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  outline: none;
+  flex-shrink: 0;
+}
+.theme-btn:focus-visible { border-color: var(--signal); }
+@media (max-width: 600px) {
+  .theme-btn { width: 40px; height: 40px; }
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.panel-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.panel-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.btn-primary {
+  background: var(--signal);
+  color: var(--surface-lowest);
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  width: fit-content;
+}
+.btn-primary:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  outline: none;
+  width: fit-content;
+}
+.btn-ghost:focus-visible { border-color: var(--signal); }
+
+.help-note {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+/* Schedule form */
+.form-box {
+  background: var(--surface-lowest);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form-label {
+  font-size: 13px;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.input-text, .select-text {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 15px;
+  outline: none;
+  width: 100%;
+}
+.input-text:focus, .select-text:focus { border-color: var(--signal); }
+
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.radio-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.radio-item input[type="radio"] {
+  accent-color: var(--signal);
+  width: 16px;
+  height: 16px;
+}
+
+/* Schedule list */
+.sched-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-lowest);
+}
+.sched-row {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.sched-row:last-child { border-bottom: none; }
+.sched-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.sched-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.sched-meta {
+  font-size: 13px;
+  color: var(--ink-2);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.badge-status {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  white-space: nowrap;
+}
+.badge-status.active {
+  border-color: var(--signal);
+  color: var(--signal);
+}
+
+/* Task changes review diff spec */
+.dl-meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  font-size: 13px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.dl-meta dt {
+  color: var(--ink-2);
+}
+.dl-meta dd {
+  color: var(--ink);
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 500;
+}
+
+.diff-container {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-lowest);
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.diff-line {
+  padding: 2px 12px;
+  white-space: pre;
+  display: flex;
+}
+.diff-line.added {
+  background: rgba(217, 164, 65, 0.08);
+  color: var(--ink);
+}
+.diff-line.removed {
+  background: rgba(224, 107, 82, 0.08);
+  color: var(--ink-2);
+}
+.diff-line.context {
+  color: var(--ink-2);
+}
+
+.action-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.action-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+</style>
+</head>
+<body>
+
+<nav class="top-nav" aria-label="Navegación principal">
+  <div class="nav-inner">
+    <div class="nav-links">
+      <a href="#" class="nav-link">Chat</a>
+      <a href="#" class="nav-link active">Tareas</a>
+      <a href="#" class="nav-link">Proyectos</a>
+      <a href="#" class="nav-link">Analíticas</a>
+      <a href="#" class="nav-link">Ajustes</a>
+      <a href="#" class="nav-link">Servidor</a>
+    </div>
+  </div>
+</nav>
+
+<main class="container">
+  <header class="header-row">
+    <h1 class="page-title">Tareas</h1>
+    <button class="theme-btn" id="themeToggle" aria-label="Cambiar tema">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+    </button>
+  </header>
+
+  <!-- 3. Panel "Programadas" dentro de Tareas -->
+  <section class="panel">
+    <div class="panel-header-row">
+      <h2 class="panel-title">Programadas</h2>
+      <button class="btn-ghost" type="button" id="toggleSchedForm">Nueva programada</button>
+    </div>
+
+    <!-- Formulario colapsable para nueva programada -->
+    <div class="form-box" id="schedForm" style="display:none;">
+      <div class="form-row">
+        <label class="form-label" for="schedProj">Proyecto</label>
+        <select class="select-text" id="schedProj">
+          <option>Orquestador Daemon (/srv/orquestador/projects/daemon-main)</option>
+          <option>Frontend PWA (/srv/orquestador/projects/pwa-client)</option>
+          <option>AST Code Generator (/srv/orquestador/projects/ast-codegen)</option>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <span class="form-label">Frecuencia</span>
+        <div class="radio-group">
+          <label class="radio-item">
+            <input type="radio" name="freq" checked>
+            Cada cierto número de horas (Ej. Cada 6 horas)
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="freq">
+            Diaria a las 08:00
+          </label>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px;">
+        <button class="btn-primary" type="button">Guardar programación</button>
+      </div>
+    </div>
+
+    <!-- Lista de filas programadas -->
+    <div class="sched-list">
+      <div class="sched-row">
+        <div class="sched-main">
+          <span class="sched-title">Auditoría nocturna de dependencias npm y SBOM</span>
+          <div class="sched-meta">
+            <span>Frecuencia: Cada 6 horas</span>
+            <span>Próxima: hoy a las 18:00</span>
+          </div>
+        </div>
+        <span class="badge-status active">Activa</span>
+      </div>
+
+      <div class="sched-row">
+        <div class="sched-main">
+          <span class="sched-title">Sincronización de embeddings Vector DB</span>
+          <div class="sched-meta">
+            <span>Frecuencia: Diaria a las 08:00</span>
+            <span>Próxima: mañana a las 08:00</span>
+          </div>
+        </div>
+        <span class="badge-status active">Activa</span>
+      </div>
+
+      <div class="sched-row">
+        <div class="sched-main">
+          <span class="sched-title">Limpieza de contenedores huérfanos de bubblewrap</span>
+          <div class="sched-meta">
+            <span>Frecuencia: Cada 12 horas</span>
+            <span>En pausa</span>
+          </div>
+        </div>
+        <span class="badge-status">Pausada</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. Panel "Revisión de cambios" dentro del detalle de una tarea -->
+  <section class="panel">
+    <h2 class="panel-title">Revisión de cambios</h2>
+
+    <!-- Lista de definición con Rama y Commit base -->
+    <dl class="dl-meta">
+      <dt>Rama</dt>
+      <dd>feat/ipc-socket-handler</dd>
+      <dt>Commit base</dt>
+      <dd>7f9a2b1 (orq-core: release v2.4.1)</dd>
+    </dl>
+
+    <!-- Diff unificado: contenedor propio con scroll, líneas con + y − (el color no es la única señal) -->
+    <div class="diff-container">
+      <div class="diff-line context">  // src/socket/listener.rs</div>
+      <div class="diff-line context">  pub async fn bind_uds_socket(path: &amp;Path) -&gt; Result&lt;UnixListener&gt; {</div>
+      <div class="diff-line removed">−     let listener = tokio_uds::UnixListener::bind(path)?;</div>
+      <div class="diff-line added">+     let listener = tokio::net::UnixListener::bind(path)?;</div>
+      <div class="diff-line added">+     tracing::debug!(&quot;UDS socket escuchando en {:?}&quot;, path);</div>
+      <div class="diff-line context">      Ok(listener)</div>
+      <div class="diff-line context">  }</div>
+    </div>
+
+    <!-- Acciones en orden estricto -->
+    <div class="action-row">
+      <div class="action-item">
+        <button class="btn-primary" type="button">Aprobar commit</button>
+        <span class="help-note">Crea el commit localmente en el working tree con el mensaje generado por el agente.</span>
+      </div>
+
+      <div class="action-item">
+        <button class="btn-ghost" type="button">Subir rama al remoto</button>
+        <span class="help-note">Ejecuta git push origin feat/ipc-socket-handler hacia el servidor remoto configurado.</span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  const toggle = document.getElementById('themeToggle');
+  toggle.addEventListener('click', () => {
+    const doc = document.documentElement;
+    const isDark = doc.getAttribute('data-theme') !== 'claro';
+    doc.setAttribute('data-theme', isDark ? 'claro' : 'oscuro');
+    toggle.innerHTML = isDark
+      ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>'
+      : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
+  });
+
+  const schedBtn = document.getElementById('toggleSchedForm');
+  const schedForm = document.getElementById('schedForm');
+  schedBtn.addEventListener('click', () => {
+    const isOpen = schedForm.style.display !== 'none';
+    if (isOpen) {
+      schedForm.style.display = 'none';
+      schedBtn.textContent = 'Nueva programada';
+    } else {
+      schedForm.style.display = 'flex';
+      schedBtn.textContent = 'Cerrar';
+    }
+  });
+</script>
+</body>
+</html>
