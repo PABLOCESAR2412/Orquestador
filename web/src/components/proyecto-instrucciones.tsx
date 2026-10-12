@@ -70,7 +70,7 @@ export function ProyectoInstrucciones({ proyecto }: { proyecto: Project }) {
             setGuardado(false);
             setTexto(e.target.value);
           }}
-          placeholder="El backend está escrito en Rust con Tokio. Usa cargo test antes de commitear."
+          placeholder="Ej.: El backend usa TypeScript con Bun. Corre bun test antes de hacer commit."
         />
 
         {guardar.isError && (

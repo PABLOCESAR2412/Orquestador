@@ -1,0 +1,388 @@
+/* Shell de Telo: riel de 260 px, barra superior de 52 px y área de página.
+   Clases con prefijo tl-. Colores y medidas solo con tokens de styles.css.
+   Las reglas de la lista de conversaciones y de la navegación van dentro de .tl-rail para ganar a styles.css. */
+
+/* Botones comunes a la barra superior y al chat */
+.tl-boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.tl-boton:hover:not(:disabled) { background: var(--surface); border-color: var(--line-strong); }
+.tl-boton:disabled { opacity: 0.45; cursor: not-allowed; }
+.tl-boton-icono { width: 32px; padding: 0; }
+.tl-boton-principal { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+.tl-boton-principal:hover:not(:disabled) { background: var(--primary); color: var(--primary-fg); }
+.tl-boton-compacto { min-height: 30px; padding: 0 10px; font-size: 12.5px; }
+
+/* Punto de estado: verde si el servidor responde, rojo si no */
+.tl-punto {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--bar);
+  flex-shrink: 0;
+}
+.tl-punto.is-online { background: var(--online); }
+.tl-punto.is-offline { background: var(--danger); }
+
+/* Área de página: ocupa todo el alto a la derecha del riel */
+.tl-app {
+  display: flex;
+  height: 100dvh;
+  width: 100%;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* Riel izquierdo */
+.tl-rail {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  width: var(--rail-w);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  min-height: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+}
+.tl-rail-top {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tl-rail-marca {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px 0;
+}
+.tl-marca {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 4px;
+  color: var(--ink);
+  text-decoration: none;
+  border-radius: 8px;
+}
+.tl-marca-icono {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+}
+.tl-marca-nombre {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.tl-rail-cerrar {
+  display: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.tl-nuevo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: left;
+}
+.tl-nuevo:hover:not(:disabled) { border-color: var(--line-strong); }
+.tl-nuevo:disabled { opacity: 0.6; cursor: default; }
+.tl-nuevo-texto {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-kbd {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* Navegación del riel (AppNav, variante sidebar) */
+.tl-rail .sidebar-nav { display: flex; flex-direction: column; gap: 2px; }
+.tl-rail .sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.tl-rail .sidebar-link:hover { background: var(--surface-hover); color: var(--ink); }
+.tl-rail .sidebar-link.active { background: var(--surface-2); color: var(--ink); }
+.tl-rail .sidebar-link-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+.tl-rail .sidebar-link-icon svg { width: 18px; height: 18px; }
+.tl-rail .sidebar-link-label { min-width: 0; }
+
+/* Conversaciones agrupadas por fecha */
+.tl-rail-lista {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 0 2px 8px;
+  margin: 0 -2px;
+}
+.tl-rail-aviso {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.tl-rail-error { margin: 4px 8px; font-size: 12px; }
+.tl-grupo { display: flex; flex-direction: column; gap: 2px; margin-top: 14px; }
+.tl-grupo:first-child { margin-top: 6px; }
+.tl-grupo-titulo {
+  padding: 0 10px 4px;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+.tl-rail .conv-item { position: relative; }
+.tl-rail .conv-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  border-radius: 8px;
+}
+.tl-rail .sidebar-conv {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  text-align: left;
+}
+.tl-rail .sidebar-conv:hover { background: var(--surface-hover); color: var(--ink); }
+.tl-rail .sidebar-conv.active { background: var(--surface-2); color: var(--ink); }
+.tl-rail .sidebar-conv-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-rail .conv-busy { margin-left: auto; }
+.tl-rail .conv-more {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-2);
+  opacity: 0;
+}
+.tl-rail .conv-row:hover .conv-more,
+.tl-rail .conv-row:focus-within .conv-more,
+.tl-rail .conv-more[aria-expanded="true"] { opacity: 1; }
+@media (hover: none) {
+  .tl-rail .conv-more { opacity: 1; }
+}
+
+/* Instalar y estado del servidor, al pie del riel */
+.tl-instalar { display: flex; flex-direction: column; gap: 6px; }
+.tl-instalar-boton { width: 100%; min-height: 36px; }
+.tl-instalar-pista { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-2); }
+.tl-rail-pie { padding-top: 10px; border-top: 1px solid var(--line); }
+.tl-rail-estado {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 10px;
+}
+.tl-rail-estado-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+.tl-rail-estado-titulo {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Columna principal: barra superior y página */
+.tl-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  margin-left: var(--rail-w);
+}
+.tl-top {
+  flex: 0 0 auto;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  min-width: 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.tl-top-estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.tl-top-acciones {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.tl-top .tema-boton.ghost {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  min-height: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+}
+.tl-top .tema-boton.ghost:hover:not(:disabled) { background: var(--surface); border-color: var(--line-strong); }
+
+.tl-pagina {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+/* El chat llena la página y hace scroll dentro de su hilo. */
+.tl-pagina.is-chat { overflow: hidden; }
+
+/* Móvil: el riel es un cajón; la barra superior trae el botón de menú */
+.tl-menu { display: none; }
+
+@media (max-width: 760px) {
+  .tl-main { margin-left: 0; width: 100%; }
+  .tl-rail {
+    width: min(84vw, 280px);
+    z-index: 50;
+    padding-top: max(12px, env(safe-area-inset-top));
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+  }
+  .tl-rail.open { transform: none; }
+  .tl-rail-cerrar { display: inline-grid; }
+  .tl-menu { display: inline-flex; width: 40px; height: 40px; min-height: 40px; }
+  .tl-top {
+    height: calc(52px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+  }
+  .tl-nuevo,
+  .tl-rail .sidebar-link,
+  .tl-rail .sidebar-conv,
+  .tl-instalar-boton { min-height: 40px; }
+  .tl-rail .sidebar-conv { min-height: 40px; }
+  .tl-rail .conv-more { width: 36px; height: 36px; }
+}
+
+@media (max-width: 600px) {
+  /* Con poco ancho, los botones de la barra superior quedan solo con icono (tienen aria-label y title). */
+  .tl-boton-texto { display: none; }
+  .tl-top-acciones .tl-boton:not(.tl-boton-icono) { width: 32px; padding: 0; }
+  .tl-top-estado-extra { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tl-rail { transition: none; }
+}

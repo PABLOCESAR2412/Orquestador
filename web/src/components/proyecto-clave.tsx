@@ -102,7 +102,7 @@ export function ProyectoClave({ id }: { id: string }) {
                 <button
                   type="button"
                   className="btn-primary"
-                  style={{ background: "var(--danger)", color: "#fff" }}
+                  style={{ background: "var(--danger)", color: "var(--bg)" }}
                   disabled={quitar.isPending}
                   onClick={() => quitar.mutate()}
                 >

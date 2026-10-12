@@ -3,8 +3,6 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Project } from "../api";
 import { errorText } from "../lib/model";
-import { BotonTema } from "../components/tema-boton";
-import { AppNav } from "../components/nav";
 
 // Misma regla que el servidor para el nombre de la carpeta: sin acentos, minúsculas y guiones.
 export function carpetaDe(nombre: string): string {
@@ -52,12 +50,9 @@ export function ProjectsPage() {
 
   return (
     <div className="page-wrap">
-      <AppNav variant="row" />
-
       <main className="container">
         <header className="header-row">
           <h1 className="page-title">Proyectos</h1>
-          <BotonTema />
         </header>
 
         {/* Panel Nuevo proyecto */}
@@ -270,7 +265,7 @@ function FilaProyecto({ proyecto: p, alCambiar }: { proyecto: Project; alCambiar
               <button
                 type="button"
                 className="btn-primary"
-                style={{ background: "var(--danger)", color: "#fff" }}
+                style={{ background: "var(--danger)", color: "var(--bg)" }}
                 onClick={() => quitar.mutate()}
                 disabled={quitar.isPending}
               >

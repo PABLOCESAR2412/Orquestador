@@ -115,9 +115,10 @@ export function AppNav({
     );
   }
 
+  // En el riel, Servidor ya no es un ítem: su pantalla se une a Ajustes.
   return (
     <nav className="sidebar-nav" aria-label="Navegación principal">
-      {ITEMS.map((item) => (
+      {ITEMS.filter((item) => item.to !== "/servidor").map((item) => (
         <Link
           key={item.to}
           to={item.to}

@@ -3,8 +3,6 @@ import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-ro
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { errorText } from "../lib/model";
-import { BotonTema } from "../components/tema-boton";
-import { AppNav } from "../components/nav";
 import { ProyectoResumen } from "../components/proyecto-resumen";
 import { ProyectoInstrucciones } from "../components/proyecto-instrucciones";
 import { ProyectoMemoria } from "../components/proyecto-memoria";
@@ -35,8 +33,6 @@ export function ProjectDetailPage() {
 
   return (
     <div className="page-wrap">
-      <AppNav variant="row" />
-
       <main className="container">
         <Link to="/proyectos" className="back-link">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -54,7 +50,6 @@ export function ProjectDetailPage() {
                 <p className="folder-note">Carpeta: /srv/orquestador/projects/{proyecto.carpeta}</p>
               )}
             </div>
-            <BotonTema />
           </div>
           <div className="header-actions">
             {proyecto && (

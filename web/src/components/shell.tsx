@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Conversation } from "../api";
@@ -9,6 +9,8 @@ import { AppNav } from "./nav";
 import { ConvItem } from "./conv-item";
 import { PaletaComandos } from "./paleta-comandos";
 import { useShell } from "./shell-context";
+import { ShellTopbar } from "./shell-topbar";
+import "../styles-shell.css";
 
 type DateGroupTitle = "ANCLADOS" | "HOY" | "AYER" | "ÚLTIMOS 7 DÍAS" | "ANTERIORES";
 
@@ -27,12 +29,18 @@ function getGroupForDate(dateStr: string | null | undefined): DateGroupTitle {
   return "ANTERIORES";
 }
 
+// El atajo se muestra según el sistema: ⌘N en Mac, Ctrl+N en lo demás.
+const ES_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const ATAJO_NUEVO = ES_MAC ? "⌘N" : "Ctrl+N";
+
 export function Shell({ children }: { children: ReactNode }) {
   const {
     drawerOpen,
     closeDrawer,
+    toggleDrawer,
     selectedConversationId,
     setSelectedConversationId,
+    triggerNewTask,
   } = useShell();
 
   // Instalar la app: en Chrome/Edge con el evento del navegador; en iPhone, con instrucciones.
@@ -54,6 +62,16 @@ export function Shell({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const invalidarChats = () => qc.invalidateQueries({ queryKey: ["conversations"] });
 
+  const crearChat = useMutation({
+    mutationFn: () => api.createConversation(null),
+    onSuccess: (conv) => {
+      void invalidarChats();
+      setSelectedConversationId(conv.id);
+      closeDrawer();
+      void navigate({ to: "/chat" });
+    },
+  });
+
   const renombrar = useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) => api.updateConversation(id, { title }),
     onSettled: () => void invalidarChats(),
@@ -71,13 +89,15 @@ export function Shell({ children }: { children: ReactNode }) {
     onSettled: () => void invalidarChats(),
   });
 
-  const accionError = renombrar.isError
-    ? errorText(renombrar.error)
-    : anclar.isError
-      ? errorText(anclar.error)
-      : eliminar.isError
-        ? errorText(eliminar.error)
-        : null;
+  const accionError = crearChat.isError
+    ? errorText(crearChat.error)
+    : renombrar.isError
+      ? errorText(renombrar.error)
+      : anclar.isError
+        ? errorText(anclar.error)
+        : eliminar.isError
+          ? errorText(eliminar.error)
+          : null;
 
   const groupedConversations = useMemo(() => {
     if (!conversations.data) return [];
@@ -96,8 +116,34 @@ export function Shell({ children }: { children: ReactNode }) {
     return groups.filter((g) => g.items.length > 0);
   }, [conversations.data]);
 
-  // Latencia medida desde este navegador (ida y vuelta a /api/health), cada 30 s.
+  // Estado del servidor: ida y vuelta a /api/health, cada 30 s (ver lib/latencia.ts).
   const latencia = useLatencia();
+
+  // "Nuevo chat / tarea": en Tareas abre el formulario de tarea; en el resto crea un chat y lo abre.
+  const nuevoChatOTarea = () => {
+    if (currentPath === "/tareas") triggerNewTask();
+    else if (!crearChat.isPending) crearChat.mutate();
+  };
+  const nuevoRef = useRef(nuevoChatOTarea);
+  useEffect(() => {
+    nuevoRef.current = nuevoChatOTarea;
+  });
+
+  // ⌘N / Ctrl+N desde cualquier pantalla. Ctrl+Shift+N (ventana privada) y Alt siguen siendo del navegador.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "n") {
+        const target = e.target as HTMLElement | null;
+        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+          return;
+        }
+        e.preventDefault();
+        nuevoRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const handleSelectConv = (id: string) => {
     setSelectedConversationId(id);
@@ -116,7 +162,7 @@ export function Shell({ children }: { children: ReactNode }) {
         : `${latencia.estado === "buena" ? "Listo" : "Lenta"} · ${latencia.ms} ms`;
   const claseEstado =
     latencia.estado === "buena"
-      ? "is-live"
+      ? "is-online"
       : latencia.estado === "lenta"
         ? "is-slow"
         : latencia.estado === "sin_conexion"
@@ -124,14 +170,14 @@ export function Shell({ children }: { children: ReactNode }) {
           : "";
 
   return (
-    <div className="shell-root">
-      {/* Sidebar fijo en escritorio, cajón en móvil */}
-      <aside className={`sidebar${drawerOpen ? " open" : ""}`} aria-label="Barra lateral">
-        <div className="sidebar-top">
-          <div className="sidebar-brand-row">
-            <Link to="/chat" className="sidebar-brand" onClick={closeDrawer}>
-              <span className="sidebar-brand-icon" aria-hidden="true">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <div className="tl-app">
+      {/* Riel fijo en escritorio, cajón en móvil */}
+      <aside className={`tl-rail${drawerOpen ? " open" : ""}`} aria-label="Barra lateral">
+        <div className="tl-rail-top">
+          <div className="tl-rail-marca">
+            <Link to="/chat" className="tl-marca" onClick={closeDrawer} aria-label="telo: ir al chat">
+              <span className="tl-marca-icono" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="3" />
                   <circle cx="19" cy="5" r="2" />
                   <circle cx="5" cy="5" r="2" />
@@ -143,102 +189,103 @@ export function Shell({ children }: { children: ReactNode }) {
                   <line x1="17" y1="17.5" x2="14" y2="13.5" />
                 </svg>
               </span>
-              <span className="sidebar-brand-name">telo</span>
+              <span className="tl-marca-nombre">telo</span>
             </Link>
-            <button
-              type="button"
-              className="sidebar-close-btn"
-              onClick={closeDrawer}
-              aria-label="Cerrar barra lateral"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <button type="button" className="tl-rail-cerrar" onClick={closeDrawer} aria-label="Cerrar barra lateral">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <line x1="18" y1="6" x2="6" y2="18" />
                 <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
           </div>
 
+          <button
+            type="button"
+            className="tl-nuevo"
+            onClick={nuevoChatOTarea}
+            disabled={crearChat.isPending}
+            title={`Nuevo chat / tarea (${ATAJO_NUEVO})`}
+            aria-keyshortcuts={ES_MAC ? "Meta+N" : "Control+N"}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span className="tl-nuevo-texto">Nuevo chat / tarea</span>
+            <kbd className="tl-kbd">{ATAJO_NUEVO}</kbd>
+          </button>
+
           <AppNav variant="sidebar" onItemClick={closeDrawer} />
 
-          <div className="sidebar-section">
-            <div className="sidebar-section-head">
-              <span className="sidebar-section-title">Recientes</span>
-            </div>
-            <div className="sidebar-recientes" role="list">
-              {conversations.isLoading && (
-                <span className="sidebar-empty">Cargando…</span>
-              )}
-              {conversations.isError && (
-                <div className="estado-linea">
-                  <span className="sidebar-empty">Error al cargar</span>
-                  <button type="button" className="ghost task-mini-btn" onClick={() => void conversations.refetch()}>
-                    Reintentar
-                  </button>
-                </div>
-              )}
-              {accionError && (
-                <p className="error sidebar-error" role="alert">
-                  {accionError}
-                </p>
-              )}
-              {conversations.data && conversations.data.length === 0 && (
-                <span className="sidebar-empty">Sin conversaciones</span>
-              )}
-              {groupedConversations.map((group) => (
-                <div key={group.title} className="sidebar-group">
-                  <div className="sidebar-group-title">{group.title}</div>
-                  {group.items.map((c) => (
-                    <ConvItem
-                      key={c.id}
-                      conv={c}
-                      active={currentPath === "/chat" && selectedConversationId === c.id}
-                      onSelect={handleSelectConv}
-                      onRename={(id, title) => renombrar.mutate({ id, title })}
-                      onTogglePin={(id, pinned) => anclar.mutate({ id, pinned })}
-                      onDelete={(id) => eliminar.mutate(id)}
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
+          <div className="tl-rail-lista">
+            {conversations.isLoading && <span className="tl-rail-aviso">Cargando…</span>}
+            {conversations.isError && (
+              <div className="tl-rail-aviso tl-rail-aviso-error">
+                <span>Error al cargar</span>
+                <button type="button" className="tl-boton" onClick={() => void conversations.refetch()}>
+                  Reintentar
+                </button>
+              </div>
+            )}
+            {accionError && (
+              <p className="error tl-rail-error" role="alert">
+                {accionError}
+              </p>
+            )}
+            {conversations.data && conversations.data.length === 0 && (
+              <span className="tl-rail-aviso">Sin conversaciones</span>
+            )}
+            {groupedConversations.map((group) => (
+              <div key={group.title} className="tl-grupo">
+                <div className="tl-grupo-titulo">{group.title}</div>
+                {group.items.map((c) => (
+                  <ConvItem
+                    key={c.id}
+                    conv={c}
+                    active={currentPath === "/chat" && selectedConversationId === c.id}
+                    onSelect={handleSelectConv}
+                    onRename={(id, title) => renombrar.mutate({ id, title })}
+                    onTogglePin={(id, pinned) => anclar.mutate({ id, pinned })}
+                    onDelete={(id) => eliminar.mutate(id)}
+                  />
+                ))}
+              </div>
+            ))}
           </div>
         </div>
 
         {mostrarInstalar && (
-          <div className="sidebar-install">
+          <div className="tl-instalar">
             <button
               type="button"
-              className="sidebar-install-btn"
+              className="tl-boton tl-instalar-boton"
               onClick={() => (install.canInstall ? void install.promptInstall() : setPistaIOS((p) => !p))}
             >
               Instalar Telo
             </button>
             {pistaIOS && !install.canInstall && (
-              <p className="sidebar-install-hint">
-                En iPhone: toca Compartir y luego «Agregar a pantalla de inicio».
-              </p>
+              <p className="tl-instalar-pista">En iPhone: toca Compartir y luego «Agregar a pantalla de inicio».</p>
             )}
           </div>
         )}
 
-        <div className="sidebar-foot">
-          <div className="sidebar-foot-card">
-            <div className="sidebar-foot-info">
-              <div className="sidebar-foot-meta">
-                <span className="sidebar-foot-status">{etiquetaLatencia}</span>
-              </div>
+        <div className="tl-rail-pie">
+          <div className="tl-rail-estado">
+            <span className={`tl-punto ${claseEstado}`} aria-hidden="true" />
+            <div className="tl-rail-estado-texto">
+              <span className="tl-rail-estado-titulo">Servidor</span>
+              <span>{etiquetaLatencia}</span>
             </div>
-            <span className={`pill-dot ${claseEstado}`} aria-hidden="true" />
           </div>
         </div>
       </aside>
 
-      {/* Scrim para cerrar cajón en móvil */}
+      {/* Scrim para cerrar el cajón en móvil */}
       {drawerOpen && <div className="scrim dim" onClick={closeDrawer} aria-hidden="true" />}
 
-      {/* Contenedor principal de la aplicación */}
-      <div className="shell-main">
-        {children}
+      <div className="tl-main">
+        <ShellTopbar latencia={latencia} drawerOpen={drawerOpen} onMenu={toggleDrawer} />
+        <div className={`tl-pagina${currentPath === "/chat" ? " is-chat" : ""}`}>{children}</div>
       </div>
 
       {/* Paleta de comandos: Ctrl+K o Cmd+K desde cualquier pantalla */}

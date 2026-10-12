@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Conversation, type ModelInfo } from "../api";
-import { CostMeter } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
 import { UsoPanel } from "../components/uso-panel";
-import { effortLabel, errorText, formatWhen, tierBars } from "../lib/model";
+import { IndicadorPensando, MensajeAgente, MensajeUsuario } from "../components/chat-mensajes";
+import { effortLabel, errorText, tierBars } from "../lib/model";
 import { useShell } from "../components/shell-context";
-import { BotonTema } from "../components/tema-boton";
-import { AppNav } from "../components/nav";
+import "../styles-chat.css";
 
 type Patch = { model?: string | null; effort?: string | null };
 
@@ -33,6 +32,13 @@ function guardarBorrador(id: string, texto: string) {
   }
 }
 
+// Ventana de contexto en tokens, abreviada: 128000 es "128k".
+function etiquetaContexto(tokens: number | undefined): string | null {
+  if (!tokens) return null;
+  if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}M`;
+  return `${Math.round(tokens / 1000)}k`;
+}
+
 const EFFORT_OPTIONS = [
   { id: "low", label: "Bajo" },
   { id: "medium", label: "Medio" },
@@ -41,12 +47,7 @@ const EFFORT_OPTIONS = [
 
 export function ChatPage() {
   const qc = useQueryClient();
-  const {
-    selectedConversationId,
-    setSelectedConversationId,
-    toggleDrawer,
-    triggerPalette,
-  } = useShell();
+  const { selectedConversationId, setSelectedConversationId, triggerPalette } = useShell();
   const selectedId = selectedConversationId;
   const setSelectedId = setSelectedConversationId;
 
@@ -192,8 +193,12 @@ export function ChatPage() {
   // Pensando: se envió aquí o el chat está ocupado (otro dispositivo lo envió).
   const pensando = send.isPending || !!current?.ocupada;
 
-  // Etiqueta del chip: "Nombre del modelo · Esfuerzo", o "Predeterminado" si el servidor elige.
+  // Nombres reales: el modelo del chat o "Agente" si el servidor todavía no ha elegido uno.
   const efectoActual = current?.effort ?? null;
+  const nombreAgente = modelInfo?.name ?? current?.model ?? "Agente";
+  const nombreChip = current?.model ? nombreAgente : "Predeterminado";
+  const contexto = etiquetaContexto(modelInfo?.context);
+  // Etiqueta del selector del compositor: "Nombre del modelo · Esfuerzo", o "Predeterminado" si el servidor elige.
   const nombreModelo = current?.model ? (modelInfo?.name ?? current.model) : null;
   const etiquetaChip =
     nombreModelo === null
@@ -203,289 +208,287 @@ export function ChatPage() {
         : (modelInfo?.variants.length ?? 0) > 0
           ? `${nombreModelo} · Auto`
           : nombreModelo;
+  const nivelCosto = tierBars(modelInfo?.costTier ?? "medio");
 
   return (
-    <div className="page-wrap">
-      <AppNav variant="row" />
-
-      <main className="container">
-        <header className="header-row">
-          <div>
-            <div className="header-title-row">
-              <button
-                type="button"
-                className="thread-brand"
-                aria-label="telo: abrir navegación y chats recientes"
-                onClick={toggleDrawer}
-              >
-                telo
-              </button>
-              <h1 className="page-title">{current?.title ?? "Chat"}</h1>
-            </div>
-            <span className="page-subtitle">
-              {current?.project_name ? `Proyecto: ${current.project_name}` : "Proyecto: Orquestador Daemon"}
-            </span>
-          </div>
-          <div className="header-actions">
-            <button
-              type="button"
-              className="palette-btn"
-              title="Paleta de comandos (Ctrl+K)"
-              onClick={triggerPalette}
-            >
-              Ctrl+K
-            </button>
-            <BotonTema />
-          </div>
-        </header>
-
-        {!selectedId ? (
-          <div className="empty">
-            <div className="empty-box">
-              {conversations.isPending ? (
-                <p>Cargando chats…</p>
-              ) : conversations.isError ? (
-                <>
-                  <h2>No se pudieron cargar los chats</h2>
-                  <p>Revisa la conexión e intenta de nuevo.</p>
-                  <button type="button" className="ghost" onClick={() => void conversations.refetch()}>
-                    Reintentar
-                  </button>
-                </>
-              ) : (
-                <>
-                  <h2>Sin conversación activa</h2>
-                  <p>Inicia un nuevo chat con tus agentes o selecciona uno de la lista.</p>
-                  {(proyectos.data?.length ?? 0) > 0 && (
-                    <select
-                      className="project-select"
-                      aria-label="Proyecto del chat"
-                      value={projectId}
-                      onChange={(e) => setProjectId(e.target.value)}
-                    >
-                      <option value="">Sin proyecto</option>
-                      {proyectos.data?.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <button
-                    type="button"
-                    className="primary"
-                    onClick={() => create.mutate(projectId || null)}
-                    disabled={create.isPending}
+    <section className="tl-chat" aria-label="Chat">
+      {!selectedId ? (
+        <div className="tl-vacio">
+          <div className="tl-vacio-caja">
+            {conversations.isPending ? (
+              <p>Cargando chats…</p>
+            ) : conversations.isError ? (
+              <>
+                <h2>No se pudieron cargar los chats</h2>
+                <p>Revisa la conexión e intenta de nuevo.</p>
+                <button type="button" className="tl-boton" onClick={() => void conversations.refetch()}>
+                  Reintentar
+                </button>
+              </>
+            ) : (
+              <>
+                <h2>Sin conversación activa</h2>
+                <p>Inicia un nuevo chat con tus agentes o selecciona uno de la lista.</p>
+                {(proyectos.data?.length ?? 0) > 0 && (
+                  <select
+                    className="tl-select"
+                    aria-label="Proyecto del chat"
+                    value={projectId}
+                    onChange={(e) => setProjectId(e.target.value)}
                   >
-                    Nuevo chat
-                  </button>
-                  {create.isError && (
-                    <p className="error" role="alert">
-                      {errorText(create.error)}
-                    </p>
-                  )}
-                </>
+                    <option value="">Sin proyecto</option>
+                    {proyectos.data?.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  type="button"
+                  className="tl-boton tl-boton-principal"
+                  onClick={() => create.mutate(projectId || null)}
+                  disabled={create.isPending}
+                >
+                  Nuevo chat
+                </button>
+                {create.isError && (
+                  <p className="tl-alerta" role="alert">
+                    {errorText(create.error)}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          <header className="tl-chat-cabecera">
+            <div className="tl-chat-cabecera-izq">
+              <span className="tl-chip tl-chip-modelo" title="Modelo de este chat">
+                <span className="tl-chip-nombre">{nombreChip}</span>
+                {contexto && <span className="tl-chip-dato">{contexto}</span>}
+              </span>
+              <h1 className="tl-chat-titulo">{current?.title ?? "Chat"}</h1>
+              {current?.project_name && (
+                <span className="tl-chip tl-chip-proyecto" title={`Proyecto: ${current.project_name}`}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                  </svg>
+                  <span className="tl-chip-texto">{current.project_name}</span>
+                </span>
               )}
             </div>
-          </div>
-        ) : (
-          <>
-            <div className="chat-thread">
-              {messages.isPending && <p className="muted-note">Cargando mensajes…</p>}
+            <div className="tl-chat-cabecera-der">
+              <button
+                type="button"
+                className="tl-boton"
+                disabled
+                aria-label="Bifurcar"
+                title="Bifurcar no está disponible: los chats todavía no admiten ramas"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <line x1="6" y1="3" x2="6" y2="15" />
+                  <circle cx="18" cy="6" r="3" />
+                  <circle cx="6" cy="18" r="3" />
+                  <path d="M18 9a9 9 0 0 1-9 9" />
+                </svg>
+                <span className="tl-boton-texto">Bifurcar</span>
+              </button>
+              <button
+                type="button"
+                className="tl-boton"
+                disabled
+                aria-label="Historial"
+                title="El historial de este chat todavía no está disponible"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polyline points="1 4 1 10 7 10" />
+                  <path d="M3.5 15a9 9 0 1 0 2.1-9.4L1 10" />
+                </svg>
+                <span className="tl-boton-texto">Historial</span>
+              </button>
+            </div>
+          </header>
+
+          <div className="tl-hilo">
+            <div className="tl-hilo-columna">
+              {messages.isPending && <p className="tl-nota">Cargando mensajes…</p>}
               {messages.isError && (
-                <div className="estado-linea">
-                  <p className="error" role="alert">
+                <div className="tl-estado-linea">
+                  <p className="tl-alerta" role="alert">
                     No se pudieron cargar los mensajes.
                   </p>
-                  <button type="button" className="ghost" onClick={() => void messages.refetch()}>
+                  <button type="button" className="tl-boton" onClick={() => void messages.refetch()}>
                     Reintentar
                   </button>
                 </div>
               )}
               {messages.data?.length === 0 && !send.isPending && (
-                <div className="chat-msg">
-                  <span className="msg-meta">Asistente · Listo</span>
-                  <p>Escribe una instrucción para el agente o pulsa Ctrl+K para comandos.</p>
-                </div>
+                <p className="tl-nota">Aún no hay mensajes. Escribe una instrucción para el agente o pulsa Ctrl+K para comandos.</p>
               )}
-              {messages.data?.map((m) => {
-                const isUser = m.role === "user";
-                return (
-                  <div key={m.id} className={`chat-msg${isUser ? " chat-msg-user" : " chat-msg-assistant"}`}>
-                    <div className="msg-meta">
-                      {isUser ? (
-                        <span>Tú · {formatWhen(m.created_at)}</span>
-                      ) : (
-                        <>
-                          <span className="msg-author-icon" aria-hidden="true">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="16 18 22 12 16 6" />
-                              <polyline points="8 6 2 12 8 18" />
-                            </svg>
-                          </span>
-                          <span>{modelInfo?.name ?? current?.model ?? "Codex CLI"} · {formatWhen(m.created_at)}</span>
-                        </>
-                      )}
-                    </div>
-                    <div className="msg-content">
-                      {m.content}
-                    </div>
-                  </div>
-                );
-              })}
+              {messages.data?.map((m) =>
+                m.role === "user" ? (
+                  <MensajeUsuario key={m.id} texto={m.content} cuando={m.created_at} />
+                ) : (
+                  <MensajeAgente key={m.id} texto={m.content} cuando={m.created_at} modelo={nombreAgente} />
+                ),
+              )}
               {send.isPending && !yaGuardado && (
-                <div className="chat-msg chat-msg-user">
-                  <div className="msg-meta">
-                    <span>Tú · Ahora</span>
-                  </div>
-                  <div className="msg-content">{send.variables?.content}</div>
-                </div>
+                <MensajeUsuario texto={send.variables?.content ?? ""} cuando={null} />
               )}
-              {pensando && (
-                <div className="chat-msg chat-msg-assistant">
-                  <div className="msg-meta">
-                    <span className="msg-author-icon" aria-hidden="true">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="16 18 22 12 16 6" />
-                        <polyline points="8 6 2 12 8 18" />
-                      </svg>
-                    </span>
-                    <span>{modelInfo?.name ?? current?.model ?? "Codex CLI"} · Pensando…</span>
-                  </div>
-                  <div className="thinking" aria-live="polite">
-                    <span className="dot" aria-hidden="true" />
-                    <span className="muted-note">Pensando</span>
-                  </div>
-                </div>
-              )}
+              {pensando && <IndicadorPensando modelo={nombreAgente} />}
               <div ref={endRef} />
             </div>
+          </div>
 
-            <form
-              className="composer-form"
-              onSubmit={(e: FormEvent) => {
-                e.preventDefault();
-                submit();
-              }}
-            >
-              {error && (
-                <p className="error" role="alert">
-                  {error}
-                </p>
-              )}
-              {modelInfo?.costWarning && <p className="hint">{modelInfo.costWarning}</p>}
+          <form
+            className="tl-composer"
+            onSubmit={(e: FormEvent) => {
+              e.preventDefault();
+              submit();
+            }}
+          >
+            {error && (
+              <p className="tl-alerta" role="alert">
+                {error}
+              </p>
+            )}
+            {modelInfo?.costWarning && <p className="tl-aviso">{modelInfo.costWarning}</p>}
 
-              <div className="composer-box">
-                {pickerOpen && (
-                  <ModelPicker
-                    models={modelList}
-                    currentId={current?.model ?? null}
-                    conEsfuerzo
-                    currentEffort={efectoActual}
-                    onSelect={elegirModelo}
-                    onClose={() => setPickerOpen(false)}
-                    disparador={chipRef}
-                    cargando={models.isPending}
-                    error={models.isError ? errorText(models.error) : null}
-                    onReintentar={() => void models.refetch()}
-                  />
-                )}
-
-                {usoAbierto && (
-                  <UsoPanel
-                    modelo={current?.model ?? null}
-                    onCerrar={() => setUsoAbierto(false)}
-                    disparador={usoRef}
-                  />
-                )}
-
-                <textarea
-                  ref={inputRef}
-                  className="composer-input"
-                  rows={2}
-                  value={draft}
-                  placeholder="Escribe una instrucción para el agente o pulsa Ctrl+K para comandos..."
-                  aria-label="Mensaje"
-                  onChange={(e) => cambiarBorrador(e.target.value)}
-                  onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
-                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      submit();
-                    }
-                  }}
+            <div className="tl-composer-caja">
+              {pickerOpen && (
+                <ModelPicker
+                  models={modelList}
+                  currentId={current?.model ?? null}
+                  conEsfuerzo
+                  currentEffort={efectoActual}
+                  onSelect={elegirModelo}
+                  onClose={() => setPickerOpen(false)}
+                  disparador={chipRef}
+                  cargando={models.isPending}
+                  error={models.isError ? errorText(models.error) : null}
+                  onReintentar={() => void models.refetch()}
                 />
+              )}
 
-                <div className="composer-controls">
-                  <div className="controls-left">
-                    <button
-                      ref={chipRef}
-                      type="button"
-                      className="model-chip"
-                      aria-haspopup="dialog"
-                      aria-expanded={pickerOpen}
-                      onClick={() => {
-                        setUsoAbierto(false);
-                        setPickerOpen((o) => !o);
-                      }}
-                    >
-                      <span>{etiquetaChip}</span>
-                      <div className="cost-meter" title={`Costo: ${tierBars(modelInfo?.costTier ?? "medio")} de 5`}>
-                        {[0, 1, 2, 3, 4].map((i) => (
-                          <span
-                            key={i}
-                            className={`cost-bar${i < tierBars(modelInfo?.costTier ?? "medio") ? " filled" : ""}`}
-                          />
-                        ))}
-                      </div>
-                    </button>
+              {usoAbierto && (
+                <UsoPanel
+                  modelo={current?.model ?? null}
+                  onCerrar={() => setUsoAbierto(false)}
+                  disparador={usoRef}
+                />
+              )}
 
-                    <div className="effort-selector" role="radiogroup" aria-label="Esfuerzo del modelo">
-                      {EFFORT_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          className={`effort-opt${efectoActual === opt.id ? " active" : ""}`}
-                          aria-checked={efectoActual === opt.id}
-                          onClick={() => configure.mutate({ effort: efectoActual === opt.id ? null : opt.id })}
-                        >
-                          {opt.label}
-                        </button>
+              <textarea
+                ref={inputRef}
+                className="tl-composer-input"
+                rows={2}
+                value={draft}
+                placeholder="Escribe un mensaje, o usa / para comandos"
+                aria-label="Mensaje"
+                onChange={(e) => cambiarBorrador(e.target.value)}
+                onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    submit();
+                  }
+                }}
+              />
+
+              <div className="tl-composer-barra">
+                <div className="tl-composer-izq">
+                  <button
+                    type="button"
+                    className="tl-accion-icono"
+                    disabled
+                    aria-label="Adjuntar archivo"
+                    title="Adjuntar archivos al chat todavía no está disponible"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className="tl-accion-icono"
+                    aria-label="Herramientas y comandos"
+                    title="Herramientas y comandos (Ctrl+K)"
+                    onClick={triggerPalette}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                    </svg>
+                  </button>
+
+                  <button
+                    ref={chipRef}
+                    type="button"
+                    className="tl-modelo-boton"
+                    aria-haspopup="dialog"
+                    aria-expanded={pickerOpen}
+                    onClick={() => {
+                      setUsoAbierto(false);
+                      setPickerOpen((o) => !o);
+                    }}
+                  >
+                    <span className="tl-modelo-nombre">{etiquetaChip}</span>
+                    <span className="cost-meter" title={`Costo: ${nivelCosto} de 5`} aria-hidden="true">
+                      {[0, 1, 2, 3, 4].map((i) => (
+                        <span key={i} className={`cost-bar${i < nivelCosto ? " filled" : ""}`} />
                       ))}
-                    </div>
-                  </div>
+                    </span>
+                  </button>
 
-                  <div className="controls-right">
-                    <button
-                      ref={usoRef}
-                      type="button"
-                      className="btn-usage"
-                      aria-haspopup="dialog"
-                      aria-expanded={usoAbierto}
-                      onClick={() => {
-                        setPickerOpen(false);
-                        setUsoAbierto((o) => !o);
-                      }}
-                    >
-                      Uso
-                    </button>
-
-                    <button
-                      type="submit"
-                      className="send"
-                      aria-label="Enviar"
-                      disabled={!draft.trim() || send.isPending || !!current?.ocupada}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </button>
+                  <div className="tl-esfuerzo" role="radiogroup" aria-label="Esfuerzo del modelo">
+                    {EFFORT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="radio"
+                        className="tl-esfuerzo-opcion"
+                        aria-checked={efectoActual === opt.id}
+                        onClick={() => configure.mutate({ effort: efectoActual === opt.id ? null : opt.id })}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
+
+                <div className="tl-composer-der">
+                  <button
+                    ref={usoRef}
+                    type="button"
+                    className="tl-boton tl-boton-compacto"
+                    aria-haspopup="dialog"
+                    aria-expanded={usoAbierto}
+                    onClick={() => {
+                      setPickerOpen(false);
+                      setUsoAbierto((o) => !o);
+                    }}
+                  >
+                    Uso
+                  </button>
+                  <button
+                    type="submit"
+                    className="tl-enviar"
+                    aria-label="Enviar"
+                    disabled={!draft.trim() || send.isPending || !!current?.ocupada}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-            </form>
-          </>
-        )}
-      </main>
-    </div>
+            </div>
+            <p className="tl-composer-nota">
+              Los agentes trabajan en el servidor de forma persistente. Revisa sus cambios antes de aplicarlos.
+            </p>
+          </form>
+        </>
+      )}
+    </section>
   );
 }

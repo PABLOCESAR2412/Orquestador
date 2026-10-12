@@ -1,294 +1,384 @@
-import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api, type ServidorEstado } from "../api";
-import { AppNav } from "../components/nav";
-import { BotonTema } from "../components/tema-boton";
 import { duracion, formatBytes, porcentaje } from "../components/tarea-formato";
-import { useEventosVivos } from "../lib/eventos-vivos";
 import { errorText, formatUsd } from "../lib/model";
-import { medirLatencia, useLatencia } from "../lib/latencia";
+import { medirLatencia } from "../lib/latencia";
+
+// Contenido de las pestañas "Estado del servidor" y "Almacenamiento" de Ajustes y Servidor.
+// Solo muestra lo que devuelve la API o lo que este navegador mide. Si un dato falta, la tarjeta dice "—".
 
 const ETIQUETA_DISCO: Record<string, string> = {
   datos: "Datos",
   proyectos: "Proyectos",
 };
 
-const MAX_MEDIDAS = 5;
+const MAX_MUESTRAS = 60;
+const INTERVALO_MS = 30_000;
 
-export function ServerPage() {
-  const qc = useQueryClient();
+export type MuestrasLatencia = {
+  // Última medida desde este navegador (ida y vuelta a /api/health).
+  ms: number | null;
+  p50: number | null;
+  p99: number | null;
+  cantidad: number;
+  midiendo: boolean;
+  medir: () => Promise<void>;
+};
 
-  const servidor = useQuery({
-    queryKey: ["servidor"],
-    queryFn: api.serverStatus,
-    refetchInterval: 30_000,
-  });
+// Percentil por rango más cercano sobre una lista ya ordenada.
+function percentil(ordenadas: number[], p: number): number {
+  const indice = Math.min(ordenadas.length - 1, Math.max(0, Math.ceil(p * ordenadas.length) - 1));
+  return ordenadas[indice];
+}
 
-  const runner = useQuery({
-    queryKey: ["runner"],
-    queryFn: api.runnerStatus,
-    refetchInterval: 60_000,
-  });
+// Mide al abrir la página, cada 30 s mientras la pestaña está visible y cuando se pide.
+// p50 y p99 salen solo de las medidas de esta página: no hay historial en el servidor.
+export function useMuestrasLatencia(): MuestrasLatencia {
+  const [muestras, setMuestras] = useState<number[]>([]);
+  const [midiendo, setMidiendo] = useState(true);
 
-  const latencia = useLatencia();
-  const [medidas, setMedidas] = useState<{ ms: number | null; hora: string }[]>([]);
-  const [midiendo, setMidiendo] = useState(false);
-
-  // Cambios de tareas en vivo: el estado se vuelve a pedir con una pausa, para no repetir la consulta en ráfaga.
-  const pausa = useRef<number | undefined>(undefined);
-  useEventosVivos({}, (evento) => {
-    if (evento.tipo !== "tarea" && evento.tipo !== "evento") return;
-    window.clearTimeout(pausa.current);
-    pausa.current = window.setTimeout(() => {
-      void qc.invalidateQueries({ queryKey: ["servidor"] });
-    }, 1_500);
-  });
-  useEffect(() => () => window.clearTimeout(pausa.current), []);
-
-  const medirAhora = async () => {
+  const medir = useCallback(async () => {
     setMidiendo(true);
-    const r = await medirLatencia();
+    const { ms } = await medirLatencia();
+    if (ms !== null) setMuestras((previas) => [...previas, ms].slice(-MAX_MUESTRAS));
     setMidiendo(false);
-    const hora = new Date().toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    setMedidas((prev) => [{ ms: r.ms, hora }, ...prev].slice(0, MAX_MEDIDAS));
+  }, []);
+
+  useEffect(() => {
+    void medir();
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== "hidden") void medir();
+    }, INTERVALO_MS);
+    return () => window.clearInterval(id);
+  }, [medir]);
+
+  const ordenadas = [...muestras].sort((a, b) => a - b);
+  return {
+    ms: muestras.length > 0 ? muestras[muestras.length - 1] : null,
+    p50: ordenadas.length > 0 ? percentil(ordenadas, 0.5) : null,
+    p99: ordenadas.length > 0 ? percentil(ordenadas, 0.99) : null,
+    cantidad: muestras.length,
+    midiendo,
+    medir,
   };
+}
+
+function fechaCorta(iso: string): string {
+  return new Date(iso).toLocaleString("es", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function ErrorConReintento({ error, onReintentar }: { error: unknown; onReintentar: () => void }) {
+  return (
+    <div className="aj-error-bloque" role="alert">
+      <p className="aj-error">{errorText(error)}</p>
+      <button type="button" className="aj-btn" onClick={onReintentar}>
+        Reintentar
+      </button>
+    </div>
+  );
+}
+
+function TarjetaServidor({
+  id,
+  titulo,
+  principal,
+  children,
+  pie,
+}: {
+  id: string;
+  titulo: string;
+  principal: string;
+  children?: ReactNode;
+  pie?: ReactNode;
+}) {
+  return (
+    <section className="aj-tarjeta" aria-labelledby={id}>
+      <h3 id={id} className="aj-tarjeta-titulo-simple">
+        {titulo}
+      </h3>
+      <p className="aj-principal">{principal}</p>
+      {children && <dl className="aj-filas">{children}</dl>}
+      {pie}
+    </section>
+  );
+}
+
+function Fila({ etiqueta, valor }: { etiqueta: string; valor: ReactNode }) {
+  return (
+    <div className="aj-fila">
+      <dt>{etiqueta}</dt>
+      <dd>{valor}</dd>
+    </div>
+  );
+}
+
+// Tarjetas de estado: proceso, latencia, discos, carpetas, herramientas, costos, tareas y agente.
+export function EstadoServidor({ latencia }: { latencia: MuestrasLatencia }) {
+  const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000 });
+  const runner = useQuery({ queryKey: ["runner"], queryFn: api.runnerStatus, refetchInterval: 60_000 });
 
   const datos: ServidorEstado | undefined = servidor.data;
-  const enLinea = latencia.estado === "buena" || latencia.estado === "lenta";
-
-  // Derivados
-  const discoPrincipal = datos?.disco?.[0];
+  const discoDatos = datos?.disco.find((d) => d.etiqueta === "datos");
+  const discoProyectos = datos?.disco.find((d) => d.etiqueta === "proyectos");
   const herramientasListas = datos?.herramientas.filter((h) => h.disponible).length ?? 0;
   const runnerListo = !!runner.data?.opencode && (runner.data.bwrap || !runner.data.aislamiento);
 
-  // Cálculo de percentiles para latencia
-  const msList = medidas
-    .map((m) => m.ms)
-    .filter((v): v is number => v !== null)
-    .sort((a, b) => a - b);
-  const p50 = msList.length > 0 ? msList[Math.floor(msList.length * 0.5)] : latencia.ms;
-  const p99 = msList.length > 0 ? msList[Math.floor(msList.length * 0.99)] : (latencia.ms != null ? Math.round(latencia.ms * 1.2) : null);
+  return (
+    <section className="aj-seccion" aria-labelledby="aj-estado-titulo">
+      <div className="aj-seccion-cabecera">
+        <h2 id="aj-estado-titulo" className="aj-titulo-seccion">
+          Estado del servidor
+        </h2>
+        <button
+          type="button"
+          className="aj-btn"
+          disabled
+          title="La app todavía no puede leer los registros del servidor."
+        >
+          Ver logs
+        </button>
+      </div>
+
+      {servidor.isError && <ErrorConReintento error={servidor.error} onReintentar={() => void servidor.refetch()} />}
+
+      <div className="aj-rejilla-servidor">
+        <TarjetaServidor
+          id="aj-proceso"
+          titulo="Proceso"
+          principal={datos ? duracion(datos.proceso.segundosActivo) : "—"}
+        >
+          <Fila etiqueta="Arranque" valor={datos ? fechaCorta(datos.proceso.arrancado) : "—"} />
+          <Fila etiqueta="Runtime" valor={datos ? `Bun ${datos.proceso.bun}` : "—"} />
+          <Fila etiqueta="Plataforma" valor={datos?.proceso.plataforma ?? "—"} />
+          <Fila
+            etiqueta="Memoria RSS"
+            valor={datos ? `${datos.proceso.rssMb.toLocaleString("es", { maximumFractionDigits: 1 })} MB` : "—"}
+          />
+        </TarjetaServidor>
+
+        <TarjetaServidor
+          id="aj-latencia"
+          titulo="Latencia"
+          principal={latencia.ms != null ? `${latencia.ms} ms` : latencia.midiendo ? "…" : "—"}
+          pie={
+            <div className="aj-pie-tarjeta">
+              <button
+                id="pingBtn"
+                type="button"
+                className="aj-btn"
+                onClick={() => void latencia.medir()}
+                disabled={latencia.midiendo}
+              >
+                {latencia.midiendo ? "Midiendo…" : "Medir ahora"}
+              </button>
+              <p className="aj-nota">
+                Ida y vuelta desde este navegador a /api/health. Se mide al abrir la página, cada 30 s y al pulsar el botón.
+              </p>
+            </div>
+          }
+        >
+          <Fila etiqueta="p50" valor={latencia.p50 != null ? `${latencia.p50} ms` : "—"} />
+          <Fila etiqueta="p99" valor={latencia.p99 != null ? `${latencia.p99} ms` : "—"} />
+          <Fila etiqueta="Medidas" valor={`${latencia.cantidad} en esta página`} />
+        </TarjetaServidor>
+
+        <TarjetaServidor
+          id="aj-discos"
+          titulo="Discos"
+          principal={discoDatos ? `${formatBytes(discoDatos.libreBytes)} libres` : "—"}
+        >
+          <Fila
+            etiqueta="Datos"
+            valor={discoDatos ? `${porcentaje(discoDatos.usadoBytes, discoDatos.totalBytes)} % usado` : "—"}
+          />
+          <Fila
+            etiqueta="Proyectos"
+            valor={
+              discoProyectos && discoProyectos.totalBytes > 0
+                ? `${formatBytes(discoProyectos.libreBytes)} libres`
+                : datos
+                  ? "Sin datos"
+                  : "—"
+            }
+          />
+        </TarjetaServidor>
+
+        <TarjetaServidor
+          id="aj-carpetas"
+          titulo="Carpetas"
+          principal={datos ? `${datos.carpetas.length} carpetas` : "—"}
+        >
+          {datos && datos.carpetas.length === 0 && <Fila etiqueta="Carpetas" valor="Sin carpetas" />}
+          {datos?.carpetas.map((c) => (
+            <Fila
+              key={c.nombre}
+              etiqueta={c.nombre}
+              valor={`${formatBytes(c.bytes)} · ${c.archivos.toLocaleString("es")} archivos`}
+            />
+          ))}
+        </TarjetaServidor>
+
+        <TarjetaServidor
+          id="aj-herramientas"
+          titulo="Herramientas instaladas"
+          principal={datos ? `${herramientasListas} listas` : "—"}
+        >
+          {datos && datos.herramientas.length === 0 && <Fila etiqueta="Herramientas" valor="Sin datos" />}
+          {!datos && <Fila etiqueta="Herramientas" valor="Consultando…" />}
+          {datos?.herramientas.map((h) => (
+            <Fila
+              key={h.nombre}
+              etiqueta={h.nombre}
+              valor={h.disponible ? (h.version ?? "disponible") : "no disponible"}
+            />
+          ))}
+        </TarjetaServidor>
+
+        <TarjetaServidor
+          id="aj-costos"
+          titulo="Costos"
+          principal={datos ? formatUsd(datos.costos.mesUsd) : "—"}
+          pie={<p className="aj-nota">Mes en curso, en UTC.</p>}
+        >
+          <Fila etiqueta="Últimos 30 días" valor={datos ? formatUsd(datos.costos.ultimos30dUsd) : "—"} />
+          <Fila etiqueta="Llamadas (30 días)" valor={datos ? datos.costos.llamadas30d.toLocaleString("es") : "—"} />
+          <Fila
+            etiqueta="Tokens (30 días)"
+            valor={datos ? `${(datos.costos.tokens30d / 1_000_000).toFixed(2)} M` : "—"}
+          />
+        </TarjetaServidor>
+
+        <TarjetaServidor
+          id="aj-tareas"
+          titulo="Tareas"
+          principal={datos ? `${datos.tareas.en_curso} en ejecución` : "—"}
+        >
+          <Fila etiqueta="En cola" valor={datos ? `${datos.tareas.en_cola} pendientes` : "—"} />
+          <Fila etiqueta="Últimos 30 días" valor={datos ? `${datos.tareas.ultimos30d} registradas` : "—"} />
+          <Fila etiqueta="Workers asignados" valor={datos ? `${datos.tareas.en_curso} / 1` : "—"} />
+        </TarjetaServidor>
+
+        <TarjetaServidor
+          id="aj-agente"
+          titulo="Agente"
+          principal={runner.data?.opencode ? "OpenCode CLI" : runner.isPending ? "Consultando…" : "Sin agente"}
+        >
+          <Fila
+            etiqueta="Motor local"
+            valor={runner.data ? (runner.data.opencode ? "OpenCode disponible" : "No encontrado") : "—"}
+          />
+          <Fila
+            etiqueta="Aislamiento"
+            valor={
+              runner.data
+                ? !runner.data.aislamiento
+                  ? "Desactivado"
+                  : runner.data.bwrap
+                    ? "Bubblewrap activo"
+                    : "Falta bubblewrap"
+                : "—"
+            }
+          />
+          <Fila etiqueta="Estado" valor={runner.data ? (runnerListo ? "Listo para tareas" : "Incompleto") : "—"} />
+        </TarjetaServidor>
+      </div>
+    </section>
+  );
+}
+
+function TarjetaDisco({
+  etiqueta,
+  disco,
+  cargando,
+}: {
+  etiqueta: "datos" | "proyectos";
+  disco: ServidorEstado["disco"][number] | undefined;
+  cargando: boolean;
+}) {
+  const medido = disco !== undefined && disco.totalBytes > 0;
+  const uso = medido ? porcentaje(disco.usadoBytes, disco.totalBytes) : 0;
+  const id = `aj-disco-${etiqueta}`;
 
   return (
-    <div className="page-wrap">
-      <AppNav variant="row" />
-      <main className="container">
-        <header className="header-row">
-          <div className="title-group">
-            <h1 className="page-title">Servidor</h1>
-            <span className={`status-pill ${enLinea ? "is-online" : "is-offline"}`}>
-              <span className="status-dot" aria-hidden="true" />
-              {latencia.estado === "midiendo" ? "consultando…" : enLinea ? "en línea" : "sin conexión"}
-            </span>
-          </div>
-          <BotonTema />
-        </header>
+    <section className="aj-tarjeta" aria-labelledby={id}>
+      <h3 id={id} className="aj-tarjeta-titulo-simple">
+        {ETIQUETA_DISCO[etiqueta]}
+      </h3>
+      <p className="aj-principal">{medido ? `${uso} % usado` : cargando ? "…" : "—"}</p>
+      <div className="aj-barra" role="img" aria-label={medido ? `${uso} % usado` : "Sin datos de uso"}>
+        <div className="aj-barra-relleno" style={{ width: `${uso}%` }} />
+      </div>
+      <dl className="aj-filas">
+        <Fila
+          etiqueta="Usado"
+          valor={medido ? `${formatBytes(disco.usadoBytes)} de ${formatBytes(disco.totalBytes)}` : "Sin datos"}
+        />
+        <Fila etiqueta="Libre" valor={medido ? formatBytes(disco.libreBytes) : "Sin datos"} />
+      </dl>
+      {!medido && !cargando && (
+        <p className="aj-nota">El servidor no pudo medir este disco o no tiene la carpeta configurada.</p>
+      )}
+    </section>
+  );
+}
 
-        {servidor.isError && (
-          <section className="panel" aria-live="polite">
-            <p className="error" role="alert">
-              {errorText(servidor.error)}
-            </p>
-            <div>
-              <button type="button" className="btn-ghost" onClick={() => void servidor.refetch()}>
-                Reintentar
-              </button>
-            </div>
-          </section>
+// Discos y carpetas reales del servidor.
+export function AlmacenamientoServidor() {
+  const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000 });
+  const datos = servidor.data;
+  const carpetas = datos?.carpetas ?? [];
+  const mayor = Math.max(0, ...carpetas.map((c) => c.bytes));
+
+  return (
+    <section className="aj-seccion" aria-labelledby="aj-almacenamiento-titulo">
+      <div className="aj-seccion-cabecera">
+        <h2 id="aj-almacenamiento-titulo" className="aj-titulo-seccion">
+          Almacenamiento
+        </h2>
+      </div>
+
+      {servidor.isError && <ErrorConReintento error={servidor.error} onReintentar={() => void servidor.refetch()} />}
+
+      <div className="aj-rejilla-servidor">
+        <TarjetaDisco etiqueta="datos" disco={datos?.disco.find((d) => d.etiqueta === "datos")} cargando={servidor.isPending} />
+        <TarjetaDisco
+          etiqueta="proyectos"
+          disco={datos?.disco.find((d) => d.etiqueta === "proyectos")}
+          cargando={servidor.isPending}
+        />
+      </div>
+
+      <section className="aj-tarjeta" aria-labelledby="aj-carpetas-titulo">
+        <h3 id="aj-carpetas-titulo" className="aj-tarjeta-titulo-simple">
+          Carpetas
+        </h3>
+        {servidor.isPending && <p className="aj-nota">Consultando…</p>}
+        {datos && carpetas.length === 0 && <p className="aj-nota">Sin carpetas.</p>}
+        {carpetas.length > 0 && (
+          <ul className="aj-carpetas">
+            {carpetas.map((c) => (
+              <li key={c.nombre} className="aj-carpeta">
+                <div className="aj-carpeta-cabecera">
+                  <span className="aj-mono">{c.nombre}</span>
+                  <span>
+                    {formatBytes(c.bytes)} · {c.archivos.toLocaleString("es")} archivos
+                  </span>
+                </div>
+                <div className="aj-barra" aria-hidden="true">
+                  <div className="aj-barra-relleno" style={{ width: `${porcentaje(c.bytes, mayor)}%` }} />
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
-
-        <div className="server-grid">
-          {/* 1. Proceso */}
-          <section className="panel" aria-labelledby="sec-proceso">
-            <h2 id="sec-proceso" className="panel-title">Proceso</h2>
-            <div className="main-stat">
-              {datos ? `PID ${(datos.proceso as { pid?: number }).pid ?? "40912"}` : "—"}
-            </div>
-            <div className="detail-list">
-              <div className="detail-item">
-                <span className="detail-label">Binario</span>
-                <span className="detail-value">{datos ? `orquestador (Bun ${datos.proceso.bun})` : "—"}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Uptime</span>
-                <span className="detail-value">{datos ? duracion(datos.proceso.segundosActivo) : "—"}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Memoria RSS</span>
-                <span className="detail-value">{datos ? `${datos.proceso.rssMb.toLocaleString("es")} MB` : "—"}</span>
-              </div>
-            </div>
-          </section>
-
-          {/* 2. Latencia */}
-          <section className="panel" aria-labelledby="sec-latencia">
-            <h2 id="sec-latencia" className="panel-title">Latencia</h2>
-            <div className="main-stat">
-              {latencia.ms != null ? `${latencia.ms} ms` : midiendo ? "…" : "—"}
-            </div>
-            <div className="detail-list">
-              <div className="detail-item">
-                <span className="detail-label">p50</span>
-                <span className="detail-value">{p50 != null ? `${p50} ms` : "—"}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">p99</span>
-                <span className="detail-value">{p99 != null ? `${p99} ms` : "—"}</span>
-              </div>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
-              <button className="btn-ghost" type="button" id="pingBtn" onClick={() => void medirAhora()} disabled={midiendo}>
-                {midiendo ? "Midiendo…" : "Medir ahora"}
-              </button>
-              <span className="help-note">Medidas con el botón en esta sesión: las medidas no se toman solas.</span>
-            </div>
-          </section>
-
-          {/* 3. Discos */}
-          <section className="panel" aria-labelledby="sec-discos">
-            <h2 id="sec-discos" className="panel-title">Discos</h2>
-            <div className="main-stat">
-              {discoPrincipal ? `${formatBytes(discoPrincipal.libreBytes)} libres` : "—"}
-            </div>
-            <div className="detail-list">
-              <div className="detail-item">
-                <span className="detail-label">Punto de montaje</span>
-                <span className="detail-value">{discoPrincipal ? (ETIQUETA_DISCO[discoPrincipal.etiqueta] ?? discoPrincipal.etiqueta) : "—"}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Uso total</span>
-                <span className="detail-value">
-                  {discoPrincipal ? `${porcentaje(discoPrincipal.usadoBytes, discoPrincipal.totalBytes)}% (${formatBytes(discoPrincipal.totalBytes)})` : "—"}
-                </span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">I/O read/write</span>
-                <span className="detail-value">1.2 MB/s · 4.8 MB/s</span>
-              </div>
-            </div>
-          </section>
-
-          {/* 4. Carpetas */}
-          <section className="panel" aria-labelledby="sec-carpetas">
-            <h2 id="sec-carpetas" className="panel-title">Carpetas</h2>
-            <div className="main-stat">
-              {datos ? `${datos.carpetas.length} activas` : "—"}
-            </div>
-            <div className="detail-list">
-              {datos && datos.carpetas.length > 0 ? (
-                datos.carpetas.map((c) => (
-                  <div key={c.nombre} className="detail-item">
-                    <span className="detail-label">{c.nombre}</span>
-                    <span className="detail-value">{formatBytes(c.bytes)} · {c.archivos.toLocaleString("es")} arch.</span>
-                  </div>
-                ))
-              ) : (
-                <div className="detail-item">
-                  <span className="detail-label">Carpetas</span>
-                  <span className="detail-value">Sin carpetas</span>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* 5. Herramientas instaladas */}
-          <section className="panel" aria-labelledby="sec-herramientas">
-            <h2 id="sec-herramientas" className="panel-title">Herramientas instaladas</h2>
-            <div className="main-stat">
-              {datos ? `${herramientasListas} listas` : "—"}
-            </div>
-            <div className="detail-list">
-              {datos && datos.herramientas.length > 0 ? (
-                datos.herramientas.map((h) => (
-                  <div key={h.nombre} className="detail-item">
-                    <span className="detail-label">{h.nombre}</span>
-                    <span className="detail-value">{h.disponible ? (h.version ?? "disponible") : "no disponible"}</span>
-                  </div>
-                ))
-              ) : (
-                <div className="detail-item">
-                  <span className="detail-label">Herramientas</span>
-                  <span className="detail-value">Consultando…</span>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* 6. Costos */}
-          <section className="panel" aria-labelledby="sec-costos">
-            <h2 id="sec-costos" className="panel-title">Costos</h2>
-            <div className="main-stat">
-              {datos ? formatUsd(datos.costos.mesUsd) : "—"}
-            </div>
-            <div className="detail-list">
-              <div className="detail-item">
-                <span className="detail-label">Ciclo actual</span>
-                <span className="detail-value">{datos ? formatUsd(datos.costos.mesUsd) : "—"}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Últimos 30 días</span>
-                <span className="detail-value">{datos ? formatUsd(datos.costos.ultimos30dUsd) : "—"}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Tokens totales</span>
-                <span className="detail-value">{datos ? `${(datos.costos.tokens30d / 1_000_000).toFixed(2)}M` : "—"}</span>
-              </div>
-            </div>
-          </section>
-
-          {/* 7. Tareas */}
-          <section className="panel" aria-labelledby="sec-tareas">
-            <h2 id="sec-tareas" className="panel-title">Tareas</h2>
-            <div className="main-stat">
-              {datos ? `${datos.tareas.en_curso} en ejecución` : "—"}
-            </div>
-            <div className="detail-list">
-              <div className="detail-item">
-                <span className="detail-label">En cola</span>
-                <span className="detail-value">{datos ? `${datos.tareas.en_cola} pendientes` : "—"}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Últimos 30 días</span>
-                <span className="detail-value">{datos ? `${datos.tareas.ultimos30d} registradas` : "—"}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Workers asignados</span>
-                <span className="detail-value">{datos ? `${datos.tareas.en_curso} / 1` : "—"}</span>
-              </div>
-            </div>
-          </section>
-
-          {/* 8. Agente */}
-          <section className="panel" aria-labelledby="sec-agente">
-            <h2 id="sec-agente" className="panel-title">Agente</h2>
-            <div className="main-stat">
-              {runner.data?.opencode ? "OpenCode CLI" : runner.isPending ? "Consultando…" : "Sin agente"}
-            </div>
-            <div className="detail-list">
-              <div className="detail-item">
-                <span className="detail-label">Motor local</span>
-                <span className="detail-value">{runner.data?.opencode ? "OpenCode disponible" : "No encontrado"}</span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Aislamiento</span>
-                <span className="detail-value">
-                  {runner.data
-                    ? !runner.data.aislamiento
-                      ? "Desactivado"
-                      : runner.data.bwrap
-                        ? "Bubblewrap activo"
-                        : "Falta bubblewrap"
-                    : "—"}
-                </span>
-              </div>
-              <div className="detail-item">
-                <span className="detail-label">Estado</span>
-                <span className="detail-value">{runnerListo ? "Listo para tareas" : "Incompleto"}</span>
-              </div>
-            </div>
-          </section>
-        </div>
-      </main>
-    </div>
+      </section>
+    </section>
   );
 }

@@ -154,7 +154,7 @@ export function ProyectoSecretos({ id }: { id: string }) {
                     <button
                       type="button"
                       className="btn-primary"
-                      style={{ background: "var(--danger)", color: "#fff", padding: "4px 8px", fontSize: 12 }}
+                      style={{ background: "var(--danger)", color: "var(--bg)", padding: "4px 8px", fontSize: 12 }}
                       disabled={quitar.isPending}
                       onClick={() => quitar.mutate(s.nombre)}
                     >

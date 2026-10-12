@@ -3,7 +3,6 @@ import {
   useContext,
   useState,
   useCallback,
-  useEffect,
   type ReactNode,
 } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
@@ -49,28 +48,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     }
   }, [closeDrawer, navigate, routerState.location.pathname]);
 
-  // Shortcut ⌘N / Ctrl+N para nueva tarea
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Solo ⌘N o Ctrl+N: Ctrl+Shift+N (ventana privada) y Alt siguen siendo del navegador.
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "n") {
-        const target = e.target as HTMLElement | null;
-        if (
-          target &&
-          (target.tagName === "INPUT" ||
-            target.tagName === "TEXTAREA" ||
-            target.isContentEditable)
-        ) {
-          return;
-        }
-        e.preventDefault();
-        triggerNewTask();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [triggerNewTask]);
-
+  // El atajo ⌘N / Ctrl+N vive en Shell: según la pantalla crea un chat o abre una tarea.
   return (
     <ShellContext.Provider
       value={{
