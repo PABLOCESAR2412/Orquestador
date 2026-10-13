@@ -67,7 +67,6 @@ export function Shell({ children }: { children: ReactNode }) {
   // Avisos del sistema cuando una tarea termina, falla o pide decisión (activos por defecto).
   useNotificacionesDeTareas();
   const invalidarChats = () => qc.invalidateQueries({ queryKey: ["conversations"] });
-
   const renombrar = useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) => api.updateConversation(id, { title }),
     onSettled: () => void invalidarChats(),
