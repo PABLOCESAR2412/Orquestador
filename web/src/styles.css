@@ -49,12 +49,6 @@
   --signal-line: var(--line-strong);
   --scrim: rgba(13, 14, 17, 0.78);
   --shadow: rgba(0, 0, 0, 0.45);
-  /* Ámbar de señal (DESIGN.md), solo en componentes del chat: enviar, dictado, fijado y descargas. */
-  --ambar: #d9a441;
-  --ambar-fg: #0E0F12;
-  --ambar-texto: #d9a441;
-  --ambar-soft: rgba(217, 164, 65, 0.14);
-  --ambar-line: rgba(217, 164, 65, 0.4);
 }
 
 /* Claro: Orquestador Light Precision */
@@ -84,8 +78,6 @@
   --signal-line: var(--line-strong);
   --scrim: rgba(22, 26, 33, 0.45);
   --shadow: rgba(0, 0, 0, 0.05);
-  /* El texto ámbar sobre blanco necesita más contraste que el relleno. */
-  --ambar-texto: #8a5a0b;
 }
 
 /* Sistema: sin atributo, sigue la preferencia del dispositivo */
@@ -116,7 +108,6 @@
     --signal-line: var(--line-strong);
     --scrim: rgba(22, 26, 33, 0.45);
     --shadow: rgba(0, 0, 0, 0.05);
-    --ambar-texto: #8a5a0b;
   }
 }
 
@@ -1755,7 +1746,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   text-align: left;
 }
 .picker-item:hover { background: var(--surface-2); }
-/* Modelo activo: fondo y borde neutros; el ámbar queda fuera del selector */
+/* Modelo activo: fondo y borde neutros */
 .picker-item[aria-current="true"] { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--line-strong); }
 .picker-main { display: flex; flex-direction: column; min-width: 0; }
 .picker-nombre-linea { display: flex; align-items: center; gap: 8px; min-width: 0; }
