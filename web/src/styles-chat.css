@@ -872,3 +872,96 @@
   box-shadow: 0 0 0 2px var(--line-strong);
   transition: box-shadow 0.3s ease;
 }
+
+/* Proceso del agente: pasos en vivo y "Ver proceso" debajo de cada respuesta */
+.tl-proceso-wrap { min-width: 0; margin: 0 0 10px; }
+.tl-proceso-boton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  margin-left: -8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.tl-proceso-boton:hover { background: var(--surface-2); color: var(--ink); }
+.tl-proceso-boton svg { transition: transform 0.15s ease; }
+.tl-proceso-boton svg.is-abierto { transform: rotate(90deg); }
+.tl-proceso-cuerpo { margin-top: 6px; }
+.tl-proceso {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0 0 10px;
+  padding: 0 0 0 12px;
+  list-style: none;
+  border-left: 1px solid var(--line);
+}
+.tl-proceso-texto {
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tl-proceso-accion { min-width: 0; }
+.tl-paso-accion {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-lowest);
+}
+.tl-paso-resumen {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 8px 10px;
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+  list-style: none;
+}
+.tl-paso-resumen::-webkit-details-marker { display: none; }
+.tl-paso-familia { display: inline-grid; place-items: center; color: var(--ink-2); }
+.tl-paso-titulo {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.tl-paso-estado { color: var(--ink-2); font-size: 12px; }
+.tl-paso-vista {
+  grid-column: 2 / 4;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.tl-paso-detalle {
+  max-height: 260px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tl-paso-accion.is-error .tl-paso-estado,
+.tl-paso-accion.is-error .tl-paso-detalle { color: var(--danger); }

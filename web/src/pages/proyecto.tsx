@@ -12,6 +12,7 @@ import { ProyectoArchivos } from "../components/proyecto-archivos";
 import { ProyectoSecretos } from "../components/proyecto-secretos";
 import { ProyectoSiguientePaso } from "../components/proyecto-siguiente";
 import { ProyectoClave } from "../components/proyecto-clave";
+import { ProyectoClonar } from "../components/proyecto-clonar";
 
 // Vista general de un proyecto: resumen, instrucciones, memoria, archivos y secretos exactos Stitch.
 export function ProjectDetailPage() {
@@ -121,6 +122,7 @@ export function ProjectDetailPage() {
 
         {datos && proyecto && (
           <>
+            {proyecto.origen_url && !proyecto.clonado_en && <ProyectoClonar proyecto={proyecto} />}
             <ProyectoResumen detalle={datos} />
             <ProyectoInstrucciones proyecto={proyecto} />
             <ProyectoMemoria id={proyecto.id} memoria={datos.memoria} />

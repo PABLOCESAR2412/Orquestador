@@ -29,6 +29,8 @@ export type OpcionesAgente = {
   projectId?: string | null;
   // Solo para la tarea: pide al agente escribir la memoria del proyecto al final y la guarda.
   aprender?: boolean;
+  // Solo para chats: añade instrucciones de estilo (respuestas concretas y verificables). Las tareas no lo usan.
+  estilo?: "chat";
 };
 
 // `modelo` es el que realmente respondió (puede ser el de respaldo), para registrar el uso.
@@ -88,6 +90,21 @@ export function conInstrucciones(projectId: string | null | undefined, prompt: s
   return `Instrucciones del proyecto (escritas por el dueño):\n${texto}\n---\n${prompt}`;
 }
 
+// Estilo de respuesta de los chats: concreto, con rutas y resultados, y sin repetir la pregunta.
+// Va delante del prompt en cada envío; la sesión de OpenCode no lo guarda por sí sola.
+export const ESTILO_CHAT = [
+  "Estilo de respuesta (no lo menciones en la respuesta):",
+  "- Empieza con una frase que diga qué vas a hacer y por qué.",
+  "- Sé concreto: cita rutas de archivo (con línea cuando aplique) y nombres exactos de funciones, comandos y configuraciones.",
+  "- Si ejecutaste un comando, muestra el resultado que importa, no solo la conclusión.",
+  "- Si cambiaste archivos, lista cada uno y di qué cambió en él.",
+  "- Si verificaste algo, di cómo (comando o prueba) y qué resultado dio. Si no pudiste comprobarlo, dilo sin rodeos.",
+].join("\n");
+
+export function conEstilo(prompt: string, estilo?: "chat"): string {
+  return estilo === "chat" ? `${ESTILO_CHAT}\n---\n${prompt}` : prompt;
+}
+
 // Un modelo de respaldo puede no tener el esfuerzo pedido; en ese caso se ejecuta sin él.
 async function varianteSoportada(modelo: string, variante: string | null | undefined): Promise<string | undefined> {
   if (!variante) return undefined;
@@ -111,7 +128,7 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
   };
   const memoria = opts.projectId ? memoriaDelProyecto(opts.projectId).texto : null;
   const base = {
-    prompt: conMemoria(conInstrucciones(opts.projectId, opts.prompt), memoria, opts.aprender === true),
+    prompt: conEstilo(conMemoria(conInstrucciones(opts.projectId, opts.prompt), memoria, opts.aprender === true), opts.estilo),
     cwd: opts.cwd,
     timeoutMs: opts.timeoutMs,
     signal: opts.signal,
@@ -132,6 +149,7 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
   // (ya limpio de secretos) y no se muestra en el resultado.
   const terminar = (r: RunResult, modelo: string): ResultadoAgente => {
     const texto = ocultarValores(r.text, ocultos);
+    const textoFinal = ocultarValores(r.textoFinal, ocultos);
     if (opts.aprender && opts.projectId) {
       const nueva = extraerMemoria(texto);
       if (nueva) {
@@ -142,7 +160,7 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
         }
       }
     }
-    return { ...r, text: opts.aprender ? quitarBloqueMemoria(texto) : texto, modelo };
+    return { ...r, text: opts.aprender ? quitarBloqueMemoria(texto) : texto, textoFinal, modelo };
   };
 
   const inicio = Date.now();

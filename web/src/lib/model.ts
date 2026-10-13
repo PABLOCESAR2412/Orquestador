@@ -217,6 +217,28 @@ export function errorText(err: unknown): string {
         return "No se pudo crear la clave de GitHub en el servidor. Intenta de nuevo.";
       case "clave_no_encontrada":
         return "Este proyecto no tiene clave de GitHub.";
+      case "invalid_github_url":
+        return "Pega la dirección de un repositorio de GitHub, por ejemplo https://github.com/dueño/repo.";
+      case "url_no_valida":
+        return "Esa dirección no es un repositorio de GitHub.";
+      case "project_sin_origen":
+        return "Este proyecto no viene de GitHub, así que no hay nada que clonar.";
+      case "project_ya_clonado":
+        return "Este proyecto ya está clonado.";
+      case "clonado_en_curso":
+        return "Ya se está clonando este proyecto. Espera a que termine.";
+      case "carpeta_no_vacia":
+        return "La carpeta del proyecto ya tiene archivos, así que no se puede clonar encima.";
+      case "clave_no_autorizada":
+        return "GitHub no acepta la clave de este proyecto. Agrégala en el repositorio (Settings → Deploy keys) y vuelve a intentar.";
+      case "repo_no_encontrado":
+        return "GitHub no encuentra ese repositorio, o la clave no tiene acceso a él. Revisa la dirección y la clave.";
+      case "host_no_verificado":
+        return "La identidad de GitHub no coincide con la fijada en Telo. No se clonó nada.";
+      case "sin_red_github":
+        return "El servidor no llega a GitHub por SSH. Revisa su conexión e intenta de nuevo.";
+      case "clonado_fallo":
+        return "No se pudo clonar el repositorio. Intenta de nuevo; si sigue fallando, revisa que la clave esté en GitHub.";
       case "clave_ilegible":
         return "La clave de GitHub de este proyecto no se puede leer. Bórrala y crea otra.";
       case "invalid_schedule":

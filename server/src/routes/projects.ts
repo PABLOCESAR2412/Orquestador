@@ -8,6 +8,9 @@ import { ArchivoError, leerArchivo, listarCarpeta, medirCarpeta, normalizarRuta 
 import { redactar } from "../redaccion";
 import { conProyectoRevisado } from "../ocupacion";
 import { ARCHIVOS_GUIA, componerInstrucciones, guardarMemoria } from "../memoria";
+import { ErrorClaveSsh, generarClaveProyecto } from "../clave-ssh";
+import { ErrorClonado, clonarRepositorio, urlGithubNormalizada } from "../clonado";
+import { sinLimiteDeInactividad } from "../conexion";
 
 // Un proyecto es una carpeta del servidor dentro de TELO_PROYECTOS_DIR.
 // Los chats y las tareas que lo usan trabajan dentro de esa carpeta.
@@ -21,6 +24,8 @@ export type ProjectRow = {
   instrucciones: string | null;
   memoria: string | null;
   memoria_actualizada_en: string | null;
+  origen_url: string | null;
+  clonado_en: string | null;
 };
 
 export class ProjectPathError extends Error {
@@ -100,7 +105,8 @@ export function slugProyecto(nombre: string): string {
     .replace(/-+$/, "");
 }
 
-const COLUMNS = "id, name, repo_path, pinned_at, created_at, instrucciones, memoria, memoria_actualizada_en";
+const COLUMNS =
+  "id, name, repo_path, pinned_at, created_at, instrucciones, memoria, memoria_actualizada_en, origen_url, clonado_en";
 
 function raizReal(): string | null {
   if (!config.projectsDir) return null;
@@ -125,6 +131,8 @@ function aProyecto(row: ProjectRow) {
     pinned_at: row.pinned_at,
     created_at: row.created_at,
     instrucciones: row.instrucciones,
+    origen_url: row.origen_url,
+    clonado_en: row.clonado_en,
     carpeta: basename(row.repo_path),
   };
 }
@@ -223,35 +231,43 @@ function registrarExistente(c: Context, path: string, name: unknown) {
   return c.json(aProyecto(leerProyecto(id)!), 201);
 }
 
-async function crearProyecto(c: Context, name: unknown) {
-  const nombre = typeof name === "string" ? name.trim() : "";
-  if (!nombre || nombre.length > MAX_NOMBRE) return c.json({ error: "invalid_project_name" }, 400);
-
+// Reserva la carpeta de un proyecto nuevo: una carpeta vacía dentro de la raíz, sin repetir una existente.
+function reservarCarpeta(nombre: string): { destino: string; rootReal: string } | { error: string; status: 400 | 409 | 503 } {
   const carpeta = slugProyecto(nombre);
-  if (!carpeta) return c.json({ error: "invalid_project_name" }, 400);
+  if (!carpeta) return { error: "invalid_project_name", status: 400 };
 
   const raiz = config.projectsDir;
-  if (!raiz) return c.json({ error: "projects_root_not_configured" }, 503);
+  if (!raiz) return { error: "projects_root_not_configured", status: 503 };
 
   let rootReal: string;
   try {
     mkdirSync(raiz, { recursive: true });
     rootReal = realpathSync(raiz);
   } catch {
-    return c.json({ error: "projects_root_not_configured" }, 503);
+    return { error: "projects_root_not_configured", status: 503 };
   }
 
   const destino = join(rootReal, carpeta);
-  if (existsSync(destino)) return c.json({ error: "project_folder_exists" }, 409);
+  if (existsSync(destino)) return { error: "project_folder_exists", status: 409 };
   if (db.query("SELECT id FROM projects WHERE repo_path = ?").get(destino)) {
-    return c.json({ error: "project_exists" }, 409);
+    return { error: "project_exists", status: 409 };
   }
 
   try {
     mkdirSync(destino);
   } catch {
-    return c.json({ error: "project_folder_exists" }, 409);
+    return { error: "project_folder_exists", status: 409 };
   }
+  return { destino, rootReal };
+}
+
+async function crearProyecto(c: Context, name: unknown) {
+  const nombre = typeof name === "string" ? name.trim() : "";
+  if (!nombre || nombre.length > MAX_NOMBRE) return c.json({ error: "invalid_project_name" }, 400);
+
+  const reserva = reservarCarpeta(nombre);
+  if ("error" in reserva) return c.json({ error: reserva.error }, reserva.status);
+  const { destino, rootReal } = reserva;
 
   // A partir de aquí, si algo falla se borra la carpeta que acabamos de crear.
   try {
@@ -282,6 +298,62 @@ async function crearProyecto(c: Context, name: unknown) {
   }
   return c.json(aProyecto(leerProyecto(id)!), 201);
 }
+
+// POST /api/projects/desde-github  body: { url, name? } -> proyecto con carpeta vacía y su clave SSH.
+// Falta pegar la clave en GitHub y pedir el clonado (POST /api/projects/:id/clonar).
+projects.post("/projects/desde-github", async (c) => {
+  const body = await leerCuerpoJson<{ url?: unknown; name?: unknown }>(c);
+  if (!body) return c.json({ error: "invalid_body" }, 400);
+  const origen = urlGithubNormalizada(typeof body.url === "string" ? body.url : "");
+  if (!origen) return c.json({ error: "invalid_github_url" }, 400);
+
+  const pedido = typeof body.name === "string" ? body.name.trim() : "";
+  const nombre = pedido || origen.repo;
+  if (nombre.length > MAX_NOMBRE) return c.json({ error: "invalid_project_name" }, 400);
+
+  const reserva = reservarCarpeta(nombre);
+  if ("error" in reserva) return c.json({ error: reserva.error }, reserva.status);
+
+  const id = crypto.randomUUID();
+  try {
+    db.query("INSERT INTO projects (id, name, repo_path, origen_url) VALUES (?, ?, ?, ?)").run(
+      id,
+      nombre,
+      reserva.destino,
+      origen.url,
+    );
+    await generarClaveProyecto(id);
+  } catch (err) {
+    db.query("DELETE FROM projects WHERE id = ?").run(id);
+    rmSync(reserva.destino, { recursive: true, force: true });
+    if (err instanceof ErrorClaveSsh) return c.json({ error: err.code }, 503);
+    throw err;
+  }
+  return c.json(aProyecto(leerProyecto(id)!), 201);
+});
+
+// POST /api/projects/:id/clonar -> clona el repo de origen con la clave del proyecto.
+projects.post("/projects/:id/clonar", async (c) => {
+  const id = c.req.param("id");
+  const fila = db
+    .query<{ repo_path: string; origen_url: string | null; clonado_en: string | null }, [string]>(
+      "SELECT repo_path, origen_url, clonado_en FROM projects WHERE id = ?",
+    )
+    .get(id);
+  if (!fila) return c.json({ error: "project_not_found" }, 404);
+  if (!fila.origen_url) return c.json({ error: "project_sin_origen" }, 400);
+  if (fila.clonado_en) return c.json({ error: "project_ya_clonado" }, 409);
+
+  // Un clonado puede tardar más de los 10 s que Bun deja pasar sin datos. Git tiene su propio límite (5 min).
+  sinLimiteDeInactividad(c);
+  try {
+    await clonarRepositorio(id, fila.repo_path, fila.origen_url);
+  } catch (err) {
+    if (err instanceof ErrorClonado) return c.json({ error: err.code }, err.status);
+    throw err;
+  }
+  return c.json(aProyecto(leerProyecto(id)!));
+});
 
 // GET /api/projects/:id -> chats, tareas por estado, última tarea, Git y tamaño.
 projects.get("/projects/:id", async (c) => {

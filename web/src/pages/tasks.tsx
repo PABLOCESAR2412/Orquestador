@@ -771,6 +771,8 @@ function DetalleTarea({ id }: { id: string }) {
       void qc.invalidateQueries({ queryKey: ["task", id] });
       return;
     }
+    // Los pasos de los chats no son de esta tarea.
+    if (evento.tipo === "actividad") return;
     void qc.invalidateQueries({ queryKey: ["task", id] });
     void qc.invalidateQueries({ queryKey: ["tasks"] });
     if (evento.status !== "queued" && evento.status !== "running") {

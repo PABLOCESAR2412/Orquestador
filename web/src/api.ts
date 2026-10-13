@@ -32,6 +32,9 @@ export type Project = {
   instrucciones: string | null;
   // Nombre de la carpeta dentro de la raíz de proyectos.
   carpeta: string;
+  // Repo de GitHub de origen (si el proyecto se creó clonándolo) y cuándo se clonó. Sin clonado, la carpeta espera.
+  origen_url?: string | null;
+  clonado_en?: string | null;
 };
 
 export type ProjectDetail = {
@@ -216,10 +219,22 @@ export type TaskEventKind =
   | "push_fallido";
 
 // Evento en vivo del canal /api/eventos-vivos (SSE).
+// Un paso del agente en un chat, en orden dentro de su turno. Un texto intermedio trae el texto en
+// `titulo`; una acción trae su título, su herramienta y una vista previa en `detalle`.
+export type PasoActividad = {
+  seq: number;
+  tipo: "texto" | "accion";
+  herramienta: string | null;
+  titulo: string;
+  detalle: string | null;
+  estado: "hecha" | "error" | "texto";
+};
+
 export type EventoVivo =
   | { tipo: "tarea"; id: string; status: TaskStatus; finished_at: string | null }
   | { tipo: "evento"; task_id: string; kind: TaskEventKind; detail: string | null; created_at: string }
-  | { tipo: "salida"; task_id: string; linea: string };
+  | { tipo: "salida"; task_id: string; linea: string }
+  | { tipo: "actividad"; conversacion_id: string; turno_id: string; paso: PasoActividad };
 
 export type TaskEvent = {
   id: number;
@@ -290,6 +305,9 @@ export const api = {
       body: JSON.stringify({ projectId: projectId ?? null }),
     }),
   listMessages: (id: string) => request<Message[]>(`/api/conversations/${id}/messages`),
+  // Pasos del agente de un turno (el id es el del mensaje del usuario).
+  listTurnoActividad: (conversacionId: string, turnoId: string) =>
+    request<PasoActividad[]>(`/api/conversations/${conversacionId}/turnos/${turnoId}/actividad`),
   sendMessage: (id: string, content: string) =>
     request<{ messages: Message[] }>(`/api/conversations/${id}/messages`, {
       method: "POST",
@@ -386,6 +404,10 @@ export const api = {
   listProjects: () => request<Project[]>("/api/projects"),
   createProject: (body: { name: string } | { path: string; name?: string }) =>
     request<Project>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
+  // Crea el proyecto con su carpeta vacía y su clave SSH. Falta clonarlo cuando la clave esté en GitHub.
+  createProjectFromGithub: (body: { url: string; name?: string }) =>
+    request<Project>("/api/projects/desde-github", { method: "POST", body: JSON.stringify(body) }),
+  cloneProject: (id: string) => request<Project>(`/api/projects/${id}/clonar`, { method: "POST" }),
   deleteProject: (id: string) =>
     request<{ ok: boolean }>(`/api/projects/${id}`, { method: "DELETE" }),
   listProviders: () => request<ProviderStatus[]>("/api/providers"),

@@ -28,6 +28,9 @@
     { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Meta de PWA sin aviso de obsolescencia en la consola", "pr": 24 },
     { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Clave pública oculta, con iconos de copiar y mostrar", "pr": 24 },
     { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Versión del sistema bajo el estado del servidor", "pr": 24 },
-    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Regla de versión en CLAUDE.md", "pr": 24 }
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Regla de versión en CLAUDE.md", "pr": 24 },
+    { "fecha": "2026-10-13", "tipo": "mediano", "titulo": "Clonado de repositorios privados de GitHub con clave por proyecto", "pr": null },
+    { "fecha": "2026-10-13", "tipo": "mediano", "titulo": "Proceso del agente en el chat: cada acción con su vista previa, en vivo y después", "pr": null },
+    { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Respuestas del chat más concretas: qué se hará, rutas y verificación", "pr": null }
   ]
 }

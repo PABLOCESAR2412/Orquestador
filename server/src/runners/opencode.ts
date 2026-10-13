@@ -10,7 +10,9 @@ export function sesionValida(id: unknown): id is string {
 }
 
 export type Usage = { input: number; output: number; reasoning: number; cacheRead: number; cost: number };
-export type RunResult = { text: string; sessionId: string | null; usage: Usage | null };
+// `text` une todo lo que el agente escribió. `textoFinal` es lo que dijo después de su última
+// herramienta: la respuesta, sin la narración de los pasos (que el chat muestra aparte).
+export type RunResult = { text: string; textoFinal: string; sessionId: string | null; usage: Usage | null };
 
 type OpenCodeEvent = {
   type: string;
@@ -222,12 +224,18 @@ export async function runOpenCode(opts: {
   }
 
   let text = "";
+  let textoTrasHerramientas = "";
   let sessionId: string | null = null;
   let usage: Usage | null = null;
 
   for (const ev of events) {
     if (sesionValida(ev.sessionID)) sessionId = ev.sessionID;
-    if (ev.type === "text" && ev.part?.text) text += ev.part.text;
+    if (ev.type === "text" && ev.part?.text) {
+      text += ev.part.text;
+      textoTrasHerramientas += ev.part.text;
+    }
+    // Lo dicho antes de una herramienta es narración del paso, no la respuesta final.
+    if (ev.part?.type === "tool") textoTrasHerramientas = "";
     if (ev.type === "step_finish" && ev.part?.tokens) {
       const t = ev.part.tokens;
       usage ??= { input: 0, output: 0, reasoning: 0, cacheRead: 0, cost: 0 };
@@ -242,5 +250,10 @@ export async function runOpenCode(opts: {
   if (!text.trim()) {
     throw new Error(`opencode no devolvió texto: ${failureDetail(stdout, stderr, events)}`);
   }
-  return { text: text.trim(), sessionId, usage };
+  return {
+    text: text.trim(),
+    textoFinal: textoTrasHerramientas.trim() || text.trim(),
+    sessionId,
+    usage,
+  };
 }
