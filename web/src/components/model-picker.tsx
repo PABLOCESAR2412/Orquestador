@@ -1,12 +1,12 @@
 import { useMemo, useRef, useState, type RefObject } from "react";
 import type { ModelInfo } from "../api";
-import { effortLabel, formatPrice } from "../lib/model";
+import { effortLabel, formatPrice, nombreProveedor } from "../lib/model";
 import { CostMeter, useDialogo } from "./controls";
 
 type Props = {
   models: ModelInfo[];
   currentId: string | null;
-  // Con conEsfuerzo, cada modelo lista sus niveles debajo; elegir uno fija modelo y esfuerzo a la vez.
+  // Con conEsfuerzo, el modelo activo muestra sus niveles debajo; elegir uno fija modelo y esfuerzo a la vez.
   conEsfuerzo?: boolean;
   currentEffort?: string | null;
   // El esfuerzo solo llega cuando conEsfuerzo está activo. null significa "Auto".
@@ -20,6 +20,8 @@ type Props = {
 };
 
 const MAX_RESULTS = 120;
+
+const plural = (n: number) => (n === 1 ? "1 modelo" : `${n} modelos`);
 
 export function ModelPicker({
   models,
@@ -59,37 +61,75 @@ export function ModelPicker({
   const groups = useMemo(() => {
     const matches = models.filter((m) => {
       if (onlyFree && !m.free) return false;
-      if (q) return `${m.name} ${m.id} ${m.group}`.toLowerCase().includes(q);
+      if (q) return `${m.name} ${m.id} ${m.group} ${m.provider}`.toLowerCase().includes(q);
       return m.recommended;
     });
 
-    const byGroup = new Map<string, ModelInfo[]>();
+    // Primero por proveedor (de dónde viene el modelo) y dentro, por familia.
+    const porProveedor = new Map<string, Map<string, ModelInfo[]>>();
     for (const m of q ? matches.slice(0, MAX_RESULTS) : matches) {
-      const bucket = byGroup.get(m.group) ?? [];
+      const familias = porProveedor.get(m.provider) ?? new Map<string, ModelInfo[]>();
+      const bucket = familias.get(m.group) ?? [];
       bucket.push(m);
-      byGroup.set(m.group, bucket);
+      familias.set(m.group, bucket);
+      porProveedor.set(m.provider, familias);
     }
-    return [...byGroup.entries()];
+    const grupos: [string, [string, ModelInfo[]][]][] = [...porProveedor.entries()].map(([prov, familias]) => [
+      prov,
+      [...familias.entries()],
+    ]);
+    return grupos;
   }, [models, q, onlyFree]);
 
-  const fila = (m: ModelInfo, esfuerzo: string | null) => (
-    <button
-      type="button"
-      className="picker-item"
-      aria-current={esActual(m) || undefined}
-      onClick={() => elegir(m, esfuerzo)}
-    >
+  // Modelos listados tras filtrar: es el contador "N modelos disponibles".
+  const listados = useMemo(
+    () => groups.reduce((total, [, familias]) => total + familias.reduce((n, [, items]) => n + items.length, 0), 0),
+    [groups],
+  );
+
+  // Fila de un modelo: nombre con "✓ Activo" si es el actual; precio arriba y costo abajo.
+  const fila = (m: ModelInfo) => (
+    <button type="button" className="picker-item" aria-current={esActual(m) || undefined} onClick={() => elegir(m, conservado(m))}>
       <span className="picker-main">
-        <span className="picker-name">{m.name}</span>
+        <span className="picker-nombre-linea">
+          <span className="picker-name">{m.name}</span>
+          {esActual(m) && <span className="picker-activo">✓ Activo</span>}
+        </span>
         <span className="picker-id">{m.id}</span>
       </span>
       <span className="picker-meta">
-        <CostMeter tier={m.costTier} />
         <span className="picker-price" title="Precio de entrada / salida por millón de tokens">
           {formatPrice(m)}
         </span>
+        <span className="picker-costo">
+          <span className="picker-costo-etiqueta">Costo</span>
+          <CostMeter tier={m.costTier} />
+        </span>
       </span>
     </button>
+  );
+
+  // Niveles de esfuerzo: solo bajo el modelo activo, con "Auto" primero.
+  const niveles = (m: ModelInfo) => (
+    <div className="picker-niveles" role="group" aria-label={`Nivel de esfuerzo de razonamiento de ${m.name}`}>
+      <span className="picker-niveles-etiqueta">Nivel de esfuerzo de razonamiento</span>
+      <div className="picker-niveles-opciones">
+        <button type="button" className="picker-nivel" aria-pressed={!currentEffort} onClick={() => elegir(m, null)}>
+          Auto
+        </button>
+        {m.variants.map((v) => (
+          <button
+            key={v}
+            type="button"
+            className="picker-nivel"
+            aria-pressed={currentEffort === v}
+            onClick={() => elegir(m, v)}
+          >
+            {effortLabel(v)}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 
   return (
@@ -97,14 +137,26 @@ export function ModelPicker({
       <div className="scrim" onClick={cerrar} />
       <div className="picker" role="dialog" aria-modal="true" aria-label="Elegir modelo" ref={dialogRef}>
         <div className="picker-head">
-          <input
-            className="picker-search"
-            autoFocus
-            placeholder="Buscar modelo"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Buscar modelo"
-          />
+          <div className="picker-buscar">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <line x1="20" y1="20" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              className="picker-search"
+              autoFocus
+              placeholder="Buscar modelo"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Buscar modelo"
+            />
+          </div>
+        </div>
+
+        <div className="picker-barra">
+          <span className="picker-conteo" aria-live="polite">
+            {!cargando && !error && (listados === 1 ? "1 modelo disponible" : `${listados} modelos disponibles`)}
+          </span>
           <button
             type="button"
             className={`pill${onlyFree ? " on" : ""}`}
@@ -130,7 +182,12 @@ export function ModelPicker({
             </button>
           )}
 
-          {cargando && <p className="muted-note pad">Cargando modelos…</p>}
+          {cargando && (
+            <p className="picker-cargando" role="status">
+              <span className="picker-spinner" aria-hidden="true" />
+              Consultando catálogo de modelos del servidor…
+            </p>
+          )}
 
           {!cargando && error && (
             <div className="picker-estado">
@@ -146,46 +203,28 @@ export function ModelPicker({
           )}
 
           {!cargando && !error && groups.length === 0 && (
-            <p className="muted-note pad">Ningún modelo coincide.</p>
+            <p className="muted-note pad">Ningún modelo coincide con la búsqueda.</p>
           )}
 
           {!cargando &&
             !error &&
-            groups.map(([group, items]) => (
-              <section key={group}>
-                <h3 className="group-title">{group}</h3>
-                {items.map((m) =>
-                  conEsfuerzo && m.variants.length > 0 ? (
-                    <div key={m.id} className="picker-modelo">
-                      {fila(m, conservado(m))}
-                      <div className="picker-niveles" role="group" aria-label={`Esfuerzo de ${m.name}`}>
-                        <button
-                          type="button"
-                          className="picker-nivel"
-                          aria-pressed={esActual(m) && !currentEffort}
-                          onClick={() => elegir(m, null)}
-                        >
-                          Auto
-                        </button>
-                        {m.variants.map((v) => (
-                          <button
-                            key={v}
-                            type="button"
-                            className="picker-nivel"
-                            aria-pressed={esActual(m) && currentEffort === v}
-                            onClick={() => elegir(m, v)}
-                          >
-                            {effortLabel(v)}
-                          </button>
-                        ))}
+            groups.map(([proveedor, familias]) => (
+              <section key={proveedor} className="picker-proveedor">
+                <h3 className="group-title">{nombreProveedor(proveedor)}</h3>
+                {familias.map(([familia, items]) => (
+                  <div key={familia} className="picker-familia">
+                    <div className="picker-familia-cabecera">
+                      <h4 className="picker-familia-titulo">{familia}</h4>
+                      <span className="picker-familia-conteo">{plural(items.length)}</span>
+                    </div>
+                    {items.map((m) => (
+                      <div key={m.id} className="picker-modelo">
+                        {fila(m)}
+                        {conEsfuerzo && esActual(m) && m.variants.length > 0 && niveles(m)}
                       </div>
-                    </div>
-                  ) : (
-                    <div key={m.id} className="picker-modelo">
-                      {fila(m, null)}
-                    </div>
-                  ),
-                )}
+                    ))}
+                  </div>
+                ))}
               </section>
             ))}
         </div>

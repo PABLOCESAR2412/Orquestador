@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Project } from "../api";
@@ -22,6 +22,8 @@ export function ProjectsPage() {
 
   const proyectos = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
   const [nombre, setNombre] = useState("");
+  // El botón de la cabecera lleva el foco al campo del formulario de arriba.
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const refrescar = () => {
     void qc.invalidateQueries({ queryKey: ["projects"] });
@@ -53,6 +55,16 @@ export function ProjectsPage() {
       <main className="container">
         <header className="header-row">
           <h1 className="page-title">Proyectos</h1>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => {
+              inputRef.current?.scrollIntoView({ block: "center" });
+              inputRef.current?.focus();
+            }}
+          >
+            Nuevo proyecto
+          </button>
         </header>
 
         {/* Panel Nuevo proyecto */}
@@ -71,6 +83,7 @@ export function ProjectsPage() {
               Nombre del proyecto
             </label>
             <input
+              ref={inputRef}
               id="projectName"
               className="input-text"
               maxLength={MAX_NOMBRE}

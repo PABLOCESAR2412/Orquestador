@@ -21,6 +21,10 @@ interface ShellContextType {
   setPaletteOpen: (open: boolean) => void;
   triggerPalette: () => void;
   closePalette: () => void;
+  // Panel de configuración del chat (se abre desde la barra superior).
+  configAbierta: boolean;
+  setConfigAbierta: (open: boolean) => void;
+  triggerConfig: () => void;
 }
 
 const ShellContext = createContext<ShellContextType | null>(null);
@@ -30,6 +34,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [configAbierta, setConfigAbierta] = useState(false);
   const navigate = useNavigate();
   const routerState = useRouterState();
 
@@ -38,6 +43,12 @@ export function ShellProvider({ children }: { children: ReactNode }) {
 
   const triggerPalette = useCallback(() => setPaletteOpen(true), []);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
+
+  // Configuración del chat: si no estás en Chat, primero te lleva allí.
+  const triggerConfig = useCallback(() => {
+    setConfigAbierta(true);
+    if (routerState.location.pathname !== "/chat") void navigate({ to: "/chat" });
+  }, [navigate, routerState.location.pathname]);
 
   const triggerNewTask = useCallback(() => {
     setNewTaskOpen(true);
@@ -65,6 +76,9 @@ export function ShellProvider({ children }: { children: ReactNode }) {
         setPaletteOpen,
         triggerPalette,
         closePalette,
+        configAbierta,
+        setConfigAbierta,
+        triggerConfig,
       }}
     >
       {children}

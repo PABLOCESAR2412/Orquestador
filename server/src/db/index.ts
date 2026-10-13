@@ -279,6 +279,23 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    // Documentos guardados desde un mensaje del chat (Word, Excel, HTML, texto o Markdown). El archivo
+    // se guarda en la base para que entre en la copia de respaldo. Se borran con su chat.
+    name: "016_documentos",
+    sql: `
+      CREATE TABLE documentos (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        titulo TEXT NOT NULL,
+        formato TEXT NOT NULL CHECK (formato IN ('docx', 'xlsx', 'html', 'txt', 'md')),
+        bytes INTEGER NOT NULL,
+        contenido BLOB NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX documentos_conversacion ON documentos(conversation_id, created_at);
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

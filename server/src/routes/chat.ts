@@ -16,6 +16,8 @@ import {
 } from "../ocupacion";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
+// Texto de un mensaje: incluye los adjuntos de texto. El cuerpo HTTP sigue limitado a 64 KB.
+const MAX_CONTENIDO = 30_000;
 const chatWorkspace = join(config.dataDir, "chat-workspace");
 mkdirSync(chatWorkspace, { recursive: true });
 
@@ -104,7 +106,7 @@ chat.post("/conversations/:id/messages", async (c) => {
 
   const body = await c.req.json<{ content?: string }>().catch(() => ({}) as { content?: string });
   const content = body.content?.trim() ?? "";
-  if (!content || content.length > 10_000) {
+  if (!content || content.length > MAX_CONTENIDO) {
     return c.json({ error: "invalid_content" }, 400);
   }
   if (conversacionEnCurso(conversationId)) return c.json({ error: "conversation_busy" }, 409);

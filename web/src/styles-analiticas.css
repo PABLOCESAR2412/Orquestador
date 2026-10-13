@@ -2,7 +2,7 @@
    Sin sombras ni degradados. El ámbar no se usa: el estado activo va en --primary. */
 
 main.an-principal {
-  max-width: 1160px;
+  max-width: var(--ancho-contenido);
   padding: 32px 40px 56px;
   gap: 24px;
   min-width: 0;

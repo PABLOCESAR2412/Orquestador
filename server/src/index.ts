@@ -3,6 +3,7 @@ import { join, resolve, sep, extname } from "node:path";
 import { config } from "./config";
 import { db } from "./db";
 import { chat } from "./routes/chat";
+import { documentos } from "./routes/documentos";
 import { modelsRoute } from "./routes/models";
 import { settings } from "./routes/settings";
 import { tasks } from "./routes/tasks";
@@ -47,29 +48,31 @@ const app = new Hono();
 
 // Cabeceras de seguridad. La política solo permite lo que usa la app: scripts y estilos del mismo origen,
 // conexiones al mismo origen (API y SSE) y nada embebido. Sin inline scripts.
-app.use(
-  "*",
-  secureHeaders({
-    xFrameOptions: "DENY",
-    xContentTypeOptions: "nosniff",
-    referrerPolicy: "no-referrer",
-    crossOriginOpenerPolicy: "same-origin",
-    crossOriginResourcePolicy: "same-origin",
-    contentSecurityPolicy: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:"],
-      connectSrc: ["'self'"],
-      workerSrc: ["'self'"],
-      manifestSrc: ["'self'"],
-      fontSrc: ["'self'"],
-      objectSrc: ["'none'"],
-      baseUri: ["'self'"],
-      frameAncestors: ["'none'"],
-      formAction: ["'self'"],
-    },
-  }),
+const cabecerasSeguras = secureHeaders({
+  xFrameOptions: "DENY",
+  xContentTypeOptions: "nosniff",
+  referrerPolicy: "no-referrer",
+  crossOriginOpenerPolicy: "same-origin",
+  crossOriginResourcePolicy: "same-origin",
+  contentSecurityPolicy: {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'"],
+    styleSrc: ["'self'", "'unsafe-inline'"],
+    imgSrc: ["'self'", "data:"],
+    connectSrc: ["'self'"],
+    workerSrc: ["'self'"],
+    manifestSrc: ["'self'"],
+    fontSrc: ["'self'"],
+    objectSrc: ["'none'"],
+    baseUri: ["'self'"],
+    frameAncestors: ["'none'"],
+    formAction: ["'self'"],
+  },
+});
+// La vista previa de un documento se embebe en un marco del mismo origen y pone sus propias cabeceras
+// (ver routes/documentos.ts). Hono sobrescribe las cabeceras después de la ruta, así que se salta aquí.
+app.use("*", (c, next) =>
+  /^\/api\/documentos\/[^/]+\/vista$/.test(c.req.path) ? next() : cabecerasSeguras(c, next),
 );
 
 // Ninguna petición de la API necesita más de 64 KB (el prompt más largo es de 10 000 caracteres).
@@ -103,6 +106,7 @@ app.use("/api/*", async (c, next) => {
 
 app.route("/api", auth);
 app.route("/api", chat);
+app.route("/api", documentos);
 app.route("/api", modelsRoute);
 app.route("/api", settings);
 app.route("/api", tasks);
