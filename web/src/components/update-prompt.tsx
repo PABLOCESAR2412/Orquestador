@@ -88,7 +88,7 @@ export function UpdatePrompt() {
 
   return (
     <>
-      <div className="scrim dim" />
+      <div className="scrim dim update-capa" aria-hidden="true" />
       <div className="panel update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-titulo">
         <h2 id="update-titulo">Hay cambios nuevos en Telo</h2>
         <p className="muted-note">

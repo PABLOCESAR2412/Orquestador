@@ -31,6 +31,7 @@
     { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Regla de versión en CLAUDE.md", "pr": 24 },
     { "fecha": "2026-10-13", "tipo": "mediano", "titulo": "Clonado de repositorios privados de GitHub con clave por proyecto", "pr": null },
     { "fecha": "2026-10-13", "tipo": "mediano", "titulo": "Proceso del agente en el chat: cada acción con su vista previa, en vivo y después", "pr": null },
-    { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Respuestas del chat más concretas: qué se hará, rutas y verificación", "pr": null }
+    { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Respuestas del chat más concretas: qué se hará, rutas y verificación", "pr": null },
+    { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Aviso de nueva versión: el velo cubre también la barra lateral, con desenfoque", "pr": null }
   ]
 }

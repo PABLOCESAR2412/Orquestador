@@ -2428,10 +2428,16 @@ button:disabled { opacity: 0.4; cursor: default; }
 .panel h2 { margin: 0; font-size: 16px; font-weight: 600; }
 .panel > .muted-note { margin: -8px 0 0; }
 
-/* Aviso de nueva versión (modal centrado) */
+/* Aviso de nueva versión (modal centrado). Su velo cubre toda la app, barra lateral y cabecera
+   incluidas, con desenfoque; el diálogo queda encima del velo. */
+.update-capa {
+  z-index: 200;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
 .update-dialog {
   position: fixed;
-  z-index: 30;
+  z-index: 201;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
