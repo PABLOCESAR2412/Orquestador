@@ -58,6 +58,9 @@ export function Shell({ children }: { children: ReactNode }) {
     refetchInterval: 5_000,
   });
 
+  // Proyectos: la barra lateral los lista y cada uno abre su vista. Comparte la caché con la vista Proyectos.
+  const proyectos = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
+
   const qc = useQueryClient();
   const invalidarChats = () => qc.invalidateQueries({ queryKey: ["conversations"] });
 
@@ -96,6 +99,8 @@ export function Shell({ children }: { children: ReactNode }) {
       { title: "ANTERIORES", items: [] },
     ];
     for (const c of conversations.data) {
+      // Los chats de un proyecto se abren desde su proyecto; aquí quedan los que no tienen.
+      if (c.project_id) continue;
       const groupTitle = c.pinned_at ? "ANCLADOS" : getGroupForDate(c.created_at);
       const target = groups.find((g) => g.title === groupTitle);
       if (target) target.items.push(c);
@@ -204,6 +209,36 @@ export function Shell({ children }: { children: ReactNode }) {
           <AppNav variant="sidebar" onItemClick={closeDrawer} />
 
           <div className="tl-rail-lista">
+            {proyectos.isLoading && <span className="tl-rail-aviso">Cargando proyectos…</span>}
+            {proyectos.isError && (
+              <div className="tl-rail-aviso tl-rail-aviso-error">
+                <span>Error al cargar proyectos</span>
+                <button type="button" className="tl-boton" onClick={() => void proyectos.refetch()}>
+                  Reintentar
+                </button>
+              </div>
+            )}
+            {proyectos.data && proyectos.data.length > 0 && (
+              <div className="tl-grupo">
+                <div className="tl-grupo-titulo">PROYECTOS</div>
+                {proyectos.data.map((p) => {
+                  const activo = currentPath === `/proyectos/${p.id}`;
+                  return (
+                    <Link
+                      key={p.id}
+                      to="/proyectos/$id"
+                      params={{ id: p.id }}
+                      className={`sidebar-conv${activo ? " active" : ""}`}
+                      aria-current={activo ? "page" : undefined}
+                      title={p.name}
+                      onClick={closeDrawer}
+                    >
+                      <span className="sidebar-conv-title">{p.name}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
             {conversations.isLoading && <span className="tl-rail-aviso">Cargando…</span>}
             {conversations.isError && (
               <div className="tl-rail-aviso tl-rail-aviso-error">
@@ -218,25 +253,30 @@ export function Shell({ children }: { children: ReactNode }) {
                 {accionError}
               </p>
             )}
-            {conversations.data && conversations.data.length === 0 && (
-              <span className="tl-rail-aviso">Sin conversaciones</span>
+            {proyectos.isSuccess && conversations.isSuccess && proyectos.data.length === 0 && groupedConversations.length === 0 && (
+              <span className="tl-rail-aviso">Sin proyectos todavía. Crea uno con Nuevo proyecto.</span>
             )}
-            {groupedConversations.map((group) => (
-              <div key={group.title} className="tl-grupo">
-                <div className="tl-grupo-titulo">{group.title}</div>
-                {group.items.map((c) => (
-                  <ConvItem
-                    key={c.id}
-                    conv={c}
-                    active={currentPath === "/chat" && selectedConversationId === c.id}
-                    onSelect={handleSelectConv}
-                    onRename={(id, title) => renombrar.mutate({ id, title })}
-                    onTogglePin={(id, pinned) => anclar.mutate({ id, pinned })}
-                    onDelete={(id) => eliminar.mutate(id)}
-                  />
+            {groupedConversations.length > 0 && (
+              <div className="tl-grupo">
+                <div className="tl-grupo-titulo">SIN PROYECTO</div>
+                {groupedConversations.map((group) => (
+                  <div key={group.title} className="tl-grupo">
+                    <div className="tl-grupo-titulo">{group.title}</div>
+                    {group.items.map((c) => (
+                      <ConvItem
+                        key={c.id}
+                        conv={c}
+                        active={currentPath === "/chat" && selectedConversationId === c.id}
+                        onSelect={handleSelectConv}
+                        onRename={(id, title) => renombrar.mutate({ id, title })}
+                        onTogglePin={(id, pinned) => anclar.mutate({ id, pinned })}
+                        onDelete={(id) => eliminar.mutate(id)}
+                      />
+                    ))}
+                  </div>
                 ))}
               </div>
-            ))}
+            )}
           </div>
         </div>
 

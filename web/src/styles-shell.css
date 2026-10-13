@@ -233,6 +233,7 @@
 }
 .tl-rail .sidebar-conv:hover { background: var(--surface-hover); color: var(--ink); }
 .tl-rail .sidebar-conv.active { background: var(--surface-2); color: var(--ink); }
+.tl-rail a.sidebar-conv { text-decoration: none; }
 .tl-rail .sidebar-conv-title {
   min-width: 0;
   overflow: hidden;

@@ -396,7 +396,8 @@
   gap: 8px;
   min-width: 0;
 }
-.tl-uso { flex-shrink: 0; }
+/* Uso va a la derecha; si hay niveles de esfuerzo, el segmentado ya ocupa el espacio. */
+.tl-uso { flex-shrink: 0; margin-left: auto; }
 
 /* Dictado: el punto pulsa mientras escucha */
 .tl-dictado-estado {

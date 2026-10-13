@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { api } from "../api";
+import { chatDelProyecto } from "../lib/chat-proyecto";
 import { errorText } from "../lib/model";
 import { useShell } from "./shell-context";
 
@@ -23,7 +24,7 @@ export function ProyectoSiguientePaso({ proyectoId, onCerrar }: { proyectoId: st
         setTareaCreada(true);
         void qc.invalidateQueries({ queryKey: ["tasks"] });
       }
-      return api.createConversation(proyectoId);
+      return chatDelProyecto(proyectoId);
     },
     onSuccess: (conv) => {
       void qc.invalidateQueries({ queryKey: ["conversations"] });
