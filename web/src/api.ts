@@ -11,6 +11,18 @@ export type Conversation = {
   created_at: string;
 };
 
+export type FormatoDocumento = "docx" | "xlsx" | "html" | "txt" | "md";
+
+// Documento guardado desde un mensaje del chat. El archivo se pide aparte (archivo) o en vista previa.
+export type Documento = {
+  id: string;
+  conversation_id: string;
+  titulo: string;
+  formato: FormatoDocumento;
+  bytes: number;
+  created_at: string;
+};
+
 export type Project = {
   id: string;
   name: string;
@@ -299,6 +311,12 @@ export const api = {
     }>(`/api/conversations/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteConversation: (id: string) =>
     request<{ ok: boolean }>(`/api/conversations/${id}`, { method: "DELETE" }),
+  listDocumentos: (conversacionId: string) =>
+    request<Documento[]>(`/api/documentos?conversacion_id=${encodeURIComponent(conversacionId)}`),
+  crearDocumento: (body: { mensaje_id: string; formato: FormatoDocumento; titulo?: string }) =>
+    request<Documento>("/api/documentos", { method: "POST", body: JSON.stringify(body) }),
+  eliminarDocumento: (id: string) =>
+    request<{ ok: boolean }>(`/api/documentos/${id}`, { method: "DELETE" }),
   updateProject: (id: string, patch: { name?: string; pinned?: boolean; instrucciones?: string }) =>
     request<Project>(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   listTaskEvents: (id: string) => request<TaskEvent[]>(`/api/tasks/${id}/eventos`),

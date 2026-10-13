@@ -1,4 +1,4 @@
-/* Chat de Telo: cabecera de la conversación, hilo a 720 px y compositor fijo abajo.
+/* Chat de Telo: cabecera de la conversación, hilo al ancho de contenido (--ancho-contenido) y compositor fijo abajo.
    Clases con prefijo tl-. Colores y medidas solo con tokens de styles.css. Sin sombras ni degradados. */
 
 .tl-chat {
@@ -62,20 +62,21 @@
 .tl-chip-dato { color: var(--ink-2); }
 .tl-chip-proyecto { color: var(--ink-2); flex-shrink: 1; min-width: 0; }
 .tl-chip-proyecto svg { flex-shrink: 0; }
+.tl-chip-nombre { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tl-chip-texto {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Hilo de mensajes: columna de 720 px, con scroll propio */
+/* Hilo de mensajes: columna del ancho de contenido, con scroll propio */
 .tl-hilo {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
 }
 .tl-hilo-columna {
-  width: min(100%, 720px);
+  width: min(100%, var(--ancho-contenido));
   margin: 0 auto;
   padding: 28px 16px 28px;
   display: flex;
@@ -142,18 +143,8 @@
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
-.tl-msg-texto p { margin: 0 0 12px; white-space: pre-wrap; }
-.tl-msg-texto p:last-child { margin-bottom: 0; }
 .tl-msg-texto .tl-codigo { margin: 4px 0 12px; }
 .tl-msg-texto .tl-codigo:last-child { margin-bottom: 0; }
-.tl-linea-codigo {
-  padding: 1px 6px;
-  border-radius: 5px;
-  background: var(--surface-2);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  white-space: normal;
-}
 
 /* Acciones de mensaje e icono de herramientas */
 .tl-accion-icono {
@@ -286,12 +277,12 @@
 }
 .tl-composer > .tl-alerta,
 .tl-composer > .tl-aviso {
-  width: min(100%, 760px);
+  width: min(100%, var(--ancho-contenido));
   margin: 0 auto 8px;
 }
 .tl-composer-caja {
   position: relative;
-  width: min(100%, 760px);
+  width: min(100%, var(--ancho-contenido));
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -358,21 +349,29 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Esfuerzo: segmentado que ocupa el ancho disponible. Cada opción toma su ancho natural (así caben
+   los seis niveles en 390 px) y solo se corta con elipsis si de verdad no hay sitio. */
 .tl-esfuerzo {
-  display: inline-flex;
-  flex-shrink: 0;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: 2px;
   border: 1px solid var(--line);
   border-radius: 8px;
 }
 .tl-esfuerzo-opcion {
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 26px;
-  padding: 0 8px;
+  padding: 0 6px;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--ink-2);
-  font-size: 12.5px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tl-esfuerzo-opcion:hover { color: var(--ink); }
 .tl-esfuerzo-opcion[aria-checked="true"] { background: var(--surface-2); color: var(--ink); }
@@ -384,13 +383,44 @@
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: var(--primary);
-  color: var(--primary-fg);
+  background: var(--ambar);
+  color: var(--ambar-fg);
   flex-shrink: 0;
 }
-.tl-enviar:disabled { opacity: 0.35; cursor: default; }
+.tl-enviar:disabled { background: var(--surface-2); color: var(--ink-3); cursor: default; opacity: 1; }
+
+/* Fila 2 del compositor: esfuerzo del modelo y Uso */
+.tl-composer-pie {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.tl-uso { flex-shrink: 0; }
+
+/* Dictado: el punto pulsa mientras escucha */
+.tl-dictado-estado {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+.tl-dictado-punto {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--ambar);
+  animation: tl-pulso 1.2s ease-in-out infinite;
+}
+.tl-dictado-ayuda { margin-left: auto; color: var(--ink-3); font-size: 12px; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) {
+  .tl-dictado-punto { animation: none; }
+}
 .tl-composer-nota {
-  width: min(100%, 760px);
+  width: min(100%, var(--ancho-contenido));
   margin: 8px auto 0;
   color: var(--ink-2);
   font-size: 12px;
@@ -416,16 +446,6 @@
 .tl-vacio-caja h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
 .tl-vacio-caja p { margin: 0; max-width: 340px; color: var(--ink-2); font-size: 14px; }
 .tl-vacio-caja .tl-boton { min-height: 40px; padding: 0 16px; font-size: 14px; }
-.tl-select {
-  min-height: 36px;
-  max-width: 100%;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 14px;
-}
 
 /* Móvil: cabecera y compositor compactos, sin perder controles */
 @media (max-width: 760px) {
@@ -444,4 +464,372 @@
   .tl-chat-cabecera-der .tl-boton { width: 32px; padding: 0; }
   .tl-chat-cabecera-der .tl-boton-texto { display: none; }
   .tl-composer-nota { font-size: 11.5px; }
+}
+
+/* Mensajes: Markdown del agente (títulos, listas, citas, tablas, enlaces) */
+.tl-md { min-width: 0; }
+.tl-md > :first-child { margin-top: 0; }
+.tl-md > :last-child { margin-bottom: 0; }
+.tl-md p { margin: 0 0 12px; }
+.tl-md h1, .tl-md h2, .tl-md h3, .tl-md h4 {
+  margin: 20px 0 8px;
+  color: var(--ink);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+.tl-md h1 { font-size: 19px; }
+.tl-md h2 { font-size: 17px; }
+.tl-md h3 { font-size: 15.5px; }
+.tl-md h4 { font-size: 15px; }
+.tl-md ul, .tl-md ol { margin: 0 0 12px; padding-left: 22px; }
+.tl-md li { margin: 3px 0; }
+.tl-md li > p { margin: 0 0 4px; }
+.tl-md strong { font-weight: 600; }
+.tl-md blockquote {
+  margin: 0 0 12px;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid var(--line-strong);
+  color: var(--ink-2);
+}
+.tl-md hr { margin: 18px 0; border: 0; border-top: 1px solid var(--line); }
+.tl-md a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.tl-md code:not(pre code) {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.tl-tabla-wrap {
+  max-width: 100%;
+  margin: 4px 0 14px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.tl-md table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tl-md th, .tl-md td {
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.tl-md th { background: var(--surface); color: var(--ink-2); font-weight: 500; font-size: 13px; }
+.tl-md tr:last-child td { border-bottom: 0; }
+
+/* Adjuntos en el compositor */
+/* Arrastrar archivos: borde punteado ámbar y capa de aviso encima del compositor */
+.tl-composer-caja.is-arrastrando { border-color: var(--ambar-line); border-style: dashed; }
+.tl-soltar {
+  position: absolute;
+  inset: 4px;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  border: 1.5px dashed var(--ambar-line);
+  border-radius: 12px;
+  background: var(--surface);
+  pointer-events: none;
+}
+.tl-soltar-texto { color: var(--ambar-texto); font-size: 14px; font-weight: 500; }
+.tl-adjuntos-pendientes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tl-adjunto-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 28px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+}
+.tl-adjunto-chip.is-error { border-color: var(--danger-line); background: var(--danger-soft); }
+.tl-adjunto-chip.is-solo_vista { color: var(--ink-2); }
+.tl-adjunto-chip-nombre {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+.tl-adjunto-chip-estado { color: var(--ink-2); font-family: var(--font-mono); font-size: 11.5px; white-space: nowrap; }
+.tl-adjunto-chip.is-solo_vista { border-style: dashed; }
+.tl-adjunto-icono { display: inline-grid; place-items: center; flex-shrink: 0; color: var(--ink-2); }
+.tl-adjunto-chip .tl-accion-icono { width: 22px; height: 22px; }
+.tl-adjunto-nombre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.tl-accion-icono.is-activo { color: var(--ambar-texto); background: var(--ambar-soft); }
+
+/* Adjuntos ya enviados, dentro de la burbuja del usuario */
+.tl-adjuntos-enviados {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-width: 85%;
+}
+.tl-adjuntos-enviados details {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.tl-adjuntos-enviados summary {
+  padding: 7px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink);
+}
+.tl-adjunto-cuerpo {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Menú de formatos de un mensaje */
+.tl-menu-wrap { position: relative; display: inline-flex; }
+.tl-menu-fondo { position: fixed; inset: 0; z-index: 30; }
+.tl-menu-formatos {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 31;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.tl-menu-item {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+}
+.tl-menu-item:hover { background: var(--surface-2); }
+
+/* Diálogos del chat: vista previa de documentos y configuración */
+.tl-dialogo {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+.tl-dialogo-documento {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(calc(100% - 32px), var(--ancho-contenido));
+  height: min(86dvh, 900px);
+  border-radius: 14px;
+}
+.tl-dialogo-lateral {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(100%, 420px);
+  border-width: 0 0 0 1px;
+}
+.tl-dialogo-cabecera {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 12px 8px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.tl-dialogo-titulo { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.tl-dialogo-titulo-texto {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+}
+.tl-dialogo-acciones { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
+.tl-dialogo-h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.tl-dialogo-cuerpo {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px;
+}
+/* Vista previa: el documento va sobre una superficie neutra, como una hoja */
+.tl-documento-cuerpo {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  padding: 16px;
+  background: var(--surface-lowest);
+}
+.tl-documento-marco {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.tl-documento-tag {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  min-width: 46px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+/* Botones del diálogo: Descargar en ámbar, pastilla de fijado y acciones de texto en listas */
+.tl-boton.tl-boton-ambar,
+.tl-boton.tl-boton-ambar:hover:not(:disabled) {
+  border-color: var(--ambar);
+  background: var(--ambar);
+  color: var(--ambar-fg);
+}
+.tl-pildora-ambar {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--ambar-line);
+  border-radius: 999px;
+  background: var(--ambar-soft);
+  color: var(--ambar-texto);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.tl-accion-texto {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.tl-accion-texto:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.tl-accion-texto:disabled { opacity: 0.45; cursor: not-allowed; }
+.tl-accion-peligro { color: var(--danger); }
+.tl-accion-peligro:hover:not(:disabled) { background: var(--danger-soft); color: var(--danger); }
+
+/* Esfuerzo en la configuración: el segmentado ocupa todo el ancho del campo */
+.tl-esfuerzo-ancho { display: flex; width: 100%; }
+.tl-esfuerzo-ancho .tl-esfuerzo-opcion { min-height: 32px; font-size: 12.5px; }
+
+/* Campo de solo lectura: valor y etiqueta en una línea */
+.tl-campo-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.tl-campo-fila .tl-campo-valor { flex: 1 1 auto; min-width: 0; }
+.tl-etiqueta-solo-lectura {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Documentos guardados desde el chat */
+.tl-documentos-bloque { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.tl-documentos-bloque > h3 { margin: 0; }
+.tl-documentos-vacio {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+/* Campos de la configuración del chat */
+.tl-campo { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0; border: 0; padding: 0; }
+.tl-campo-etiqueta { color: var(--ink-2); font-size: 12px; font-weight: 500; }
+.tl-campo-valor { color: var(--ink); font-size: 14px; overflow-wrap: anywhere; }
+.tl-campo-ayuda { color: var(--ink-2); font-size: 12px; }
+.tl-campo-texto {
+  min-height: 36px;
+  width: 100%;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-size: 14px;
+}
+.tl-campo-texto:disabled { opacity: 0.55; }
+.tl-documentos { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.tl-documento-fila {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.tl-documento-texto { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tl-documento-titulo {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.tl-documento-meta { color: var(--ink-2); font-family: var(--font-mono); font-size: 12px; }
+.tl-documento-acciones { flex-shrink: 0; display: flex; align-items: center; gap: 4px; }
+
+/* Móvil: diálogos a pantalla completa */
+@media (max-width: 600px) {
+  .tl-dialogo-documento { top: 0; left: 0; right: 0; bottom: 0; transform: none; width: 100%; height: 100dvh; border-radius: 0; border-width: 0; }
+  .tl-documento-cuerpo { padding: 0; }
+  .tl-documento-marco { border: 0; border-radius: 0; }
+  .tl-dialogo-lateral { width: 100%; }
+  .tl-adjuntos-enviados { max-width: 92%; }
 }

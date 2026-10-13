@@ -11,6 +11,20 @@ export const EFFORT_LABELS: Record<string, string> = {
 
 export const effortLabel = (value: string) => EFFORT_LABELS[value] ?? value;
 
+// Nombre legible del proveedor (el id de la API viene de OpenCode, por ejemplo "opencode" o "anthropic").
+const PROVEEDOR_LABEL: Record<string, string> = {
+  opencode: "OpenCode Zen",
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  google: "Google",
+  deepseek: "DeepSeek",
+  github: "GitHub Copilot",
+  openrouter: "OpenRouter",
+};
+
+export const nombreProveedor = (id: string) =>
+  PROVEEDOR_LABEL[id] ?? (id ? id.charAt(0).toUpperCase() + id.slice(1) : "Otro");
+
 export const TIER_LABEL: Record<CostTier, string> = {
   gratis: "Gratis",
   economico: "Económico",
@@ -108,7 +122,19 @@ export function errorText(err: unknown): string {
           : "El modelo no respondió. Intenta de nuevo.";
       case "invalid_content":
       case "invalid_prompt":
-        return "El texto está vacío o supera los 10 000 caracteres.";
+        return "El texto está vacío o supera los 30 000 caracteres.";
+      case "documento_no_generado":
+        return "No se pudo crear el documento con ese formato. Prueba con otro o revisa el texto.";
+      case "documento_muy_grande":
+        return "El documento es demasiado grande para guardarlo.";
+      case "documento_no_encontrado":
+        return "Este documento ya no existe.";
+      case "vista_no_disponible":
+        return "No se pudo generar la vista previa de este documento.";
+      case "formato_invalido":
+        return "Ese formato de documento no está disponible.";
+      case "mensaje_no_encontrado":
+        return "El mensaje ya no existe en el chat.";
       case "task_not_cancellable":
         return "Esta tarea ya terminó.";
       case "task_not_resumable":
