@@ -1,0 +1,33 @@
+{
+  "base": "1.0.0",
+  "desde": "c1d06c8",
+  "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
+  "cambios": [
+    { "fecha": "2026-10-11", "tipo": "mediano", "titulo": "Seguridad del agente y tareas interrumpidas", "pr": 12 },
+    { "fecha": "2026-10-11", "tipo": "grande", "titulo": "Gestión de chats, aislamiento de agentes con bubblewrap, eventos en vivo y respaldos", "pr": 13 },
+    { "fecha": "2026-10-11", "tipo": "grande", "titulo": "Git por tarea, aprobaciones de commit y push, secretos por proyecto y tareas programadas", "pr": 14 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Inicio de sesión con Google (OAuth PKCE)", "pr": 15 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Modo claro en la cabecera y paginación en analíticas", "pr": 16 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Instrucciones del proyecto desde su repo y memoria por proyecto", "pr": 17 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Documentación de pantallas nuevas de Stitch", "pr": 18 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Clave SSH por proyecto para subir ramas a GitHub", "pr": 19 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Documentación de las cinco pantallas exportadas de Stitch", "pr": 20 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Capturas de Stitch aplicadas en la barra y las pantallas principales", "pr": 21 },
+    { "fecha": "2026-10-13", "tipo": "grande", "titulo": "Actualización de Telo desde main con timer de systemd", "pr": 22 },
+    { "fecha": "2026-10-13", "tipo": "mediano", "titulo": "Adjuntos, dictado, documentos y configuración del chat", "pr": 23 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Nuevo proyecto en la barra lateral", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Proyectos en la barra lateral y «Abrir chat» en cada proyecto", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Comandos con / en el chat", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Historial de prompts enviados, con salto al mensaje", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Avisos del sistema al terminar, fallar o pedir una decisión", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Iconos para renombrar, fijar y eliminar chats", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "El mensaje vuelve al campo si el servidor no lo guardó", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Borde nuevo del campo de mensaje, sin contorno blanco al enfocar", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Selector de modelo visible bajo la barra superior", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Botón «Ejecutar de nuevo» en tareas terminadas", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Meta de PWA sin aviso de obsolescencia en la consola", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Clave pública oculta, con iconos de copiar y mostrar", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Versión del sistema bajo el estado del servidor", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Regla de versión en CLAUDE.md", "pr": 24 }
+  ]
+}

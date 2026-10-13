@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { useShell } from "../components/shell-context";
+import { chatDelProyecto } from "../lib/chat-proyecto";
 import { errorText } from "../lib/model";
 import { ProyectoResumen } from "../components/proyecto-resumen";
 import { ProyectoInstrucciones } from "../components/proyecto-instrucciones";
@@ -15,6 +17,18 @@ import { ProyectoClave } from "../components/proyecto-clave";
 export function ProjectDetailPage() {
   const { id = "" } = useParams({ strict: false }) as { id?: string };
   const navigate = useNavigate();
+
+  // Abre el chat del proyecto: el único que tiene; si no existe, lo crea.
+  const qc = useQueryClient();
+  const { setSelectedConversationId } = useShell();
+  const abrirChat = useMutation({
+    mutationFn: () => chatDelProyecto(id),
+    onSuccess: (conv) => {
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      setSelectedConversationId(conv.id);
+      void navigate({ to: "/chat" });
+    },
+  });
 
   const detalle = useQuery({
     queryKey: ["project", id],
@@ -55,6 +69,16 @@ export function ProjectDetailPage() {
             {proyecto && (
               <button
                 type="button"
+                className="btn-ghost"
+                onClick={() => abrirChat.mutate()}
+                disabled={abrirChat.isPending}
+              >
+                {abrirChat.isPending ? "Abriendo…" : "Abrir chat"}
+              </button>
+            )}
+            {proyecto && (
+              <button
+                type="button"
                 className="btn-primary"
                 onClick={() =>
                   void navigate({
@@ -68,6 +92,12 @@ export function ProjectDetailPage() {
             )}
           </div>
         </header>
+
+        {abrirChat.isError && (
+          <div className="error-box" role="alert">
+            <span className="error-text">{errorText(abrirChat.error)}</span>
+          </div>
+        )}
 
         {siguienteAbierto && proyecto && (
           <ProyectoSiguientePaso proyectoId={proyecto.id} onCerrar={() => setSiguienteAbierto(false)} />

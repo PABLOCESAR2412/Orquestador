@@ -1153,6 +1153,45 @@ button:disabled { opacity: 0.4; cursor: default; }
   line-height: 1.55;
   overflow-x: auto;
 }
+/* Clave pública del proyecto: etiqueta y acciones de mostrar y copiar en una fila */
+.clave-fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+}
+.clave-etiqueta {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.clave-acciones {
+  display: flex;
+  gap: 6px;
+}
+.clave-icono {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.clave-icono.is-copiada {
+  color: var(--ink);
+}
+.clave-oculta {
+  overflow-x: hidden;
+  color: var(--ink-2);
+  letter-spacing: 0.08em;
+}
+/* La huella no trae espacios: se parte donde haga falta para no salir del panel en el teléfono */
+.clave-huella {
+  overflow-wrap: anywhere;
+}
 .files-table {
   width: 100%;
   border-collapse: collapse;
@@ -1574,13 +1613,16 @@ button:disabled { opacity: 0.4; cursor: default; }
   display: flex;
   flex-direction: column;
   padding: 12px 12px 10px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 22px;
   background: var(--surface);
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-/* El compositor no muestra el contorno del campo: el anillo va en la caja (DESIGN: foco visible). */
-.composer-box:focus-within { border-color: var(--line-strong); outline: 2px solid var(--signal); outline-offset: 2px; }
+/* El compositor no muestra el contorno del campo: el foco va en la caja, con un borde más claro y un halo suave. */
+.composer-box:focus-within {
+  border-color: var(--ink-3);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 8%, transparent);
+}
 .composer-box textarea {
   width: 100%;
   min-height: 24px;
@@ -2812,20 +2854,30 @@ button:disabled { opacity: 0.4; cursor: default; }
 .conv-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
 .conv-row .sidebar-conv { flex: 1; min-width: 0; }
 .conv-busy { margin-left: auto; flex-shrink: 0; }
-.conv-more {
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+/* Iconos de cada chat: renombrar, anclar y eliminar. Se ven al pasar el cursor o enfocar la fila, y siempre en pantallas táctiles. */
+.conv-acciones { flex-shrink: 0; display: flex; align-items: center; gap: 2px; }
+.conv-icono {
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--ink-2);
+  opacity: 0;
+  transition: opacity 0.12s ease;
 }
-.conv-more:hover,
-.conv-more[aria-expanded="true"] { color: var(--ink); background: var(--surface); }
+.conv-row:hover .conv-icono,
+.conv-row:focus-within .conv-icono { opacity: 1; }
+.conv-icono:hover { color: var(--ink); background: var(--surface); }
+.conv-icono.is-activo { opacity: 1; color: var(--ink); }
+.conv-icono.is-peligro:hover { color: var(--danger); }
+@media (hover: none) {
+  .conv-icono { opacity: 1; }
+}
 .conv-menu {
   display: flex;
   flex-direction: column;

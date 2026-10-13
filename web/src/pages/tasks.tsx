@@ -820,10 +820,23 @@ function DetalleTarea({ id }: { id: string }) {
             <div>
               <h1 className="page-title">{t?.title ?? "Tarea"}</h1>
               {t && (
-                <p className="folder-note">
-                  {STATUS_LABEL[t.status]} · {modelName}
-                  {t.effort ? ` · ${effortLabel(t.effort)}` : ""}
-                </p>
+                <div className="tk-estado-linea">
+                  <p className="folder-note">
+                    {STATUS_LABEL[t.status]} · {modelName}
+                    {t.effort ? ` · ${effortLabel(t.effort)}` : ""}
+                  </p>
+                  {t.status === "done" && (
+                    <button
+                      type="button"
+                      className="ghost task-mini-btn"
+                      onClick={() => reintentar.mutate()}
+                      disabled={reintentar.isPending}
+                      title="Crea una tarea nueva con el mismo prompt y el mismo proyecto"
+                    >
+                      {reintentar.isPending ? "Creando…" : "Ejecutar de nuevo"}
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>
