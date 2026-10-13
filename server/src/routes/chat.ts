@@ -8,6 +8,7 @@ import { ejecutarAgente, type ResultadoAgente } from "../ejecutar";
 import { getPreferences } from "../preferences";
 import { projectRepoPath } from "./projects";
 import { mensajeSeguro } from "../workspace";
+import { actividadDelTurno, itemDeLinea, registrarActividad } from "../actividad";
 import {
   conversacionEnCurso,
   liberarConversacion,
@@ -86,6 +87,11 @@ chat.delete("/conversations/:id", (c) => {
   return c.json({ ok: true });
 });
 
+// Pasos del agente de un turno (el id es el del mensaje del usuario). Se piden al abrir "Ver proceso".
+chat.get("/conversations/:id/turnos/:turno/actividad", (c) => {
+  return c.json(actividadDelTurno(c.req.param("id"), c.req.param("turno")));
+});
+
 chat.get("/conversations/:id/messages", (c) => {
   const messages = db
     .query<Message, [string]>(
@@ -142,6 +148,12 @@ chat.post("/conversations/:id/messages", async (c) => {
       cwd: conv.repo_path ?? chatWorkspace,
       timeoutMs: 180_000,
       projectId: conv.project_id,
+      estilo: "chat",
+      // Cada paso del agente (texto intermedio o acción) se guarda y se publica mientras corre.
+      onLinea: (linea) => {
+        const item = itemDeLinea(linea);
+        if (item) registrarActividad(conversationId, userMsg.id, item);
+      },
     });
   } catch (err) {
     if (err instanceof AislamientoError) {
@@ -156,10 +168,11 @@ chat.post("/conversations/:id/messages", async (c) => {
     liberarConversacion(conversationId);
   }
 
+  // La respuesta del chat es lo dicho tras la última herramienta; lo anterior queda en el proceso.
   const assistantMsg = {
     id: crypto.randomUUID(),
     role: "assistant" as const,
-    content: result.text,
+    content: result.textoFinal,
   };
 
   db.transaction(() => {

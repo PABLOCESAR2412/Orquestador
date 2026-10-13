@@ -3,7 +3,9 @@ import { haceTexto } from "../lib/tiempo";
 import { partirMensaje } from "../lib/adjuntos";
 import type { FormatoDocumento } from "../api";
 import { Contenido, copiarTexto } from "./chat-contenido";
+import { ProcesoAgente, ProcesoGuardado } from "./chat-proceso";
 import { FORMATOS_OPCIONES } from "./documentos";
+import type { PasoActividad } from "../api";
 
 // Mensajes del chat. cuando es la fecha de la base; null, un mensaje que todavía se está enviando.
 
@@ -56,6 +58,7 @@ export function MensajeAgente({
   onReintentar,
   onGuardar,
   guardando = false,
+  proceso,
 }: {
   texto: string;
   cuando: string;
@@ -65,6 +68,8 @@ export function MensajeAgente({
   // Guarda el texto de esta respuesta como documento en el formato elegido.
   onGuardar?: (formato: FormatoDocumento) => void;
   guardando?: boolean;
+  // Chat y turno de la respuesta: de ahí salen los pasos del agente ("Ver proceso").
+  proceso?: { conversacionId: string; turnoId: string };
 }) {
   const [estado, setEstado] = useState<"reposo" | "copiado" | "fallo">("reposo");
   const [menuAbierto, setMenuAbierto] = useState(false);
@@ -159,6 +164,9 @@ export function MensajeAgente({
           )}
         </div>
       </div>
+      {proceso && (
+        <ProcesoGuardado conversacionId={proceso.conversacionId} turnoId={proceso.turnoId} textoFinal={texto} />
+      )}
       <div className="tl-msg-texto">
         <Contenido texto={texto} />
       </div>
@@ -166,7 +174,8 @@ export function MensajeAgente({
   );
 }
 
-export function IndicadorPensando({ modelo }: { modelo: string }) {
+// Mientras el agente trabaja: "Pensando…" y, debajo, cada paso en cuanto ocurre.
+export function IndicadorPensando({ modelo, vivo = [] }: { modelo: string; vivo?: PasoActividad[] }) {
   return (
     <article className="tl-msg tl-msg-agente" aria-live="polite">
       <div className="tl-msg-agente-cabecera">
@@ -179,6 +188,7 @@ export function IndicadorPensando({ modelo }: { modelo: string }) {
         <span className="tl-pensando-punto" aria-hidden="true" />
         <span>Pensando…</span>
       </div>
+      {vivo.length > 0 && <ProcesoAgente pasos={vivo} enCurso />}
     </article>
   );
 }

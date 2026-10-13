@@ -296,6 +296,35 @@ const migrations: Migration[] = [
       CREATE INDEX documentos_conversacion ON documentos(conversation_id, created_at);
     `,
   },
+  {
+    // Proyectos clonados desde GitHub: la URL de origen y la fecha del clonado. Hasta clonar,
+    // la carpeta está vacía y la clave SSH del proyecto espera a que se pegue en el repositorio.
+    name: "017_clonado_github",
+    sql: `
+      ALTER TABLE projects ADD COLUMN origen_url TEXT;
+      ALTER TABLE projects ADD COLUMN clonado_en TEXT;
+    `,
+  },
+  {
+    // Pasos del agente en un chat (texto intermedio y acciones con su vista previa), por turno.
+    // turno_id es el id del mensaje del usuario que lo originó. Se borran con su chat.
+    name: "018_actividad_chat",
+    sql: `
+      CREATE TABLE chat_actividad (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        turno_id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        tipo TEXT NOT NULL CHECK (tipo IN ('texto', 'accion')),
+        herramienta TEXT,
+        titulo TEXT NOT NULL,
+        detalle TEXT,
+        estado TEXT NOT NULL CHECK (estado IN ('hecha', 'error', 'texto')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE UNIQUE INDEX chat_actividad_turno_seq ON chat_actividad(conversation_id, turno_id, seq);
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

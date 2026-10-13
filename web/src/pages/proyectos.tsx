@@ -22,6 +22,8 @@ export function ProjectsPage() {
 
   const proyectos = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
   const [nombre, setNombre] = useState("");
+  // Clonar un repo de GitHub: Telo crea el proyecto con su clave; el clonado se pide desde el proyecto.
+  const [urlGithub, setUrlGithub] = useState("");
   // El botón de la cabecera lleva el foco al campo del formulario de arriba.
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -34,6 +36,19 @@ export function ProjectsPage() {
     mutationFn: () => api.createProject({ name: nombre.trim() }),
     onSuccess: (p) => {
       setNombre("");
+      refrescar();
+      void navigate({
+        to: "/proyectos/$id",
+        params: { id: p.id },
+        state: (prev) => ({ ...prev, proyectoNuevo: true }),
+      });
+    },
+  });
+
+  const crearDesdeGithub = useMutation({
+    mutationFn: () => api.createProjectFromGithub({ url: urlGithub.trim() }),
+    onSuccess: (p) => {
+      setUrlGithub("");
       refrescar();
       void navigate({
         to: "/proyectos/$id",
@@ -112,6 +127,52 @@ export function ProjectsPage() {
               {crear.isPending ? "Creando…" : "Crear proyecto"}
             </button>
             <p className="help-note">La carpeta no cambia: solo el nombre que ves en Telo.</p>
+          </form>
+        </section>
+
+        {/* Panel Clonar desde GitHub: el proyecto nace con su clave y se clona cuando la clave esté en el repo */}
+        <section className="panel" aria-labelledby="clonar-github-titulo">
+          <h2 id="clonar-github-titulo" className="panel-title">
+            Clonar desde GitHub
+          </h2>
+          <form
+            className="form-group"
+            onSubmit={(e: FormEvent) => {
+              e.preventDefault();
+              if (urlGithub.trim() && !crearDesdeGithub.isPending) crearDesdeGithub.mutate();
+            }}
+          >
+            <label className="form-label" htmlFor="githubUrl">
+              Repositorio
+            </label>
+            <input
+              id="githubUrl"
+              className="input-text"
+              placeholder="https://github.com/dueño/repo"
+              autoComplete="off"
+              spellCheck={false}
+              value={urlGithub}
+              onChange={(e) => setUrlGithub(e.target.value)}
+              aria-describedby="github-ayuda"
+            />
+            <div id="github-ayuda" className="input-meta">
+              Sirve para repos privados: Telo crea una clave para este proyecto y te pide agregarla en GitHub antes de clonar.
+            </div>
+
+            {crearDesdeGithub.isError && (
+              <div className="error-box" role="alert" style={{ marginTop: 8 }}>
+                <span className="error-text">{errorText(crearDesdeGithub.error)}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="btn-primary"
+              style={{ marginTop: 10 }}
+              disabled={!urlGithub.trim() || crearDesdeGithub.isPending}
+            >
+              {crearDesdeGithub.isPending ? "Creando…" : "Crear proyecto clonado"}
+            </button>
           </form>
         </section>
 

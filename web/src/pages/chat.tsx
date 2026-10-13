@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type ModelInfo } from "../api";
+import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type ModelInfo, type PasoActividad } from "../api";
+import { useEventosVivos } from "../lib/eventos-vivos";
 import { ModelPicker } from "../components/model-picker";
 import { UsoPanel } from "../components/uso-panel";
 import { IndicadorPensando, MensajeAgente, MensajeUsuario } from "../components/chat-mensajes";
@@ -214,6 +215,19 @@ export function ChatPage() {
     onSettled: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
   });
 
+  // Pasos del agente en vivo, por chat. Llegan por el canal (evento "actividad") mientras el agente corre.
+  const [vivos, setVivos] = useState<Record<string, { turnoId: string; pasos: PasoActividad[] }>>({});
+  useEventosVivos({}, (evento) => {
+    if (evento.tipo !== "actividad") return;
+    setVivos((prev) => {
+      const previo = prev[evento.conversacion_id];
+      const pasos = previo && previo.turnoId === evento.turno_id ? previo.pasos : [];
+      // El canal puede repetir un paso al reconectar: se ignora si ya está.
+      if (pasos.some((p) => p.seq === evento.paso.seq)) return prev;
+      return { ...prev, [evento.conversacion_id]: { turnoId: evento.turno_id, pasos: [...pasos, evento.paso] } };
+    });
+  });
+
   // El compositor se vacía al enviar: el agente puede tardar, y el texto no debe quedarse esperando.
   // Si el servidor no llega a guardar el mensaje, lo escrito vuelve al compositor.
   const send = useMutation({
@@ -395,6 +409,22 @@ export function ChatPage() {
   const yaGuardado = send.isPending && ultimoMensaje?.role === "user" && ultimoMensaje.content === send.variables?.content;
   // Pensando: se envió aquí o el chat está ocupado (otro dispositivo lo envió).
   const pensando = send.isPending || !!current?.ocupada;
+
+  // Cuando el chat deja de estar ocupado, sus pasos ya están guardados en el servidor: se vacían los en vivo.
+  useEffect(() => {
+    if (!selectedId || pensando) return;
+    setVivos((prev) => {
+      if (!prev[selectedId]) return prev;
+      const { [selectedId]: _terminado, ...resto } = prev;
+      return resto;
+    });
+  }, [pensando, selectedId]);
+
+  // Turno de una respuesta: el mensaje del usuario que la precede. Sus pasos se piden al abrir "Ver proceso".
+  const turnoDeRespuesta = (indice: number): string | null => {
+    for (let j = indice - 1; j >= 0; j--) if (lista[j].role === "user") return lista[j].id;
+    return null;
+  };
 
   // Nombres reales: el modelo del chat o "Agente" si el servidor todavía no ha elegido uno.
   const efectoActual = current?.effort ?? null;
@@ -717,6 +747,11 @@ export function ChatPage() {
                     texto={m.content}
                     cuando={m.created_at}
                     modelo={nombreAgente}
+                    proceso={
+                      selectedId && turnoDeRespuesta(i)
+                        ? { conversacionId: selectedId, turnoId: turnoDeRespuesta(i)! }
+                        : undefined
+                    }
                     onReintentar={
                       lista.slice(0, i).some((p) => p.role === "user") && !send.isPending
                         ? () => reintentar(m.id)
@@ -730,7 +765,9 @@ export function ChatPage() {
               {send.isPending && !yaGuardado && (
                 <MensajeUsuario texto={send.variables?.content ?? ""} cuando={null} />
               )}
-              {pensando && <IndicadorPensando modelo={nombreAgente} />}
+              {pensando && (
+                <IndicadorPensando modelo={nombreAgente} vivo={(selectedId && vivos[selectedId]?.pasos) || []} />
+              )}
               <div ref={endRef} />
             </div>
           </div>

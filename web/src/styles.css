@@ -1192,6 +1192,22 @@ button:disabled { opacity: 0.4; cursor: default; }
 .clave-huella {
   overflow-wrap: anywhere;
 }
+/* Pasos para pegar la clave en GitHub y clonar */
+.clonar-pasos {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.mono-inline {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
 .files-table {
   width: 100%;
   border-collapse: collapse;
