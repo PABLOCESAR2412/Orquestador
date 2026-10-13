@@ -383,8 +383,8 @@
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: var(--ambar);
-  color: var(--ambar-fg);
+  background: var(--primary);
+  color: var(--primary-fg);
   flex-shrink: 0;
 }
 .tl-enviar:disabled { background: var(--surface-2); color: var(--ink-3); cursor: default; opacity: 1; }
@@ -412,7 +412,7 @@
   height: 7px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: var(--ambar);
+  background: var(--primary);
   animation: tl-pulso 1.2s ease-in-out infinite;
 }
 .tl-dictado-ayuda { margin-left: auto; color: var(--ink-3); font-size: 12px; white-space: nowrap; }
@@ -519,20 +519,20 @@
 .tl-md tr:last-child td { border-bottom: 0; }
 
 /* Adjuntos en el compositor */
-/* Arrastrar archivos: borde punteado ámbar y capa de aviso encima del compositor */
-.tl-composer-caja.is-arrastrando { border-color: var(--ambar-line); border-style: dashed; }
+/* Arrastrar archivos: borde punteado y capa de aviso encima del compositor */
+.tl-composer-caja.is-arrastrando { border-color: var(--line-strong); border-style: dashed; }
 .tl-soltar {
   position: absolute;
   inset: 4px;
   z-index: 5;
   display: grid;
   place-items: center;
-  border: 1.5px dashed var(--ambar-line);
+  border: 1.5px dashed var(--line-strong);
   border-radius: 12px;
   background: var(--surface);
   pointer-events: none;
 }
-.tl-soltar-texto { color: var(--ambar-texto); font-size: 14px; font-weight: 500; }
+.tl-soltar-texto { color: var(--ink); font-size: 14px; font-weight: 500; }
 .tl-adjuntos-pendientes {
   display: flex;
   flex-wrap: wrap;
@@ -567,7 +567,7 @@
 .tl-adjunto-icono { display: inline-grid; place-items: center; flex-shrink: 0; color: var(--ink-2); }
 .tl-adjunto-chip .tl-accion-icono { width: 22px; height: 22px; }
 .tl-adjunto-nombre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
-.tl-accion-icono.is-activo { color: var(--ambar-texto); background: var(--ambar-soft); }
+.tl-accion-icono.is-activo { color: var(--ink); background: var(--signal-soft); }
 
 /* Adjuntos ya enviados, dentro de la burbuja del usuario */
 .tl-adjuntos-enviados {
@@ -720,22 +720,16 @@
   letter-spacing: 0.04em;
 }
 
-/* Botones del diálogo: Descargar en ámbar, pastilla de fijado y acciones de texto en listas */
-.tl-boton.tl-boton-ambar,
-.tl-boton.tl-boton-ambar:hover:not(:disabled) {
-  border-color: var(--ambar);
-  background: var(--ambar);
-  color: var(--ambar-fg);
-}
-.tl-pildora-ambar {
+/* Botones del diálogo: pastilla de fijado y acciones de texto en listas (Descargar usa tl-boton-principal) */
+.tl-pildora-activa {
   display: inline-flex;
   align-items: center;
   min-height: 30px;
   padding: 0 12px;
-  border: 1px solid var(--ambar-line);
+  border: 1px solid var(--line-strong);
   border-radius: 999px;
-  background: var(--ambar-soft);
-  color: var(--ambar-texto);
+  background: var(--signal-soft);
+  color: var(--ink);
   font-size: 12.5px;
   font-weight: 500;
   white-space: nowrap;
