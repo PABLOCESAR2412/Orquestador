@@ -1,0 +1,10 @@
+[Unit]
+Description=Telo: revisar main cada 5 minutos
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+Unit=orquestador-deploy.service
+
+[Install]
+WantedBy=timers.target

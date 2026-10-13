@@ -94,7 +94,7 @@ Variables del VM que se agregan con esta fase (en `/etc/orquestador/orquestador.
 ## Acceso (referencia)
 
 - Desde la PC: `ssh -L 3000:localhost:3000 -L 9090:localhost:9090 -i <tu_clave> orquestador@<IP>`. Luego abre `http://127.0.0.1:3000`. El puerto 9090 es Cockpit.
-- Actualizar el VM: `cd ~/orquestador && git switch main && git pull --ff-only && cd web && bun run build && cd .. && sudo systemctl restart orquestador`.
+- Actualizar el VM a mano: `cd ~/orquestador && git switch main && git pull --ff-only && (cd server && bun install --frozen-lockfile) && (cd web && bun install --frozen-lockfile && bun run build) && sudo systemctl restart orquestador`. Con el timer de `deploy/` esto ocurre solo; ver `deploy/README.md`.
 - No abras puertos en Azure. El acceso remoto es por Tailscale (fase 9 de `PLAN.md`).
 
 ## Seguridad
