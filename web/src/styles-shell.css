@@ -241,25 +241,7 @@
   white-space: nowrap;
 }
 .tl-rail .conv-busy { margin-left: auto; }
-.tl-rail .conv-more {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--ink-2);
-  opacity: 0;
-}
-.tl-rail .conv-row:hover .conv-more,
-.tl-rail .conv-row:focus-within .conv-more,
-.tl-rail .conv-more[aria-expanded="true"] { opacity: 1; }
-@media (hover: none) {
-  .tl-rail .conv-more { opacity: 1; }
-}
+.tl-rail .conv-acciones { margin-left: 0; }
 
 /* Instalar y estado del servidor, al pie del riel */
 .tl-instalar { display: flex; flex-direction: column; gap: 6px; }
@@ -287,6 +269,14 @@
   font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+.tl-rail-version {
+  margin: 0;
+  padding: 0 10px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
 }
 
 /* Columna principal: barra superior y página */
@@ -374,7 +364,7 @@
   .tl-rail .sidebar-conv,
   .tl-instalar-boton { min-height: 40px; }
   .tl-rail .sidebar-conv { min-height: 40px; }
-  .tl-rail .conv-more { width: 36px; height: 36px; }
+  .tl-rail .conv-icono { width: 36px; height: 36px; }
 }
 
 @media (max-width: 600px) {

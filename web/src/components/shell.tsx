@@ -5,6 +5,8 @@ import { api, type Conversation } from "../api";
 import { isIOS, isStandalone, useInstallPrompt } from "../lib/install";
 import { errorText } from "../lib/model";
 import { useLatencia } from "../lib/latencia";
+import { useNotificacionesDeTareas } from "../lib/notificaciones";
+import { VERSION_SISTEMA } from "../lib/version-sistema";
 import { AppNav } from "./nav";
 import { ConvItem } from "./conv-item";
 import { PaletaComandos } from "./paleta-comandos";
@@ -62,6 +64,8 @@ export function Shell({ children }: { children: ReactNode }) {
   const proyectos = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
 
   const qc = useQueryClient();
+  // Avisos del sistema cuando una tarea termina, falla o pide decisión (activos por defecto).
+  useNotificacionesDeTareas();
   const invalidarChats = () => qc.invalidateQueries({ queryKey: ["conversations"] });
 
   const renombrar = useMutation({
@@ -303,6 +307,7 @@ export function Shell({ children }: { children: ReactNode }) {
               <span>{etiquetaLatencia}</span>
             </div>
           </div>
+          <p className="tl-rail-version">Versión {VERSION_SISTEMA}</p>
         </div>
       </aside>
 

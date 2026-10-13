@@ -400,6 +400,9 @@
   color: var(--ink-2);
   white-space: nowrap;
 }
+/* Tarjeta con título y interruptor en una fila (Notificaciones del sistema) */
+.aj-tarjeta > .aj-interruptor { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.aj-tarjeta > .aj-interruptor > .aj-tarjeta-titulo-simple { margin: 0; }
 .aj-switch {
   position: relative;
   flex-shrink: 0;

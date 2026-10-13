@@ -8,6 +8,8 @@ import { IndicadorPensando, MensajeAgente, MensajeUsuario } from "../components/
 import { copiarTexto } from "../components/chat-contenido";
 import { ChatConfiguracion } from "../components/chat-configuracion";
 import { VistaDocumento } from "../components/documentos";
+import { HistorialPrompts, type PromptEnviado } from "../components/chat-historial";
+import { MenuComandosChat, type ComandoChat } from "../components/chat-comandos";
 import { effortLabel, errorText, formatWhen, tierBars } from "../lib/model";
 import {
   componerMensaje,
@@ -24,6 +26,9 @@ type Patch = { model?: string | null; effort?: string | null; title?: string; pi
 
 // Un archivo adjunto en el compositor, antes de enviar el mensaje.
 type Pendiente = { key: string; lectura: ArchivoLeido };
+
+// Lo que había en el compositor al enviar: vuelve si el envío no se guarda en el servidor.
+type Restaurar = { texto: string; pendientes: Pendiente[] };
 
 // Errores en los que el servidor ya guardó el mensaje del usuario (no hay que reenviarlo).
 const GUARDADO_EN_ERROR = ["runner_failed", "insufficient_funds", "aislamiento_no_disponible"];
@@ -46,6 +51,9 @@ function guardarBorrador(id: string, texto: string) {
     // Sin almacenamiento disponible: se ignora.
   }
 }
+
+// Quita tildes y pasa a minúsculas para buscar comandos: "analiticas" encuentra "Analíticas".
+const sinTildes = (texto: string) => texto.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 // Ventana de contexto en tokens, abreviada: 128000 es "128k".
 function etiquetaContexto(tokens: number | undefined): string | null {
@@ -99,7 +107,7 @@ const nuevaClave = () => String(++contadorPendientes);
 export function ChatPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { selectedConversationId, setSelectedConversationId, triggerPalette, setDrawerOpen, configAbierta, setConfigAbierta } =
+  const { selectedConversationId, setSelectedConversationId, triggerPalette, configAbierta, setConfigAbierta } =
     useShell();
   const selectedId = selectedConversationId;
   const setSelectedId = setSelectedConversationId;
@@ -111,6 +119,8 @@ export function ChatPage() {
   }, [selectedId]);
   const cambiarBorrador = (texto: string) => {
     setDraft(texto);
+    setSlashActivo(0);
+    setSlashOculto(false);
     if (selectedId) guardarBorrador(selectedId, texto);
   };
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -120,6 +130,11 @@ export function ChatPage() {
   const [dictando, setDictando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [vistaDoc, setVistaDoc] = useState<Documento | null>(null);
+  const [historialAbierto, setHistorialAbierto] = useState(false);
+  const [resaltadoId, setResaltadoId] = useState<string | null>(null);
+  // Menú de "/": activo es la fila marcada; oculto lo cierra con Escape hasta que el texto cambie.
+  const [slashActivo, setSlashActivo] = useState(0);
+  const [slashOculto, setSlashOculto] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -193,24 +208,27 @@ export function ChatPage() {
     onSettled: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
   });
 
+  // Anclar desde el comando "/": el mismo cambio que el icono de la barra lateral.
+  const anclar = useMutation({
+    mutationFn: (pinned: boolean) => api.updateConversation(selectedId!, { pinned }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
+  });
+
+  // El compositor se vacía al enviar: el agente puede tardar, y el texto no debe quedarse esperando.
+  // Si el servidor no llega a guardar el mensaje, lo escrito vuelve al compositor.
   const send = useMutation({
-    mutationFn: ({ id, content }: { id: string; content: string }) => api.sendMessage(id, content),
-    onSuccess: (_data, { id }) => {
-      guardarBorrador(id, "");
-      if (id === selectedId) {
-        setDraft("");
-        setPendientes([]);
-      }
-    },
-    // El servidor guarda el mensaje antes de responder: aunque el agente falle, el mensaje ya está en el chat.
-    onError: (err, { id }) => {
+    mutationFn: ({ id, content }: { id: string; content: string; restaurar?: Restaurar }) =>
+      api.sendMessage(id, content),
+    onError: (err, { id, restaurar }) => {
       const guardado = err instanceof ApiError && GUARDADO_EN_ERROR.includes(err.code);
-      if (guardado) {
-        guardarBorrador(id, "");
-        if (id === selectedId) {
-          setDraft("");
-          setPendientes([]);
-        }
+      if (guardado || !restaurar) return;
+      if (id === selectedId) {
+        const nuevo = restaurar.texto && draft.trim() ? `${restaurar.texto}\n${draft}` : restaurar.texto || draft;
+        cambiarBorrador(nuevo);
+        setPendientes((prev) => [...restaurar.pendientes, ...prev]);
+      } else {
+        const previo = leerBorrador(id);
+        guardarBorrador(id, restaurar.texto && previo.trim() ? `${restaurar.texto}\n${previo}` : restaurar.texto || previo);
       }
     },
     onSettled: () => {
@@ -246,7 +264,19 @@ export function ChatPage() {
   const submit = () => {
     if (!puedeEnviar || !selectedId) return;
     const content = componerMensaje(draft, adjuntosListos);
-    if (content) send.mutate({ id: selectedId, content });
+    if (!content) return;
+    const restaurar: Restaurar = { texto: draft, pendientes };
+    // El dictado se corta del todo: sus resultados tardíos no deben volver a llenar el compositor.
+    const rec = recRef.current;
+    if (rec) {
+      rec.onresult = null;
+      rec.stop();
+      recRef.current = null;
+      setDictando(false);
+    }
+    cambiarBorrador("");
+    setPendientes([]);
+    send.mutate({ id: selectedId, content, restaurar });
   };
 
   // Vuelve a enviar el mensaje del usuario que precede a una respuesta.
@@ -357,7 +387,8 @@ export function ChatPage() {
   const sendError = send.isError ? errorText(send.error) : null;
   const settingsError = configure.isError ? errorText(configure.error) : null;
   const docError = crearDoc.isError ? errorText(crearDoc.error) : null;
-  const error = sendError ?? settingsError ?? docError;
+  const anclarError = anclar.isError ? errorText(anclar.error) : null;
+  const error = sendError ?? settingsError ?? docError ?? anclarError;
 
   // El mensaje que se envió desde este dispositivo ya puede estar en la lista (el sondeo lo trae antes de terminar).
   const ultimoMensaje = lista.at(-1);
@@ -423,6 +454,133 @@ export function ChatPage() {
   };
 
   const dictadoDisponible = ctorVoz() !== null;
+
+  // Prompts enviados en este chat, del más reciente al más antiguo: alimentan el historial.
+  const prompts: PromptEnviado[] = lista
+    .filter((m) => m.role === "user")
+    .map((m) => ({
+      id: m.id,
+      texto: partirMensaje(m.content).texto.replace(/\s+/g, " ").trim() || "Mensaje con adjuntos",
+      cuando: m.created_at,
+    }))
+    .reverse();
+
+  // Salta al mensaje del historial y lo resalta un momento.
+  const irAPrompt = (id: string) => {
+    setHistorialAbierto(false);
+    setResaltadoId(id);
+    const suave = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.getElementById(`mensaje-${id}`)?.scrollIntoView({ block: "center", behavior: suave ? "smooth" : "auto" });
+    window.setTimeout(() => setResaltadoId((actual) => (actual === id ? null : actual)), 1800);
+  };
+
+  const nuevoChat = () => {
+    api.createConversation(null).then(
+      (conv) => {
+        void qc.invalidateQueries({ queryKey: ["conversations"] });
+        setSelectedId(conv.id);
+      },
+      () => avisar("No se pudo crear el chat"),
+    );
+  };
+
+  // Comandos que se ven al escribir "/" en el compositor.
+  const anclado = Boolean(current?.pinned_at);
+  const comandosChat: ComandoChat[] = [
+    { id: "nuevo", etiqueta: "Nuevo chat", descripcion: "Abre un chat vacío", ejecutar: nuevoChat },
+    {
+      id: "historial",
+      etiqueta: "Historial de prompts",
+      descripcion: "Salta a un prompt que ya enviaste",
+      ejecutar: () => setHistorialAbierto(true),
+    },
+    {
+      id: "adjuntar",
+      etiqueta: "Adjuntar archivo",
+      descripcion: "Archivos de texto, código o documentos",
+      ejecutar: () => fileRef.current?.click(),
+    },
+    ...(dictadoDisponible
+      ? [
+          {
+            id: "dictar",
+            etiqueta: "Dictar mensaje",
+            descripcion: "La voz se convierte en texto",
+            ejecutar: dictar,
+          },
+        ]
+      : []),
+    {
+      id: "modelo",
+      etiqueta: "Cambiar modelo",
+      descripcion: "Modelo y nivel de esfuerzo de este chat",
+      ejecutar: () => {
+        setUsoAbierto(false);
+        setPickerOpen(true);
+      },
+    },
+    {
+      id: "uso",
+      etiqueta: "Uso y límites",
+      descripcion: "Cuota y consumo de los agentes",
+      ejecutar: () => {
+        setPickerOpen(false);
+        setUsoAbierto(true);
+      },
+    },
+    {
+      id: "configuracion",
+      etiqueta: "Configuración del chat",
+      descripcion: "Proyecto, modelo, esfuerzo y documentos",
+      ejecutar: () => setConfigAbierta(true),
+    },
+    {
+      id: "anclar",
+      etiqueta: anclado ? "Quitar del ancla" : "Anclar chat arriba",
+      descripcion: "Mantiene el chat al inicio de la lista",
+      ejecutar: () => anclar.mutate(!anclado),
+    },
+    ...(hayMensajes
+      ? [
+          {
+            id: "compartir",
+            etiqueta: "Compartir conversación",
+            descripcion: "Envía o copia el texto del chat",
+            ejecutar: () => void compartir(),
+          },
+          {
+            id: "exportar",
+            etiqueta: "Exportar en Markdown",
+            descripcion: "Descarga el chat como archivo .md",
+            ejecutar: exportar,
+          },
+        ]
+      : []),
+  ];
+
+  // El menú aparece solo si el mensaje empieza por "/" y hay comandos que coinciden.
+  const slashVisible = draft.startsWith("/") && !draft.includes("\n") && !slashOculto;
+  const palabrasSlash = sinTildes(draft.slice(1).trim()).split(/\s+/).filter(Boolean);
+  const comandosFiltrados = slashVisible
+    ? comandosChat.filter((c) => {
+        const texto = sinTildes(`${c.etiqueta} ${c.descripcion}`);
+        return palabrasSlash.every((p) => texto.includes(p));
+      })
+    : [];
+  const menuAbierto = comandosFiltrados.length > 0;
+  const indiceSlash = Math.min(slashActivo, Math.max(comandosFiltrados.length - 1, 0));
+
+  useEffect(() => {
+    if (menuAbierto) {
+      document.getElementById(`comando-chat-${comandosFiltrados[indiceSlash]?.id}`)?.scrollIntoView({ block: "nearest" });
+    }
+  }, [indiceSlash, menuAbierto]);
+
+  // Ejecuta un comando: quita el "/..." del compositor antes de correrlo.
+  const elegirComando = (c: ComandoChat) => {
+    cambiarBorrador("");
+    c.ejecutar();
+  };
 
   return (
     <section className="tl-chat" aria-label="Chat">
@@ -505,19 +663,26 @@ export function ChatPage() {
                 </svg>
                 <span className="tl-boton-texto">Exportar</span>
               </button>
-              <button
-                type="button"
-                className="tl-boton"
-                aria-label="Historial"
-                title="Ver la lista de chats"
-                onClick={() => setDrawerOpen(true)}
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <polyline points="1 4 1 10 7 10" />
-                  <path d="M3.5 15a9 9 0 1 0 2.1-9.4L1 10" />
-                </svg>
-                <span className="tl-boton-texto">Historial</span>
-              </button>
+              <div className="tl-historial-wrap">
+                <button
+                  type="button"
+                  className="tl-boton"
+                  aria-label="Historial de prompts"
+                  aria-haspopup="dialog"
+                  aria-expanded={historialAbierto}
+                  title="Prompts que enviaste en este chat"
+                  onClick={() => setHistorialAbierto((o) => !o)}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="1 4 1 10 7 10" />
+                    <path d="M3.5 15a9 9 0 1 0 2.1-9.4L1 10" />
+                  </svg>
+                  <span className="tl-boton-texto">Historial</span>
+                </button>
+                {historialAbierto && (
+                  <HistorialPrompts prompts={prompts} onElegir={irAPrompt} onCerrar={() => setHistorialAbierto(false)} />
+                )}
+              </div>
             </div>
           </header>
 
@@ -539,7 +704,13 @@ export function ChatPage() {
               )}
               {lista.map((m, i) =>
                 m.role === "user" ? (
-                  <MensajeUsuario key={m.id} texto={m.content} cuando={m.created_at} />
+                  <MensajeUsuario
+                    key={m.id}
+                    id={`mensaje-${m.id}`}
+                    texto={m.content}
+                    cuando={m.created_at}
+                    resaltado={resaltadoId === m.id}
+                  />
                 ) : (
                   <MensajeAgente
                     key={m.id}
@@ -663,6 +834,10 @@ export function ChatPage() {
                 </p>
               )}
 
+              {menuAbierto && (
+                <MenuComandosChat comandos={comandosFiltrados} activo={indiceSlash} onElegir={elegirComando} />
+              )}
+
               <textarea
                 ref={inputRef}
                 className="tl-composer-input"
@@ -670,9 +845,29 @@ export function ChatPage() {
                 value={draft}
                 placeholder="Escribe un mensaje, pega o arrastra archivos, o usa / para comandos"
                 aria-label="Mensaje"
+                aria-autocomplete={menuAbierto ? "list" : undefined}
+                aria-activedescendant={menuAbierto ? `comando-chat-${comandosFiltrados[indiceSlash]?.id}` : undefined}
                 onChange={(e) => cambiarBorrador(e.target.value)}
                 onPaste={alPegar}
                 onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
+                  if (menuAbierto) {
+                    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                      e.preventDefault();
+                      const paso = e.key === "ArrowDown" ? 1 : -1;
+                      setSlashActivo((indiceSlash + paso + comandosFiltrados.length) % comandosFiltrados.length);
+                      return;
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      setSlashOculto(true);
+                      return;
+                    }
+                    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      elegirComando(comandosFiltrados[indiceSlash]);
+                      return;
+                    }
+                  }
                   if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
                     submit();

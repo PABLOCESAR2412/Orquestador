@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type RefObject } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { ModelInfo } from "../api";
 import { effortLabel, formatPrice, nombreProveedor } from "../lib/model";
 import { CostMeter, useDialogo } from "./controls";
@@ -22,6 +22,17 @@ type Props = {
 const MAX_RESULTS = 120;
 
 const plural = (n: number) => (n === 1 ? "1 modelo" : `${n} modelos`);
+
+// Alto mínimo del selector de escritorio: buscador, conteo y al menos una fila visibles.
+const ALTO_MINIMO = 160;
+
+// Borde superior de lo visible desde el compositor: el primer ancestro que recorta (scroll u overflow oculto) o la ventana.
+function limiteVisible(desde: HTMLElement): number {
+  for (let n = desde.parentElement; n; n = n.parentElement) {
+    if (/auto|hidden|scroll/.test(getComputedStyle(n).overflowY)) return n.getBoundingClientRect().top;
+  }
+  return 0;
+}
 
 export function ModelPicker({
   models,
@@ -48,6 +59,22 @@ export function ModelPicker({
     onClose();
   };
   useDialogo(dialogRef, cerrar);
+
+  // En escritorio el selector flota sobre su compositor. Si no cabe por encima de la barra superior, se acorta
+  // para que el buscador no quede oculto. En móvil es una hoja fija (sin ancla) y no se toca.
+  useLayoutEffect(() => {
+    const el = dialogRef.current;
+    const ancla = el?.offsetParent as HTMLElement | null | undefined;
+    if (!el || !ancla) return;
+    const ajustar = () => {
+      // 10 px de separación con el compositor y 8 px de aire bajo el borde visible.
+      const disponible = ancla.getBoundingClientRect().top - limiteVisible(ancla) - 18;
+      el.style.maxHeight = `${Math.max(ALTO_MINIMO, Math.min(window.innerHeight * 0.6, disponible))}px`;
+    };
+    ajustar();
+    window.addEventListener("resize", ajustar);
+    return () => window.removeEventListener("resize", ajustar);
+  }, []);
 
   const elegir = (m: ModelInfo | null, esfuerzo: string | null = null) => {
     devolverFoco();

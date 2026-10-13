@@ -14,10 +14,21 @@ const ICONO_AGENTE = (
   </svg>
 );
 
-export function MensajeUsuario({ texto, cuando }: { texto: string; cuando: string | null }) {
+// id: ancla para ir a este mensaje desde el historial de prompts. resaltado: destaca el mensaje un momento.
+export function MensajeUsuario({
+  texto,
+  cuando,
+  id,
+  resaltado = false,
+}: {
+  texto: string;
+  cuando: string | null;
+  id?: string;
+  resaltado?: boolean;
+}) {
   const { texto: prosa, adjuntos } = partirMensaje(texto);
   return (
-    <article className="tl-msg tl-msg-usuario">
+    <article id={id} className={`tl-msg tl-msg-usuario${resaltado ? " is-resaltado" : ""}`}>
       <div className="tl-msg-meta">Tú · {haceTexto(cuando)}</div>
       {prosa && <div className="tl-msg-burbuja">{prosa}</div>}
       {adjuntos.length > 0 && (

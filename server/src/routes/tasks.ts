@@ -45,7 +45,7 @@ const COLUMNS =
 const DESDE = "FROM tasks t LEFT JOIN projects p ON p.id = t.project_id";
 
 const ESTADOS_REANUDABLES = ["interrupted", "failed"];
-const ESTADOS_REINTENTABLES = ["interrupted", "failed", "cancelled"];
+const ESTADOS_REINTENTABLES = ["interrupted", "failed", "cancelled", "done"];
 
 export const tasks = new Hono();
 
