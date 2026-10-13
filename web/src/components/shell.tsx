@@ -40,7 +40,6 @@ export function Shell({ children }: { children: ReactNode }) {
     toggleDrawer,
     selectedConversationId,
     setSelectedConversationId,
-    triggerNewTask,
   } = useShell();
 
   // Instalar la app: en Chrome/Edge con el evento del navegador; en iPhone, con instrucciones.
@@ -62,16 +61,6 @@ export function Shell({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const invalidarChats = () => qc.invalidateQueries({ queryKey: ["conversations"] });
 
-  const crearChat = useMutation({
-    mutationFn: () => api.createConversation(null),
-    onSuccess: (conv) => {
-      void invalidarChats();
-      setSelectedConversationId(conv.id);
-      closeDrawer();
-      void navigate({ to: "/chat" });
-    },
-  });
-
   const renombrar = useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) => api.updateConversation(id, { title }),
     onSettled: () => void invalidarChats(),
@@ -89,9 +78,7 @@ export function Shell({ children }: { children: ReactNode }) {
     onSettled: () => void invalidarChats(),
   });
 
-  const accionError = crearChat.isError
-    ? errorText(crearChat.error)
-    : renombrar.isError
+  const accionError = renombrar.isError
       ? errorText(renombrar.error)
       : anclar.isError
         ? errorText(anclar.error)
@@ -119,14 +106,14 @@ export function Shell({ children }: { children: ReactNode }) {
   // Estado del servidor: ida y vuelta a /api/health, cada 30 s (ver lib/latencia.ts).
   const latencia = useLatencia();
 
-  // "Nuevo chat / tarea": en Tareas abre el formulario de tarea; en el resto crea un chat y lo abre.
-  const nuevoChatOTarea = () => {
-    if (currentPath === "/tareas") triggerNewTask();
-    else if (!crearChat.isPending) crearChat.mutate();
+  // "Nuevo proyecto": el formulario de creación vive en Proyectos.
+  const nuevoProyecto = () => {
+    closeDrawer();
+    void navigate({ to: "/proyectos" });
   };
-  const nuevoRef = useRef(nuevoChatOTarea);
+  const nuevoRef = useRef(nuevoProyecto);
   useEffect(() => {
-    nuevoRef.current = nuevoChatOTarea;
+    nuevoRef.current = nuevoProyecto;
   });
 
   // ⌘N / Ctrl+N desde cualquier pantalla. Ctrl+Shift+N (ventana privada) y Alt siguen siendo del navegador.
@@ -202,16 +189,15 @@ export function Shell({ children }: { children: ReactNode }) {
           <button
             type="button"
             className="tl-nuevo"
-            onClick={nuevoChatOTarea}
-            disabled={crearChat.isPending}
-            title={`Nuevo chat / tarea (${ATAJO_NUEVO})`}
+            onClick={nuevoProyecto}
+            title={`Nuevo proyecto (${ATAJO_NUEVO})`}
             aria-keyshortcuts={ES_MAC ? "Meta+N" : "Control+N"}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            <span className="tl-nuevo-texto">Nuevo chat / tarea</span>
+            <span className="tl-nuevo-texto">Nuevo proyecto</span>
             <kbd className="tl-kbd">{ATAJO_NUEVO}</kbd>
           </button>
 

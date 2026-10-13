@@ -51,7 +51,7 @@ export function ChatConfiguracion({
           <div className="tl-dialogo-acciones">
             <button
               type="button"
-              className={fijado ? "tl-pildora-ambar" : "tl-boton tl-boton-compacto"}
+              className={fijado ? "tl-pildora-activa" : "tl-boton tl-boton-compacto"}
               aria-pressed={fijado}
               onClick={() => onCambiar({ pinned: !fijado })}
             >

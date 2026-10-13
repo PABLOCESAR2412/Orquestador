@@ -62,7 +62,7 @@ export function VistaDocumento({
             <span className="tl-chip">{ETIQUETA_CORTA[documento.formato]}</span>
           </div>
           <div className="tl-dialogo-acciones">
-            <a className="tl-boton tl-boton-ambar" href={urlDescargaDocumento(documento.id)} download>
+            <a className="tl-boton tl-boton-principal" href={urlDescargaDocumento(documento.id)} download>
               Descargar
             </a>
             <button type="button" className="tl-boton" onClick={cerrar}>
