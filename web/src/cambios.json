@@ -33,6 +33,7 @@
     { "fecha": "2026-10-13", "tipo": "mediano", "titulo": "Proceso del agente en el chat: cada acción con su vista previa, en vivo y después", "pr": null },
     { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Respuestas del chat más concretas: qué se hará, rutas y verificación", "pr": null },
     { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Aviso de nueva versión: el velo cubre también la barra lateral, con desenfoque", "pr": null },
-    { "fecha": "2026-10-13", "tipo": "grande", "titulo": "Analizador y obrero por tarea: plan revisable, aprobación y reporte guardado", "pr": 28 }
+    { "fecha": "2026-10-13", "tipo": "grande", "titulo": "Analizador y obrero por tarea: plan revisable, aprobación y reporte guardado", "pr": 28 },
+    { "fecha": "2026-10-14", "tipo": "minimo", "titulo": "Documentación al día: fases 5 y 6 mergeadas y pendientes del VM", "pr": null }
   ]
 }
