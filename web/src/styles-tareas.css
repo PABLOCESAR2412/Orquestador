@@ -27,6 +27,8 @@ main.tk-principal {
 .tk-punto.is-done { background: var(--ink); }
 .tk-punto.is-failed { background: var(--danger); }
 .tk-punto.is-muted { background: var(--line-strong); }
+/* Espera una decisión del usuario (aprobar el plan): es alerta, por eso lleva la señal ámbar. */
+.tk-punto.is-atencion { background: var(--signal); }
 
 /* Cabecera */
 .tk-cabecera {

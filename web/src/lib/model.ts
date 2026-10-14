@@ -51,6 +51,8 @@ export function formatPrice(m: ModelInfo): string {
 
 export const STATUS_LABEL: Record<TaskStatus, string> = {
   queued: "En cola",
+  analyzing: "Analizando",
+  waiting_approval: "Espera tu aprobación",
   running: "Corriendo",
   done: "Lista",
   interrupted: "Interrumpida",
@@ -73,6 +75,12 @@ export const EVENT_LABEL: Record<TaskEventKind, string> = {
   commit_aprobado: "Commit aprobado",
   push_aprobado: "Rama subida al remoto",
   push_fallido: "Falló la subida al remoto",
+  plan_creado: "Plan del analizador",
+  plan_pendiente: "Plan listo, espera tu aprobación",
+  plan_aprobado: "Plan aprobado",
+  plan_rechazado: "Plan rechazado",
+  replanificada: "Replanificada por desviación",
+  obrero_iniciado: "Obrero ejecutando el plan",
 };
 
 // Montos en dólares: centavos normales; cifras menores a un centavo con cuatro decimales.
@@ -145,6 +153,10 @@ export function errorText(err: unknown): string {
         return "Esta tarea no se puede reintentar en este estado.";
       case "task_not_found":
         return "Esta tarea ya no existe.";
+      case "task_not_waiting_plan":
+        return "Esta tarea no está esperando la aprobación de un plan.";
+      case "invalid_notas":
+        return "Las notas son demasiado largas. El máximo es de 2000 caracteres.";
       case "conversation_busy":
         return "Este chat todavía está respondiendo. Espera a que termine.";
       case "aislamiento_no_disponible":

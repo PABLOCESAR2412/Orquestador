@@ -7,6 +7,7 @@ import { ModelPicker } from "../components/model-picker";
 import { HistorialTarea } from "../components/task-history";
 import { ProgramadasPanel } from "../components/programadas";
 import { TareaPasos, derivarPasos } from "../components/tarea-pasos";
+import { PlanTarea, ReporteTarea } from "../components/tarea-plan";
 import { TerminalCrudo } from "../components/tarea-terminal";
 import { RevisionCambios } from "../components/tarea-revision";
 import { cuando } from "../components/tarea-formato";
@@ -18,7 +19,9 @@ import { useShell } from "../components/shell-context";
 import "../styles-trabajo.css";
 import "../styles-tareas.css";
 
-const isActive = (t: Task) => t.status === "queued" || t.status === "running";
+// Una tarea activa tiene proceso o espera una decisión del usuario (el plan).
+const isActive = (t: Task) =>
+  t.status === "queued" || t.status === "analyzing" || t.status === "running" || t.status === "waiting_approval";
 const MAX_PROMPT_CHARS = 10_000;
 const MAX_LINEAS_VIVAS = 1_500;
 type EstadoFiltro = "all" | "active" | "done";
@@ -65,6 +68,10 @@ function estadoDeTarea(t: Task, posicion?: number): { texto: string; clase: stri
       return { texto: "Cancelada", clase: "is-muted" };
     case "interrupted":
       return { texto: "Interrumpida", clase: "is-failed" };
+    case "analyzing":
+      return { texto: `Analizando (${formatElapsed(t.started_at)})`, clase: "is-running" };
+    case "waiting_approval":
+      return { texto: "Espera tu aprobación", clase: "is-atencion" };
   }
 }
 
@@ -234,7 +241,8 @@ function ListaTareas() {
   const modelName = (id: string) => modelList.find((m) => m.id === id)?.name ?? id;
 
   const taskList = tasks.data ?? [];
-  const runningCount = taskList.filter((t) => t.status === "running").length;
+  // El analizador también usa el agente, así que cuenta como ejecución.
+  const runningCount = taskList.filter((t) => t.status === "running" || t.status === "analyzing").length;
   const queuedCount = taskList.filter((t) => t.status === "queued").length;
   const activasCount = runningCount + queuedCount;
   const doneCount = taskList.filter((t) => t.status === "done").length;
@@ -737,7 +745,7 @@ function DetalleTarea({ id }: { id: string }) {
   });
   const t = tarea.data;
   const activa = t ? isActive(t) : false;
-  const enCurso = t?.status === "running";
+  const enCurso = t?.status === "running" || t?.status === "analyzing";
   const conGit = Boolean(t?.rama);
 
   const models = useQuery({ queryKey: ["models"], queryFn: api.listModels, staleTime: 5 * 60_000 });
@@ -775,7 +783,8 @@ function DetalleTarea({ id }: { id: string }) {
     if (evento.tipo === "actividad") return;
     void qc.invalidateQueries({ queryKey: ["task", id] });
     void qc.invalidateQueries({ queryKey: ["tasks"] });
-    if (evento.status !== "queued" && evento.status !== "running") {
+    // Solo cuando la tarea ya no puede cambiar: el diff y la salida quedan listos.
+    if (evento.status === "done" || evento.status === "failed" || evento.status === "cancelled" || evento.status === "interrupted") {
       void qc.invalidateQueries({ queryKey: ["task-diff", id] });
       void qc.invalidateQueries({ queryKey: ["task-output", id] });
     }
@@ -794,6 +803,16 @@ function DetalleTarea({ id }: { id: string }) {
       void qc.invalidateQueries({ queryKey: ["tasks"] });
       void navigate({ to: "/tareas/$id", params: { id: nueva.id } });
     },
+  });
+
+  // Aprobar el plan lo pone en la cola; rechazarlo cancela la tarea. Las notas viajan con la decisión.
+  const aprobarPlan = useMutation({
+    mutationFn: (notas: string) => api.approveTaskPlan(id, notas ? { notas } : {}),
+    onSettled: refrescar,
+  });
+  const rechazarPlan = useMutation({
+    mutationFn: (motivo: string) => api.rejectTaskPlan(id, motivo ? { motivo } : {}),
+    onSettled: refrescar,
   });
 
   const pasos = t
@@ -872,6 +891,19 @@ function DetalleTarea({ id }: { id: string }) {
             <TareaPasos pasos={pasos} />
           </section>
 
+          {t.plan && (
+            <PlanTarea
+              plan={t.plan}
+              aguardaAprobacion={t.status === "waiting_approval"}
+              ocupado={aprobarPlan.isPending || rechazarPlan.isPending}
+              error={aprobarPlan.isError || rechazarPlan.isError ? errorText(aprobarPlan.error ?? rechazarPlan.error) : null}
+              onAprobar={(notas) => aprobarPlan.mutate(notas)}
+              onRechazar={(motivo) => rechazarPlan.mutate(motivo)}
+            />
+          )}
+
+          {t.reporte && <ReporteTarea reporte={t.reporte} />}
+
           <section className="panel tarea-seccion" aria-labelledby="resumen-titulo">
             <h2 id="resumen-titulo">Resumen</h2>
 
@@ -925,7 +957,7 @@ function DetalleTarea({ id }: { id: string }) {
               <div className="tarea-texto">{t.prompt}</div>
             </div>
 
-            {t.result && (
+            {t.result && !t.reporte && (
               <div className="tarea-bloque">
                 <span className="tarea-etiqueta">Resultado</span>
                 <div className="tarea-texto">{t.result}</div>
@@ -968,7 +1000,7 @@ function DetalleTarea({ id }: { id: string }) {
                   {reintentar.isPending ? "Creando…" : "Reintentar"}
                 </button>
               )}
-              {(activa || t.status === "interrupted") && (
+              {((activa && t.status !== "waiting_approval") || t.status === "interrupted") && (
                 <button
                   type="button"
                   className="ghost task-cancel-btn"

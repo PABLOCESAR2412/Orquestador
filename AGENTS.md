@@ -10,13 +10,15 @@ Este archivo describe cómo trabajan los agentes que Orquestador lanza para cada
 4. **Obrero.** Ejecuta el plan aprobado dentro de su workspace, prueba lo que cambió y escribe un reporte.
 5. **Cierre.** La tarea queda `done`, `failed` o `cancelled`. Se guardan el reporte, el costo y el uso. Se notifica al usuario (fase 8 de `PLAN.md`).
 
-Estados previstos (requieren la migración 010, ver `PLAN.md` fase 5):
+Estados (migración 019, ver `PLAN.md` fase 5):
 
 ```
-queued → analyzing → planned → waiting_approval → running → done | failed | cancelled
+queued → analyzing → waiting_approval → running → done | failed | cancelled
+                  ↘ running (si el plan no pide aprobación)
+running → analyzing (desviación: replanificación, con tope de 3 versiones del plan)
 ```
 
-Si el plan no requiere aprobación, `planned` pasa directo a `running`.
+Si el plan no requiere aprobación (ningún commit, push o PR, y sin preguntas), pasa directo a `running`. Tras una desviación, siempre espera al usuario.
 
 ## Contexto que recibe cada agente
 
@@ -82,4 +84,4 @@ Si el plan no requiere aprobación, `planned` pasa directo a `running`.
 
 ## Estado del código
 
-Ya existen la cola, el runner de OpenCode y el registro de costo. Falta separar analizador y obrero, guardar `plan` y `resultado` por tarea, y guardar el estado de aprobación. Ver `PLAN.md` fase 5 y `TODO.md`.
+Existen la cola, el runner de OpenCode, el registro de costo, el analizador y el obrero (`server/src/worker.ts`, `server/src/plan.ts`), el plan y el reporte por tarea, y la aprobación del plan. Pendiente: probar con OpenCode real en el VM. Ver `PLAN.md` fase 5 y `TODO.md`.

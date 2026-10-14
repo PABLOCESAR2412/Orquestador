@@ -178,7 +178,41 @@ export type ModelInfo = {
   recommended: boolean;
 };
 
-export type TaskStatus = "queued" | "running" | "interrupted" | "done" | "failed" | "cancelled";
+// analyzing: el analizador escribe el plan. waiting_approval: el plan espera la decisión del usuario.
+export type TaskStatus =
+  | "queued"
+  | "analyzing"
+  | "waiting_approval"
+  | "running"
+  | "interrupted"
+  | "done"
+  | "failed"
+  | "cancelled";
+
+export type TaskPlanStep = { id: number; descripcion: string; archivos: string[] };
+
+// Plan del analizador (AGENTS.md). `notas` son las que el usuario escribió al aprobarlo.
+export type TaskPlan = {
+  objetivo: string;
+  supuestos: string[];
+  pasos: TaskPlanStep[];
+  criterios_de_aceptacion: string[];
+  requiere_aprobacion: ("commit" | "push" | "pr")[];
+  riesgos: string[];
+  preguntas: string[];
+  notas?: string;
+};
+
+// Reporte del obrero. `desviacion` trae el motivo cuando el obrero no siguió el plan.
+export type TaskReport = {
+  estado: "completado" | "fallo" | "desviacion";
+  resumen: string;
+  cambios: { archivo: string; tipo: string }[];
+  pruebas: { comando: string; resultado: string }[];
+  pendientes: string[];
+  diff_disponible: boolean;
+  desviacion: string | null;
+};
 
 export type Task = {
   id: string;
@@ -189,6 +223,10 @@ export type Task = {
   status: TaskStatus;
   result: string | null;
   error: string | null;
+  // Plan y reporte son null hasta que el analizador y el obrero los entregan.
+  plan: TaskPlan | null;
+  reporte: TaskReport | null;
+  plan_aprobado_en: string | null;
   project_id?: string | null;
   // Tarea creada como reintento de otra.
   retry_of?: string | null;
@@ -216,7 +254,13 @@ export type TaskEventKind =
   | "clon_creado"
   | "commit_aprobado"
   | "push_aprobado"
-  | "push_fallido";
+  | "push_fallido"
+  | "plan_creado"
+  | "plan_pendiente"
+  | "plan_aprobado"
+  | "plan_rechazado"
+  | "replanificada"
+  | "obrero_iniciado";
 
 // Evento en vivo del canal /api/eventos-vivos (SSE).
 // Un paso del agente en un chat, en orden dentro de su turno. Un texto intermedio trae el texto en
@@ -345,6 +389,11 @@ export const api = {
       `/api/tasks/${id}/aprobar`,
       { method: "POST", body: JSON.stringify(body) },
     ),
+  // El plan espera al usuario: aprobarlo lo pone en la cola; las notas llegan al obrero.
+  approveTaskPlan: (id: string, body: { notas?: string }) =>
+    request<Task>(`/api/tasks/${id}/aprobar-plan`, { method: "POST", body: JSON.stringify(body) }),
+  rejectTaskPlan: (id: string, body: { motivo?: string }) =>
+    request<Task>(`/api/tasks/${id}/rechazar-plan`, { method: "POST", body: JSON.stringify(body) }),
   getProject: (id: string) => request<ProjectDetail>(`/api/projects/${id}`),
   // Solo sugiere: el texto se revisa en el campo de instrucciones y se guarda desde ahí.
   suggestProjectInstructions: (id: string) =>

@@ -30,12 +30,13 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - Sistema de diseño en `DESIGN.md`. Pantallas generadas en Stitch con `docs/design/STITCH_PROMPT.md`. `impeccable` como guía de revisión.
 - **Criterio:** las cinco pantallas revisadas a 390 px y 1440 px. Contraste AA. Solo tokens de color. Sin cambios de comportamiento.
 
-### 5. Analizador y obrero por tarea: diseño listo (`AGENTS.md`)
-- Estado (`feat/revision-agentes`, sin merge): las migraciones 010–012 cubren lo que no es el analizador (Git por tarea, aprobaciones, secretos, programadas). La migración **013** (`013_oauth_google`) ya está: estados de inicio de sesión y conexión de Google. El analizador y sus estados `planning`, `waiting_approval`, `executing` y `waiting_user` pasan a la **migración 014**. Pendiente.
-- Separar planificación y ejecución. Migración `014` (de la `005` a la `013` ya están usadas): estados `planning`, `waiting_approval`, `executing`, `waiting_user` y `completed`, además de los actuales. Tablas para versiones del plan, aprobaciones y eventos por tarea.
-- Cada tarea tiene un `task_id` propio. Cada proveedor guarda su `provider_session_id`, así cambiar de proveedor no cambia la identidad de la tarea.
-- Si el obrero necesita desviarse del plan aprobado, la tarea vuelve a `waiting_approval`. No reinterpreta el plan por su cuenta.
-- **Criterio:** el analizador produce un JSON válido. El obrero ejecuta solo el plan aprobado. El reporte queda guardado. "Continuar" reanuda la misma sesión y el mismo workspace.
+### 5. Analizador y obrero por tarea: implementada (`feat/analizador-obrero`, sin PR)
+- Migración `019_analizador_obrero`: la tabla `tasks` se reconstruye con los estados `analyzing` y `waiting_approval`, y las columnas `plan`, `reporte` y `plan_aprobado_en`. Es la única migración que se aplica con claves foráneas apagadas (`sinClaves`); el runner comprueba la integridad antes de confirmar. El historial (`task_events`) y las aprobaciones (`task_approvals`) se conservan.
+- El analizador produce un plan en JSON (`server/src/plan.ts`). Si el plan pide commit, push o PR, o trae preguntas, la tarea espera en `waiting_approval`. Si no, pasa directo al obrero.
+- El obrero ejecuta solo el plan aprobado, en la misma sesión y carpeta que el analizador, y guarda un reporte en JSON. Si se desvía, la tarea vuelve al analizador con el motivo; el plan se replanifica hasta `MAX_PLANES` (3 versiones) y después la tarea falla.
+- Rutas: `POST /api/tasks/:id/aprobar-plan` (acepta notas para el obrero) y `POST /api/tasks/:id/rechazar-plan`.
+- Pruebas: `server/tests/plan.test.ts` (funciones puras) y `server/tests/analizador.test.ts`, que corre el flujo completo con un `opencode` falso (`server/tests/fixtures/bin/opencode`).
+- Pendiente: probar con OpenCode real en el VM. Los criterios de aceptación se cumplen con el falso; con un modelo real, el JSON del analizador y el reporte del obrero pueden necesitar ajuste de los prompts.
 
 ### 6. Proyectos de GitHub
 - Estado (`feat/revision-agentes`): cada tarea de un proyecto Git trabaja en su clon (`telo/<id8>`). Aprobación de commit y push ligada al hash del diff; escaneo de secretos antes del commit; push solo a `github.com` por HTTPS con `GITHUB_TOKEN` como secreto del proyecto. Pendiente: probar un push real a GitHub y un agente real en el VM.

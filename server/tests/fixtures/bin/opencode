@@ -1,0 +1,115 @@
+#!/usr/bin/env bun
+// Imitación de `opencode run --format json` para las pruebas del analizador y el obrero.
+// Decide su respuesta por las marcas del prompt (DESVIAR, TOPE, FALLO, COMMIT, PREGUNTA, INVALIDO)
+// y anota cada llamada en llamadas.jsonl de su carpeta de trabajo.
+import { appendFileSync, existsSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+const argv = process.argv.slice(2);
+// `opencode models --verbose`: lista de modelos en el formato que lee models.ts (la API valida el modelo al crear tareas).
+if (argv[0] === "models") {
+  console.log("opencode/big-pickle");
+  console.log(JSON.stringify({ name: "Big Pickle", cost: { input: 0, output: 0 }, limit: { context: 200000 }, variants: {} }));
+  process.exit(0);
+}
+const fin = argv.indexOf("--");
+const prompt = fin >= 0 ? (argv[fin + 1] ?? "") : (argv.at(-1) ?? "");
+const sIdx = argv.indexOf("-s");
+const sesion = sIdx >= 0 ? (argv[sIdx + 1] ?? null) : null;
+const cwd = process.cwd();
+const ruta = (nombre: string) => join(cwd, nombre);
+
+// La reparación de un plan inválido también es del analizador, aunque no repita su presentación.
+const rol = prompt.includes("Eres el analizador de Telo") || prompt.includes("no es un plan válido")
+  ? "analizador"
+  : prompt.includes("Eres el obrero de Telo")
+    ? "obrero"
+    : "otro";
+appendFileSync(ruta("llamadas.jsonl"), JSON.stringify({ rol, sesion, prompt }) + "\n");
+
+function emitir(texto: string) {
+  const sid = "ses_fake";
+  console.log(JSON.stringify({ type: "text", sessionID: sid, part: { type: "text", text: texto } }));
+  console.log(
+    JSON.stringify({
+      type: "step_finish",
+      sessionID: sid,
+      part: {
+        type: "step-finish",
+        tokens: { input: 120, output: 40, reasoning: 0, cache: { read: 0, write: 0 } },
+        cost: 0.002,
+      },
+    }),
+  );
+}
+
+function plan(): string {
+  // Las marcas del prompt viajan en el objetivo, así el obrero (que solo ve el plan) también las ve.
+  const marcas = ["DESVIAR", "TOPE", "FALLO"]
+    .filter((m) => prompt.includes(m))
+    .map((m) => ` [${m}]`)
+    .join("");
+  const replan = prompt.includes("Motivo:");
+  return JSON.stringify({
+    objetivo: (replan ? "Plan replanificado" : "Ordenar la carpeta") + marcas,
+    supuestos: [],
+    pasos: [{ id: 1, descripcion: "Revisar la carpeta", archivos: ["notas.txt"] }],
+    criterios_de_aceptacion: ["La carpeta queda ordenada"],
+    requiere_aprobacion: prompt.includes("COMMIT") ? ["commit"] : [],
+    riesgos: [],
+    preguntas: prompt.includes("PREGUNTA") ? ["¿Qué carpeta?"] : [],
+  });
+}
+
+if (rol === "analizador") {
+  if (prompt.includes("SIEMPRE_INVALIDO")) {
+    writeFileSync(ruta(".invalido"), "");
+    emitir("Aquí tienes, sin JSON.");
+  } else if (existsSync(ruta(".invalido"))) {
+    emitir("Sigo sin JSON.");
+  } else if (prompt.includes("INVALIDO") && !existsSync(ruta(".primera"))) {
+    writeFileSync(ruta(".primera"), "");
+    emitir("Un texto cualquiera.");
+  } else {
+    emitir("```json\n" + plan() + "\n```");
+  }
+} else if (rol === "obrero") {
+  const desviarUnaVez = prompt.includes("[DESVIAR]") && !existsSync(ruta(".desviado"));
+  if (prompt.includes("[TOPE]") || desviarUnaVez) {
+    writeFileSync(ruta(".desviado"), "");
+    emitir(
+      JSON.stringify({
+        estado: "desviacion",
+        resumen: "",
+        desviacion: "Hace falta tocar la base de datos, fuera del plan",
+      }),
+    );
+  } else if (prompt.includes("[FALLO]")) {
+    emitir(
+      JSON.stringify({
+        estado: "fallo",
+        resumen: "No encontré la carpeta.",
+        cambios: [],
+        pruebas: [],
+        pendientes: ["Indicar la carpeta"],
+        diff_disponible: false,
+        desviacion: null,
+      }),
+    );
+  } else {
+    const conNotas = prompt.includes("Notas y respuestas del usuario");
+    emitir(
+      JSON.stringify({
+        estado: "completado",
+        resumen: conNotas ? "Carpeta ordenada con notas" : "Carpeta ordenada",
+        cambios: [{ archivo: "notas.txt", tipo: "editar" }],
+        pruebas: [{ comando: "ls", resultado: "no_aplica" }],
+        pendientes: [],
+        diff_disponible: true,
+        desviacion: null,
+      }),
+    );
+  }
+} else {
+  emitir("Sin rol reconocido.");
+}
