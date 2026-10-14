@@ -31,7 +31,7 @@ export function ProyectoArchivos({ id }: { id: string }) {
   return (
     <section className="panel" aria-labelledby="proyecto-archivos-titulo">
       <h2 id="proyecto-archivos-titulo" className="panel-title">
-        Archivos
+        Documentos
       </h2>
 
       {archivo === null ? (

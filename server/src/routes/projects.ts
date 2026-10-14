@@ -8,9 +8,8 @@ import { ArchivoError, leerArchivo, listarCarpeta, medirCarpeta, normalizarRuta 
 import { redactar } from "../redaccion";
 import { conProyectoRevisado } from "../ocupacion";
 import { ARCHIVOS_GUIA, componerInstrucciones, guardarMemoria } from "../memoria";
-import { ErrorClaveSsh, generarClaveProyecto } from "../clave-ssh";
-import { ErrorClonado, clonarRepositorio, urlGithubNormalizada } from "../clonado";
-import { sinLimiteDeInactividad } from "../conexion";
+import { ErrorClonado, urlGithubNormalizada } from "../clonado";
+import { iniciarClonadoEnChat } from "../clonado-chat";
 
 // Un proyecto es una carpeta del servidor dentro de TELO_PROYECTOS_DIR.
 // Los chats y las tareas que lo usan trabajan dentro de esa carpeta.
@@ -199,12 +198,14 @@ projects.get("/projects", (c) => {
 });
 
 // POST /api/projects  body: { name } crea una carpeta nueva con Git y un README.
+// Con { name, url } crea una carpeta vacía para clonar ese repo de GitHub (ver crearDesdeGithub).
 // Compatibilidad: { path, name? } registra una carpeta que ya existe dentro de la raíz.
 projects.post("/projects", async (c) => {
-  const body = await leerCuerpoJson<{ name?: unknown; path?: unknown }>(c);
+  const body = await leerCuerpoJson<{ name?: unknown; path?: unknown; url?: unknown }>(c);
   if (!body) return c.json({ error: "invalid_body" }, 400);
 
   if (typeof body.path === "string") return registrarExistente(c, body.path, body.name);
+  if (typeof body.url === "string" && body.url.trim() !== "") return crearDesdeGithub(c, body.name, body.url);
   return crearProyecto(c, body.name);
 });
 
@@ -299,15 +300,13 @@ async function crearProyecto(c: Context, name: unknown) {
   return c.json(aProyecto(leerProyecto(id)!), 201);
 }
 
-// POST /api/projects/desde-github  body: { url, name? } -> proyecto con carpeta vacía y su clave SSH.
-// Falta pegar la clave en GitHub y pedir el clonado (POST /api/projects/:id/clonar).
-projects.post("/projects/desde-github", async (c) => {
-  const body = await leerCuerpoJson<{ url?: unknown; name?: unknown }>(c);
-  if (!body) return c.json({ error: "invalid_body" }, 400);
-  const origen = urlGithubNormalizada(typeof body.url === "string" ? body.url : "");
+// Proyecto desde un repo de GitHub: carpeta vacía (el clonado la llena) y el origen guardado.
+// No pide la clave: el servidor revisa si el repo es público o privado, y la clave se crea solo si hace falta.
+function crearDesdeGithub(c: Context, name: unknown, url: string) {
+  const origen = urlGithubNormalizada(url);
   if (!origen) return c.json({ error: "invalid_github_url" }, 400);
 
-  const pedido = typeof body.name === "string" ? body.name.trim() : "";
+  const pedido = typeof name === "string" ? name.trim() : "";
   const nombre = pedido || origen.repo;
   if (nombre.length > MAX_NOMBRE) return c.json({ error: "invalid_project_name" }, 400);
 
@@ -322,37 +321,22 @@ projects.post("/projects/desde-github", async (c) => {
       reserva.destino,
       origen.url,
     );
-    await generarClaveProyecto(id);
   } catch (err) {
-    db.query("DELETE FROM projects WHERE id = ?").run(id);
     rmSync(reserva.destino, { recursive: true, force: true });
-    if (err instanceof ErrorClaveSsh) return c.json({ error: err.code }, 503);
     throw err;
   }
   return c.json(aProyecto(leerProyecto(id)!), 201);
-});
+}
 
-// POST /api/projects/:id/clonar -> clona el repo de origen con la clave del proyecto.
-projects.post("/projects/:id/clonar", async (c) => {
-  const id = c.req.param("id");
-  const fila = db
-    .query<{ repo_path: string; origen_url: string | null; clonado_en: string | null }, [string]>(
-      "SELECT repo_path, origen_url, clonado_en FROM projects WHERE id = ?",
-    )
-    .get(id);
-  if (!fila) return c.json({ error: "project_not_found" }, 404);
-  if (!fila.origen_url) return c.json({ error: "project_sin_origen" }, 400);
-  if (fila.clonado_en) return c.json({ error: "project_ya_clonado" }, 409);
-
-  // Un clonado puede tardar más de los 10 s que Bun deja pasar sin datos. Git tiene su propio límite (5 min).
-  sinLimiteDeInactividad(c);
+// POST /api/projects/:id/clonar -> empieza el clonado en el chat del proyecto (202).
+// El avance y el resultado llegan como mensajes de ese chat; el proyecto queda marcado como clonado al terminar.
+projects.post("/projects/:id/clonar", (c) => {
   try {
-    await clonarRepositorio(id, fila.repo_path, fila.origen_url);
+    return c.json(iniciarClonadoEnChat(c.req.param("id")), 202);
   } catch (err) {
     if (err instanceof ErrorClonado) return c.json({ error: err.code }, err.status);
     throw err;
   }
-  return c.json(aProyecto(leerProyecto(id)!));
 });
 
 // GET /api/projects/:id -> chats, tareas por estado, última tarea, Git y tamaño.

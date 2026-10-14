@@ -249,6 +249,8 @@ export function errorText(err: unknown): string {
         return "La identidad de GitHub no coincide con la fijada en Telo. No se clonó nada.";
       case "sin_red_github":
         return "El servidor no llega a GitHub por SSH. Revisa su conexión e intenta de nuevo.";
+      case "verificacion_fallo":
+        return "No se pudo revisar el repositorio. Revisa la dirección y la conexión del servidor, y vuelve a intentarlo.";
       case "clonado_fallo":
         return "No se pudo clonar el repositorio. Intenta de nuevo; si sigue fallando, revisa que la clave esté en GitHub.";
       case "clave_ilegible":

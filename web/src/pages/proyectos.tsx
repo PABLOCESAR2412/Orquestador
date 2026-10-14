@@ -1,212 +1,53 @@
-import { useRef, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useState, type FormEvent } from "react";
+import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Project } from "../api";
+import { useShell } from "../components/shell-context";
 import { errorText } from "../lib/model";
+import { MAX_NOMBRE_PROYECTO, rutaCarpeta } from "../lib/proyecto";
 
-// Misma regla que el servidor para el nombre de la carpeta: sin acentos, minúsculas y guiones.
-export function carpetaDe(nombre: string): string {
-  return nombre
-    .normalize("NFD")
-    .replace(/\p{M}+/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-const MAX_NOMBRE = 60;
-
+// Vista de proyectos: una tarjeta por proyecto del servidor, con su nombre y su carpeta.
+// El alta vive en la ventana «Nuevo proyecto», que se abre desde el botón de arriba.
 export function ProjectsPage() {
   const qc = useQueryClient();
-  const navigate = useNavigate();
-
+  const { abrirNuevoProyecto } = useShell();
   const proyectos = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
-  const [nombre, setNombre] = useState("");
-  // Clonar un repo de GitHub: Telo crea el proyecto con su clave; el clonado se pide desde el proyecto.
-  const [urlGithub, setUrlGithub] = useState("");
-  // El botón de la cabecera lleva el foco al campo del formulario de arriba.
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const refrescar = () => {
     void qc.invalidateQueries({ queryKey: ["projects"] });
     void qc.invalidateQueries({ queryKey: ["conversations"] });
   };
 
-  const crear = useMutation({
-    mutationFn: () => api.createProject({ name: nombre.trim() }),
-    onSuccess: (p) => {
-      setNombre("");
-      refrescar();
-      void navigate({
-        to: "/proyectos/$id",
-        params: { id: p.id },
-        state: (prev) => ({ ...prev, proyectoNuevo: true }),
-      });
-    },
-  });
-
-  const crearDesdeGithub = useMutation({
-    mutationFn: () => api.createProjectFromGithub({ url: urlGithub.trim() }),
-    onSuccess: (p) => {
-      setUrlGithub("");
-      refrescar();
-      void navigate({
-        to: "/proyectos/$id",
-        params: { id: p.id },
-        state: (prev) => ({ ...prev, proyectoNuevo: true }),
-      });
-    },
-  });
-
-  const slug = carpetaDe(nombre.trim());
-  const vistaPrevia = !nombre.trim()
-    ? "Escribe un nombre para ver la carpeta que se creará."
-    : slug
-      ? `Carpeta resultante: /srv/orquestador/projects/${slug}`
-      : "El nombre necesita al menos una letra o un número para crear la carpeta.";
-
   return (
     <div className="page-wrap">
       <main className="container">
         <header className="header-row">
           <h1 className="page-title">Proyectos</h1>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => {
-              inputRef.current?.scrollIntoView({ block: "center" });
-              inputRef.current?.focus();
-            }}
-          >
+          <button type="button" className="btn-primary" onClick={abrirNuevoProyecto}>
             Nuevo proyecto
           </button>
         </header>
 
-        {/* Panel Nuevo proyecto */}
-        <section className="panel" aria-labelledby="nuevo-proyecto-titulo">
-          <h2 id="nuevo-proyecto-titulo" className="panel-title">
-            Nuevo proyecto
-          </h2>
-          <form
-            className="form-group"
-            onSubmit={(e: FormEvent) => {
-              e.preventDefault();
-              if (nombre.trim() && slug && !crear.isPending) crear.mutate();
-            }}
-          >
-            <label className="form-label" htmlFor="projectName">
-              Nombre del proyecto
-            </label>
-            <input
-              ref={inputRef}
-              id="projectName"
-              className="input-text"
-              maxLength={MAX_NOMBRE}
-              placeholder="Ej. orquestador-core"
-              autoComplete="off"
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              aria-describedby="proyecto-vista-previa"
-            />
-            <div id="proyecto-vista-previa" className="input-meta" aria-live="polite">
-              {vistaPrevia}
-            </div>
+        {proyectos.isPending && <p className="help-note">Cargando proyectos…</p>}
+        {proyectos.data?.length === 0 && (
+          <div className="empty-state">Todavía no hay proyectos. Crea el primero con Nuevo proyecto.</div>
+        )}
 
-            {crear.isError && (
-              <div className="error-box" role="alert" style={{ marginTop: 8 }}>
-                <span className="error-text">{errorText(crear.error)}</span>
-              </div>
-            )}
+        {proyectos.data && proyectos.data.length > 0 && (
+          <ul className="proyectos-cuadricula" aria-label="Proyectos">
+            {proyectos.data.map((p) => (
+              <li key={p.id}>
+                <TarjetaProyecto proyecto={p} alCambiar={refrescar} />
+              </li>
+            ))}
+          </ul>
+        )}
 
-            <button
-              type="submit"
-              className="btn-primary"
-              style={{ marginTop: 10 }}
-              disabled={!nombre.trim() || !slug || crear.isPending}
-            >
-              {crear.isPending ? "Creando…" : "Crear proyecto"}
-            </button>
-            <p className="help-note">La carpeta no cambia: solo el nombre que ves en Telo.</p>
-          </form>
-        </section>
-
-        {/* Panel Clonar desde GitHub: el proyecto nace con su clave y se clona cuando la clave esté en el repo */}
-        <section className="panel" aria-labelledby="clonar-github-titulo">
-          <h2 id="clonar-github-titulo" className="panel-title">
-            Clonar desde GitHub
-          </h2>
-          <form
-            className="form-group"
-            onSubmit={(e: FormEvent) => {
-              e.preventDefault();
-              if (urlGithub.trim() && !crearDesdeGithub.isPending) crearDesdeGithub.mutate();
-            }}
-          >
-            <label className="form-label" htmlFor="githubUrl">
-              Repositorio
-            </label>
-            <input
-              id="githubUrl"
-              className="input-text"
-              placeholder="https://github.com/dueño/repo"
-              autoComplete="off"
-              spellCheck={false}
-              value={urlGithub}
-              onChange={(e) => setUrlGithub(e.target.value)}
-              aria-describedby="github-ayuda"
-            />
-            <div id="github-ayuda" className="input-meta">
-              Sirve para repos privados: Telo crea una clave para este proyecto y te pide agregarla en GitHub antes de clonar.
-            </div>
-
-            {crearDesdeGithub.isError && (
-              <div className="error-box" role="alert" style={{ marginTop: 8 }}>
-                <span className="error-text">{errorText(crearDesdeGithub.error)}</span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              className="btn-primary"
-              style={{ marginTop: 10 }}
-              disabled={!urlGithub.trim() || crearDesdeGithub.isPending}
-            >
-              {crearDesdeGithub.isPending ? "Creando…" : "Crear proyecto clonado"}
-            </button>
-          </form>
-        </section>
-
-        {/* Panel Tus proyectos */}
-        <section className="panel" aria-labelledby="lista-proyectos-titulo">
-          <div className="panel-head-row">
-            <h2 id="lista-proyectos-titulo" className="panel-title">
-              Tus proyectos
-            </h2>
-            <span className="help-note">
-              {proyectos.data ? `${proyectos.data.length} proyectos` : "0 proyectos"}
-            </span>
-          </div>
-
-          {proyectos.isPending && <p className="help-note">Cargando proyectos…</p>}
-          {proyectos.data?.length === 0 && (
-            <div className="empty-state">Todavía no hay proyectos. Crea uno arriba.</div>
-          )}
-
-          {proyectos.data && proyectos.data.length > 0 && (
-            <div className="project-list">
-              {proyectos.data.map((p) => (
-                <FilaProyecto key={p.id} proyecto={p} alCambiar={refrescar} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Error global al cargar proyectos con botón Reintentar */}
         {proyectos.isError && (
           <div className="error-box" role="alert">
             <span className="error-text">
               {errorText(proyectos.error) ||
-                "No se pudo sincronizar el índice remoto de proyectos. Comprueba la conexión con el servidor."}
+                "No se pudo cargar la lista de proyectos. Comprueba la conexión con el servidor."}
             </span>
             <button className="btn-ghost" type="button" onClick={() => void proyectos.refetch()}>
               Reintentar
@@ -218,7 +59,12 @@ export function ProjectsPage() {
   );
 }
 
-function FilaProyecto({ proyecto: p, alCambiar }: { proyecto: Project; alCambiar: () => void }) {
+function estadoOrigen(p: Project): string | null {
+  if (!p.origen_url) return null;
+  return p.clonado_en ? "Clonado desde GitHub" : "Falta clonar desde GitHub";
+}
+
+function TarjetaProyecto({ proyecto: p, alCambiar }: { proyecto: Project; alCambiar: () => void }) {
   const [renombrando, setRenombrando] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState(p.name);
   const [confirmarBorrar, setConfirmarBorrar] = useState(false);
@@ -240,33 +86,36 @@ function FilaProyecto({ proyecto: p, alCambiar }: { proyecto: Project; alCambiar
   });
 
   const error = editar.error ?? quitar.error;
+  const estado = estadoOrigen(p);
 
   if (renombrando) {
     return (
-      <div className="project-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
+      <article className="proyecto-tarjeta" aria-label={`Renombrar ${p.name}`}>
         <form
+          className="proyecto-tarjeta-form"
           onSubmit={(e: FormEvent) => {
             e.preventDefault();
             const limpio = nuevoNombre.trim();
             if (limpio && limpio !== p.name) editar.mutate({ name: limpio });
             else setRenombrando(false);
           }}
-          style={{ display: "flex", flexDirection: "column", gap: 8 }}
         >
-          <label className="form-label" htmlFor={`renombrar-${p.id}`}>
-            Nuevo nombre
+          <label className="tl-campo">
+            <span className="tl-campo-etiqueta">Nuevo nombre</span>
+            <input
+              className="tl-campo-texto"
+              autoFocus
+              value={nuevoNombre}
+              maxLength={MAX_NOMBRE_PROYECTO}
+              autoComplete="off"
+              onChange={(e) => setNuevoNombre(e.target.value)}
+              aria-describedby={`renombrar-ayuda-${p.id}`}
+            />
+            <span id={`renombrar-ayuda-${p.id}`} className="tl-campo-ayuda">
+              La carpeta no cambia: solo el nombre que ves en Telo.
+            </span>
           </label>
-          <input
-            id={`renombrar-${p.id}`}
-            className="input-text"
-            autoFocus
-            value={nuevoNombre}
-            maxLength={MAX_NOMBRE}
-            autoComplete="off"
-            onChange={(e) => setNuevoNombre(e.target.value)}
-          />
-          <p className="help-note">La carpeta no cambia: solo el nombre que ves en Telo.</p>
-          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+          <div className="proyecto-tarjeta-acciones">
             <button type="submit" className="btn-primary" disabled={editar.isPending}>
               Guardar
             </button>
@@ -275,26 +124,27 @@ function FilaProyecto({ proyecto: p, alCambiar }: { proyecto: Project; alCambiar
             </button>
           </div>
         </form>
-      </div>
+        {error && (
+          <div className="error-box" role="alert">
+            <span className="error-text">{errorText(error)}</span>
+          </div>
+        )}
+      </article>
     );
   }
 
   return (
-    <div className="project-row">
-      <Link
-        to="/proyectos/$id"
-        params={{ id: p.id }}
-        className="project-info"
-        style={{ flex: 1, textDecoration: "none" }}
-      >
-        <div className="project-name-wrap">
-          <span className="project-name">{p.name}</span>
-          {p.pinned_at && <span className="tag-pinned">· anclado</span>}
-        </div>
-        <span className="project-folder">/srv/orquestador/projects/{p.carpeta}</span>
+    <article className="proyecto-tarjeta">
+      <Link to="/proyectos/$id" params={{ id: p.id }} className="proyecto-tarjeta-enlace">
+        <span className="proyecto-tarjeta-cabecera">
+          <span className="proyecto-tarjeta-nombre">{p.name}</span>
+          {p.pinned_at && <span className="tag-pinned">Anclado</span>}
+        </span>
+        <span className="proyecto-tarjeta-ruta">{rutaCarpeta(p.carpeta)}</span>
+        {estado && <span className="proyecto-tarjeta-estado">{estado}</span>}
       </Link>
 
-      <div className="project-acciones" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <div className="proyecto-tarjeta-acciones">
         <button
           type="button"
           className="btn-ghost"
@@ -315,8 +165,7 @@ function FilaProyecto({ proyecto: p, alCambiar }: { proyecto: Project; alCambiar
         </button>
         <button
           type="button"
-          className="btn-ghost"
-          style={{ color: "var(--danger)" }}
+          className="btn-ghost proyecto-tarjeta-peligro"
           onClick={() => setConfirmarBorrar(true)}
           disabled={quitar.isPending || confirmarBorrar}
         >
@@ -325,39 +174,31 @@ function FilaProyecto({ proyecto: p, alCambiar }: { proyecto: Project; alCambiar
       </div>
 
       {confirmarBorrar && (
-        <div
-          className="error-box"
-          role="alertdialog"
-          aria-label={`Eliminar ${p.name}`}
-          style={{ width: "100%", marginTop: 8 }}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span className="error-text">
-              ¿Quitar «{p.name}» de Telo? Se elimina solo el registro: la carpeta «{p.carpeta}» y sus archivos siguen en el servidor.
-            </span>
-            <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-              <button
-                type="button"
-                className="btn-primary"
-                style={{ background: "var(--danger)", color: "var(--bg)" }}
-                onClick={() => quitar.mutate()}
-                disabled={quitar.isPending}
-              >
-                Sí, quitar
-              </button>
-              <button type="button" className="btn-ghost" onClick={() => setConfirmarBorrar(false)}>
-                No
-              </button>
-            </div>
+        <div className="error-box" role="alertdialog" aria-label={`Eliminar ${p.name}`}>
+          <span className="error-text">
+            ¿Quitar «{p.name}» de Telo? Se elimina solo el registro: la carpeta «{p.carpeta}» y sus archivos siguen en el servidor.
+          </span>
+          <div className="proyecto-tarjeta-acciones">
+            <button
+              type="button"
+              className="btn-primary proyecto-tarjeta-confirmar"
+              onClick={() => quitar.mutate()}
+              disabled={quitar.isPending}
+            >
+              Sí, quitar
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setConfirmarBorrar(false)}>
+              No
+            </button>
           </div>
         </div>
       )}
 
-      {error && (
-        <div className="error-box" role="alert" style={{ width: "100%", marginTop: 8 }}>
+      {error && !renombrando && (
+        <div className="error-box" role="alert">
           <span className="error-text">{errorText(error)}</span>
         </div>
       )}
-    </div>
+    </article>
   );
 }

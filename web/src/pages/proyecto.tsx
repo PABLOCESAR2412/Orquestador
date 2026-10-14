@@ -9,12 +9,13 @@ import { ProyectoResumen } from "../components/proyecto-resumen";
 import { ProyectoInstrucciones } from "../components/proyecto-instrucciones";
 import { ProyectoMemoria } from "../components/proyecto-memoria";
 import { ProyectoArchivos } from "../components/proyecto-archivos";
+import { ProyectoSkills } from "../components/proyecto-skills";
 import { ProyectoSecretos } from "../components/proyecto-secretos";
 import { ProyectoSiguientePaso } from "../components/proyecto-siguiente";
 import { ProyectoClave } from "../components/proyecto-clave";
 import { ProyectoClonar } from "../components/proyecto-clonar";
 
-// Vista general de un proyecto: resumen, instrucciones, memoria, archivos y secretos exactos Stitch.
+// Vista general de un proyecto: resumen, instrucciones, memoria, skills, documentos, secretos y clave de GitHub.
 export function ProjectDetailPage() {
   const { id = "" } = useParams({ strict: false }) as { id?: string };
   const navigate = useNavigate();
@@ -41,8 +42,12 @@ export function ProjectDetailPage() {
   const proyecto = datos?.project;
 
   // Un proyecto recién creado abre con su paso siguiente: tarea opcional y chat del proyecto.
+  // Si el alta dejó un clonado en marcha, `clonandoEn` es el chat donde se ve.
   const recienCreado = useRouterState({
     select: (s) => (s.location.state as unknown as { proyectoNuevo?: boolean } | undefined)?.proyectoNuevo === true,
+  });
+  const clonandoEn = useRouterState({
+    select: (s) => (s.location.state as unknown as { clonandoEn?: string } | undefined)?.clonandoEn ?? null,
   });
   const [siguienteAbierto, setSiguienteAbierto] = useState(recienCreado);
 
@@ -100,7 +105,7 @@ export function ProjectDetailPage() {
           </div>
         )}
 
-        {siguienteAbierto && proyecto && (
+        {siguienteAbierto && proyecto && !clonandoEn && (
           <ProyectoSiguientePaso proyectoId={proyecto.id} onCerrar={() => setSiguienteAbierto(false)} />
         )}
 
@@ -122,10 +127,13 @@ export function ProjectDetailPage() {
 
         {datos && proyecto && (
           <>
-            {proyecto.origen_url && !proyecto.clonado_en && <ProyectoClonar proyecto={proyecto} />}
+            {proyecto.origen_url && !proyecto.clonado_en && (
+              <ProyectoClonar proyecto={proyecto} clonandoEn={clonandoEn} />
+            )}
             <ProyectoResumen detalle={datos} />
             <ProyectoInstrucciones proyecto={proyecto} />
             <ProyectoMemoria id={proyecto.id} memoria={datos.memoria} />
+            <ProyectoSkills />
             <ProyectoArchivos id={proyecto.id} />
             <ProyectoSecretos id={proyecto.id} />
             <ProyectoClave id={proyecto.id} />
