@@ -25,6 +25,10 @@ interface ShellContextType {
   configAbierta: boolean;
   setConfigAbierta: (open: boolean) => void;
   triggerConfig: () => void;
+  // Diálogo «Nuevo proyecto»: lo abre la barra lateral, Ctrl+N o la vista de proyectos.
+  nuevoProyectoAbierto: boolean;
+  setNuevoProyectoAbierto: (open: boolean) => void;
+  abrirNuevoProyecto: () => void;
 }
 
 const ShellContext = createContext<ShellContextType | null>(null);
@@ -35,6 +39,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [configAbierta, setConfigAbierta] = useState(false);
+  const [nuevoProyectoAbierto, setNuevoProyectoAbierto] = useState(false);
   const navigate = useNavigate();
   const routerState = useRouterState();
 
@@ -49,6 +54,11 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     setConfigAbierta(true);
     if (routerState.location.pathname !== "/chat") void navigate({ to: "/chat" });
   }, [navigate, routerState.location.pathname]);
+
+  const abrirNuevoProyecto = useCallback(() => {
+    setDrawerOpen(false);
+    setNuevoProyectoAbierto(true);
+  }, []);
 
   const triggerNewTask = useCallback(() => {
     setNewTaskOpen(true);
@@ -79,6 +89,9 @@ export function ShellProvider({ children }: { children: ReactNode }) {
         configAbierta,
         setConfigAbierta,
         triggerConfig,
+        nuevoProyectoAbierto,
+        setNuevoProyectoAbierto,
+        abrirNuevoProyecto,
       }}
     >
       {children}

@@ -9,6 +9,7 @@ import { useNotificacionesDeTareas } from "../lib/notificaciones";
 import { VERSION_SISTEMA } from "../lib/version-sistema";
 import { AppNav } from "./nav";
 import { ConvItem } from "./conv-item";
+import { NuevoProyectoDialog } from "./proyecto-nuevo";
 import { PaletaComandos } from "./paleta-comandos";
 import { useShell } from "./shell-context";
 import { ShellTopbar } from "./shell-topbar";
@@ -42,6 +43,9 @@ export function Shell({ children }: { children: ReactNode }) {
     toggleDrawer,
     selectedConversationId,
     setSelectedConversationId,
+    nuevoProyectoAbierto,
+    setNuevoProyectoAbierto,
+    abrirNuevoProyecto,
   } = useShell();
 
   // Instalar la app: en Chrome/Edge con el evento del navegador; en iPhone, con instrucciones.
@@ -59,9 +63,6 @@ export function Shell({ children }: { children: ReactNode }) {
     queryFn: api.listConversations,
     refetchInterval: 5_000,
   });
-
-  // Proyectos: la barra lateral los lista y cada uno abre su vista. Comparte la caché con la vista Proyectos.
-  const proyectos = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
 
   const qc = useQueryClient();
   // Avisos del sistema cuando una tarea termina, falla o pide decisión (activos por defecto).
@@ -114,14 +115,10 @@ export function Shell({ children }: { children: ReactNode }) {
   // Estado del servidor: ida y vuelta a /api/health, cada 30 s (ver lib/latencia.ts).
   const latencia = useLatencia();
 
-  // "Nuevo proyecto": el formulario de creación vive en Proyectos.
-  const nuevoProyecto = () => {
-    closeDrawer();
-    void navigate({ to: "/proyectos" });
-  };
-  const nuevoRef = useRef(nuevoProyecto);
+  // "Nuevo proyecto" abre su ventana desde cualquier pantalla (también Ctrl+N).
+  const nuevoRef = useRef(abrirNuevoProyecto);
   useEffect(() => {
-    nuevoRef.current = nuevoProyecto;
+    nuevoRef.current = abrirNuevoProyecto;
   });
 
   // ⌘N / Ctrl+N desde cualquier pantalla. Ctrl+Shift+N (ventana privada) y Alt siguen siendo del navegador.
@@ -197,7 +194,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <button
             type="button"
             className="tl-nuevo"
-            onClick={nuevoProyecto}
+            onClick={abrirNuevoProyecto}
             title={`Nuevo proyecto (${ATAJO_NUEVO})`}
             aria-keyshortcuts={ES_MAC ? "Meta+N" : "Control+N"}
           >
@@ -212,36 +209,6 @@ export function Shell({ children }: { children: ReactNode }) {
           <AppNav variant="sidebar" onItemClick={closeDrawer} />
 
           <div className="tl-rail-lista">
-            {proyectos.isLoading && <span className="tl-rail-aviso">Cargando proyectos…</span>}
-            {proyectos.isError && (
-              <div className="tl-rail-aviso tl-rail-aviso-error">
-                <span>Error al cargar proyectos</span>
-                <button type="button" className="tl-boton" onClick={() => void proyectos.refetch()}>
-                  Reintentar
-                </button>
-              </div>
-            )}
-            {proyectos.data && proyectos.data.length > 0 && (
-              <div className="tl-grupo">
-                <div className="tl-grupo-titulo">PROYECTOS</div>
-                {proyectos.data.map((p) => {
-                  const activo = currentPath === `/proyectos/${p.id}`;
-                  return (
-                    <Link
-                      key={p.id}
-                      to="/proyectos/$id"
-                      params={{ id: p.id }}
-                      className={`sidebar-conv${activo ? " active" : ""}`}
-                      aria-current={activo ? "page" : undefined}
-                      title={p.name}
-                      onClick={closeDrawer}
-                    >
-                      <span className="sidebar-conv-title">{p.name}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
             {conversations.isLoading && <span className="tl-rail-aviso">Cargando…</span>}
             {conversations.isError && (
               <div className="tl-rail-aviso tl-rail-aviso-error">
@@ -256,30 +223,22 @@ export function Shell({ children }: { children: ReactNode }) {
                 {accionError}
               </p>
             )}
-            {proyectos.isSuccess && conversations.isSuccess && proyectos.data.length === 0 && groupedConversations.length === 0 && (
-              <span className="tl-rail-aviso">Sin proyectos todavía. Crea uno con Nuevo proyecto.</span>
-            )}
-            {groupedConversations.length > 0 && (
-              <div className="tl-grupo">
-                <div className="tl-grupo-titulo">SIN PROYECTO</div>
-                {groupedConversations.map((group) => (
-                  <div key={group.title} className="tl-grupo">
-                    <div className="tl-grupo-titulo">{group.title}</div>
-                    {group.items.map((c) => (
-                      <ConvItem
-                        key={c.id}
-                        conv={c}
-                        active={currentPath === "/chat" && selectedConversationId === c.id}
-                        onSelect={handleSelectConv}
-                        onRename={(id, title) => renombrar.mutate({ id, title })}
-                        onTogglePin={(id, pinned) => anclar.mutate({ id, pinned })}
-                        onDelete={(id) => eliminar.mutate(id)}
-                      />
-                    ))}
-                  </div>
+            {groupedConversations.map((group) => (
+              <div key={group.title} className="tl-grupo">
+                <div className="tl-grupo-titulo">{group.title}</div>
+                {group.items.map((c) => (
+                  <ConvItem
+                    key={c.id}
+                    conv={c}
+                    active={currentPath === "/chat" && selectedConversationId === c.id}
+                    onSelect={handleSelectConv}
+                    onRename={(id, title) => renombrar.mutate({ id, title })}
+                    onTogglePin={(id, pinned) => anclar.mutate({ id, pinned })}
+                    onDelete={(id) => eliminar.mutate(id)}
+                  />
                 ))}
               </div>
-            )}
+            ))}
           </div>
         </div>
 
@@ -306,9 +265,12 @@ export function Shell({ children }: { children: ReactNode }) {
               <span>{etiquetaLatencia}</span>
             </div>
           </div>
+          <hr className="tl-rail-separador" />
           <p className="tl-rail-version">Versión {VERSION_SISTEMA}</p>
         </div>
       </aside>
+
+      {nuevoProyectoAbierto && <NuevoProyectoDialog onCerrar={() => setNuevoProyectoAbierto(false)} />}
 
       {/* Scrim para cerrar el cajón en móvil */}
       {drawerOpen && <div className="scrim dim" onClick={closeDrawer} aria-hidden="true" />}

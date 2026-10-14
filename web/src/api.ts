@@ -37,6 +37,12 @@ export type Project = {
   clonado_en?: string | null;
 };
 
+// Revisión de un repo de GitHub sin clave: público o privado (un nombre mal escrito también parece privado).
+export type VerificacionGithub = { url: string; repo: string; visibilidad: "publico" | "privado" };
+
+// Clonado iniciado en el chat del proyecto: el mensaje de la instrucción y el chat donde se ve el avance.
+export type ClonadoIniciado = { conversacion_id: string; turno_id: string };
+
 export type ProjectDetail = {
   project: Project;
   chats: number;
@@ -451,12 +457,13 @@ export const api = {
   cancelTask: (id: string) =>
     request<{ outcome: string }>(`/api/tasks/${id}/cancel`, { method: "POST", body: "{}" }),
   listProjects: () => request<Project[]>("/api/projects"),
-  createProject: (body: { name: string } | { path: string; name?: string }) =>
+  // Con url, la carpeta queda vacía para clonar ese repo de GitHub (ver verificarRepositorioGithub).
+  createProject: (body: { name: string; url?: string } | { path: string; name?: string }) =>
     request<Project>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
-  // Crea el proyecto con su carpeta vacía y su clave SSH. Falta clonarlo cuando la clave esté en GitHub.
-  createProjectFromGithub: (body: { url: string; name?: string }) =>
-    request<Project>("/api/projects/desde-github", { method: "POST", body: JSON.stringify(body) }),
-  cloneProject: (id: string) => request<Project>(`/api/projects/${id}/clonar`, { method: "POST" }),
+  verificarRepositorioGithub: (url: string) =>
+    request<VerificacionGithub>("/api/github/verificar", { method: "POST", body: JSON.stringify({ url }) }),
+  // Empieza el clonado en el chat del proyecto. Responde al instante; el avance se ve en ese chat.
+  cloneProject: (id: string) => request<ClonadoIniciado>(`/api/projects/${id}/clonar`, { method: "POST" }),
   deleteProject: (id: string) =>
     request<{ ok: boolean }>(`/api/projects/${id}`, { method: "DELETE" }),
   listProviders: () => request<ProviderStatus[]>("/api/providers"),
