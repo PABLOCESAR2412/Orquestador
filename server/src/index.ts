@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { join, resolve, sep, extname } from "node:path";
 import { config } from "./config";
 import { db } from "./db";
-import { chat } from "./routes/chat";
+import { chat, avisarTurnosInterrumpidos } from "./routes/chat";
 import { documentos } from "./routes/documentos";
 import { modelsRoute } from "./routes/models";
 import { settings } from "./routes/settings";
@@ -129,6 +129,8 @@ app.route("/api", googleRoute);
 app.route("/api", github);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
+// Un turno del chat que quedó sin respuesta por un reinicio se avisa antes de atender a nadie.
+avisarTurnosInterrumpidos();
 startWorker();
 startScheduler();
 

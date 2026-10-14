@@ -295,7 +295,9 @@ export type EventoVivo =
   | { tipo: "tarea"; id: string; status: TaskStatus; finished_at: string | null }
   | { tipo: "evento"; task_id: string; kind: TaskEventKind; detail: string | null; created_at: string }
   | { tipo: "salida"; task_id: string; linea: string }
-  | { tipo: "actividad"; conversacion_id: string; turno_id: string; paso: PasoActividad };
+  | { tipo: "actividad"; conversacion_id: string; turno_id: string; paso: PasoActividad }
+  // Un turno del chat empezó o terminó: los demás dispositivos vuelven a pedir sus mensajes.
+  | { tipo: "chat"; conversacion_id: string; estado: "en_curso" | "terminado" };
 
 export type TaskEvent = {
   id: number;
