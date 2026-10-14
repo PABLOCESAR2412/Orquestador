@@ -244,7 +244,8 @@ export async function vistaHtml(formato: Formato, contenido: Uint8Array): Promis
     }
     case "xlsx": {
       const libro = new ExcelJS.Workbook();
-      await libro.xlsx.load(Buffer.from(contenido));
+      // El Buffer que espera ExcelJS no coincide con el global de @types/node; se usa el tipo exacto del parámetro.
+      await libro.xlsx.load(Buffer.from(contenido) as unknown as Parameters<ExcelJS.Workbook["xlsx"]["load"]>[0]);
       const partes: string[] = [];
       libro.eachSheet((hoja) => {
         partes.push(`<h2 class="hoja">${escapar(hoja.name)}</h2><table>`);

@@ -56,7 +56,7 @@ describe("documentos: generación", () => {
   test("xlsx toma la primera tabla del Markdown y se puede leer de vuelta", async () => {
     const xlsx = await generarArchivo("xlsx", "Tabla", TEXTO);
     const libro = new ExcelJS.Workbook();
-    await libro.xlsx.load(Buffer.from(xlsx));
+    await libro.xlsx.load(Buffer.from(xlsx) as unknown as Parameters<ExcelJS.Workbook["xlsx"]["load"]>[0]);
     const hoja = libro.worksheets[0];
     expect(hoja.getRow(1).getCell(1).text).toBe("Producto");
     expect(hoja.getRow(2).getCell(1).text).toBe("Café");
@@ -66,7 +66,7 @@ describe("documentos: generación", () => {
   test("xlsx sin tabla pone cada línea en una fila", async () => {
     const xlsx = await generarArchivo("xlsx", "Lista", "primera\nsegunda");
     const libro = new ExcelJS.Workbook();
-    await libro.xlsx.load(Buffer.from(xlsx));
+    await libro.xlsx.load(Buffer.from(xlsx) as unknown as Parameters<ExcelJS.Workbook["xlsx"]["load"]>[0]);
     expect(libro.worksheets[0].getRow(2).getCell(1).text).toBe("segunda");
   });
 });
