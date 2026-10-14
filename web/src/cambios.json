@@ -29,11 +29,12 @@
     { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Clave pública oculta, con iconos de copiar y mostrar", "pr": 24 },
     { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Versión del sistema bajo el estado del servidor", "pr": 24 },
     { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Regla de versión en CLAUDE.md", "pr": 24 },
-    { "fecha": "2026-10-13", "tipo": "mediano", "titulo": "Clonado de repositorios privados de GitHub con clave por proyecto", "pr": null },
-    { "fecha": "2026-10-13", "tipo": "mediano", "titulo": "Proceso del agente en el chat: cada acción con su vista previa, en vivo y después", "pr": null },
-    { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Respuestas del chat más concretas: qué se hará, rutas y verificación", "pr": null },
+    { "fecha": "2026-10-13", "tipo": "mediano", "titulo": "Clonado de repositorios privados de GitHub con clave por proyecto", "pr": 26 },
+    { "fecha": "2026-10-13", "tipo": "mediano", "titulo": "Proceso del agente en el chat: cada acción con su vista previa, en vivo y después", "pr": 26 },
+    { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Respuestas del chat más concretas: qué se hará, rutas y verificación", "pr": 26 },
     { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Comprobación de tipos del servidor con tsconfig y tipos de Bun", "pr": 30 },
-    { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Aviso de nueva versión: el velo cubre también la barra lateral, con desenfoque", "pr": null },
-    { "fecha": "2026-10-13", "tipo": "grande", "titulo": "Analizador y obrero por tarea: plan revisable, aprobación y reporte guardado", "pr": 28 }
+    { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Aviso de nueva versión: el velo cubre también la barra lateral, con desenfoque", "pr": 27 },
+    { "fecha": "2026-10-13", "tipo": "grande", "titulo": "Analizador y obrero por tarea: plan revisable, aprobación y reporte guardado", "pr": 28 },
+    { "fecha": "2026-10-14", "tipo": "minimo", "titulo": "Documentación al día: fases 5 y 6 mergeadas y pendientes del VM", "pr": null }
   ]
 }
