@@ -1,3 +1,5 @@
+import { entornoProveedores } from "./claves-proveedor";
+
 export type CostTier = "gratis" | "economico" | "medio" | "alto" | "premium";
 
 export type ModelInfo = {
@@ -98,12 +100,30 @@ function parseModels(txt: string): ModelInfo[] {
   return models;
 }
 
+// Tras cambiar una clave de proveedor, la lista de modelos se vuelve a pedir.
+export function invalidarModelos(): void {
+  cache = null;
+}
+
+// El CLI recibe solo lo que usa (como el agente) más las claves de proveedor guardadas: nunca TELO_*.
+function entornoDelCli(): Record<string, string> {
+  const base: Record<string, string> = {};
+  for (const [clave, valor] of Object.entries(process.env)) {
+    if (valor === undefined) continue;
+    if (["PATH", "HOME", "LANG", "TZ", "TMPDIR"].includes(clave) || /^(LC_|XDG_|OPENCODE_)/.test(clave)) {
+      base[clave] = valor;
+    }
+  }
+  return { ...base, ...entornoProveedores() };
+}
+
 export async function getModels(force = false): Promise<ModelInfo[]> {
   if (!force && cache && Date.now() - cache.at < TTL_MS) return cache.models;
 
   const proc = Bun.spawn(["opencode", "models", "--verbose"], {
     stdout: "pipe",
     stderr: "pipe",
+    env: entornoDelCli(),
   });
   const [out, code] = await Promise.all([
     new Response(proc.stdout).text(),

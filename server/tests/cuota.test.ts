@@ -15,7 +15,7 @@ process.env.TELO_PROYECTOS_DIR = join(RAIZ_PRUEBAS, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 
 const { db } = await import("../src/db");
-const { ErrorCuota, esErrorDeCuota } = await import("../src/ejecutar");
+const { ErrorCuota, esErrorDeCuota, esErrorDeProveedor } = await import("../src/ejecutar");
 const { ErrorAgente, detalleDelProveedor } = await import("../src/runners/opencode");
 const { tasks } = await import("../src/routes/tasks");
 const { chat } = await import("../src/routes/chat");
@@ -64,6 +64,16 @@ describe("clasificación de cuota agotada", () => {
     const evento = { type: "error", error: { data: { message: "Rate limit exceeded" } } } as const;
     const conEvento = detalleDelProveedor("", "", [evento as never]);
     expect(esErrorDeCuota(new ErrorAgente("opencode salió con código 1", conEvento))).toBe(true);
+  });
+
+  test("el respaldo se activa por saturación del proveedor, nunca por una ruta con «429» o «quota»", () => {
+    const ruta = new ErrorAgente("opencode salió con código 1: fallo en /home/x/quota-429/bin/opencode", "");
+    expect(esErrorDeProveedor(ruta)).toBe(false);
+    const saturado = new ErrorAgente(
+      "opencode salió con código 1",
+      '{"type":"error","error":{"message":"429 Too Many Requests"}}',
+    );
+    expect(esErrorDeProveedor(saturado)).toBe(true);
   });
 
   test("un error del servidor o una salida vacía no cuentan como cuota", () => {

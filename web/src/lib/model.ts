@@ -232,6 +232,12 @@ export function errorText(err: unknown): string {
         return "El valor debe tener entre 1 y 8 192 caracteres.";
       case "secret_not_found":
         return "Ese secreto ya no existe.";
+      case "proveedor_desconocido":
+        return "Ese proveedor no existe en Telo.";
+      case "clave_proveedor_invalida":
+        return "La clave no tiene el formato esperado. Pégala completa, sin espacios ni saltos de línea.";
+      case "proveedor_sin_clave":
+        return "Este proveedor no tiene una clave guardada en Telo.";
       case "clave_existente":
         return "Este proyecto ya tiene una clave de GitHub. Bórrala antes de crear otra.";
       case "clave_sin_cifrado":

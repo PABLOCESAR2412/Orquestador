@@ -3,6 +3,7 @@ import { registrarEvento } from "./eventos";
 import { validateSelection } from "./models";
 import { getPreferences } from "./preferences";
 import { entornoDeProyecto } from "./secretos";
+import { entornoProveedores } from "./claves-proveedor";
 import { redactar } from "./redaccion";
 import { AislamientoError } from "./runners/aislamiento";
 import { ErrorAgente, runOpenCode, type RunResult } from "./runners/opencode";
@@ -58,9 +59,8 @@ export class ErrorCuota extends Error {
 // Solo cuenta lo que dijo el proveedor (ErrorAgente.detalleProveedor), no el mensaje completo.
 export function esErrorDeCuota(err: unknown): boolean {
   if (err instanceof ErrorCuota) return true;
-  if (err instanceof ErrorAgente) return PATRON_CUOTA.test(err.detalleProveedor);
   if (err instanceof AislamientoError) return false;
-  return PATRON_CUOTA.test(mensajeDe(err));
+  return PATRON_CUOTA.test(textoDelProveedor(err));
 }
 
 function mensajeDe(err: unknown): string {
@@ -86,17 +86,25 @@ export function ocultarValores(texto: string, valores: string[]): string {
   return redactar(texto, valores, MINIMO_OCULTAR);
 }
 
-function esErrorDeProveedor(err: unknown, signal?: AbortSignal): boolean {
+// Lo que dijo el proveedor para clasificar un fallo. Con ErrorAgente, solo el evento de error o la cola
+// de la salida sin rutas: el mensaje completo trae la ruta del servidor y del proyecto.
+function textoDelProveedor(err: unknown): string {
+  return err instanceof ErrorAgente ? err.detalleProveedor : mensajeDe(err);
+}
+
+// Saturación del proveedor (429, 5xx, límite): justifica reintentar con el modelo de respaldo. Como la
+// cuota, mira solo lo que dijo el proveedor, para que una ruta con «429» no active el respaldo.
+export function esErrorDeProveedor(err: unknown, signal?: AbortSignal): boolean {
   if (err instanceof AislamientoError) return false;
   if (signal?.aborted) return false;
-  const mensaje = mensajeDe(err);
-  if (PATRON_SALDO.test(mensaje)) return false;
-  return PATRON_PROVEEDOR.test(mensaje);
+  const texto = textoDelProveedor(err);
+  if (PATRON_SALDO.test(texto)) return false;
+  return PATRON_PROVEEDOR.test(texto);
 }
 
 // Solo el código HTTP, nunca el texto del error: el detalle llega a la interfaz.
 function etiquetaDelError(err: unknown): string {
-  const codigo = mensajeDe(err).match(/\b(429|5\d\d)\b/);
+  const codigo = textoDelProveedor(err).match(/\b(429|5\d\d)\b/);
   return codigo ? codigo[1] : "Error del proveedor";
 }
 
@@ -152,7 +160,11 @@ async function varianteSoportada(modelo: string, variante: string | null | undef
 }
 
 export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAgente> {
-  const propias = opts.projectId ? entornoDeProyecto(opts.projectId) : undefined;
+  // Claves de proveedor (Ajustes) y secretos del proyecto. Si un nombre se repite, gana el del proyecto.
+  const propias: Record<string, string> = {
+    ...entornoProveedores(),
+    ...(opts.projectId ? entornoDeProyecto(opts.projectId) : {}),
+  };
   const ocultos = valoresAOcultar(propias);
 
   // La sesión se recuerda aunque el primer intento falle, para continuarla con el respaldo.

@@ -1,8 +1,9 @@
 # Fase 2: seguimiento de cambios
 
-Rama: `feat/seguir-tras-cuota` (creada desde `feat/proyectos-tarjetas`, commit 507f01c). Nada está en commit todavía: los cambios son del árbol de trabajo. No hay PR.
+Rama: `feat/seguir-tras-cuota` (creada desde `feat/proyectos-tarjetas`, commit 507f01c).
+La fase A está en commit `7a93c2b` y subida a `origin`. La fase B está en el árbol de trabajo, sin commit. No hay PR.
 
-Leyenda: [x] hecho y verificado · [ ] pendiente
+Leyenda: [x] hecho y verificado · [~] hecho, pendiente de confirmar en el VM · [ ] pendiente
 
 ---
 
@@ -30,17 +31,13 @@ Leyenda: [x] hecho y verificado · [ ] pendiente
 - [x] `web/src/pages/tasks.tsx`: estado "Sin cuota · elige modelo", cancelar desde la tarjeta, aviso y selector de modelo en el detalle, y el error genérico oculto en `sin_cuota`.
 - [x] `web/src/pages/chat.tsx`: `cuota_agotada` en `GUARDADO_EN_ERROR` (el mensaje no vuelve al borrador), `sendError` no repite el aviso, mutación `seguirChat`, aviso debajo de la conversación.
 - [x] `web/src/lib/notificaciones.ts` (aviso de sistema) y `web/src/components/tarea-pasos.tsx` (paso final "Sin cuota").
-- [x] `web/src/cambios.json`: entrada nueva (tipo `mediano`, `pr: null`). Validado con `json.load`.
+- [x] `web/src/cambios.json`: entrada nueva (tipo `mediano`).
 
 ### A3. Pruebas
 
-- [x] `server/tests/cuota.test.ts`: 12 pruebas (clasificación, migración, rechazos de seguir).
-- [x] `bun test` del servidor: 178 pasan, 0 fallan.
-- [x] `tsc --noEmit` del servidor y de la web: limpios.
-- [x] `bun run build` de la web: pasa. La advertencia de tamaño de chunk ya existía.
-- [x] Punta a punta con servidor real y `opencode` falso (`scratchpad/cuota-e2e/prueba.ts`): 25 de 25. Cubre tarea y chat, reanudación de sesión y prompt de continuación.
-- [x] Revisión visual (`scratchpad/cuota-e2e/visual.mjs`) a 390 y 1440 px, claro y oscuro: sin desborde horizontal, aviso visible, sin errores de consola.
-- [x] Flujo en el navegador: en la tarea, "Seguir" queda desactivado hasta elegir otro modelo; al elegirlo y pulsar, la tarea termina con el modelo B. En el chat, "Seguir" muestra la respuesta del modelo B y el aviso desaparece.
+- [x] `server/tests/cuota.test.ts`: 13 pruebas (clasificación, migración, rechazos de seguir).
+- [x] Punta a punta con servidor real y `opencode` falso (`scratchpad/cuota-e2e/prueba.ts`): 25 de 25.
+- [x] Revisión visual (`scratchpad/cuota-e2e/visual.mjs`) a 390 y 1440 px, claro y oscuro.
 
 ### A4. Problemas encontrados y resueltos
 
@@ -50,24 +47,60 @@ Leyenda: [x] hecho y verificado · [ ] pendiente
 
 ### A5. Pendiente de confirmar en el VM
 
-- [ ] La detección de cuota usa patrones (429, "rate limit", "quota", "usage limit", "insufficient", "saldo", etc.). El texto exacto que devuelve OpenCode con un modelo sin cuota no está verificado. Hay que comprobarlo con un modelo real agotado. Si el texto no coincide, la tarea queda en `failed` como antes: no hay regresión, pero no se detiene con aviso.
-- [ ] `esErrorDeProveedor` (el reintento con modelo de respaldo) sigue mirando el mensaje completo. Puede caer en el mismo problema de rutas. Es código anterior; pendiente de corregir con el mismo criterio.
+- [~] La detección de cuota usa patrones (429, "rate limit", "quota", "usage limit", "insufficient", "saldo", etc.). El texto exacto que devuelve OpenCode con un modelo sin cuota no está verificado. Hay que comprobarlo con un modelo real agotado. Si el texto no coincide, la tarea queda en `failed` como antes: no hay regresión, pero no se detiene con aviso.
+  - Cómo: en el VM, provocar una cuota agotada con un modelo de prueba y revisar `task_events` y la salida de la tarea (`journalctl -u orquestador`).
+- [x] `esErrorDeProveedor` (el reintento con respaldo) mira solo el detalle del proveedor, igual que la cuota. Exportada y con prueba de regresión en `server/tests/cuota.test.ts`. Corregido en la fase B.
 
 ---
 
-## B. API keys de Groq, NVIDIA y Gemini  ⏳ no empezada
+## B. Claves de Groq, NVIDIA y Gemini  🟡 hecha en servidor y web; falta confirmar en el VM
 
-Antes de codificar hay que verificar en la documentación de OpenCode los nombres exactos de las variables de entorno. No se deben adivinar.
+### Nombres de variable
 
-- [ ] Verificar con WebSearch/WebFetch las variables por proveedor (candidatas: `GROQ_API_KEY`, `NVIDIA_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`) y el nombre del proveedor en `opencode models`.
-- [ ] Migración nueva (`021_...`): claves cifradas por proveedor, con el mismo esquema que `project_secrets` (AES-256-GCM, AAD = nombre del proveedor). Nunca en claro.
-- [ ] Inyección en el agente: `server/src/runners/opencode.ts` solo pasa variables de `VARIABLES_PERMITIDAS` y `TELO_AGENTE_VARIABLES`. Las claves entran como `extraEnv` de `ejecutarAgente`, nunca como `TELO_*`.
-- [ ] Redacción: añadir los valores a `valoresAOcultar()` en `server/src/ejecutar.ts`.
-- [ ] Estado y modelos: `server/src/routes/providers.ts` (`estadoProveedores`) y `server/src/models.ts`. No ofrecer modelos de un proveedor sin clave.
-- [ ] UI en Ajustes: `web/src/pages/settings.tsx`. Campo de clave con guardar y borrar. La API nunca devuelve el valor.
-- [ ] Pruebas de cifrado y redacción en `server/tests/secretos.test.ts` (o archivo nuevo).
+- Groq: `GROQ_API_KEY`. Confirmado en la documentación de OpenCode.
+- Gemini: `GEMINI_API_KEY`. Confirmado en la documentación de OpenCode. Corrige la candidata anterior `GOOGLE_GENERATIVE_AI_API_KEY`, que era incorrecta.
+- NVIDIA: `NVIDIA_API_KEY`. Solo aparece en un artículo de terceros: **no confirmado**. Ver B-VM.
 
-Riesgo: que la clave llegue a `TELO_*` o a la salida del agente. Revisar que no aparezca en `task_events` ni en el chat.
+### Servidor
+
+- [x] `server/src/claves-proveedor.ts` (nuevo): almacenamiento cifrado con AES-256-GCM, AAD `proveedor:<id>`, misma clave maestra `TELO_CLAVE_CIFRADO` que los secretos. Nunca devuelve valores. `entornoProveedores()` entrega las variables al agente y a `opencode models`.
+- [x] `server/src/db/index.ts`: migración `021_claves_proveedor` (tabla `provider_keys`).
+- [x] `server/src/routes/claves-proveedor.ts` (nuevo): `GET /api/claves-proveedor`, `PUT /api/claves-proveedor/:id` (body `{valor}`), `DELETE /api/claves-proveedor/:id`. Códigos de error: `proveedor_desconocido`, `clave_proveedor_invalida`, `proveedor_sin_clave`, `secretos_no_configurados`. Cada cambio invalida la lista de modelos. Montado en `server/src/index.ts`.
+- [x] `server/src/ejecutar.ts`: las claves entran como `extraEnv` de cada ejecución y se ocultan en la salida (`valoresAOcultar`). Si un secreto de proyecto tiene el mismo nombre, gana el del proyecto.
+- [x] `server/src/models.ts`: `opencode models` recibe las claves (`entornoDelCli()`); `invalidarModelos()`. Nunca recibe variables `TELO_*`.
+- [x] `server/src/routes/providers.ts`: cada proveedor dice `configured`, `enAgente`, `guardable`, `guardada`, `variable`. Nunca el valor. Groq, NVIDIA y Gemini quedan `implemented: true`.
+
+### Web
+
+- [x] `web/src/api.ts`: tipo `ProviderStatus` con `guardable` y `guardada`; `api.setProviderKey()` y `api.deleteProviderKey()`.
+- [x] `web/src/pages/settings.tsx`: en Ajustes > Proveedores IA, cada proveedor guardable tiene un campo de clave (`CampoClave`) con Mostrar/Ocultar, Guardar y Quitar. Enter guarda sin enviar el formulario de preferencias.
+- [x] `web/src/lib/model.ts`: mensajes en español para `proveedor_desconocido`, `clave_proveedor_invalida` y `proveedor_sin_clave`.
+- [x] `web/src/styles-ajustes.css`: `.aj-clave-fila`.
+- [x] `web/src/cambios.json`: entrada nueva (tipo `mediano`).
+
+### Pruebas
+
+- [x] `server/tests/claves-proveedor.test.ts` (nuevo): 21 pruebas. Guardar y leer, valor cifrado en la base, sin clave maestra, clave que no descifra, validación, estado sin valores, redacción, rutas y `GET /providers`.
+- [x] `server/tests/entorno-proveedores.test.ts` (nuevo): 3 pruebas de punto a punto con un `opencode` falso. El agente y `opencode models` reciben `GROQ_API_KEY`; ninguno recibe `TELO_*`; la clave que el agente imprime sale oculta en su respuesta.
+- [x] `bun test` del servidor: 203 pasan, 0 fallan.
+- [x] `tsc --noEmit` del servidor y `bun run build` de la web: pasan.
+- [x] Revisión visual (`scratchpad/claves-ui/visual.mjs`) a 390 y 1440 px, claro y oscuro: sin desborde horizontal, sin errores de consola, y el flujo de guardar, quitar, validar y Enter comprobado.
+
+### Pendiente de confirmar en el VM (B-VM)
+
+- [ ] NVIDIA: con `NVIDIA_API_KEY` guardada, ejecutar `opencode models --verbose` (con el mismo entorno del servicio) y comprobar que aparecen modelos `nvidia/...`. Si el nombre de variable o el proveedor son otros, corregir `PROVEEDORES_CON_CLAVE` en `server/src/claves-proveedor.ts` y la lista de `server/src/routes/providers.ts`.
+- [ ] Gemini: confirmar el id de proveedor que usa OpenCode (`google` u otro) y que `GEMINI_API_KEY` basta para que aparezcan sus modelos.
+- [ ] Groq: comprobar que aparecen modelos `groq/...` tras guardar la clave.
+
+Cómo hacerlo en el VM:
+1. Confirmar que `TELO_CLAVE_CIFRADO` está en `/etc/orquestador/orquestador.env`. Sin ella, Ajustes responde "secretos no configurados".
+2. Entrar a Ajustes > Proveedores IA, pegar la clave en cada proveedor y pulsar Guardar.
+3. Revisar la lista de modelos en Ajustes o en el selector del chat.
+
+### Riesgos conocidos
+
+- Las claves guardadas llegan a **todos** los agentes, no solo al proveedor que las usa. Un modelo de Groq podría leer la clave de NVIDIA si el agente la busca en su entorno. Mejora posible: pasar a cada agente solo las claves del proveedor de su modelo.
+- La app recorta los espacios de los extremos antes de enviar. Un valor con espacios o saltos por dentro se rechaza con `clave_proveedor_invalida`.
 
 ---
 
@@ -94,8 +127,7 @@ No se codifica hasta decidirlo.
 
 ## Orden recomendado
 
-1. Confirmar en el VM el texto real de cuota de OpenCode (A5) y corregir `esErrorDeProveedor` si hace falta.
-2. B: verificar nombres de variables antes de codificar.
-3. C: después de B.
-4. D: esperar tu decisión.
-5. Commit y PR solo cuando lo pidas.
+1. En el VM, confirmar el texto real de cuota de OpenCode (A5) y los nombres de variable de NVIDIA y Gemini (B-VM).
+2. C: "Generar análisis".
+3. D: esperar tu decisión.
+4. Commit y PR solo cuando lo pidas.

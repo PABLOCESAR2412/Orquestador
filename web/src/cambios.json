@@ -36,6 +36,7 @@
     { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Aviso de nueva versión: el velo cubre también la barra lateral, con desenfoque", "pr": null },
     { "fecha": "2026-10-13", "tipo": "grande", "titulo": "Analizador y obrero por tarea: plan revisable, aprobación y reporte guardado", "pr": 28 },
     { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Proyectos en tarjetas, alta con revisión de GitHub y clonado en el chat del proyecto", "pr": null },
-    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Seguir tras agotarse la cuota: aviso con el modelo y continuación desde el último punto", "pr": null }
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Seguir tras agotarse la cuota: aviso con el modelo y continuación desde el último punto", "pr": null },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Claves de Groq, NVIDIA y Gemini guardadas cifradas desde Ajustes, con uso en los agentes", "pr": null }
   ]
 }

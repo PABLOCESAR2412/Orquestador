@@ -600,39 +600,45 @@ function TarjetaProveedor({
             title={
               sinClave
                 ? "Se activa al instalar el CLI de OpenCode en el servidor. La app no lo cambia."
-                : `Se activa al configurar ${p.variable} en el archivo de entorno del servidor. La app no lo cambia.`
+                : p.guardable
+                  ? "Se activa al guardar la clave aquí o al configurarla en el archivo de entorno del servidor. La app no lo apaga."
+                  : `Se activa al configurar ${p.variable} en el archivo de entorno del servidor. La app no lo cambia.`
             }
           />
         </div>
       </div>
 
       <div className="aj-campos">
-        <div className="aj-campo">
-          <div className="aj-campo-etiqueta">
-            <span>
-              Clave API{p.variable ? <> · <span className="aj-mono">{p.variable}</span></> : null}
-            </span>
-            {!sinClave && (
-              <button type="button" className="aj-texto-btn" disabled title={tituloSinControl}>
-                Mostrar
-              </button>
-            )}
+        {p.guardable ? (
+          <CampoClave p={p} />
+        ) : (
+          <div className="aj-campo">
+            <div className="aj-campo-etiqueta">
+              <span>
+                Clave API{p.variable ? <> · <span className="aj-mono">{p.variable}</span></> : null}
+              </span>
+              {!sinClave && (
+                <button type="button" className="aj-texto-btn" disabled title={tituloSinControl}>
+                  Mostrar
+                </button>
+              )}
+            </div>
+            <div className="aj-entrada">
+              <span className={p.configured || sinClave ? "" : "aj-entrada-vacia"}>
+                {sinClave
+                  ? "No aplica: usa el CLI del servidor"
+                  : p.configured
+                    ? "•".repeat(24)
+                    : "Sin clave configurada"}
+              </span>
+              {!sinClave && (
+                <button type="button" className="aj-icono-btn" disabled title={tituloSinControl} aria-label="Copiar clave">
+                  <IconoCopia />
+                </button>
+              )}
+            </div>
           </div>
-          <div className="aj-entrada">
-            <span className={p.configured || sinClave ? "" : "aj-entrada-vacia"}>
-              {sinClave
-                ? "No aplica: usa el CLI del servidor"
-                : p.configured
-                  ? "•".repeat(24)
-                  : "Sin clave configurada"}
-            </span>
-            {!sinClave && (
-              <button type="button" className="aj-icono-btn" disabled title={tituloSinControl} aria-label="Copiar clave">
-                <IconoCopia />
-              </button>
-            )}
-          </div>
-        </div>
+        )}
 
         <div className="aj-campo">
           <div className="aj-campo-etiqueta">
@@ -669,10 +675,115 @@ function TarjetaProveedor({
   );
 }
 
+// Clave de un proveedor que se guarda desde la app, cifrada en el servidor. La API solo dice si está guardada:
+// el valor no vuelve a mostrarse. Los botones son `type="button"` porque toda la página es un formulario.
+function CampoClave({ p }: { p: ProviderStatus }) {
+  const qc = useQueryClient();
+  const [valor, setValor] = useState("");
+  const [verValor, setVerValor] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const idCampo = `aj-clave-${p.id}`;
+
+  // Cambiar la clave cambia qué modelos hay disponibles, así que la lista se vuelve a pedir.
+  const refrescar = () => {
+    void qc.invalidateQueries({ queryKey: ["providers"] });
+    void qc.invalidateQueries({ queryKey: ["models"] });
+  };
+
+  const guardar = useMutation({
+    mutationFn: (texto: string) => api.setProviderKey(p.id, texto),
+    onSuccess: () => {
+      setValor("");
+      setError(null);
+      setAviso("Clave guardada. Se usará en los próximos envíos.");
+      refrescar();
+    },
+    onError: (e) => {
+      setAviso(null);
+      setError(errorText(e));
+    },
+  });
+
+  const quitar = useMutation({
+    mutationFn: () => api.deleteProviderKey(p.id),
+    onSuccess: () => {
+      setError(null);
+      setAviso("Clave quitada.");
+      refrescar();
+    },
+    onError: (e) => {
+      setAviso(null);
+      setError(errorText(e));
+    },
+  });
+
+  const ocupado = guardar.isPending || quitar.isPending;
+  const enviar = () => {
+    const texto = valor.trim();
+    if (!texto || ocupado) return;
+    setAviso(null);
+    setError(null);
+    guardar.mutate(texto);
+  };
+
+  const estado = p.guardada
+    ? "Guardada cifrada en el servidor. No se vuelve a mostrar."
+    : p.configured
+      ? `Viene del archivo de entorno del servidor (${p.variable}).`
+      : "Sin clave configurada.";
+
+  return (
+    <div className="aj-campo aj-campo-clave">
+      <div className="aj-campo-etiqueta">
+        <label htmlFor={idCampo}>
+          Clave API · <span className="aj-mono">{p.variable}</span>
+        </label>
+        <button type="button" className="aj-texto-btn" onClick={() => setVerValor((v) => !v)}>
+          {verValor ? "Ocultar" : "Mostrar"}
+        </button>
+      </div>
+      <div className="aj-clave-fila">
+        <input
+          id={idCampo}
+          className="aj-input aj-mono"
+          type={verValor ? "text" : "password"}
+          autoComplete="off"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder={p.guardada ? "Pega una clave nueva" : "Pega la clave"}
+          value={valor}
+          disabled={ocupado}
+          onChange={(e) => setValor(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter guarda aquí; si no, enviaría el formulario de Ajustes.
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            enviar();
+          }}
+        />
+        <button type="button" className="aj-btn aj-btn-primario" onClick={enviar} disabled={!valor.trim() || ocupado}>
+          {guardar.isPending ? "Guardando…" : "Guardar"}
+        </button>
+        {p.guardada && (
+          <button type="button" className="aj-btn" onClick={() => quitar.mutate()} disabled={ocupado}>
+            {quitar.isPending ? "Quitando…" : "Quitar"}
+          </button>
+        )}
+      </div>
+      <p className="aj-nota">{estado}</p>
+      {aviso && <p className="aj-nota" role="status">{aviso}</p>}
+      {error && <p className="aj-error" role="alert">{error}</p>}
+    </div>
+  );
+}
+
 // Lo que impide que un proveedor llegue a los agentes, con el nombre real de la variable.
+// Un proveedor sin clave que se puede guardar ya lo dice su propio campo, así que no se repite aquí.
 function notaEstado(p: ProviderStatus): string | null {
   if (p.id === "opencode") return p.configured ? null : "El CLI de OpenCode no se encontró en el servidor.";
-  if (!p.configured) return `Falta ${p.variable ?? "la clave"} en el archivo de entorno del servidor.`;
+  if (!p.configured) return p.guardable ? null : `Falta ${p.variable ?? "la clave"} en el archivo de entorno del servidor.`;
   if (!p.enAgente) {
     return `La clave está configurada, pero no llega a los agentes: agrégala a TELO_AGENTE_VARIABLES en el archivo de entorno del servidor.`;
   }

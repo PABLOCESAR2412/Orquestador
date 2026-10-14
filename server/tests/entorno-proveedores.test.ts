@@ -1,0 +1,126 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { randomBytes } from "node:crypto";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+// Prueba de punto a punto: una clave de proveedor guardada llega al agente y a `opencode models`,
+// y ninguna variable TELO_* llega a ninguno de los dos. Usa un `opencode` falso al frente del PATH
+// (como analizador.test.ts) con TELO_AISLAMIENTO=desactivado, porque bubblewrap no es parte de esta prueba.
+const RAIZ_PRUEBAS = join(tmpdir(), "telo-pruebas-servicio");
+if (!process.env.TELO_PRUEBAS_INICIADAS) {
+  rmSync(RAIZ_PRUEBAS, { recursive: true, force: true });
+  process.env.TELO_PRUEBAS_INICIADAS = "1";
+}
+process.env.DATA_DIR = join(RAIZ_PRUEBAS, "data");
+process.env.TELO_PROYECTOS_DIR = join(RAIZ_PRUEBAS, "proyectos");
+mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
+
+const { db } = await import("../src/db");
+const { guardarClaveProveedor } = await import("../src/claves-proveedor");
+const { ejecutarAgente } = await import("../src/ejecutar");
+const { getModels } = await import("../src/models");
+
+const VALOR_GROQ = "gsk_clave_de_prueba_e2e_987";
+const CLAVE_MAESTRA = randomBytes(32).toString("base64");
+
+const RESTAURAR = {
+  PATH: process.env.PATH,
+  TELO_AISLAMIENTO: process.env.TELO_AISLAMIENTO,
+  TELO_CLAVE_CIFRADO: process.env.TELO_CLAVE_CIFRADO,
+  GROQ_API_KEY: process.env.GROQ_API_KEY,
+  TELO_PRUEBA_SECRETA: process.env.TELO_PRUEBA_SECRETA,
+};
+
+let carpeta = "";
+let volcadoAgente = "";
+let volcadoCli = "";
+
+beforeAll(() => {
+  carpeta = mkdtempSync(join(tmpdir(), "telo-entorno-"));
+  const bin = join(carpeta, "bin");
+  mkdirSync(bin);
+  volcadoAgente = join(carpeta, "entorno-agente.txt");
+  volcadoCli = join(carpeta, "entorno-cli.txt");
+
+  // Cada llamada guarda su entorno en un archivo distinto: `models` es el CLI, lo demás es el agente.
+  // El agente repite la clave en su respuesta para comprobar que sale oculta.
+  writeFileSync(
+    join(bin, "opencode"),
+    `#!/bin/sh
+if [ "$1" = "models" ]; then
+  env > '${volcadoCli}'
+  echo "opencode/big-pickle"
+  echo '{"name":"Big Pickle","cost":{"input":0,"output":0},"limit":{"context":200000},"variants":{}}'
+  exit 0
+fi
+env > '${volcadoAgente}'
+echo '{"type":"text","sessionID":"ses_entorno01","part":{"type":"text","text":"Clave usada: '"$GROQ_API_KEY"'"}}'
+`,
+  );
+  chmodSync(join(bin, "opencode"), 0o755);
+
+  process.env.PATH = `${bin}:${RESTAURAR.PATH ?? ""}`;
+  process.env.TELO_AISLAMIENTO = "desactivado";
+  process.env.TELO_CLAVE_CIFRADO = CLAVE_MAESTRA;
+  process.env.TELO_PRUEBA_SECRETA = "no-debe-llegar-a-ningun-agente";
+  delete process.env.GROQ_API_KEY;
+  db.query("DELETE FROM provider_keys").run();
+  guardarClaveProveedor("groq", VALOR_GROQ);
+});
+
+afterAll(() => {
+  for (const [clave, valor] of Object.entries(RESTAURAR)) {
+    if (valor === undefined) delete process.env[clave];
+    else process.env[clave] = valor;
+  }
+  rmSync(carpeta, { recursive: true, force: true });
+});
+
+// Variables de un volcado de `env`: una por línea, "NOMBRE=valor".
+function variables(ruta: string): Map<string, string> {
+  const mapa = new Map<string, string>();
+  for (const linea of readFileSync(ruta, "utf8").split("\n")) {
+    const corte = linea.indexOf("=");
+    if (corte > 0) mapa.set(linea.slice(0, corte), linea.slice(corte + 1));
+  }
+  return mapa;
+}
+
+describe("entorno de los proveedores en el agente y en el CLI", () => {
+  test("el agente recibe GROQ_API_KEY y nunca una variable TELO_*", async () => {
+    const resultado = await ejecutarAgente({
+      prompt: "Hola",
+      model: "opencode/big-pickle",
+      cwd: carpeta,
+      timeoutMs: 20_000,
+    });
+
+    expect(existsSync(volcadoAgente)).toBe(true);
+    const env = variables(volcadoAgente);
+    expect(env.get("GROQ_API_KEY")).toBe(VALOR_GROQ);
+    expect([...env.keys()].filter((k) => k.startsWith("TELO_"))).toEqual([]);
+    expect(env.has("DATA_DIR")).toBe(false);
+    expect(env.has("TELO_PRUEBA_SECRETA")).toBe(false);
+
+    // La clave que el agente imprime no sale del servidor: va oculta en la respuesta.
+    expect(resultado.text).not.toContain(VALOR_GROQ);
+    expect(resultado.text).toContain("Clave usada:");
+  });
+
+  test("`opencode models` recibe la clave y ninguna variable TELO_*", async () => {
+    const modelos = await getModels(true);
+    expect(modelos.map((m) => m.id)).toEqual(["opencode/big-pickle"]);
+
+    const env = variables(volcadoCli);
+    expect(env.get("GROQ_API_KEY")).toBe(VALOR_GROQ);
+    expect([...env.keys()].filter((k) => k.startsWith("TELO_"))).toEqual([]);
+  });
+
+  test("sin clave guardada, el agente no recibe GROQ_API_KEY", async () => {
+    db.query("DELETE FROM provider_keys").run();
+    await ejecutarAgente({ prompt: "Hola", model: "opencode/big-pickle", cwd: carpeta, timeoutMs: 20_000 });
+    expect(variables(volcadoAgente).has("GROQ_API_KEY")).toBe(false);
+    guardarClaveProveedor("groq", VALOR_GROQ);
+  });
+});

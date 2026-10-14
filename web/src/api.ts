@@ -159,6 +159,9 @@ export type ProviderStatus = {
   // Nombre de la variable de entorno (nunca su valor) y si llega a los agentes.
   variable: string | null;
   enAgente: boolean;
+  // La clave se puede guardar desde Ajustes, y `guardada` dice si ya está guardada ahí.
+  guardable: boolean;
+  guardada: boolean;
 };
 
 export type Message = {
@@ -480,6 +483,14 @@ export const api = {
   deleteProject: (id: string) =>
     request<{ ok: boolean }>(`/api/projects/${id}`, { method: "DELETE" }),
   listProviders: () => request<ProviderStatus[]>("/api/providers"),
+  // La clave se escribe una vez y nunca vuelve por la API. Guardar otra vez la reemplaza.
+  setProviderKey: (id: string, valor: string) =>
+    request<{ id: string; configurada: boolean; actualizada_en: string }>(
+      `/api/claves-proveedor/${encodeURIComponent(id)}`,
+      { method: "PUT", body: JSON.stringify({ valor }) },
+    ),
+  deleteProviderKey: (id: string) =>
+    request<{ ok: boolean }>(`/api/claves-proveedor/${encodeURIComponent(id)}`, { method: "DELETE" }),
   getPreferences: () => request<Preferences>("/api/preferences"),
   savePreferences: (patch: Partial<Preferences>) =>
     request<Preferences>("/api/preferences", { method: "PUT", body: JSON.stringify(patch) }),

@@ -489,6 +489,18 @@
 }
 .aj-entrada-vacia > span { color: var(--ink-2); letter-spacing: 0; }
 
+/* Clave de proveedor guardable: campo y botones en una fila; en móvil se parten en líneas */
+.aj-clave-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* El campo ocupa su propia fila; Guardar y Quitar van juntos debajo. 16 px: iOS no amplía la página al escribir. */
+.aj-clave-fila .aj-input { flex: 1 1 100%; font-size: 16px; }
+.aj-clave-fila .aj-btn { flex: 0 0 auto; }
+
 /* Gasto del proveedor frente al presupuesto global */
 .aj-presupuesto {
   display: flex;
