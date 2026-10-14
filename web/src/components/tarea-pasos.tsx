@@ -22,6 +22,7 @@ const TITULO_FINAL: Partial<Record<Task["status"], string>> = {
   failed: "Falló",
   cancelled: "Cancelada",
   interrupted: "Interrumpida",
+  sin_cuota: "Sin cuota",
 };
 
 // Deriva los pasos del estado real: la tarea, sus eventos y la revisión de Git (si la tiene).
@@ -153,6 +154,13 @@ export function derivarPasos(args: {
     final = { id: "final", titulo, estado: "fallo", detalle: cuando(tarea.finished_at) };
   } else if (estado === "cancelled") {
     final = { id: "final", titulo, estado: "hecho", detalle: "Se canceló antes de terminar" };
+  } else if (estado === "sin_cuota") {
+    final = {
+      id: "final",
+      titulo,
+      estado: "actual",
+      detalle: "Elige otro modelo y pulsa Seguir",
+    };
   } else if (estado === "interrupted") {
     final = {
       id: "final",

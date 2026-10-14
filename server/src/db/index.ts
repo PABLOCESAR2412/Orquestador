@@ -366,6 +366,46 @@ const migrations: Migration[] = [
       CREATE INDEX tasks_status_created ON tasks (status, created_at);
     `,
   },
+  {
+    // Cuota agotada: la tarea se detiene en 'sin_cuota' con el modelo que se quedó sin tokens
+    // (modelo_agotado). `continuar` indica que la siguiente ejecución retoma la sesión. El chat guarda
+    // el modelo agotado en cuota_modelo hasta que se sigue o se envía un mensaje que sí responde.
+    // Reconstruye tasks como 019 (task_events y task_approvals referencian tasks): sinClaves.
+    name: "020_cuota_seguir",
+    sinClaves: true,
+    sql: `
+      CREATE TABLE tasks_nueva (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        model TEXT NOT NULL,
+        effort TEXT,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'analyzing', 'waiting_approval', 'running', 'interrupted', 'sin_cuota', 'done', 'failed', 'cancelled')),
+        result TEXT,
+        error TEXT,
+        workspace TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        started_at TEXT,
+        finished_at TEXT,
+        project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+        provider_session_id TEXT,
+        retry_of TEXT,
+        rama TEXT,
+        base_commit TEXT,
+        plan TEXT,
+        reporte TEXT,
+        plan_aprobado_en TEXT,
+        modelo_agotado TEXT,
+        continuar INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO tasks_nueva (id, title, prompt, model, effort, status, result, error, workspace, created_at, started_at, finished_at, project_id, provider_session_id, retry_of, rama, base_commit, plan, reporte, plan_aprobado_en)
+        SELECT id, title, prompt, model, effort, status, result, error, workspace, created_at, started_at, finished_at, project_id, provider_session_id, retry_of, rama, base_commit, plan, reporte, plan_aprobado_en FROM tasks;
+      DROP TABLE tasks;
+      ALTER TABLE tasks_nueva RENAME TO tasks;
+      CREATE INDEX tasks_status_created ON tasks (status, created_at);
+      ALTER TABLE conversations ADD COLUMN cuota_modelo TEXT;
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

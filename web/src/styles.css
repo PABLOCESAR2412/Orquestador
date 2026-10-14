@@ -3457,3 +3457,23 @@ button:disabled { opacity: 0.4; cursor: default; }
   .proyecto-tarjeta-acciones .btn-ghost,
   .proyecto-tarjeta-acciones .btn-primary { min-height: 40px; }
 }
+
+/* Aviso de cuota agotada (tareas y chats). El ámbar marca la alerta; el texto sigue en --ink. */
+.cuota-aviso {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--signal);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin: 12px 0;
+}
+.cuota-aviso-titulo { margin: 0; font-weight: 600; color: var(--ink); }
+.cuota-aviso-texto,
+.cuota-aviso-ayuda { margin: 0; color: var(--ink-2); font-size: 13px; }
+.cuota-aviso-acciones { display: flex; flex-wrap: wrap; gap: 8px; }
+.cuota-aviso-acciones button { min-height: 40px; }
+.cuota-aviso .error { margin: 0; }
+/* El selector de modelo abre hacia abajo desde el aviso (fuera del compositor, no hay nada encima). */
+.cuota-selector { position: relative; height: 0; }
+.cuota-selector .picker { top: 10px; bottom: auto; }

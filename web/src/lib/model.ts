@@ -56,6 +56,7 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
   running: "Corriendo",
   done: "Lista",
   interrupted: "Interrumpida",
+  sin_cuota: "Sin cuota",
   failed: "Falló",
   cancelled: "Cancelada",
 };
@@ -71,6 +72,8 @@ export const EVENT_LABEL: Record<TaskEventKind, string> = {
   reintento_creado: "Reintento creado",
   terminada: "Terminada",
   modelo_respaldo: "Modelo de respaldo",
+  sin_cuota: "Se acabó la cuota del modelo",
+  seguida: "Seguida con otro modelo",
   clon_creado: "Copia de trabajo creada",
   commit_aprobado: "Commit aprobado",
   push_aprobado: "Rama subida al remoto",
@@ -149,6 +152,14 @@ export function errorText(err: unknown): string {
         return "Solo se pueden reanudar tareas interrumpidas o fallidas.";
       case "task_without_session":
         return "Esta tarea no llegó a iniciar una sesión. Puedes reintentarla.";
+      case "cuota_agotada":
+        return "Se acabó la cuota de este modelo. Cambia de modelo y pulsa Seguir.";
+      case "modelo_sin_cambio":
+        return "Ese modelo ya no tiene cuota. Elige otro para seguir.";
+      case "task_not_continuable":
+        return "Solo se pueden seguir tareas detenidas por falta de cuota.";
+      case "chat_sin_cuota":
+        return "Este chat no está detenido por falta de cuota.";
       case "task_not_retryable":
         return "Esta tarea no se puede reintentar en este estado.";
       case "task_not_found":

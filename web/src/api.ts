@@ -8,6 +8,8 @@ export type Conversation = {
   pinned_at?: string | null;
   // Hay un mensaje en curso (puede venir de otro dispositivo).
   ocupada?: boolean;
+  // Modelo que se quedó sin cuota en el último turno: el chat espera a que se cambie de modelo y se siga.
+  cuota_modelo?: string | null;
   created_at: string;
 };
 
@@ -185,12 +187,14 @@ export type ModelInfo = {
 };
 
 // analyzing: el analizador escribe el plan. waiting_approval: el plan espera la decisión del usuario.
+// sin_cuota: el modelo se quedó sin tokens; la tarea espera un modelo distinto para seguir.
 export type TaskStatus =
   | "queued"
   | "analyzing"
   | "waiting_approval"
   | "running"
   | "interrupted"
+  | "sin_cuota"
   | "done"
   | "failed"
   | "cancelled";
@@ -238,6 +242,8 @@ export type Task = {
   retry_of?: string | null;
   // Tiene la sesión del agente: puede continuar donde quedó.
   reanudable: boolean;
+  // Modelo que se quedó sin cuota (solo en tareas sin_cuota).
+  modelo_agotado?: string | null;
   // Git: rama de trabajo del clon y commit base (solo tareas de un proyecto con Git).
   rama: string | null;
   base_commit: string | null;
@@ -266,7 +272,9 @@ export type TaskEventKind =
   | "plan_aprobado"
   | "plan_rechazado"
   | "replanificada"
-  | "obrero_iniciado";
+  | "obrero_iniciado"
+  | "sin_cuota"
+  | "seguida";
 
 // Evento en vivo del canal /api/eventos-vivos (SSE).
 // Un paso del agente en un chat, en orden dentro de su turno. Un texto intermedio trae el texto en
@@ -437,6 +445,11 @@ export const api = {
   usage: () => request<{ generado: string; proveedores: UsoProveedor[] }>("/api/uso"),
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
   resumeTask: (id: string) => request<Task>(`/api/tasks/${id}/reanudar`, { method: "POST", body: "{}" }),
+  // Tras una cuota agotada: vuelve a la cola con otro modelo y retoma la sesión.
+  continueTask: (id: string, body: { model?: string; effort?: string | null } = {}) =>
+    request<Task>(`/api/tasks/${id}/seguir`, { method: "POST", body: JSON.stringify(body) }),
+  continueChat: (id: string) =>
+    request<{ messages: Message[] }>(`/api/conversations/${id}/seguir`, { method: "POST", body: "{}" }),
   retryTask: (id: string) => request<Task>(`/api/tasks/${id}/reintentar`, { method: "POST", body: "{}" }),
   listQuotas: () =>
     request<{ generado: string; proveedores: QuotaProvider[] }>("/api/cuotas"),

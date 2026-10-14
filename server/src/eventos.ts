@@ -24,7 +24,9 @@ export type TipoEvento =
   | "plan_aprobado"
   | "plan_rechazado"
   | "replanificada"
-  | "obrero_iniciado";
+  | "obrero_iniciado"
+  | "sin_cuota"
+  | "seguida";
 
 export type EventoTarea = {
   id: number;

@@ -8,6 +8,7 @@ import { UsoPanel } from "../components/uso-panel";
 import { IndicadorPensando, MensajeAgente, MensajeUsuario } from "../components/chat-mensajes";
 import { copiarTexto } from "../components/chat-contenido";
 import { ChatConfiguracion } from "../components/chat-configuracion";
+import { AvisoCuota } from "../components/cuota-aviso";
 import { VistaDocumento } from "../components/documentos";
 import { HistorialPrompts, type PromptEnviado } from "../components/chat-historial";
 import { MenuComandosChat, type ComandoChat } from "../components/chat-comandos";
@@ -32,7 +33,7 @@ type Pendiente = { key: string; lectura: ArchivoLeido };
 type Restaurar = { texto: string; pendientes: Pendiente[] };
 
 // Errores en los que el servidor ya guardó el mensaje del usuario (no hay que reenviarlo).
-const GUARDADO_EN_ERROR = ["runner_failed", "insufficient_funds", "aislamiento_no_disponible"];
+const GUARDADO_EN_ERROR = ["runner_failed", "insufficient_funds", "cuota_agotada", "aislamiento_no_disponible"];
 
 // Borrador por chat, guardado en este navegador: sobrevive a cambiar de pantalla o a una señal caída.
 // Si el navegador no deja guardar, el borrador solo vive en la pantalla.
@@ -251,6 +252,15 @@ export function ChatPage() {
     },
   });
 
+  // Tras una cuota agotada: el chat retoma su sesión con el modelo elegido (ver /seguir en el servidor).
+  const seguirChat = useMutation({
+    mutationFn: () => api.continueChat(selectedId!),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["messages", selectedId] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+
   const crearDoc = useMutation({
     mutationFn: ({ mensajeId, formato }: { mensajeId: string; formato: FormatoDocumento }) =>
       api.crearDocumento({ mensaje_id: mensajeId, formato }),
@@ -398,7 +408,9 @@ export function ChatPage() {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [messages.data?.length, send.isPending, selectedId]);
 
-  const sendError = send.isError ? errorText(send.error) : null;
+  // La cuota agotada ya se explica en su aviso debajo de la conversación: no se repite aquí.
+  const cuotaAgotada = send.error instanceof ApiError && send.error.code === "cuota_agotada";
+  const sendError = send.isError && !cuotaAgotada ? errorText(send.error) : null;
   const settingsError = configure.isError ? errorText(configure.error) : null;
   const docError = crearDoc.isError ? errorText(crearDoc.error) : null;
   const anclarError = anclar.isError ? errorText(anclar.error) : null;
@@ -408,7 +420,7 @@ export function ChatPage() {
   const ultimoMensaje = lista.at(-1);
   const yaGuardado = send.isPending && ultimoMensaje?.role === "user" && ultimoMensaje.content === send.variables?.content;
   // Pensando: se envió aquí o el chat está ocupado (otro dispositivo lo envió).
-  const pensando = send.isPending || !!current?.ocupada;
+  const pensando = send.isPending || seguirChat.isPending || !!current?.ocupada;
 
   // Cuando el chat deja de estar ocupado, sus pasos ya están guardados en el servidor: se vacían los en vivo.
   useEffect(() => {
@@ -767,6 +779,16 @@ export function ChatPage() {
               )}
               {pensando && (
                 <IndicadorPensando modelo={nombreAgente} vivo={(selectedId && vivos[selectedId]?.pasos) || []} />
+              )}
+              {current?.cuota_modelo && !pensando && (
+                <AvisoCuota
+                  modeloAgotado={modelList.find((m) => m.id === current.cuota_modelo)?.name ?? current.cuota_modelo}
+                  puedeSeguir={!!current.model && current.model !== current.cuota_modelo}
+                  seguirPendiente={seguirChat.isPending}
+                  onCambiarModelo={() => setPickerOpen(true)}
+                  onSeguir={() => seguirChat.mutate()}
+                  error={seguirChat.isError ? errorText(seguirChat.error) : null}
+                />
               )}
               <div ref={endRef} />
             </div>
