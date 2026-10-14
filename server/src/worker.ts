@@ -4,7 +4,7 @@ import { config } from "./config";
 import { db } from "./db";
 import { publicar } from "./bus";
 import { publicarEstado, registrarEvento } from "./eventos";
-import { ejecutarAgente, type ResultadoAgente } from "./ejecutar";
+import { ejecutarAgente, ErrorCuota, promptContinuacion, type ResultadoAgente } from "./ejecutar";
 import { redactar } from "./redaccion";
 import {
   extraerJson,
@@ -63,6 +63,8 @@ type QueuedTask = {
   provider_session_id: string | null;
   // 1 si el plan ya fue aprobado: la tarea va directo al obrero.
   aprobado: number;
+  // 1 si la tarea se detuvo por cuota agotada y debe retomar su sesión (ver pausarPorCuota).
+  continuar: number;
 };
 
 // Lo que cada fase necesita de la ejecución en curso.
@@ -71,6 +73,8 @@ type Contexto = {
   cwd: string;
   controller: AbortController;
   salida: RegistroSalida;
+  // Solo la primera llamada de la ejecución retoma la sesión (ver promptDeFase).
+  continuar: boolean;
 };
 
 // Despierta al worker cuando entra una tarea nueva.
@@ -81,7 +85,7 @@ export function notifyWorker() {
 function nextQueued(): QueuedTask | null {
   return db
     .query<QueuedTask, []>(
-      "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC LIMIT 1",
+      "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado, t.continuar FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC LIMIT 1",
     )
     .get();
 }
@@ -223,6 +227,26 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
   }
 }
 
+// Tras una cuota agotada, la primera llamada de la ejecución retoma la sesión en vez de empezar de nuevo.
+function promptDeFase(ctx: Contexto, prompt: string): string {
+  if (!ctx.continuar) return prompt;
+  ctx.continuar = false;
+  return promptContinuacion(prompt);
+}
+
+// Sin cuota: la tarea se detiene con el modelo que se quedó sin tokens, sin pasar por "fallida".
+// Si ya tenía sesión, el usuario cambia de modelo y la sigue (ver seguirTarea); si no, se vuelve a
+// ejecutar la fase desde el principio.
+function pausarPorCuota(id: string, err: ErrorCuota, reanudable: boolean) {
+  db.transaction(() => {
+    db.query(
+      "UPDATE tasks SET status = 'sin_cuota', modelo_agotado = ?, error = ?, continuar = ?, finished_at = NULL WHERE id = ?",
+    ).run(err.modelo, err.message, reanudable ? 1 : 0, id);
+    registrarEvento(id, "sin_cuota", `Modelo ${err.modelo}`);
+  })();
+  publicarEstado(id);
+}
+
 // Analizador: escribe el plan. Devuelve "espera" si el usuario debe aprobarlo antes del obrero,
 // o "aprobado" si el plan no necesita aprobación. Tras una desviación siempre espera.
 async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Promise<"espera" | "aprobado"> {
@@ -231,7 +255,7 @@ async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Pr
     ? { planAnterior: planGuardado(task.id), motivo: replanificacion.motivo }
     : undefined;
 
-  let respuesta = await llamar(ctx, promptAnalizador(task.prompt, contexto), false);
+  let respuesta = await llamar(ctx, promptDeFase(ctx, promptAnalizador(task.prompt, contexto)), false);
   let validacion = leerPlan(respuesta);
   if (!validacion.ok) {
     // Una reparación en la misma sesión: el analizador ya tiene el contexto de su respuesta.
@@ -272,7 +296,7 @@ async function faseObrero(
   publicarEstado(task.id);
   registrarEvento(task.id, "obrero_iniciado", `Modelo ${task.model} · ejecuta el plan aprobado`);
 
-  const respuesta = await llamar(ctx, promptObrero(plan), true);
+  const respuesta = await llamar(ctx, promptDeFase(ctx, promptObrero(plan)), true);
   const reporte = validarReporte(extraerJson(respuesta.textoFinal) ?? extraerJson(respuesta.text), respuesta.textoFinal);
   if (reporte.desviacion) return { desviacion: reporte.desviacion };
   return { reporte, texto: respuesta.text };
@@ -312,8 +336,9 @@ async function runTask(task: QueuedTask) {
 
   const aprobado = task.aprobado === 1;
   // La condición evita pisar una cancelación que llegó durante la preparación.
+  // Al arrancar, la marca de continuar se consume: si esta ejecución vuelve a quedarse sin cuota, se vuelve a fijar.
   const marcada = db
-    .query("UPDATE tasks SET status = ?, started_at = datetime('now'), finished_at = NULL, workspace = ? WHERE id = ? AND status = 'queued'")
+    .query("UPDATE tasks SET status = ?, started_at = datetime('now'), finished_at = NULL, workspace = ?, continuar = 0 WHERE id = ? AND status = 'queued'")
     .run(aprobado ? "running" : "analyzing", cwd, task.id);
   if (marcada.changes === 0) return;
   publicarEstado(task.id);
@@ -329,7 +354,7 @@ async function runTask(task: QueuedTask) {
     // Sin registro en disco la tarea sigue; solo se pierde el historial de salida.
     salida = { linea() {}, cerrar() {} };
   }
-  const ctx: Contexto = { task, cwd, controller, salida };
+  const ctx: Contexto = { task, cwd, controller, salida, continuar: task.continuar === 1 };
 
   try {
     if (!aprobado) {
@@ -356,6 +381,8 @@ async function runTask(task: QueuedTask) {
   } catch (err) {
     if (cancelRequested.has(task.id)) {
       finish(task.id, "cancelled", { error: "Cancelada por el usuario." });
+    } else if (err instanceof ErrorCuota) {
+      pausarPorCuota(task.id, err, task.provider_session_id !== null);
     } else if (err instanceof TiempoAgotado || err instanceof ErrorFase) {
       finish(task.id, "failed", { error: err.message });
     } else {
@@ -430,7 +457,7 @@ export function cancelTask(id: string): CancelOutcome {
   if (!row) return "not_found";
 
   // Sin proceso en marcha (en cola, interrumpida o con el plan esperando al usuario): se cierra directamente.
-  if (row.status === "queued" || row.status === "interrupted" || row.status === "waiting_approval") {
+  if (row.status === "queued" || row.status === "interrupted" || row.status === "waiting_approval" || row.status === "sin_cuota") {
     finish(id, "cancelled", { error: "Cancelada por el usuario." });
     return "cancelled";
   }

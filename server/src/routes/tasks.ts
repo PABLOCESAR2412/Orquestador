@@ -36,6 +36,7 @@ type TaskRow = {
   plan: string | null;
   reporte: string | null;
   plan_aprobado_en: string | null;
+  modelo_agotado: string | null;
   project_name: string | null;
   created_at: string;
   started_at: string | null;
@@ -45,12 +46,15 @@ type TaskRow = {
 // reanudable: la tarea tiene la sesión del agente, así que puede continuar donde quedó.
 // rama y base_commit: solo tareas de un proyecto con Git.
 // plan, reporte y plan_aprobado_en: el plan del analizador, el reporte del obrero y cuándo se aprobó el plan.
+// modelo_agotado: el modelo que se quedó sin cuota (solo en tareas 'sin_cuota').
 const COLUMNS =
-  "t.id, t.title, t.prompt, t.model, t.effort, t.status, t.result, t.error, t.project_id, t.retry_of, (t.provider_session_id IS NOT NULL) AS reanudable, t.rama, t.base_commit, t.plan, t.reporte, t.plan_aprobado_en, p.name AS project_name, t.created_at, t.started_at, t.finished_at";
+  "t.id, t.title, t.prompt, t.model, t.effort, t.status, t.result, t.error, t.project_id, t.retry_of, (t.provider_session_id IS NOT NULL) AS reanudable, t.rama, t.base_commit, t.plan, t.reporte, t.plan_aprobado_en, t.modelo_agotado, p.name AS project_name, t.created_at, t.started_at, t.finished_at";
 const DESDE = "FROM tasks t LEFT JOIN projects p ON p.id = t.project_id";
 
 const ESTADOS_REANUDABLES = ["interrupted", "failed"];
 const ESTADOS_REINTENTABLES = ["interrupted", "failed", "cancelled", "done"];
+// Tareas detenidas por cuota agotada: se siguen con otro modelo (no se reintentan ni se reanudan).
+const ESTADO_SEGUIBLE = "sin_cuota";
 
 export const tasks = new Hono();
 
@@ -240,6 +244,55 @@ tasks.post("/tasks/:id/reanudar", (c) => {
     ).run(id);
     registrarEvento(id, "reanudada", `Estaba ${row.status === "interrupted" ? "interrumpida" : "fallida"}`);
   })();
+
+  publicarEstado(id);
+  notifyWorker();
+  return c.json(leerTarea(id));
+});
+
+// POST /api/tasks/:id/seguir  body: { model?, effort? }
+// Tras una cuota agotada: la tarea vuelve a la cola con otro modelo (o el mismo, si ya tiene cuota de nuevo)
+// y retoma su sesión desde donde se quedó. Elegir el modelo agotado otra vez se rechaza.
+tasks.post("/tasks/:id/seguir", async (c) => {
+  const id = c.req.param("id");
+  const row = leerTarea(id);
+  if (!row) return c.json({ error: "task_not_found" }, 404);
+  if (row.status !== ESTADO_SEGUIBLE) return c.json({ error: "task_not_continuable" }, 409);
+
+  const body = await c.req
+    .json<{ model?: unknown; effort?: unknown }>()
+    .catch(() => ({}) as { model?: unknown; effort?: unknown });
+  if (body.model !== undefined && body.model !== null && typeof body.model !== "string") {
+    return c.json({ error: "invalid_model" }, 400);
+  }
+  const cambiaModelo = typeof body.model === "string" && body.model.trim() !== "" && body.model.trim() !== row.model;
+  const model = cambiaModelo ? (body.model as string).trim() : row.model;
+  const effort = cambiaModelo
+    ? typeof body.effort === "string" && body.effort
+      ? body.effort
+      : null
+    : row.effort;
+
+  if (model === row.modelo_agotado) return c.json({ error: "modelo_sin_cambio" }, 409);
+  try {
+    const check = await validateSelection(model, effort);
+    if (!check.ok) return c.json({ error: check.error }, 400);
+  } catch (err) {
+    return c.json({ error: "models_unavailable", detail: String(err) }, 503);
+  }
+
+  // La condición del UPDATE evita seguir una tarea que cambió de estado mientras se validaba el modelo.
+  const encolada = db.transaction(() => {
+    const r = db
+      .query(
+        "UPDATE tasks SET status = 'queued', model = ?, effort = ?, modelo_agotado = NULL, error = NULL, finished_at = NULL WHERE id = ? AND status = ?",
+      )
+      .run(model, effort, id, ESTADO_SEGUIBLE);
+    if (r.changes === 0) return false;
+    registrarEvento(id, "seguida", cambiaModelo ? `Modelo ${model} (antes ${row.model})` : `Modelo ${model}`);
+    return true;
+  })();
+  if (!encolada) return c.json({ error: "task_not_continuable" }, 409);
 
   publicarEstado(id);
   notifyWorker();

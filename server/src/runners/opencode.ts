@@ -45,6 +45,24 @@ function failureDetail(stdout: string, stderr: string, events: OpenCodeEvent[]):
   return (stderr || stdout).trim().slice(-800) || "sin salida";
 }
 
+// Error de una ejecución del agente. `detalleProveedor` es lo que dijo el proveedor para clasificar el
+// fallo (cuota, saturación): el evento de error, o la cola de la salida sin rutas del servidor. Así una
+// carpeta llamada "saldo" o "cuota" no convierte en cuota un error que no lo es.
+export class ErrorAgente extends Error {
+  constructor(
+    mensaje: string,
+    readonly detalleProveedor: string,
+  ) {
+    super(mensaje);
+  }
+}
+
+export function detalleDelProveedor(stdout: string, stderr: string, events: OpenCodeEvent[]): string {
+  const errorEvent = events.find((e) => e.type === "error");
+  if (errorEvent) return JSON.stringify(errorEvent).slice(0, 800);
+  return (stderr || stdout).trim().slice(-800).replace(/\S*[\\/]\S*/g, " ");
+}
+
 // El agente solo hereda estas variables. Todo lo demás del servidor se omite: claves de otros
 // servicios, tokens y cualquier variable que se agregue al entorno del VM en el futuro.
 const VARIABLES_PERMITIDAS = new Set([
@@ -220,7 +238,10 @@ export async function runOpenCode(opts: {
   const events = parseEvents(stdout);
 
   if (code !== 0) {
-    throw new Error(`opencode salió con código ${code}: ${failureDetail(stdout, stderr, events)}`);
+    throw new ErrorAgente(
+      `opencode salió con código ${code}: ${failureDetail(stdout, stderr, events)}`,
+      detalleDelProveedor(stdout, stderr, events),
+    );
   }
 
   let text = "";
@@ -248,7 +269,10 @@ export async function runOpenCode(opts: {
   }
 
   if (!text.trim()) {
-    throw new Error(`opencode no devolvió texto: ${failureDetail(stdout, stderr, events)}`);
+    throw new ErrorAgente(
+      `opencode no devolvió texto: ${failureDetail(stdout, stderr, events)}`,
+      detalleDelProveedor(stdout, stderr, events),
+    );
   }
   return {
     text: text.trim(),

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { api, type ModelInfo, type Task } from "../api";
 import { CostMeter, EffortControl } from "../components/controls";
+import { AvisoCuota } from "../components/cuota-aviso";
 import { ModelPicker } from "../components/model-picker";
 import { HistorialTarea } from "../components/task-history";
 import { ProgramadasPanel } from "../components/programadas";
@@ -68,6 +69,8 @@ function estadoDeTarea(t: Task, posicion?: number): { texto: string; clase: stri
       return { texto: "Cancelada", clase: "is-muted" };
     case "interrupted":
       return { texto: "Interrumpida", clase: "is-failed" };
+    case "sin_cuota":
+      return { texto: "Sin cuota · elige modelo", clase: "is-atencion" };
     case "analyzing":
       return { texto: `Analizando (${formatElapsed(t.started_at)})`, clase: "is-running" };
     case "waiting_approval":
@@ -659,7 +662,7 @@ function TarjetaTarea({
   const estado = estadoDeTarea(t, posicion);
   const resumen = resumenPrompt(t.prompt);
   const enCurso = t.status === "running";
-  const cancelable = t.status === "queued" || t.status === "interrupted";
+  const cancelable = t.status === "queued" || t.status === "interrupted" || t.status === "sin_cuota";
 
   return (
     <article className="tk-tarjeta">
@@ -797,6 +800,14 @@ function DetalleTarea({ id }: { id: string }) {
 
   const cancelar = useMutation({ mutationFn: () => api.cancelTask(id), onSettled: refrescar });
   const reanudar = useMutation({ mutationFn: () => api.resumeTask(id), onSettled: refrescar });
+  // Tras una cuota agotada: el modelo elegido y su esfuerzo. Sin elegir, sigue el modelo agotado (y no se activa Seguir).
+  const [selectorAbierto, setSelectorAbierto] = useState(false);
+  const [modeloElegido, setModeloElegido] = useState<{ id: string; esfuerzo: string | null } | null>(null);
+  const seguir = useMutation({
+    mutationFn: (eleccion: { model: string; effort: string | null }) => api.continueTask(id, eleccion),
+    onSuccess: () => setModeloElegido(null),
+    onSettled: refrescar,
+  });
   const reintentar = useMutation({
     mutationFn: () => api.retryTask(id),
     onSuccess: (nueva) => {
@@ -964,7 +975,41 @@ function DetalleTarea({ id }: { id: string }) {
               </div>
             )}
 
-            {t.error && (
+            {t.status === "sin_cuota" && (
+              <AvisoCuota
+                modeloAgotado={models.data?.models.find((m) => m.id === t.modelo_agotado)?.name ?? t.modelo_agotado ?? t.model}
+                puedeSeguir={(modeloElegido?.id ?? t.model) !== t.modelo_agotado}
+                seguirPendiente={seguir.isPending}
+                onCambiarModelo={() => setSelectorAbierto(true)}
+                onSeguir={() =>
+                  seguir.mutate({
+                    model: modeloElegido?.id ?? t.model,
+                    effort: modeloElegido?.esfuerzo ?? null,
+                  })
+                }
+                error={seguir.isError ? errorText(seguir.error) : null}
+              />
+            )}
+            {selectorAbierto && (
+              <div className="cuota-selector">
+                <ModelPicker
+                  models={models.data?.models ?? []}
+                  currentId={modeloElegido?.id ?? t.model}
+                  conEsfuerzo
+                  currentEffort={modeloElegido?.esfuerzo ?? t.effort}
+                  onSelect={(m, esfuerzo) => {
+                    setSelectorAbierto(false);
+                    if (m) setModeloElegido({ id: m.id, esfuerzo: esfuerzo ?? null });
+                  }}
+                  onClose={() => setSelectorAbierto(false)}
+                  cargando={models.isPending}
+                  error={models.isError ? errorText(models.error) : null}
+                  onReintentar={() => void models.refetch()}
+                />
+              </div>
+            )}
+
+            {t.error && t.status !== "sin_cuota" && (
               <div className="tarea-bloque">
                 <span className="tarea-etiqueta">Error</span>
                 <p className="error tarea-texto" role="alert">
@@ -1000,7 +1045,7 @@ function DetalleTarea({ id }: { id: string }) {
                   {reintentar.isPending ? "Creando…" : "Reintentar"}
                 </button>
               )}
-              {((activa && t.status !== "waiting_approval") || t.status === "interrupted") && (
+              {((activa && t.status !== "waiting_approval") || t.status === "interrupted" || t.status === "sin_cuota") && (
                 <button
                   type="button"
                   className="ghost task-cancel-btn"

@@ -1,10 +1,10 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../config";
 import { db } from "../db";
 import { AislamientoError } from "../runners/aislamiento";
-import { ejecutarAgente, type ResultadoAgente } from "../ejecutar";
+import { ejecutarAgente, ErrorCuota, promptContinuacion, type ResultadoAgente } from "../ejecutar";
 import { getPreferences } from "../preferences";
 import { projectRepoPath } from "./projects";
 import { mensajeSeguro } from "../workspace";
@@ -29,6 +29,8 @@ type ConversationRow = {
   runner_session_id: string | null;
   project_id: string | null;
   repo_path: string | null;
+  // Modelo que se quedó sin cuota en el último turno; null si el chat puede seguir.
+  cuota_modelo: string | null;
 };
 type Conversation = {
   id: string;
@@ -38,6 +40,7 @@ type Conversation = {
   project_id: string | null;
   project_name: string | null;
   pinned_at: string | null;
+  cuota_modelo: string | null;
   created_at: string;
 };
 type Message = {
@@ -54,7 +57,7 @@ export const chat = new Hono();
 chat.get("/conversations", (c) => {
   const rows = db
     .query<Conversation, []>(
-      "SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name, c.pinned_at, c.created_at FROM conversations c LEFT JOIN projects p ON p.id = c.project_id ORDER BY (c.pinned_at IS NULL), c.pinned_at DESC, c.created_at DESC, c.rowid DESC",
+      "SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name, c.pinned_at, c.cuota_modelo, c.created_at FROM conversations c LEFT JOIN projects p ON p.id = c.project_id ORDER BY (c.pinned_at IS NULL), c.pinned_at DESC, c.created_at DESC, c.rowid DESC",
     )
     .all();
   return c.json(rows.map((r) => ({ ...r, ocupada: conversacionEnCurso(r.id) })));
@@ -101,47 +104,61 @@ chat.get("/conversations/:id/messages", (c) => {
   return c.json(messages);
 });
 
-chat.post("/conversations/:id/messages", async (c) => {
-  const conversationId = c.req.param("id");
-  const conv = db
-    .query<ConversationRow, [string]>(
-      "SELECT c.id, c.model, c.effort, c.runner_session_id, c.project_id, p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id = c.project_id WHERE c.id = ?",
-    )
-    .get(conversationId);
-  if (!conv) return c.json({ error: "conversation_not_found" }, 404);
+// Instrucción de "Seguir": el mensaje visible del usuario y lo que se le pide al agente.
+const SEGUIR_VISIBLE = "Seguir donde se quedó";
+const SEGUIR_INSTRUCCION = "Termina la respuesta que quedó a medias. Responde solo con lo que falta.";
 
-  const body = await c.req.json<{ content?: string }>().catch(() => ({}) as { content?: string });
-  const content = body.content?.trim() ?? "";
-  if (!content || content.length > MAX_CONTENIDO) {
-    return c.json({ error: "invalid_content" }, 400);
-  }
-  if (conversacionEnCurso(conversationId)) return c.json({ error: "conversation_busy" }, 409);
-  // El servidor está leyendo Git de este proyecto: el chat espera, porque trabaja en la misma carpeta.
-  if (conv.project_id && proyectoRevisandose(conv.project_id)) return c.json({ error: "proyecto_ocupado" }, 409);
+function leerConversacion(id: string): ConversationRow | null {
+  return (
+    db
+      .query<ConversationRow, [string]>(
+        "SELECT c.id, c.model, c.effort, c.runner_session_id, c.project_id, c.cuota_modelo, p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id = c.project_id WHERE c.id = ?",
+      )
+      .get(id) ?? null
+  );
+}
 
-  const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
+// Un mensaje en curso o un proyecto que se está revisando impiden responder: el chat espera.
+function motivoDeBloqueo(conv: ConversationRow): "conversation_busy" | "proyecto_ocupado" | null {
+  if (conversacionEnCurso(conv.id)) return "conversation_busy";
+  if (conv.project_id && proyectoRevisandose(conv.project_id)) return "proyecto_ocupado";
+  return null;
+}
 
-  // El mensaje del usuario se guarda antes de ejecutar: así aparece en los demás dispositivos
-  // y no se pierde si el agente falla.
-  const userMsg = { id: crypto.randomUUID(), role: "user" as const, content };
+// El mensaje del usuario se guarda antes de ejecutar: así aparece en los demás dispositivos
+// y no se pierde si el agente falla.
+function guardarMensajeUsuario(conversationId: string, content: string): { id: string; role: "user"; content: string } {
+  const msg = { id: crypto.randomUUID(), role: "user" as const, content };
   db.transaction(() => {
     db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)").run(
-      userMsg.id,
+      msg.id,
       conversationId,
-      userMsg.role,
-      userMsg.content,
+      msg.role,
+      msg.content,
     );
     db.query("UPDATE conversations SET title = ? WHERE id = ? AND title = 'Nuevo chat'").run(
       content.slice(0, 60),
       conversationId,
     );
   })();
+  return msg;
+}
 
+// Corre el agente para un turno del chat y guarda su respuesta. Si el modelo se quedó sin cuota, el chat
+// queda marcado con ese modelo (aviso y botón Seguir); el mensaje del usuario ya está guardado.
+async function ejecutarTurno(
+  c: Context,
+  conv: ConversationRow,
+  turno: { id: string; role: "user"; content: string },
+  prompt: string,
+  model: string,
+) {
+  const conversationId = conv.id;
   let result: ResultadoAgente;
   ocuparConversacion(conversationId);
   try {
     result = await ejecutarAgente({
-      prompt: content,
+      prompt,
       model,
       variant: conv.effort,
       sessionId: conv.runner_session_id,
@@ -152,15 +169,19 @@ chat.post("/conversations/:id/messages", async (c) => {
       // Cada paso del agente (texto intermedio o acción) se guarda y se publica mientras corre.
       onLinea: (linea) => {
         const item = itemDeLinea(linea);
-        if (item) registrarActividad(conversationId, userMsg.id, item);
+        if (item) registrarActividad(conversationId, turno.id, item);
       },
     });
   } catch (err) {
     if (err instanceof AislamientoError) {
       return c.json({ error: err.code, message: err.message }, 503);
     }
-    if (String(err).includes("Insufficient account funds")) {
-      return c.json({ error: "insufficient_funds", message: "La cuenta de OpenCode Zen no tiene saldo para este modelo. Usa un modelo gratis o agrega saldo." }, 402);
+    if (err instanceof ErrorCuota) {
+      // La sesión que sí llegó a abrirse se guarda, para seguirla con otro modelo.
+      db.query(
+        "UPDATE conversations SET cuota_modelo = ?, runner_session_id = COALESCE(?, runner_session_id) WHERE id = ?",
+      ).run(err.modelo, err.sessionId, conversationId);
+      return c.json({ error: "cuota_agotada", modelo: err.modelo, message: err.message }, 402);
     }
     // Sin rutas del servidor ni fragmentos de secretos.
     return c.json({ error: "runner_failed", detail: mensajeSeguro(err) }, 502);
@@ -179,6 +200,9 @@ chat.post("/conversations/:id/messages", async (c) => {
     db.query(
       "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)",
     ).run(assistantMsg.id, conversationId, assistantMsg.role, assistantMsg.content);
+
+    // Una respuesta correcta levanta el aviso de cuota, si lo había.
+    db.query("UPDATE conversations SET cuota_modelo = NULL WHERE id = ?").run(conversationId);
 
     if (result.sessionId) {
       db.query("UPDATE conversations SET runner_session_id = ?, model = ? WHERE id = ?").run(
@@ -209,5 +233,51 @@ chat.post("/conversations/:id/messages", async (c) => {
     }
   })();
 
-  return c.json({ messages: [userMsg, assistantMsg] }, 201);
+  return c.json({ messages: [turno, assistantMsg] }, 201);
+}
+
+chat.post("/conversations/:id/messages", async (c) => {
+  const conversationId = c.req.param("id");
+  const conv = leerConversacion(conversationId);
+  if (!conv) return c.json({ error: "conversation_not_found" }, 404);
+
+  const body = await c.req.json<{ content?: string }>().catch(() => ({}) as { content?: string });
+  const content = body.content?.trim() ?? "";
+  if (!content || content.length > MAX_CONTENIDO) {
+    return c.json({ error: "invalid_content" }, 400);
+  }
+  const bloqueo = motivoDeBloqueo(conv);
+  if (bloqueo) return c.json({ error: bloqueo }, 409);
+
+  const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
+  const turno = guardarMensajeUsuario(conversationId, content);
+  return ejecutarTurno(c, conv, turno, content, model);
+});
+
+// POST /api/conversations/:id/seguir
+// Tras una cuota agotada: el chat retoma su sesión con el modelo elegido, desde donde se quedó.
+// Si el modelo falló antes de abrir sesión, no hay nada que retomar: se vuelve a enviar el mensaje sin respuesta.
+chat.post("/conversations/:id/seguir", async (c) => {
+  const conversationId = c.req.param("id");
+  const conv = leerConversacion(conversationId);
+  if (!conv) return c.json({ error: "conversation_not_found" }, 404);
+  if (!conv.cuota_modelo) return c.json({ error: "chat_sin_cuota" }, 409);
+
+  const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
+  if (model === conv.cuota_modelo) return c.json({ error: "modelo_sin_cambio" }, 409);
+  const bloqueo = motivoDeBloqueo(conv);
+  if (bloqueo) return c.json({ error: bloqueo }, 409);
+
+  const ultimoMensaje = conv.runner_session_id === null
+    ? db
+        .query<{ content: string }, [string]>(
+          "SELECT content FROM messages WHERE conversation_id = ? AND role = 'user' ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        )
+        .get(conversationId)?.content
+    : undefined;
+  const turno = guardarMensajeUsuario(conversationId, SEGUIR_VISIBLE);
+  const prompt = conv.runner_session_id !== null
+    ? promptContinuacion(SEGUIR_INSTRUCCION)
+    : (ultimoMensaje ?? SEGUIR_INSTRUCCION);
+  return ejecutarTurno(c, conv, turno, prompt, model);
 });

@@ -8,7 +8,7 @@ type StatusRow = { status: string; n: number };
 type UsoModeloRow = { model: string; cost: number; tokens: number; calls: number };
 type TareaModeloRow = { model: string; tareas: number; duracion: number | null };
 
-const TASK_STATUSES = ["queued", "analyzing", "waiting_approval", "running", "interrupted", "done", "failed", "cancelled"] as const;
+const TASK_STATUSES = ["queued", "analyzing", "waiting_approval", "running", "interrupted", "sin_cuota", "done", "failed", "cancelled"] as const;
 
 // Fecha UTC en formato AAAA-MM-DD, igual que date() de SQLite.
 const isoDay = (msAgo: number) => new Date(Date.now() - msAgo).toISOString().slice(0, 10);

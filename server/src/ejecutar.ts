@@ -5,7 +5,7 @@ import { getPreferences } from "./preferences";
 import { entornoDeProyecto } from "./secretos";
 import { redactar } from "./redaccion";
 import { AislamientoError } from "./runners/aislamiento";
-import { runOpenCode, type RunResult } from "./runners/opencode";
+import { ErrorAgente, runOpenCode, type RunResult } from "./runners/opencode";
 import { conMemoria, extraerMemoria, guardarMemoria, memoriaDelProyecto, quitarBloqueMemoria } from "./memoria";
 
 // Longitud mínima de un valor de secreto para ocultarlo en la salida. Más corto, aparecería en texto normal.
@@ -40,6 +40,28 @@ export type ResultadoAgente = RunResult & { modelo: string };
 const PATRON_PROVEEDOR = /\b(429|5\d\d)\b|rate limit|too many requests|overloaded|quota/i;
 // Saldo insuficiente: otro modelo no lo arregla, así que nunca se reintenta.
 const PATRON_SALDO = /insufficient|saldo|funds|balance/i;
+// Cuota agotada: el modelo ya no da más tokens (límite de uso, saldo o 429). Se distingue de un fallo
+// genérico para que la tarea o el chat se detengan y el usuario elija otro modelo antes de seguir.
+const PATRON_CUOTA = /\b429\b|rate.?limit|too many requests|quota|cuota|insufficient|saldo|funds|balance|usage limit|free usage|exhaust|agotad/i;
+
+// Se lanza cuando el modelo se quedó sin cuota. `modelo` es el último que se intentó; `sessionId`, la
+// sesión del agente (si llegó a abrirse), para continuarla después con otro modelo.
+export class ErrorCuota extends Error {
+  constructor(
+    readonly modelo: string,
+    readonly sessionId: string | null,
+  ) {
+    super(`Se acabó la cuota del modelo ${modelo}.`);
+  }
+}
+
+// Solo cuenta lo que dijo el proveedor (ErrorAgente.detalleProveedor), no el mensaje completo.
+export function esErrorDeCuota(err: unknown): boolean {
+  if (err instanceof ErrorCuota) return true;
+  if (err instanceof ErrorAgente) return PATRON_CUOTA.test(err.detalleProveedor);
+  if (err instanceof AislamientoError) return false;
+  return PATRON_CUOTA.test(mensajeDe(err));
+}
 
 function mensajeDe(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -103,6 +125,19 @@ export const ESTILO_CHAT = [
 
 export function conEstilo(prompt: string, estilo?: "chat"): string {
   return estilo === "chat" ? `${ESTILO_CHAT}\n---\n${prompt}` : prompt;
+}
+
+// Primer prompt tras una cuota agotada: retoma la sesión del agente en vez de empezar de nuevo.
+// Pide no repetir lo hecho y responder con el mismo formato que el prompt original.
+export function promptContinuacion(prompt: string): string {
+  return [
+    "Continúa donde te quedaste. La ejecución anterior se detuvo porque se agotó la cuota del modelo que la llevaba.",
+    "Ya tienes el contexto de lo que hiciste: no repitas pasos completados ni empieces de cero.",
+    "Si una acción no llegó a terminar, revísala antes de repetirla. Después termina lo que falta.",
+    "Responde con el mismo formato que pide la instrucción de abajo.",
+    "---",
+    prompt,
+  ].join("\n");
 }
 
 // Un modelo de respaldo puede no tener el esfuerzo pedido; en ese caso se ejecuta sin él.
@@ -173,12 +208,16 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
     });
     return terminar(r, opts.model);
   } catch (err) {
-    // Si el tiempo se agotó, no se reintenta: el intento ya consumió el presupuesto.
+    // Si el tiempo se agotó o se canceló, no se reintenta ni se trata como cuota.
     const agotado = opts.timeoutMs !== undefined && Date.now() - inicio >= opts.timeoutMs;
-    if (agotado || !esErrorDeProveedor(err, opts.signal)) throw limpiarError(err);
+    if (agotado || opts.signal?.aborted) throw limpiarError(err);
+    // Un modelo sin cuota se marca como tal (ver ErrorCuota); cualquier otro error sigue como antes.
+    const comoCuota = (e: unknown, modelo: string): unknown =>
+      esErrorDeCuota(e) ? new ErrorCuota(modelo, sesion) : limpiarError(e);
+    if (!esErrorDeProveedor(err, opts.signal)) throw comoCuota(err, opts.model);
 
     const respaldo = getPreferences().fallbackModel;
-    if (!respaldo || respaldo === opts.model) throw limpiarError(err);
+    if (!respaldo || respaldo === opts.model) throw comoCuota(err, opts.model);
 
     if (opts.taskId) {
       registrarEvento(opts.taskId, "modelo_respaldo", `${etiquetaDelError(err)} en ${opts.model}; usando ${respaldo}`);
@@ -192,7 +231,7 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
       });
       return terminar(r, respaldo);
     } catch (errRespaldo) {
-      throw limpiarError(errRespaldo);
+      throw comoCuota(errRespaldo, respaldo);
     }
   }
 }
