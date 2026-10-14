@@ -54,9 +54,9 @@ Ordenado por prioridad. Marca `[x]` solo cuando esté verificado.
 
 ## PR y ramas
 
-- [ ] Fusionar PR #30 (`feat/tsconfig-servidor`: tsconfig del servidor y `bun run typecheck`).
-- [ ] Poner el número de PR en `web/src/cambios.json` para las entradas sin número, después de fusionar #30 para no generar conflicto. «Clonado» y «Proceso del agente» probablemente son #26 (`feat/clonado-progreso-agente`). «Aviso de nueva versión» es #27. «Respuestas del chat» no tiene PR identificado.
-- [ ] Decidir si se borran las 21 ramas remotas ya fusionadas, y qué hacer con `docs/proyectos-verificado` (un commit sin fusionar).
+- [x] PR #30 fusionado (tsconfig del servidor y `bun run typecheck`, merge `fceffc2`).
+- [x] Números de PR en `web/src/cambios.json` completados. Trazados en el historial de `main`: «Clonado», «Proceso del agente» y «Respuestas del chat» son #26; «Aviso de nueva versión» es #27.
+- [ ] Decidir si se borran las ramas remotas ya fusionadas (casi todas), y qué hacer con `docs/proyectos-verificado` (un commit sin fusionar).
 
 ## Limpieza
 
