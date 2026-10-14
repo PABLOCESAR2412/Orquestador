@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono";
 import { db } from "../db";
 import { listarEventos, publicarEstado, registrarEvento } from "../eventos";
 import { validateSelection } from "../models";
-import { cancelTask, notifyWorker } from "../worker";
+import { aprobarPlan, cancelTask, MAX_NOTAS, notifyWorker, rechazarPlan } from "../worker";
 import { getPreferences } from "../preferences";
 import { projectRepoPath } from "./projects";
 import { crearTarea } from "../tareas";
@@ -14,6 +14,7 @@ import {
   leerSalida,
   mensajeSeguro,
 } from "../workspace";
+import type { Plan, Reporte } from "../plan";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
 const MAX_PROMPT = 10_000;
@@ -32,6 +33,9 @@ type TaskRow = {
   reanudable: number;
   rama: string | null;
   base_commit: string | null;
+  plan: string | null;
+  reporte: string | null;
+  plan_aprobado_en: string | null;
   project_name: string | null;
   created_at: string;
   started_at: string | null;
@@ -40,8 +44,9 @@ type TaskRow = {
 
 // reanudable: la tarea tiene la sesión del agente, así que puede continuar donde quedó.
 // rama y base_commit: solo tareas de un proyecto con Git.
+// plan, reporte y plan_aprobado_en: el plan del analizador, el reporte del obrero y cuándo se aprobó el plan.
 const COLUMNS =
-  "t.id, t.title, t.prompt, t.model, t.effort, t.status, t.result, t.error, t.project_id, t.retry_of, (t.provider_session_id IS NOT NULL) AS reanudable, t.rama, t.base_commit, p.name AS project_name, t.created_at, t.started_at, t.finished_at";
+  "t.id, t.title, t.prompt, t.model, t.effort, t.status, t.result, t.error, t.project_id, t.retry_of, (t.provider_session_id IS NOT NULL) AS reanudable, t.rama, t.base_commit, t.plan, t.reporte, t.plan_aprobado_en, p.name AS project_name, t.created_at, t.started_at, t.finished_at";
 const DESDE = "FROM tasks t LEFT JOIN projects p ON p.id = t.project_id";
 
 const ESTADOS_REANUDABLES = ["interrupted", "failed"];
@@ -49,9 +54,24 @@ const ESTADOS_REINTENTABLES = ["interrupted", "failed", "cancelled", "done"];
 
 export const tasks = new Hono();
 
-// SQLite devuelve los booleanos como 0 o 1.
+// SQLite devuelve los booleanos como 0 o 1. Plan y reporte se guardan como texto JSON.
 function aTarea(row: TaskRow) {
-  return { ...row, reanudable: row.reanudable === 1 };
+  return {
+    ...row,
+    reanudable: row.reanudable === 1,
+    plan: leerJson<Plan>(row.plan),
+    reporte: leerJson<Reporte>(row.reporte),
+  };
+}
+
+// Un JSON guardado que no se puede leer se muestra como ausente, sin tirar la tarea entera.
+function leerJson<T>(texto: string | null): T | null {
+  if (!texto) return null;
+  try {
+    return JSON.parse(texto) as T;
+  } catch {
+    return null;
+  }
 }
 
 function leerTarea(id: string) {
@@ -134,6 +154,37 @@ tasks.post("/tasks/:id/aprobar", async (c) => {
   } catch (err) {
     return respuestaDeError(c, err);
   }
+});
+
+// POST /api/tasks/:id/aprobar-plan  body: { notas? }
+// Aprueba el plan que espera al usuario. El obrero lo ejecuta en la misma sesión y carpeta.
+tasks.post("/tasks/:id/aprobar-plan", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json<{ notas?: unknown }>().catch(() => ({}) as { notas?: unknown });
+  if (body.notas !== undefined && body.notas !== null && typeof body.notas !== "string") {
+    return c.json({ error: "invalid_notas" }, 400);
+  }
+  if (typeof body.notas === "string" && body.notas.length > MAX_NOTAS) return c.json({ error: "invalid_notas" }, 400);
+
+  const notas = typeof body.notas === "string" && body.notas.trim() ? body.notas.trim() : null;
+  const resultado = aprobarPlan(id, notas);
+  if (resultado === "not_found") return c.json({ error: "task_not_found" }, 404);
+  if (resultado === "not_waiting") return c.json({ error: "task_not_waiting_plan" }, 409);
+  return c.json(leerTarea(id));
+});
+
+// POST /api/tasks/:id/rechazar-plan  body: { motivo? }
+// El plan no se ejecuta y la tarea termina cancelada. Para intentarlo de nuevo, se reintenta.
+tasks.post("/tasks/:id/rechazar-plan", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json<{ motivo?: unknown }>().catch(() => ({}) as { motivo?: unknown });
+  if (typeof body.motivo === "string" && body.motivo.length > MAX_NOTAS) return c.json({ error: "invalid_notas" }, 400);
+
+  const motivo = typeof body.motivo === "string" && body.motivo.trim() ? body.motivo.trim() : null;
+  const resultado = rechazarPlan(id, motivo);
+  if (resultado === "not_found") return c.json({ error: "task_not_found" }, 404);
+  if (resultado === "not_waiting") return c.json({ error: "task_not_waiting_plan" }, 409);
+  return c.json(leerTarea(id));
 });
 
 // POST /api/tasks  body: { prompt, model?, effort?, projectId? }

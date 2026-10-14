@@ -12,6 +12,7 @@ const AVISOS: Partial<Record<TaskStatus, { titulo: string; cuerpo: string }>> = 
   done: { titulo: "Tarea terminada", cuerpo: "Lista para revisar los cambios." },
   failed: { titulo: "Tarea fallida", cuerpo: "Revisa el error antes de reintentar." },
   interrupted: { titulo: "Necesita tu decisión", cuerpo: "Se interrumpió. Reanúdala o cancélala." },
+  waiting_approval: { titulo: "Plan listo para aprobar", cuerpo: "Revisa el plan y decide si el obrero lo ejecuta." },
 };
 
 export function notificacionesActivas(): boolean {

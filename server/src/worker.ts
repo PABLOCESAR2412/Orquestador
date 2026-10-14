@@ -4,7 +4,21 @@ import { config } from "./config";
 import { db } from "./db";
 import { publicar } from "./bus";
 import { publicarEstado, registrarEvento } from "./eventos";
-import { ejecutarAgente } from "./ejecutar";
+import { ejecutarAgente, type ResultadoAgente } from "./ejecutar";
+import { redactar } from "./redaccion";
+import {
+  extraerJson,
+  MAX_PLANES,
+  promptAnalizador,
+  promptObrero,
+  promptReparacion,
+  requiereAprobacion,
+  validarPlan,
+  validarReporte,
+  type Plan,
+  type Reporte,
+  type Validacion,
+} from "./plan";
 import type { Usage } from "./runners/opencode";
 import {
   abrirRegistroSalida,
@@ -19,15 +33,25 @@ import {
 // Un solo worker: ejecuta una tarea a la vez, en orden de llegada.
 // Corre dentro del mismo proceso que la API, así que sigue activo aunque
 // el teléfono o el navegador estén apagados.
+//
+// Una tarea pasa por dos fases: el analizador produce un plan y el obrero ejecuta el plan aprobado.
+// Entre ambas, si el plan necesita aprobación, la tarea espera en `waiting_approval` sin ocupar el worker.
 
+// Tiempo máximo de cada llamada al agente (el analizador y el obrero tienen la suya).
 const TASK_TIMEOUT_MS = 30 * 60_000;
 const MENSAJE_INTERRUMPIDA = "El servidor se reinició mientras la tarea corría. Puedes reanudarla o reintentarla.";
 // Tamaño máximo de cada línea de salida que viaja por el canal en vivo.
 const MAX_LINEA_EN_VIVO = 4096;
+export const MAX_NOTAS = 2000;
 
 const controllers = new Map<string, AbortController>();
 const cancelRequested = new Set<string>();
 let wake: (() => void) | null = null;
+
+// Error del analizador u obrero con texto pensado para el usuario.
+class ErrorFase extends Error {}
+// Una llamada al agente superó su tiempo.
+class TiempoAgotado extends Error {}
 
 type QueuedTask = {
   id: string;
@@ -37,6 +61,16 @@ type QueuedTask = {
   repo_path: string | null;
   project_id: string | null;
   provider_session_id: string | null;
+  // 1 si el plan ya fue aprobado: la tarea va directo al obrero.
+  aprobado: number;
+};
+
+// Lo que cada fase necesita de la ejecución en curso.
+type Contexto = {
+  task: QueuedTask;
+  cwd: string;
+  controller: AbortController;
+  salida: RegistroSalida;
 };
 
 // Despierta al worker cuando entra una tarea nueva.
@@ -47,7 +81,7 @@ export function notifyWorker() {
 function nextQueued(): QueuedTask | null {
   return db
     .query<QueuedTask, []>(
-      "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, t.project_id, p.repo_path AS repo_path FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC LIMIT 1",
+      "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC LIMIT 1",
     )
     .get();
 }
@@ -59,12 +93,18 @@ function estadoActual(id: string): string | null {
 function finish(
   id: string,
   status: "done" | "failed" | "cancelled",
-  fields: { result?: string; error?: string },
+  fields: { result?: string; error?: string; reporte?: Reporte },
 ) {
   db.transaction(() => {
     db.query(
-      "UPDATE tasks SET status = ?, result = ?, error = ?, finished_at = datetime('now') WHERE id = ?",
-    ).run(status, fields.result ?? null, fields.error ?? null, id);
+      "UPDATE tasks SET status = ?, result = ?, error = ?, reporte = COALESCE(?, reporte), finished_at = datetime('now') WHERE id = ?",
+    ).run(
+      status,
+      fields.result ?? null,
+      fields.error ?? null,
+      fields.reporte ? JSON.stringify(fields.reporte) : null,
+      id,
+    );
     registrarEvento(id, "terminada", fields.error ? `${status}: ${fields.error}` : status);
   })();
   publicarEstado(id);
@@ -97,6 +137,157 @@ function recortarLinea(linea: string): string {
   return bytes.length <= MAX_LINEA_EN_VIVO ? linea : new TextDecoder().decode(bytes.subarray(0, MAX_LINEA_EN_VIVO));
 }
 
+function contarPlanes(id: string): number {
+  return (
+    db
+      .query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM task_events WHERE task_id = ? AND kind = 'plan_creado'")
+      .get(id)?.n ?? 0
+  );
+}
+
+function planGuardado(id: string): Plan | null {
+  const fila = db.query<{ plan: string | null }, [string]>("SELECT plan FROM tasks WHERE id = ?").get(id);
+  if (!fila?.plan) return null;
+  try {
+    return JSON.parse(fila.plan) as Plan;
+  } catch {
+    return null;
+  }
+}
+
+// Busca un plan válido primero en la parte final de la respuesta y después en todo el texto.
+function leerPlan(respuesta: { text: string; textoFinal: string }): Validacion<Plan> {
+  let motivo = "no se encontró un objeto JSON en la respuesta";
+  for (const fuente of [respuesta.textoFinal, respuesta.text]) {
+    const json = extraerJson(fuente);
+    if (json === undefined) continue;
+    const validacion = validarPlan(json);
+    if (validacion.ok) return validacion;
+    motivo = validacion.motivo;
+  }
+  return { ok: false, motivo };
+}
+
+// Una llamada al agente dentro de la tarea: usa su sesión, tiene su propio tiempo y registra su uso.
+async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise<ResultadoAgente> {
+  const { task, controller, salida } = ctx;
+  // Una cancelación entre dos llamadas evita lanzar la siguiente: el runner no la vería abortada.
+  if (controller.signal.aborted) throw new Error("Tarea cancelada.");
+
+  let agotado = false;
+  const temporizador = setTimeout(() => {
+    agotado = true;
+    controller.abort();
+  }, TASK_TIMEOUT_MS);
+  try {
+    const result = await ejecutarAgente({
+      prompt,
+      model: task.model,
+      variant: task.effort,
+      sessionId: task.provider_session_id,
+      cwd: ctx.cwd,
+      timeoutMs: TASK_TIMEOUT_MS,
+      signal: controller.signal,
+      taskId: task.id,
+      projectId: task.project_id,
+      // Solo el obrero aprende del proyecto: al terminar, guarda su memoria.
+      aprender,
+      // Guarda la sesión apenas aparece, para poder reanudar si el servidor se reinicia a mitad.
+      onSesion: (sid) => {
+        if (sid === task.provider_session_id) return;
+        task.provider_session_id = sid;
+        db.query("UPDATE tasks SET provider_session_id = ? WHERE id = ?").run(sid, task.id);
+        registrarEvento(task.id, "sesion_asignada", sid);
+      },
+      onLinea: (linea) => {
+        if (!linea.trim()) return;
+        salida.linea(linea);
+        publicar({ tipo: "salida", task_id: task.id, linea: recortarLinea(linea) });
+      },
+    });
+    // El uso se registra antes de seguir: si el servidor cae después, el gasto ya quedó anotado.
+    // Un fallo al anotarlo no debe marcar como fallida una tarea que sí avanzó.
+    if (result.usage) {
+      try {
+        recordUsage(result.modelo, result.usage, task.project_id, task.id);
+      } catch (err) {
+        console.error("Registro de uso de la tarea:", mensajeSeguro(err));
+      }
+    }
+    return result;
+  } catch (err) {
+    if (agotado) throw new TiempoAgotado("El agente superó los 30 minutos sin terminar.");
+    throw err;
+  } finally {
+    clearTimeout(temporizador);
+  }
+}
+
+// Analizador: escribe el plan. Devuelve "espera" si el usuario debe aprobarlo antes del obrero,
+// o "aprobado" si el plan no necesita aprobación. Tras una desviación siempre espera.
+async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Promise<"espera" | "aprobado"> {
+  const { task } = ctx;
+  const contexto = replanificacion
+    ? { planAnterior: planGuardado(task.id), motivo: replanificacion.motivo }
+    : undefined;
+
+  let respuesta = await llamar(ctx, promptAnalizador(task.prompt, contexto), false);
+  let validacion = leerPlan(respuesta);
+  if (!validacion.ok) {
+    // Una reparación en la misma sesión: el analizador ya tiene el contexto de su respuesta.
+    respuesta = await llamar(ctx, promptReparacion(validacion.motivo), false);
+    validacion = leerPlan(respuesta);
+    if (!validacion.ok) throw new ErrorFase(`El analizador no produjo un plan válido: ${validacion.motivo}.`);
+  }
+
+  const plan = validacion.valor;
+  const numero = contarPlanes(task.id) + 1;
+  db.transaction(() => {
+    db.query("UPDATE tasks SET plan = ? WHERE id = ?").run(JSON.stringify(plan), task.id);
+    registrarEvento(task.id, "plan_creado", `Versión ${numero}: ${plan.objetivo}`);
+  })();
+
+  if (!replanificacion && !requiereAprobacion(plan)) {
+    db.query("UPDATE tasks SET plan_aprobado_en = datetime('now') WHERE id = ?").run(task.id);
+    registrarEvento(task.id, "plan_aprobado", "Automático: el plan no necesita aprobación");
+    return "aprobado";
+  }
+
+  db.query("UPDATE tasks SET status = 'waiting_approval' WHERE id = ?").run(task.id);
+  registrarEvento(task.id, "plan_pendiente", "Esperando tu aprobación");
+  publicarEstado(task.id);
+  return "espera";
+}
+
+// Obrero: ejecuta solo el plan aprobado, en la misma sesión y carpeta que el analizador.
+// Si necesita salirse del plan, devuelve el motivo en vez de un reporte.
+async function faseObrero(
+  ctx: Contexto,
+): Promise<{ desviacion: string } | { reporte: Reporte; texto: string }> {
+  const { task } = ctx;
+  const plan = planGuardado(task.id);
+  if (!plan) throw new ErrorFase("No hay un plan que ejecutar.");
+
+  db.query("UPDATE tasks SET status = 'running' WHERE id = ?").run(task.id);
+  publicarEstado(task.id);
+  registrarEvento(task.id, "obrero_iniciado", `Modelo ${task.model} · ejecuta el plan aprobado`);
+
+  const respuesta = await llamar(ctx, promptObrero(plan), true);
+  const reporte = validarReporte(extraerJson(respuesta.textoFinal) ?? extraerJson(respuesta.text), respuesta.textoFinal);
+  if (reporte.desviacion) return { desviacion: reporte.desviacion };
+  return { reporte, texto: respuesta.text };
+}
+
+// El obrero se salió del plan: la tarea vuelve al analizador con su motivo. Sin el plan aprobado
+// vigente, nada se ejecuta hasta que el usuario lo apruebe de nuevo.
+function pedirReplanificacion(id: string, motivo: string) {
+  db.transaction(() => {
+    db.query("UPDATE tasks SET status = 'analyzing', plan_aprobado_en = NULL WHERE id = ?").run(id);
+    registrarEvento(id, "replanificada", motivo);
+  })();
+  publicarEstado(id);
+}
+
 async function runTask(task: QueuedTask) {
   // Con proyecto de Git, la tarea trabaja en su clon; con proyecto sin Git, en la carpeta del proyecto;
   // sin proyecto, en su carpeta temporal.
@@ -119,25 +310,17 @@ async function runTask(task: QueuedTask) {
     return;
   }
 
+  const aprobado = task.aprobado === 1;
   // La condición evita pisar una cancelación que llegó durante la preparación.
   const marcada = db
-    .query("UPDATE tasks SET status = 'running', started_at = datetime('now'), finished_at = NULL, workspace = ? WHERE id = ? AND status = 'queued'")
-    .run(cwd, task.id);
+    .query("UPDATE tasks SET status = ?, started_at = datetime('now'), finished_at = NULL, workspace = ? WHERE id = ? AND status = 'queued'")
+    .run(aprobado ? "running" : "analyzing", cwd, task.id);
   if (marcada.changes === 0) return;
   publicarEstado(task.id);
-  registrarEvento(
-    task.id,
-    "iniciada",
-    `Modelo ${task.model}${task.provider_session_id ? " · continúa la sesión anterior" : ""}`,
-  );
+  if (!aprobado) registrarEvento(task.id, "iniciada", `Analizador · modelo ${task.model}`);
 
   const controller = new AbortController();
   controllers.set(task.id, controller);
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, TASK_TIMEOUT_MS);
 
   let salida: RegistroSalida;
   try {
@@ -146,54 +329,40 @@ async function runTask(task: QueuedTask) {
     // Sin registro en disco la tarea sigue; solo se pierde el historial de salida.
     salida = { linea() {}, cerrar() {} };
   }
+  const ctx: Contexto = { task, cwd, controller, salida };
 
   try {
-    const result = await ejecutarAgente({
-      prompt: task.prompt,
-      model: task.model,
-      variant: task.effort,
-      sessionId: task.provider_session_id,
-      cwd,
-      timeoutMs: TASK_TIMEOUT_MS,
-      signal: controller.signal,
-      taskId: task.id,
-      projectId: task.project_id,
-      // Las tareas de un proyecto aprenden de él: al terminar, guardan su memoria.
-      aprender: Boolean(task.project_id),
-      // Guarda la sesión apenas aparece, para poder reanudar si el servidor se reinicia a mitad.
-      onSesion: (sid) => {
-        if (sid === task.provider_session_id) return;
-        task.provider_session_id = sid;
-        db.query("UPDATE tasks SET provider_session_id = ? WHERE id = ?").run(sid, task.id);
-        registrarEvento(task.id, "sesion_asignada", sid);
-      },
-      onLinea: (linea) => {
-        if (!linea.trim()) return;
-        salida.linea(linea);
-        publicar({ tipo: "salida", task_id: task.id, linea: recortarLinea(linea) });
-      },
-    });
-    // El uso se registra antes de cerrar la tarea: si el servidor cae después, el gasto ya quedó anotado.
-    // Un fallo al anotarlo no debe marcar como fallida una tarea que sí terminó.
-    if (result.usage) {
-      try {
-        recordUsage(result.modelo, result.usage, task.project_id, task.id);
-      } catch (err) {
-        console.error("Registro de uso de la tarea:", mensajeSeguro(err));
-      }
+    if (!aprobado) {
+      const decision = await fasePlan(ctx);
+      if (decision === "espera") return;
     }
-    finish(task.id, "done", { result: result.text });
+
+    const resultado = await faseObrero(ctx);
+    if ("desviacion" in resultado) {
+      if (contarPlanes(task.id) >= MAX_PLANES) {
+        throw new ErrorFase(`El obrero se desvió del plan ${MAX_PLANES} veces. Revisa el plan y reintenta la tarea.`);
+      }
+      pedirReplanificacion(task.id, resultado.desviacion);
+      await fasePlan(ctx, { motivo: resultado.desviacion });
+      return;
+    }
+
+    const { reporte, texto } = resultado;
+    if (reporte.estado === "fallo") {
+      finish(task.id, "failed", { result: texto, reporte, error: reporte.resumen });
+    } else {
+      finish(task.id, "done", { result: texto, reporte });
+    }
   } catch (err) {
     if (cancelRequested.has(task.id)) {
       finish(task.id, "cancelled", { error: "Cancelada por el usuario." });
-    } else if (timedOut) {
-      finish(task.id, "failed", { error: "La tarea superó los 30 minutos." });
+    } else if (err instanceof TiempoAgotado || err instanceof ErrorFase) {
+      finish(task.id, "failed", { error: err.message });
     } else {
       finish(task.id, "failed", { error: mensajeSeguro(err) });
     }
   } finally {
     salida.cerrar();
-    clearTimeout(timer);
     controllers.delete(task.id);
     cancelRequested.delete(task.id);
   }
@@ -214,7 +383,7 @@ async function loop() {
       if (task) {
         try {
           db.query(
-            "UPDATE tasks SET status = 'failed', error = ?, finished_at = datetime('now') WHERE id = ? AND status IN ('queued', 'running')",
+            "UPDATE tasks SET status = 'failed', error = ?, finished_at = datetime('now') WHERE id = ? AND status IN ('queued', 'analyzing', 'running')",
           ).run(`Error inesperado del worker: ${mensajeSeguro(err)}`, task.id);
           publicarEstado(task.id);
         } catch {
@@ -235,11 +404,14 @@ async function loop() {
 
 // Llamar una sola vez al arrancar el servidor.
 export function startWorker() {
-  // Una tarea "running" al arrancar quedó sin proceso por un reinicio: se marca
+  // Una tarea "running" o "analyzing" al arrancar quedó sin proceso por un reinicio: se marca
   // como interrumpida, no como fallida, para que el usuario decida qué hacer.
+  // Una tarea en "waiting_approval" no tiene proceso: sigue esperando al usuario.
   db.transaction(() => {
-    const enCurso = db.query<{ id: string }, []>("SELECT id FROM tasks WHERE status = 'running'").all();
-    db.query("UPDATE tasks SET status = 'interrupted', error = ? WHERE status = 'running'").run(
+    const enCurso = db
+      .query<{ id: string }, []>("SELECT id FROM tasks WHERE status IN ('running', 'analyzing')")
+      .all();
+    db.query("UPDATE tasks SET status = 'interrupted', error = ? WHERE status IN ('running', 'analyzing')").run(
       MENSAJE_INTERRUMPIDA,
     );
     for (const t of enCurso) {
@@ -257,16 +429,51 @@ export function cancelTask(id: string): CancelOutcome {
   const row = db.query<{ status: string }, [string]>("SELECT status FROM tasks WHERE id = ?").get(id);
   if (!row) return "not_found";
 
-  // Una tarea interrumpida no tiene proceso: se cierra directamente.
-  if (row.status === "queued" || row.status === "interrupted") {
+  // Sin proceso en marcha (en cola, interrumpida o con el plan esperando al usuario): se cierra directamente.
+  if (row.status === "queued" || row.status === "interrupted" || row.status === "waiting_approval") {
     finish(id, "cancelled", { error: "Cancelada por el usuario." });
     return "cancelled";
   }
-  if (row.status === "running") {
+  if (row.status === "running" || row.status === "analyzing") {
     cancelRequested.add(id);
     registrarEvento(id, "cancelacion_pedida");
     controllers.get(id)?.abort();
     return "cancelling";
   }
   return "not_cancellable";
+}
+
+export type ResultadoPlan = "ok" | "not_found" | "not_waiting";
+
+// El usuario aprueba el plan: la tarea vuelve a la cola y el obrero lo ejecuta.
+// Las notas se guardan en el plan y el obrero las recibe junto a él.
+export function aprobarPlan(id: string, notas: string | null): ResultadoPlan {
+  const fila = db
+    .query<{ status: string; plan: string | null }, [string]>("SELECT status, plan FROM tasks WHERE id = ?")
+    .get(id);
+  if (!fila) return "not_found";
+  if (fila.status !== "waiting_approval" || !fila.plan) return "not_waiting";
+
+  const plan = JSON.parse(fila.plan) as Plan;
+  if (notas) plan.notas = redactar(notas).slice(0, MAX_NOTAS);
+  db.transaction(() => {
+    db.query("UPDATE tasks SET status = 'queued', plan = ?, plan_aprobado_en = datetime('now') WHERE id = ?").run(
+      JSON.stringify(plan),
+      id,
+    );
+    registrarEvento(id, "plan_aprobado", notas ? "Con notas para el obrero" : null);
+  })();
+  publicarEstado(id);
+  notifyWorker();
+  return "ok";
+}
+
+// El usuario no aprueba el plan: la tarea termina como cancelada. Para intentarlo de nuevo, se reintenta.
+export function rechazarPlan(id: string, motivo: string | null): ResultadoPlan {
+  const estado = estadoActual(id);
+  if (estado === null) return "not_found";
+  if (estado !== "waiting_approval") return "not_waiting";
+  registrarEvento(id, "plan_rechazado", motivo);
+  finish(id, "cancelled", { error: "Plan rechazado por el usuario." });
+  return "ok";
 }

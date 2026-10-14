@@ -1,0 +1,147 @@
+import { describe, expect, test } from "bun:test";
+import {
+  extraerJson,
+  MAX_PLANES,
+  promptAnalizador,
+  promptObrero,
+  requiereAprobacion,
+  validarPlan,
+  validarReporte,
+  type Plan,
+} from "../src/plan";
+
+const planValido = {
+  objetivo: "Ordenar las notas",
+  pasos: [{ descripcion: "Listar las notas", archivos: ["notas/"] }, { descripcion: "Moverlas por fecha" }],
+  criterios_de_aceptacion: ["Cada nota está en su carpeta"],
+};
+
+describe("extraerJson", () => {
+  test("lee un objeto JSON directo", () => {
+    expect(extraerJson('{"a": 1}')).toEqual({ a: 1 });
+  });
+
+  test("lee el último bloque ```json cuando hay varios", () => {
+    const texto = 'Primero:\n```json\n{"v": 1}\n```\nLuego:\n```json\n{"v": 2}\n```';
+    expect(extraerJson(texto)).toEqual({ v: 2 });
+  });
+
+  test("lee el objeto aunque haya texto alrededor", () => {
+    expect(extraerJson('Aquí va el plan: {"objetivo": "x"} gracias')).toEqual({ objetivo: "x" });
+  });
+
+  test("devuelve undefined si no hay JSON", () => {
+    expect(extraerJson("sin llaves ni nada")).toBeUndefined();
+    expect(extraerJson("{ roto")).toBeUndefined();
+  });
+});
+
+describe("validarPlan", () => {
+  test("acepta un plan mínimo y completa las listas que faltan", () => {
+    const v = validarPlan(planValido);
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(v.valor.pasos.map((p) => p.id)).toEqual([1, 2]);
+    expect(v.valor.pasos[0].archivos).toEqual(["notas/"]);
+    expect(v.valor.requiere_aprobacion).toEqual([]);
+    expect(v.valor.preguntas).toEqual([]);
+  });
+
+  test("descarta aprobaciones que no son commit, push ni pr", () => {
+    const v = validarPlan({ ...planValido, requiere_aprobacion: ["commit", "borrar_todo", "commit", "push"] });
+    expect(v.ok && v.valor.requiere_aprobacion).toEqual(["commit", "push"]);
+  });
+
+  test("rechaza lo que no es un objeto, el objetivo vacío, los pasos y los criterios", () => {
+    expect(validarPlan([]).ok).toBe(false);
+    expect(validarPlan({ ...planValido, objetivo: "  " }).ok).toBe(false);
+    expect(validarPlan({ ...planValido, pasos: [] }).ok).toBe(false);
+    expect(validarPlan({ ...planValido, pasos: [{ archivos: [] }] }).ok).toBe(false);
+    expect(validarPlan({ ...planValido, criterios_de_aceptacion: [] }).ok).toBe(false);
+  });
+
+  test("rechaza más de 12 pasos con un motivo que el analizador entiende", () => {
+    const pasos = Array.from({ length: 13 }, (_, i) => ({ descripcion: `Paso ${i + 1}` }));
+    const v = validarPlan({ ...planValido, pasos });
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.motivo).toContain("más de 12 pasos");
+  });
+});
+
+describe("requiereAprobacion", () => {
+  const base = { ...(validarPlan(planValido) as { valor: Plan }).valor };
+
+  test("pide aprobación con commit, push, pr o preguntas", () => {
+    expect(requiereAprobacion({ ...base, requiere_aprobacion: ["pr"] })).toBe(true);
+    expect(requiereAprobacion({ ...base, preguntas: ["¿Qué carpeta?"] })).toBe(true);
+  });
+
+  test("no pide aprobación si el plan es solo de lectura y trabajo en el espacio de la tarea", () => {
+    expect(requiereAprobacion(base)).toBe(false);
+  });
+});
+
+describe("validarReporte", () => {
+  test("sin JSON, el texto del agente es el resumen", () => {
+    const r = validarReporte(undefined, "Listo, ordené las notas.");
+    expect(r.estado).toBe("completado");
+    expect(r.resumen).toBe("Listo, ordené las notas.");
+    expect(r.desviacion).toBeNull();
+  });
+
+  test("una desviación con motivo cambia el estado aunque venga como 'completado'", () => {
+    const r = validarReporte({ estado: "completado", resumen: "", desviacion: "Falta permiso" }, "");
+    expect(r.estado).toBe("desviacion");
+    expect(r.desviacion).toBe("Falta permiso");
+  });
+
+  test("estado 'desviacion' sin motivo se marca con un texto por defecto", () => {
+    const r = validarReporte({ estado: "desviacion", desviacion: null }, "");
+    expect(r.estado).toBe("desviacion");
+    expect(r.desviacion).toBe("Sin motivo indicado.");
+  });
+
+  test("un fallo se conserva y las listas inválidas se descartan", () => {
+    const r = validarReporte(
+      {
+        estado: "fallo",
+        resumen: "No se pudo.",
+        cambios: [{ archivo: "a.ts", tipo: "editar" }, { tipo: "crear" }, "x"],
+        pruebas: [{ comando: "bun test", resultado: "fallo" }, {}],
+        pendientes: ["Revisar", 3],
+      },
+      "",
+    );
+    expect(r.estado).toBe("fallo");
+    expect(r.cambios).toEqual([{ archivo: "a.ts", tipo: "editar" }]);
+    expect(r.pruebas).toEqual([{ comando: "bun test", resultado: "fallo" }]);
+    expect(r.pendientes).toEqual(["Revisar"]);
+  });
+});
+
+describe("prompts", () => {
+  test("el obrero recibe el plan y las notas del usuario", () => {
+    const plan = { ...(validarPlan(planValido) as { valor: Plan }).valor, notas: "Usa la rama principal" };
+    const texto = promptObrero(plan);
+    expect(texto).toContain("Ordenar las notas");
+    expect(texto).toContain("Usa la rama principal");
+    expect(texto).toContain("No hagas commit, push ni PR");
+  });
+
+  test("sin notas, el obrero no recibe la sección de notas", () => {
+    const plan = (validarPlan(planValido) as { valor: Plan }).valor;
+    expect(promptObrero(plan)).not.toContain("Notas y respuestas del usuario");
+  });
+
+  test("una replanificación incluye el motivo y el plan anterior", () => {
+    const plan = (validarPlan(planValido) as { valor: Plan }).valor;
+    const texto = promptAnalizador("Ordena las notas", { planAnterior: plan, motivo: "Falta la base de datos" });
+    expect(texto).toContain("Falta la base de datos");
+    expect(texto).toContain("Plan anterior:");
+    expect(texto).toContain("Ordenar las notas");
+  });
+
+  test("el tope de planes es el plan inicial más dos replanificaciones", () => {
+    expect(MAX_PLANES).toBe(3);
+  });
+});
