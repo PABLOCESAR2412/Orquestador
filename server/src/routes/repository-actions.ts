@@ -5,6 +5,7 @@ import { db } from "../db";
 import { projectRepoPath, leerCuerpoJson } from "./projects";
 import {
   aprobarTarea,
+  fusionarTarea,
   diffDeTarea,
   ErrorTarea,
   mensajeSeguro,
@@ -229,7 +230,7 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
       if (!result) throw new Error("El proyecto está ocupado. Reintenta cuando termine.");
     } else if (row.action === "commit" || row.action === "push" || row.action === "push_main") {
       const actual = await diffDeTarea(row.task_id!);
-      if (actual.hash !== p.hash || actual.remoto_url !== p.remote)
+      if (actual.hash !== p.hash || actual.commit !== p.commit || actual.remoto_url !== p.remote)
         throw new Error(
           "Los cambios o el remoto cambiaron desde que los revisaste. Solicita otra autorización.",
         );
@@ -239,6 +240,7 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         hash: p.hash,
         mensaje: p.message,
         destinoRama,
+        commitEsperado: p.commit,
       });
       if (row.action === "push_main") {
         const cwd = projectRepoPath(row.project_id);
@@ -246,17 +248,13 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
           try {
             await conProyectoRevisado(row.project_id, async () => {
               await prepararRepoSeguro(cwd);
-              const cfg = configGit(row.project_id);
               const clonPath = rutaClon(row.task_id!);
               const ramaActual = (await gitOkSeguro(["rev-parse", "--abbrev-ref", "HEAD"], { cwd })).trim();
-              if (ramaActual === cfg.base_branch) {
-                const diff = await diffDeTarea(row.task_id!);
-                if (diff.rama) {
-                  await gitOkSeguro(["fetch", clonPath, diff.rama], { cwd });
-                  await gitOkSeguro(["merge", "FETCH_HEAD", "--ff-only"], { cwd }).catch(async () => {
-                    await gitOkSeguro(["merge", "FETCH_HEAD", "-m", `Sincronizar cambios de ${row.task_id!.slice(0, 8)}`], { cwd });
-                  });
-                }
+              const limpio = await gitSeguro(["status", "--porcelain"], {cwd});
+              if (ramaActual === p.base && limpio.code === 0 && !limpio.stdout.trim()) {
+                const sha = (result as {sha:string}).sha;
+                await gitOkSeguro(["fetch", clonPath, sha], { cwd });
+                await gitOkSeguro(["merge", "--ff-only", "--no-overwrite-ignore", sha], { cwd });
               }
             });
           } catch {
@@ -267,36 +265,13 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
     } else if (row.action === "merge") {
       const cwd = projectRepoPath(row.project_id);
       if (!cwd) throw new Error("El proyecto ya no está disponible.");
-      const clonPath = rutaClon(row.task_id!);
+      const cfg = configGit(row.project_id);
+      if (cfg.base_branch !== p.base) throw new Error("La rama destino cambió. Solicita otra autorización.");
       result = await conProyectoRevisado(row.project_id, async () => {
-        if (!tieneGitReal(cwd)) throw new Error("El proyecto no tiene un repositorio Git válido.");
-        await prepararRepoSeguro(cwd);
-        const status = await gitSeguro(["status", "--porcelain"], { cwd });
-        if (status.stdout.trim() !== "") {
-          throw new Error("El repositorio del proyecto tiene cambios locales sin guardar. Guarda o descarta esos cambios antes de hacer merge.");
-        }
-        const cfg = configGit(row.project_id);
-        const diff = await diffDeTarea(row.task_id!);
-        if (!diff.rama) throw new Error("La tarea no tiene una rama asociada.");
-        // Si hay cambios modificados que aún no se han commiteado, hacer el commit primero automáticamente
-        if (!diff.commit && !diff.aprobaciones.commit && diff.archivos.length > 0) {
-          await aprobarTarea(row.task_id!, {
-            accion: "commit",
-            hash: diff.hash || p.hash || "",
-            mensaje: p.message,
-          });
-        }
-        const ramaActual = (await gitOkSeguro(["rev-parse", "--abbrev-ref", "HEAD"], { cwd })).trim();
-        if (ramaActual !== cfg.base_branch) {
-          await gitOkSeguro(["checkout", cfg.base_branch], { cwd });
-        }
-        await gitOkSeguro(["fetch", clonPath, diff.rama], { cwd });
-        const commitMsg = p.message || `Fusionar cambios de tarea ${row.task_id!.slice(0, 8)} en ${cfg.base_branch}`;
-        await gitOkSeguro(["merge", "FETCH_HEAD", "-m", commitMsg], { cwd });
-        return {
-          mensaje: `Cambios fusionados exitosamente en la rama principal (${cfg.base_branch}).`,
-        };
+        if (!(await prepararRepoSeguro(cwd))) throw new Error("El proyecto no tiene un repositorio Git válido.");
+        return fusionarTarea(row.task_id!, {cwd,base:p.base,hash:p.hash,commit:p.commit,mensaje:p.message});
       });
+      if (!result) throw new Error("El proyecto está ocupado. Reintenta cuando termine.");
     } else {
       const diff = await diffDeTarea(row.task_id!);
       if (

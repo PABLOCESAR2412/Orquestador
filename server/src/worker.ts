@@ -427,7 +427,7 @@ async function ejecutarTarea(task: QueuedTask) {
       if (task.conversation_id) db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(task.conversation_id);
       avisarChat(task.id, formatearRespuestaTarea(reporte, texto));
       if (task.conversation_id && task.project_id) {
-        const accion = ["commit","push","pr"].find(a => planGuardado(task.id)?.requiere_aprobacion.includes(a as "commit"|"push"|"pr"));
+        const accion = ["push","commit","pr"].find(a => planGuardado(task.id)?.requiere_aprobacion.includes(a as "commit"|"push"|"pr"));
         if (accion) await repositoryActions.request(`http://telo/projects/${task.project_id}/acciones`, {
           method:"POST",headers:{"Content-Type":"application/json"},
           body:JSON.stringify({action:accion,conversationId:task.conversation_id,taskId:task.id}),

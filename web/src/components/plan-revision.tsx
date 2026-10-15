@@ -9,26 +9,28 @@ export function PlanRevision({ tarea }: { tarea: Task }) {
   const [feedback, setFeedback] = useState("");
   const decision = useMutation({
     mutationFn: (decision: "approve" | "revise") =>
-      api.decidePlan(tarea.id, { decision, plan_hash: tarea.plan_hash!, feedback }),
+      api.decidePlan(tarea.id, {
+        decision,
+        plan_hash: tarea.plan_hash!,
+        feedback,
+      }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["tasks"] });
       void qc.invalidateQueries({ queryKey: ["task", tarea.id] });
       void qc.invalidateQueries({ queryKey: ["conversation-tasks"] });
     },
   });
-  if (
-    tarea.status !== "waiting_approval" ||
-    !tarea.plan ||
-    !tarea.plan_hash
-  )
+  if (tarea.status !== "waiting_approval" || !tarea.plan || !tarea.plan_hash)
     return null;
   const p = tarea.plan;
   return (
     <section className="panel approval-panel" aria-label="Aprobar plan">
-      <h2>Revisa el plan</h2>
-      <Link to="/tareas/$id" params={{ id: tarea.id }}>
-        Ver cambios e historial de la tarea
-      </Link>
+      <header className="approval-heading">
+        <h2>Revisa el plan</h2>
+        <Link to="/tareas/$id" params={{ id: tarea.id }}>
+          Ver tarea e historial
+        </Link>
+      </header>
       <p>{p.objetivo}</p>
       <ol>
         {p.pasos.map((s) => (
@@ -63,16 +65,22 @@ export function PlanRevision({ tarea }: { tarea: Task }) {
         </p>
       ))}
       {tarea.error && <p role="alert">{tarea.error}</p>}
-      <label className="approval-feedback">
-        Aclaraciones o cambios al plan
-        <textarea
-          value={feedback}
-          onChange={(e) => setFeedback(e.target.value)}
-          maxLength={8000}
-          rows={2}
-          placeholder="Responde las preguntas o indica qué cambiar"
-        />
-      </label>
+      <details
+        className="approval-notes"
+        open={p.preguntas.length > 0 ? true : undefined}
+      >
+        <summary>Aclaraciones o cambios al plan</summary>
+        <label className="approval-feedback">
+          Aclaraciones o cambios al plan
+          <textarea
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            maxLength={8000}
+            rows={2}
+            placeholder="Responde las preguntas o indica qué cambiar"
+          />
+        </label>
+      </details>
       <div className="approval-buttons">
         <button
           type="button"

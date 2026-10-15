@@ -134,7 +134,7 @@ function ProyectoGit({ id }: { id: string }) {
       )}
       <p>
         {cfg.data?.token
-          ? "Token del proyecto configurado."
+          ? "Acceso mediante token del proyecto o cuenta de GitHub en Ajustes."
           : cfg.data?.ssh
             ? "Clave SSH del proyecto configurada."
             : "No hay credenciales para subir cambios."}

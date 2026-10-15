@@ -22,7 +22,7 @@ if modelo == "fixture/cancelar":
     time.sleep(60)
     sys.exit(0)
 
-if "Actúa SOLO como analizador" in prompt:
+if "Actúa SOLO como analizador" in prompt or "Eres el analizador de Telo" in prompt:
     try:
         pathlib.Path("escritura-analizador.txt").write_text("prohibido")
     except OSError:
@@ -34,7 +34,9 @@ if "Actúa SOLO como analizador" in prompt:
             "pasos": [{"id": 1, "descripcion": "Crear el archivo aprobado", "archivos": ["permitido.txt"]}],
             "criterios_de_aceptacion": ["Se conserva el archivo aprobado"],
             "requiere_aprobacion": ["commit", "push"] if modelo == "fixture/git" else [],
-            "riesgos": [], "preguntas": []}
+            "riesgos": [], "preguntas": ["¿Confirmas el alcance de esta prueba?"]}
+    if "Se detectaron cambios fuera del plan" in prompt:
+        plan["objetivo"] = "Revisar extra.txt fuera del plan"
     evento("text", part={"text": json.dumps(plan)})
 else:
     pathlib.Path("permitido.txt").write_text("trabajo conservado\n")

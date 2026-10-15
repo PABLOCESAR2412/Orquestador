@@ -1,4 +1,4 @@
-import { afterAll, afterEach, expect, test } from "bun:test";
+import { afterAll, afterEach, expect, test, spyOn } from "bun:test";
 import { randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -189,4 +189,90 @@ test("init rechaza .git archivo que apunta a otro repositorio y conserva su cont
   expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: true })).status).toBe(409);
   expect(readFileSync(join(p.cwd, ".git"), "utf8")).toBe(gitdir);
   expect(readFileSync(join(otro.cwd, ".git", "config"), "utf8")).toBe(configAntes);
+});
+
+test("merge crea primero el commit revisado y aplica sus archivos al proyecto", async () => {
+  const p = await tareaConCommit();
+  writeFileSync(join(p.clon, "archivo.txt"), "cambio nuevo sin commit\n");
+  const solicitud = await pedir(`/projects/${p.id}/acciones`, {action:"merge",taskId:p.taskId});
+  expect(solicitud.status).toBe(201);
+  const accion = await solicitud.json() as any;
+  const respuesta = await pedir(`/acciones/${accion.id}/decidir`, {approve:true});
+  expect(respuesta.status).toBe(200);
+  expect(readFileSync(join(p.cwd,"archivo.txt"),"utf8")).toBe("cambio nuevo sin commit\n");
+  expect((await diffDeTarea(p.taskId)).aprobaciones.commit?.hash).toBe(JSON.parse(accion.payload).hash);
+});
+
+test("merge rechaza un diff o commit posterior a la autorización", async () => {
+  const p = await tareaConCommit();
+  const accion = await (await pedir(`/projects/${p.id}/acciones`, {action:"merge",taskId:p.taskId})).json() as any;
+  writeFileSync(join(p.clon,"archivo.txt"),"posterior\n");
+  const diff = await diffDeTarea(p.taskId);
+  await aprobarTarea(p.taskId,{accion:"commit",hash:diff.hash!});
+  const respuesta = await pedir(`/acciones/${accion.id}/decidir`,{approve:true});
+  expect(respuesta.status).toBe(409);
+  expect((await respuesta.json() as any).error).toBe("cambios_cambiaron");
+  expect(readFileSync(join(p.cwd,"archivo.txt"),"utf8")).toBe("base\n");
+});
+
+test("merge rechaza cambios locales del proyecto sin sobrescribirlos", async () => {
+  const p=await tareaConCommit();
+  const accion=await (await pedir(`/projects/${p.id}/acciones`,{action:"merge",taskId:p.taskId})).json() as any;
+  writeFileSync(join(p.cwd,"archivo.txt"),"trabajo local\n");
+  const respuesta=await pedir(`/acciones/${accion.id}/decidir`,{approve:true});
+  expect(respuesta.status).toBe(409);
+  expect(readFileSync(join(p.cwd,"archivo.txt"),"utf8")).toBe("trabajo local\n");
+});
+
+
+test("una autorización ejecuta commit antes de push y usa la cuenta del servidor como respaldo", async () => {
+  const p=await tareaConCommit();
+  const {guardarCuentaGithubGlobal,borrarCuentaGithubGlobal}=await import("../src/github-auth");
+  db.query("DELETE FROM project_secrets WHERE project_id=? AND name='GITHUB_TOKEN'").run(p.id);
+  guardarCuentaGithubGlobal({token:TOKEN,login:"prueba",name:"Prueba",avatar_url:"",scopes:[],actualizado_en:new Date().toISOString()});
+  writeFileSync(join(p.clon,"archivo.txt"),"commit y push juntos\n");
+  const accion=await (await pedir(`/projects/${p.id}/acciones`,{action:"push",taskId:p.taskId})).json() as any;
+  const anterior=(await diffDeTarea(p.taskId)).commit;
+  const original=Bun.spawn;
+  let subidas=0;
+  const espia=spyOn(Bun,"spawn").mockImplementation(((cmd:any,opts:any)=>{
+    if(Array.isArray(cmd) && cmd.includes("push")) {
+      subidas++;
+      const commit=db.query<{commit_sha:string},[string]>("SELECT commit_sha FROM task_approvals WHERE task_id=? AND accion='commit' ORDER BY rowid DESC LIMIT 1").get(p.taskId)!;
+      expect(commit.commit_sha).not.toBe(anterior);
+      expect(cmd).toContain(`${commit.commit_sha}:refs/heads/${JSON.parse(accion.payload).rama}`);
+      expect(opts.env.TELO_GIT_TOKEN).toBe(TOKEN);
+      expect(cmd.join(" ")).not.toContain(TOKEN);
+      return original([process.execPath,"-e","process.exit(0)"],{stdout:"pipe",stderr:"pipe"});
+    }
+    return original(cmd,opts);
+  }) as typeof Bun.spawn);
+  try {
+    const respuesta=await pedir(`/acciones/${accion.id}/decidir`,{approve:true});
+    expect(respuesta.status).toBe(200);
+    expect(subidas).toBe(1);
+    const diff=await diffDeTarea(p.taskId);
+    expect(diff.aprobaciones.push?.sha).toBe(diff.commit);
+    expect(diff.aprobaciones.push?.rama).toBe(diff.rama);
+    expect((await pedir(`/acciones/${accion.id}/decidir`,{approve:true})).status).toBe(409);
+    expect(subidas).toBe(1);
+  } finally { espia.mockRestore(); borrarCuentaGithubGlobal(); }
+});
+
+test("fusionar un commit existente conserva una sola aprobación", async () => {
+  const p = await tareaConCommit();
+  const accion = await (await pedir(`/projects/${p.id}/acciones`,{action:"merge",taskId:p.taskId})).json() as any;
+  expect((await pedir(`/acciones/${accion.id}/decidir`,{approve:true})).status).toBe(200);
+  expect(db.query<{n:number},[string]>("SELECT COUNT(*) AS n FROM task_approvals WHERE task_id=? AND accion='commit'").get(p.taskId)?.n).toBe(1);
+});
+
+test("merge conserva archivos ignorados que coinciden con archivos nuevos de la tarea", async () => {
+  const p=await tareaConCommit();
+  writeFileSync(join(p.cwd,".git","info","exclude"),"ignorado.txt\n");
+  writeFileSync(join(p.cwd,"ignorado.txt"),"contenido local ignorado\n");
+  writeFileSync(join(p.clon,"ignorado.txt"),"archivo nuevo de tarea\n");
+  const accion=await (await pedir(`/projects/${p.id}/acciones`,{action:"merge",taskId:p.taskId})).json() as any;
+  expect((await pedir(`/acciones/${accion.id}/decidir`,{approve:true})).status).toBe(409);
+  expect(readFileSync(join(p.cwd,"ignorado.txt"),"utf8")).toBe("contenido local ignorado\n");
+  expect(readFileSync(join(p.cwd,"archivo.txt"),"utf8")).toBe("base\n");
 });

@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   chmodSync,
-  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -53,7 +52,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     hogar = mkdtempSync(join(tmpdir(), "telo-worker-home-"));
     const bin = join(hogar, ".local", "bin");
     mkdirSync(bin, { recursive: true });
-    copyFileSync(join(import.meta.dir, "fixtures", "opencode-falso.py"), join(bin, "opencode"));
+    writeFileSync(join(bin, "opencode"), readFileSync(join(import.meta.dir, "fixtures", "opencode-falso.py"), "utf8").replaceAll("\r\n", "\n"));
     chmodSync(join(bin, "opencode"), 0o755);
     process.env.HOME = hogar;
     process.env.PATH = `${bin}:${pathAnterior}`;
@@ -162,39 +161,29 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     expect(
       db
         .query(
-          "SELECT 1 FROM messages WHERE conversation_id=? AND content='Obrero aislado completado'",
+          "SELECT 1 FROM messages WHERE conversation_id=? AND content LIKE 'Obrero aislado completado%'",
         )
         .get(conversacion),
     ).not.toBeNull();
   }, 15000);
 
-  test("prepara commit y push sucesivos y exige autorización separada", async () => {
-    const { id, clon } = await nueva("fixture/git");
-    await esperar(() => fila(id).status === "waiting_approval" || fila(id).status === "failed", id);
+  test("prepara una sola autorización para commit y push sin ejecutar nada al rechazar", async () => {
+    const {id,clon}=await nueva("fixture/git");
+    await esperar(()=>fila(id).status === "waiting_approval" || fila(id).status === "failed",id);
     expect(fila(id).error).toBeNull();
-    const headInicial = (await gitSeguro(["rev-parse", "HEAD"], { cwd: clon })).stdout.trim();
+    const head=(await gitSeguro(["rev-parse","HEAD"],{cwd:clon})).stdout.trim();
     expect((await aprobar(id)).status).toBe(200);
-    await esperar(() => ["done", "failed", "interrupted"].includes(fila(id).status), id);
+    await esperar(()=>fila(id).status === "done" || fila(id).status === "failed",id);
     expect(fila(id).status).toBe("done");
-    await esperar(() => !!db.query("SELECT 1 FROM repository_actions WHERE task_id=? AND action='commit' AND state='pending'").get(id), id);
-    expect((await gitSeguro(["rev-parse", "HEAD"], { cwd: clon })).stdout.trim()).toBe(headInicial);
+    await esperar(()=>!!db.query("SELECT 1 FROM repository_actions WHERE task_id=? AND action='push' AND state='pending'").get(id),id);
+    expect(db.query("SELECT 1 FROM repository_actions WHERE task_id=? AND action='commit'").get(id)).toBeNull();
     expect(db.query("SELECT 1 FROM task_approvals WHERE task_id=?").get(id)).toBeNull();
-    expect(db.query("SELECT 1 FROM repository_actions WHERE task_id=? AND action='push'").get(id)).toBeNull();
-    const commit = db.query<{id:string}, [string]>("SELECT id FROM repository_actions WHERE task_id=? AND action='commit' AND state='pending'").get(id)!;
-    const decidir = (accionId:string, approve:boolean) => repositoryActions.request(`http://telo/acciones/${accionId}/decidir`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approve }),
-    });
-    const respuesta = await decidir(commit.id, true);
+    const accion=db.query<{id:string},[string]>("SELECT id FROM repository_actions WHERE task_id=? AND action='push'").get(id)!;
+    const respuesta=await repositoryActions.request(`/acciones/${accion.id}/decidir`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({approve:false})});
     expect(respuesta.status).toBe(200);
-    expect((await gitSeguro(["rev-parse", "HEAD"], { cwd: clon })).stdout.trim()).not.toBe(headInicial);
-    await esperar(() => !!db.query("SELECT 1 FROM repository_actions WHERE task_id=? AND action='push' AND state='pending'").get(id), id);
-    expect(db.query("SELECT 1 FROM task_approvals WHERE task_id=? AND accion='commit'").get(id)).not.toBeNull();
-    expect(db.query("SELECT 1 FROM task_approvals WHERE task_id=? AND accion='push'").get(id)).toBeNull();
-    const push = db.query<{id:string}, [string]>("SELECT id FROM repository_actions WHERE task_id=? AND action='push' AND state='pending'").get(id)!;
-    expect((await decidir(push.id, false)).status).toBe(200);
-    expect(db.query<any, [string]>("SELECT state FROM repository_actions WHERE id=?").get(push.id)?.state).toBe("rejected");
-    expect(db.query("SELECT 1 FROM task_approvals WHERE task_id=? AND accion='push'").get(id)).toBeNull();
-  }, 15000);
+    expect((await gitSeguro(["rev-parse","HEAD"],{cwd:clon})).stdout.trim()).toBe(head);
+    expect(db.query("SELECT 1 FROM task_approvals WHERE task_id=?").get(id)).toBeNull();
+  },15000);
 
   test("registra consumo aunque el proveedor termine con error", async () => {
     const { id } = await nueva("fixture/fallo");
@@ -226,10 +215,10 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     expect(fila(id).error).toBeNull();
     const hash = fila(id).plan_hash;
     expect((await aprobar(id)).status).toBe(200);
-    await esperar(() => ["done", "failed", "interrupted"].includes(fila(id).status), id);
-    expect(fila(id).status).toBe("interrupted");
+    await esperar(() => fila(id).status === "waiting_approval" && fila(id).plan_hash !== hash || fila(id).status === "failed", id);
+    expect(fila(id).status).toBe("waiting_approval");
     expect(fila(id).approved_hash).toBeNull();
-    expect(fila(id).error).toContain("extra.txt");
+    expect(db.query<{detail:string},[string]>("SELECT detail FROM task_events WHERE task_id=? AND kind='replanificada' ORDER BY id DESC LIMIT 1").get(id)?.detail).toContain("extra.txt");
     expect(existsSync(join(clon, "extra.txt"))).toBe(true);
     expect(existsSync(join(clon, "permitido.txt"))).toBe(true);
     expect((await aprobar(id, hash)).status).toBe(409);
