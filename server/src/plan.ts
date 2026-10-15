@@ -56,6 +56,16 @@ function esAprobacion(v: unknown): v is Aprobacion {
   return typeof v === "string" && (APROBACIONES as readonly string[]).includes(v);
 }
 
+function rutaValida(ruta: string): boolean {
+  const normalizada = ruta.replace(/\\/g, "/");
+  const partes = normalizada.split("/");
+  return Boolean(ruta.trim()) &&
+    !/^[\\/]|^[A-Za-z]:/.test(ruta) &&
+    !ruta.includes("\0") &&
+    !partes.some((parte) => parte === ".." || parte.toLowerCase() === ".git") &&
+    partes.some((parte) => parte && parte !== ".");
+}
+
 // Saca el primer objeto JSON de una respuesta: el texto entero, un bloque ```json o lo que va de la
 // primera llave a la última. Devuelve undefined si no hay JSON válido.
 export function extraerJson(respuesta: string): unknown {
@@ -90,7 +100,11 @@ export function validarPlan(valor: unknown): Validacion<Plan> {
     const descripcion = texto(datos.descripcion);
     if (!descripcion) return { ok: false, motivo: `el paso ${indice + 1} no tiene descripción` };
     const id = typeof datos.id === "number" && Number.isInteger(datos.id) ? datos.id : indice + 1;
-    pasos.push({ id, descripcion, archivos: listaDeTextos(datos.archivos, 300) });
+    const archivos = listaDeTextos(datos.archivos, 300);
+    if (archivos.some((ruta) => !rutaValida(ruta))) {
+      return { ok: false, motivo: `el paso ${indice + 1} incluye una ruta fuera del workspace o dentro de .git` };
+    }
+    pasos.push({ id, descripcion, archivos });
   }
 
   const criterios = listaDeTextos(valor.criterios_de_aceptacion);
@@ -181,7 +195,8 @@ const FORMA_PLAN = `{
 const REGLAS_PLAN = [
   "Reglas:",
   "- De 3 a 8 pasos, concretos y comprobables. Nunca más de 12.",
-  "- Cada paso nombra los archivos que toca, si ya los conoces.",
+  "- Cada paso nombra los archivos que toca, si ya los conoces, con rutas relativas dentro del workspace.",
+  "- Nunca incluyas rutas absolutas, rutas con .. ni archivos o carpetas dentro de .git. Las acciones Git se declaran en requiere_aprobacion; .git no es un archivo del plan.",
   '- "requiere_aprobacion": incluye "commit", "push" o "pr" solo si el plan necesita alguna de esas acciones. Si no, [].',
   '- Si falta información crítica, ponla en "preguntas". No la inventes.',
   "- Responde en español.",
@@ -214,6 +229,7 @@ export function promptAnalizador(tarea: string, replanificacion?: { planAnterior
 export function promptReparacion(motivo: string): string {
   return [
     `Tu respuesta no es un plan válido: ${motivo}.`,
+    "Usa solo rutas relativas dentro del workspace; no incluyas rutas absolutas, rutas con .. ni ningún segmento .git.",
     "Responde de nuevo solo con el objeto JSON corregido, sin texto antes ni después.",
   ].join("\n");
 }
