@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "web/src/styles-chat.css"
+        ],
+        "createdAt": "2026-10-15T19:39:45.748Z",
+        "reason": "Agent review: line 494 styles semantic Markdown blockquote with neutral --line-strong; existing since a8bfa54c (2026-10-12), not decorative card accent."
+      }
+    ]
+  }
+}

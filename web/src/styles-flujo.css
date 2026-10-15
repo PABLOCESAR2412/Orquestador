@@ -1,12 +1,15 @@
 .approval-panel {
-  margin-block: 16px;
+  display: block;
+  margin-block: 8px;
+  padding: 14px 16px;
   overflow-wrap: anywhere;
 }
 .approval-panel h2 {
-  margin-bottom: 12px;
+  margin: 0;
+  font-size: 16px;
 }
 .approval-panel li {
-  margin-block: 8px;
+  margin-block: 4px;
 }
 .approval-files {
   display: block;
@@ -138,3 +141,31 @@
     flex-shrink: 0;
   }
 }
+
+.approval-panel > p { margin-block: 6px; }
+.approval-panel > ol { margin-block: 8px; padding-left: 22px; }
+.approval-panel li .approval-files { display: inline; margin-left: 6px; font-size: 12px; }
+.approval-heading { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; justify-content: space-between; }
+.approval-heading > a, .approval-heading > span { font-size: 12px; }
+.approval-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--ink-2); font-size: 12px; }
+.approval-steps { display: flex; flex-wrap: wrap; gap: 4px 28px; font-size: 13px; }
+.approval-notes { margin-top: 8px; }
+.approval-notes .approval-feedback { margin-block: 8px; font-size: 13px; }
+.approval-notes textarea { padding: 8px 10px; }
+.approval-changes summary, .approval-notes summary { cursor: pointer; font-size: 13px; }
+.approval-panel .approval-buttons { margin: 10px 0 0; }
+.approval-history { margin-block: 8px; font-size: 13px; }
+.approval-history > summary, .approval-history-row > summary { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; cursor: pointer; min-height: 40px; padding-block: 10px; }
+.approval-history > summary::before { content: "+"; }
+.approval-history[open] > summary::before { content: "−"; }
+.approval-history > summary > .approval-files { margin-left: auto; }
+.approval-history-row { border-top: 1px solid var(--line); }
+.approval-history-row > summary { flex-wrap: wrap; }
+.approval-history-body { padding: 0 0 10px; }
+.approval-history-body p { margin-block: 4px; }
+.approval-history-body .approval-meta { font-size: 12px; }
+.approval-history-body .approval-steps { margin-block: 8px; padding-left: 20px; }
+
+.approval-failure { font-size: 13px; margin-block: 8px; }
+.approval-failure p { margin-block: 4px; color: var(--danger); }
+.approval-failure button { min-height: 40px; }

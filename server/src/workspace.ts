@@ -33,7 +33,7 @@ import { tokenGithubGlobal } from "./github-auth";
 
 // Copias de trabajo de las tareas de proyecto con Git. Cada tarea trabaja en su clon
 // (DATA_DIR/tasks/<id>/repo, rama telo/<id8>). Nada sale a GitHub sin aprobación del usuario:
-// primero se aprueba el commit contra el hash del diff, y luego la subida.
+// una sola autorización de subida cubre commit y push, contra el hash del diff.
 //
 // El clon lo escribe un agente que corre aislado, así que su .git no es de confianza: antes de
 // cada operación de Git se sanea su configuración. La subida nunca usa el remoto del clon: usa la
@@ -391,7 +391,8 @@ async function estadoDelClon(ctx: Contexto): Promise<{
 
 // Valores de los secretos del proyecto de la tarea (incluido GITHUB_TOKEN), para ocultarlos.
 function valoresDe(projectId: string | null): string[] {
-  return projectId ? valoresDeProyecto(projectId) : [];
+  const global = tokenGithubGlobal();
+  return [...(projectId ? valoresDeProyecto(projectId) : []), ...(global ? [global] : [])];
 }
 
 type Cuenta = { adiciones: number; eliminaciones: number; binario: boolean };
@@ -506,6 +507,7 @@ export function diffDeTarea(taskId: string) {
             ? {
                 sha: apPush.commit_sha,
                 remoto: apPush.remoto ?? "",
+                rama: apPush.rama ?? ctx.rama,
                 decidida_en: apPush.created_at,
               }
             : null,
@@ -551,6 +553,11 @@ async function commitInterno(
   const hayNuevo = await gitSeguro(["diff", "--cached", "--quiet", "HEAD"], { cwd: ctx.clon });
   if (hayNuevo.code === 0) {
     const shaActual = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: ctx.clon })).trim();
+    const previa = aprobacionDe(taskId, "commit");
+    if (previa?.commit_sha !== shaActual || previa.diff_hash !== estado.hash) {
+      db.query("INSERT INTO task_approvals (id,task_id,accion,diff_hash,commit_sha,rama,detalle) VALUES (?,?,'commit',?,?,?,?)").run(crypto.randomUUID(),taskId,estado.hash,shaActual,ctx.rama,mensaje);
+      registrarEvento(taskId, "commit_aprobado", `${shaActual.slice(0,8)} en ${ctx.rama}`);
+    }
     return { accion: "commit", sha: shaActual, rama: ctx.rama };
   }
 
@@ -592,10 +599,13 @@ export async function aprobarTarea(
     hash: string;
     mensaje?: unknown;
     destinoRama?: string;
+    commitEsperado?: string;
   },
 ): Promise<ResultadoAprobacion> {
   return conTarea(taskId, async () => {
     const ctx = await contextoGit(taskId);
+    if (opts.commitEsperado && (await gitOkSeguro(["rev-parse", "HEAD"], {cwd:ctx.clon})).trim() !== opts.commitEsperado)
+      throw new ErrorTarea("cambios_cambiaron", 409);
     if (opts.accion === "push") {
       return subirAprobado(taskId, ctx, opts.hash, {
         destinoRama: opts.destinoRama,
@@ -625,6 +635,30 @@ export function opcionesDeCredenciales(token: string | null): {
   return { args, env };
 }
 
+// El cerrojo cubre la comprobación, el commit y la fusión del SHA que el usuario revisó.
+export function fusionarTarea(
+  taskId: string,
+  opts: { cwd: string; base: string; hash: string | null; commit: string; mensaje?: string },
+) {
+  return conTarea(taskId, async () => {
+    const ctx = await contextoGit(taskId);
+    const estado = await estadoDelClon(ctx);
+    const head = (await gitOkSeguro(["rev-parse", "HEAD"], {cwd:ctx.clon})).trim();
+    if (estado.hash !== opts.hash || head !== opts.commit)
+      throw new ErrorTarea("cambios_cambiaron", 409);
+    const locales = await gitSeguro(["status", "--porcelain"], {cwd:opts.cwd});
+    if (locales.code !== 0 || locales.stdout.trim())
+      throw new Error("El proyecto tiene cambios locales. Consérvalos antes de fusionar la tarea.");
+    const actual = (await gitOkSeguro(["rev-parse", "--abbrev-ref", "HEAD"], {cwd:opts.cwd})).trim();
+    if (actual !== opts.base) throw new Error("Abre la rama destino del proyecto antes de fusionar.");
+    const sha = estado.hash ? (await commitInterno(taskId, ctx, estado.hash, opts.mensaje)).sha : head;
+    await gitOkSeguro(["fetch", ctx.clon, sha], {cwd:opts.cwd});
+    // Solo avance directo: si las ramas divergieron, se conservan intactas para revisión.
+    await gitOkSeguro(["merge", "--ff-only", "--no-overwrite-ignore", sha], {cwd:opts.cwd});
+    return { mensaje: `Cambios fusionados en ${opts.base}.`, sha, rama:opts.base };
+  });
+}
+
 async function subirAprobado(
   taskId: string,
   ctx: Contexto,
@@ -636,6 +670,11 @@ async function subirAprobado(
   if (!guardado) throw new ErrorTarea("sin_remoto", 409);
   const remoto = urlGithubPermitida(guardado);
   if (!remoto) throw new ErrorTarea("remoto_no_permitido", 409);
+
+  const token = (ctx.projectId ? valorSecreto(ctx.projectId, "GITHUB_TOKEN") || null : null) || tokenGithubGlobal();
+  const destinoSsh =
+    !token && ctx.projectId && clavePublicaDe(ctx.projectId) ? urlSshDeGithub(remoto) : null;
+  if (!token && !destinoSsh) throw new ErrorTarea("credenciales_git_faltantes", 409);
 
   let head = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: ctx.clon })).trim();
   let aprobacion = aprobacionDe(taskId, "commit");
@@ -660,10 +699,7 @@ async function subirAprobado(
   // Rama destino: si se especifica (ej. "main" o "master") se usa directamente; de lo contrario la rama de tarea.
   const ramaDestino = opts?.destinoRama?.trim() || ctx.rama;
   const refspec = `${head}:refs/heads/${ramaDestino}`;
-  const token = (ctx.projectId ? valorSecreto(ctx.projectId, "GITHUB_TOKEN") || null : null) || tokenGithubGlobal();
-  const destinoSsh =
-    !token && ctx.projectId && clavePublicaDe(ctx.projectId) ? urlSshDeGithub(remoto) : null;
-  if (!token && !destinoSsh) throw new ErrorTarea("credenciales_git_faltantes", 409);
+
   const credenciales = opcionesDeCredenciales(token);
   try {
     if (destinoSsh && ctx.projectId) {

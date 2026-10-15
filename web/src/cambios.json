@@ -53,6 +53,7 @@
     { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Codex se instala desde Ajustes con confirmación, y su inicio de sesión aparece cuando ya está instalado", "pr": null },
     { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Un chat que supera los 3 minutos se detiene con un aviso claro, en vez de mostrar el código de salida 143", "pr": null },
     { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "El agente tiene /tmp propio dentro de su sandbox: OpenCode ya no falla con sistema de solo lectura", "pr": null },
-    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Se quita el nombre del proyecto debajo de cada chat en la barra lateral", "pr": null }
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Se quita el nombre del proyecto debajo de cada chat en la barra lateral", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Autorización única de commit y push, merge ligado a cambios revisados e historial Git compacto", "pr": 42 }
   ]
 }
