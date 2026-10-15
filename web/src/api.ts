@@ -256,6 +256,9 @@ export type Task = {
   plan: TaskPlan | null;
   reporte: TaskReport | null;
   plan_aprobado_en: string | null;
+  conversation_id?: string | null;
+  plan_hash?: string | null;
+  approved_hash?: string | null;
   project_id?: string | null;
   // Tarea creada como reintento de otra.
   retry_of?: string | null;
@@ -292,7 +295,9 @@ export type TaskEventKind =
   | "plan_rechazado"
   | "replanificada"
   | "obrero_iniciado"
+  | "plan_revision"
   | "sin_cuota"
+  | "turno_encolado"
   | "seguida";
 
 // Evento en vivo del canal /api/eventos-vivos (SSE).
@@ -409,6 +414,84 @@ function skillsRuta(projectId?: string): string {
 }
 
 export const api = {
+  projectGit: (id: string) => request<GitConfig>(`/api/projects/${id}/git`),
+  saveProjectGit: (
+    id: string,
+    body: Pick<GitConfig, "remote" | "author_name" | "author_email" | "base_branch">,
+  ) =>
+    request<{ ok: boolean }>(`/api/projects/${id}/git`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  checkProjectGit: (id: string) =>
+    request<{ ok: boolean; repo: string; push: boolean }>(`/api/projects/${id}/git/comprobar`, {
+      method: "POST",
+      body: "{}",
+    }),
+  projectContext: (id: string) =>
+    request<{ compartir: boolean; chats: { id: string; title: string; mensajes: number }[] }>(
+      `/api/projects/${id}/contexto`,
+    ),
+  saveProjectContext: (id: string, compartir: boolean) =>
+    request<{ ok: boolean }>(`/api/projects/${id}/contexto`, {
+      method: "PUT",
+      body: JSON.stringify({ compartir }),
+    }),
+  projectSkills: (id: string) => request<ProjectSkill[]>(`/api/projects/${id}/skills-importadas`),
+  searchSkills: (q: string) =>
+    request<{ name: string; url: string }[]>(`/api/skills/catalogo/buscar?q=${encodeURIComponent(q)}`),
+  saveProjectSkill: (id: string, body: { name?: string; content?: string; url?: string }) =>
+    request<ProjectSkill>(`/api/projects/${id}/skills-importadas`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteProjectSkill: (id: string, name: string) =>
+    request<{ ok: boolean }>(`/api/projects/${id}/skills-importadas/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    }),
+  conversationTasks: (id: string) => request<Task[]>(`/api/conversations/${id}/tasks`),
+  decidePlan: (
+    id: string,
+    optsOrHash: string | { decision: "approve" | "revise"; plan_hash: string; feedback?: string },
+    decision?: "approve" | "revise",
+    feedback?: string,
+  ) => {
+    const body =
+      typeof optsOrHash === "string"
+        ? { decision, hash: optsOrHash, plan_hash: optsOrHash, feedback }
+        : {
+            decision: optsOrHash.decision,
+            hash: optsOrHash.plan_hash,
+            plan_hash: optsOrHash.plan_hash,
+            feedback: optsOrHash.feedback,
+          };
+    return request<Task>(`/api/tasks/${id}/plan`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  repositoryActions: (id: string) =>
+    request<RepositoryAction[]>(`/api/conversations/${id}/acciones`),
+  requestRepositoryAction: (
+    id: string,
+    body: {
+      action: string;
+      conversationId?: string;
+      taskId?: string;
+      message?: string;
+      title?: string;
+    },
+  ) =>
+    request<RepositoryAction>(`/api/projects/${id}/acciones`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  decideRepositoryAction: (id: string, approve: boolean) =>
+    request<{ ok: boolean; result?: unknown }>(`/api/acciones/${id}/decidir`, {
+      method: "POST",
+      body: JSON.stringify({ approve }),
+    }),
+
   health: () => request<{ ok: boolean; time: string }>("/api/health"),
   runnerStatus: () =>
     request<{ opencode: boolean; bwrap: boolean; aislamiento: boolean }>("/api/runner"),
@@ -464,7 +547,7 @@ export const api = {
       { method: "POST", body: JSON.stringify(body) },
     ),
   // El plan espera al usuario: aprobarlo lo pone en la cola; las notas llegan al obrero.
-  approveTaskPlan: (id: string, body: { notas?: string }) =>
+  approveTaskPlan: (id: string, body: { notas?: string; plan_hash?: string }) =>
     request<Task>(`/api/tasks/${id}/aprobar-plan`, { method: "POST", body: JSON.stringify(body) }),
   rejectTaskPlan: (id: string, body: { motivo?: string }) =>
     request<Task>(`/api/tasks/${id}/rechazar-plan`, { method: "POST", body: JSON.stringify(body) }),
@@ -635,4 +718,24 @@ export type Analytics = {
     alertPercent: number;
     status: "ok" | "alerta" | "excedido";
   } | null;
+};
+
+export type ProjectSkill = { name: string; content: string; source: string | null };
+export type GitConfig = {
+  remote: string | null;
+  author_name: string;
+  author_email: string;
+  base_branch: string;
+  inicializado: boolean;
+  ocupado: boolean;
+  token: boolean;
+  ssh: boolean;
+};
+export type RepositoryAction = {
+  id: string;
+  action: string;
+  payload: string;
+  state: string;
+  result: string | null;
+  task_id: string | null;
 };

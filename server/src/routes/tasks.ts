@@ -36,6 +36,9 @@ type TaskRow = {
   plan: string | null;
   reporte: string | null;
   plan_aprobado_en: string | null;
+  plan_hash: string | null;
+  approved_hash: string | null;
+  conversation_id: string | null;
   modelo_agotado: string | null;
   project_name: string | null;
   created_at: string;
@@ -48,7 +51,7 @@ type TaskRow = {
 // plan, reporte y plan_aprobado_en: el plan del analizador, el reporte del obrero y cuándo se aprobó el plan.
 // modelo_agotado: el modelo que se quedó sin cuota (solo en tareas 'sin_cuota').
 const COLUMNS =
-  "t.id, t.title, t.prompt, t.model, t.effort, t.status, t.result, t.error, t.project_id, t.retry_of, (t.provider_session_id IS NOT NULL) AS reanudable, t.rama, t.base_commit, t.plan, t.reporte, t.plan_aprobado_en, t.modelo_agotado, p.name AS project_name, t.created_at, t.started_at, t.finished_at";
+  "t.id, t.title, t.prompt, t.model, t.effort, t.status, t.result, t.error, t.project_id, t.retry_of, (t.provider_session_id IS NOT NULL) AS reanudable, t.rama, t.base_commit, t.plan, t.reporte, t.plan_aprobado_en, t.plan_hash, t.approved_hash, t.conversation_id, t.modelo_agotado, p.name AS project_name, t.created_at, t.started_at, t.finished_at";
 const DESDE = "FROM tasks t LEFT JOIN projects p ON p.id = t.project_id";
 
 const ESTADOS_REANUDABLES = ["interrupted", "failed"];
@@ -164,16 +167,69 @@ tasks.post("/tasks/:id/aprobar", async (c) => {
 // Aprueba el plan que espera al usuario. El obrero lo ejecuta en la misma sesión y carpeta.
 tasks.post("/tasks/:id/aprobar-plan", async (c) => {
   const id = c.req.param("id");
-  const body = await c.req.json<{ notas?: unknown }>().catch(() => ({}) as { notas?: unknown });
+  const body = await c.req.json<{ notas?: unknown; plan_hash?: unknown }>()
+    .catch(() => ({}) as { notas?: unknown; plan_hash?: unknown });
+  if (body.plan_hash !== undefined && (typeof body.plan_hash !== "string" || !/^[0-9a-f]{64}$/i.test(body.plan_hash))) {
+    return c.json({ error: "invalid_hash" }, 400);
+  }
   if (body.notas !== undefined && body.notas !== null && typeof body.notas !== "string") {
     return c.json({ error: "invalid_notas" }, 400);
   }
   if (typeof body.notas === "string" && body.notas.length > MAX_NOTAS) return c.json({ error: "invalid_notas" }, 400);
 
   const notas = typeof body.notas === "string" && body.notas.trim() ? body.notas.trim() : null;
-  const resultado = aprobarPlan(id, notas);
+  const resultado = aprobarPlan(id, notas, typeof body.plan_hash === "string" ? body.plan_hash.toLowerCase() : undefined);
   if (resultado === "not_found") return c.json({ error: "task_not_found" }, 404);
   if (resultado === "not_waiting") return c.json({ error: "task_not_waiting_plan" }, 409);
+  if (resultado === "stale") return c.json({ error: "cambios_cambiaron" }, 409);
+  return c.json(leerTarea(id));
+});
+
+// Tarjeta del plan en el chat: comparte la aprobación y rechazo canónicos de las tareas.
+tasks.post("/tasks/:id/plan", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req
+    .json<{ hash?: unknown; plan_hash?: unknown; decision?: unknown; feedback?: unknown }>()
+    .catch(() => null);
+  const rawHash = typeof body?.hash === "string" ? body.hash : typeof body?.plan_hash === "string" ? body.plan_hash : null;
+  if (
+    !body ||
+    !rawHash ||
+    !/^[0-9a-f]{64}$/i.test(rawHash) ||
+    !["approve", "reject", "revise"].includes(String(body.decision))
+  ) {
+    return c.json({ error: "invalid_body" }, 400);
+  }
+  const hash = rawHash.toLowerCase();
+  const row = leerTarea(id);
+  if (!row) return c.json({ error: "task_not_found" }, 404);
+  if (row.status !== "waiting_approval" || row.plan_hash !== hash) {
+    return c.json({ error: "cambios_cambiaron" }, 409);
+  }
+  if (body.feedback !== undefined && (typeof body.feedback !== "string" || body.feedback.length > 8000)) {
+    return c.json({ error: "invalid_content" }, 400);
+  }
+  if (body.decision === "approve") {
+    if (row.plan?.preguntas.length) return c.json({ error: "plan_con_preguntas" }, 409);
+    if (row.error) return c.json({ error: "plan_needs_revision" }, 409);
+    const resultado = aprobarPlan(id, null, hash);
+    if (resultado !== "ok") return c.json({ error: "cambios_cambiaron" }, 409);
+  } else if (body.decision === "reject") {
+    const feedbackTexto = typeof body.feedback === "string" && body.feedback.trim() ? body.feedback.trim() : null;
+    const resultado = rechazarPlan(id, feedbackTexto);
+    if (resultado !== "ok") return c.json({ error: "task_not_waiting_plan" }, 409);
+  } else {
+    if (typeof body.feedback !== "string" || !body.feedback.trim()) return c.json({ error: "invalid_content" }, 400);
+    const feedbackTexto = body.feedback.trim();
+    db.transaction(() => {
+      db.query(
+        "UPDATE tasks SET status='queued',plan_aprobado_en=NULL,approved_hash=NULL,error=NULL,prompt=prompt || ?,continuar=0 WHERE id=?",
+      ).run("\nAclaración del usuario: " + feedbackTexto, id);
+      registrarEvento(id, "plan_revision", feedbackTexto);
+    })();
+    publicarEstado(id);
+    notifyWorker();
+  }
   return c.json(leerTarea(id));
 });
 

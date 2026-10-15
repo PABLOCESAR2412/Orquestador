@@ -6,7 +6,8 @@
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "test": "bun test",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "test:worker": "TELO_TEST_WORKER=1 bun test tests/worker-flujo.test.ts"
   },
   "dependencies": {
     "docx": "^9.10.0",

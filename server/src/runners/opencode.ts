@@ -26,6 +26,17 @@ type OpenCodeEvent = {
   };
 };
 
+// Algunos proveedores omiten campos de uso. Nunca se guardan NaN ni contadores negativos.
+function usoDelEvento(ev: OpenCodeEvent): Usage | null {
+  if (ev.type !== "step_finish" || !ev.part?.tokens) return null;
+  const t = ev.part.tokens;
+  const numero = (n: unknown) => typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : 0;
+  return {
+    input: numero(t.input), output: numero(t.output), reasoning: numero(t.reasoning),
+    cacheRead: numero(t.cache?.read), cost: numero(ev.part.cost),
+  };
+}
+
 function parseEvents(stdout: string): OpenCodeEvent[] {
   const events: OpenCodeEvent[] = [];
   for (const line of stdout.split("\n")) {
@@ -163,9 +174,12 @@ export async function runOpenCode(opts: {
   onLinea?: (linea: string) => void;
   // Variables extra solo para esta ejecución. Nunca se aceptan nombres TELO_*.
   extraEnv?: Record<string, string>;
+  soloLectura?: boolean;
+  // Se persiste cada paso antes de conocer el resultado del proceso.
+  onUso?: (uso: Usage) => void;
 }): Promise<RunResult> {
   // Lanza AislamientoError si la carpeta no es permitida o falta bubblewrap.
-  const aislamiento = prefijoAislamiento(opts.cwd);
+  const aislamiento = prefijoAislamiento(opts.cwd, opts.soloLectura);
 
   // Un id de sesión que no cumple el patrón se ignora: ni se pasa a -s ni se reutiliza.
   const sesionPedida = sesionValida(opts.sessionId) ? opts.sessionId : null;
@@ -201,6 +215,15 @@ export async function runOpenCode(opts: {
 
   let sesionAvisada: string | null = null;
   const alLeerLinea = (linea: string) => {
+    let ev: OpenCodeEvent | undefined;
+    try {
+      ev = JSON.parse(linea) as OpenCodeEvent;
+    } catch {
+      // La CLI también puede escribir líneas sin JSON.
+    }
+    const uso = ev && usoDelEvento(ev);
+    // No ocultar un fallo de persistencia como si fuera una línea JSON inválida.
+    if (uso) opts.onUso?.(uso);
     // Un fallo del llamador (p. ej. al escribir el registro) no debe cortar al agente.
     if (opts.onLinea) {
       try {
@@ -209,9 +232,8 @@ export async function runOpenCode(opts: {
         // se ignora: la salida sigue llegando al resultado
       }
     }
-    if (!opts.onSesion || !linea.includes("sessionID")) return;
+    if (!opts.onSesion || !ev) return;
     try {
-      const ev = JSON.parse(linea) as OpenCodeEvent;
       if (sesionValida(ev.sessionID) && ev.sessionID !== sesionAvisada) {
         sesionAvisada = ev.sessionID;
         opts.onSesion(ev.sessionID);
@@ -257,14 +279,14 @@ export async function runOpenCode(opts: {
     }
     // Lo dicho antes de una herramienta es narración del paso, no la respuesta final.
     if (ev.part?.type === "tool") textoTrasHerramientas = "";
-    if (ev.type === "step_finish" && ev.part?.tokens) {
-      const t = ev.part.tokens;
+    const paso = usoDelEvento(ev);
+    if (paso) {
       usage ??= { input: 0, output: 0, reasoning: 0, cacheRead: 0, cost: 0 };
-      usage.input += t.input;
-      usage.output += t.output;
-      usage.reasoning += t.reasoning;
-      usage.cacheRead += t.cache.read;
-      usage.cost += ev.part.cost ?? 0;
+      usage.input += paso.input;
+      usage.output += paso.output;
+      usage.reasoning += paso.reasoning;
+      usage.cacheRead += paso.cacheRead;
+      usage.cost += paso.cost;
     }
   }
 

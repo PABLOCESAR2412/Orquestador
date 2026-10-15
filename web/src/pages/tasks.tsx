@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { api, type ModelInfo, type Task } from "../api";
-import { CostMeter, EffortControl } from "../components/controls";
+import { CostMeter } from "../components/controls";
 import { AvisoCuota } from "../components/cuota-aviso";
 import { ModelPicker } from "../components/model-picker";
 import { HistorialTarea } from "../components/task-history";
@@ -229,10 +229,10 @@ function ListaTareas() {
     return () => window.clearTimeout(timer);
   }, [avisoActualizar]);
 
-  const pickModel = (m: ModelInfo | null) => {
+  const pickModel = (m: ModelInfo | null, esfuerzo: string | null = null) => {
     setPickerOpen(false);
     setModel(m?.id ?? null);
-    if (!m || !m.variants.includes(effort ?? "")) setEffort(null);
+    setEffort(m && esfuerzo && m.variants.includes(esfuerzo) ? esfuerzo : null);
   };
 
   const submit = () => {
@@ -356,6 +356,8 @@ function ListaTareas() {
                 <ModelPicker
                   models={modelList}
                   currentId={model}
+                  conEsfuerzo
+                  currentEffort={effort}
                   onSelect={pickModel}
                   onClose={() => setPickerOpen(false)}
                 />
@@ -388,13 +390,6 @@ function ListaTareas() {
                   <span className="model-chip-name">{modelInfo?.name ?? model ?? "Predeterminado"}</span>
                   {modelInfo && <CostMeter tier={modelInfo.costTier} />}
                 </button>
-
-                <EffortControl
-                  variants={modelInfo?.variants ?? []}
-                  value={effort}
-                  disabled={!model}
-                  onChange={setEffort}
-                />
 
                 {(proyectos.data?.length ?? 0) > 0 && (
                   <select
@@ -818,7 +813,7 @@ function DetalleTarea({ id }: { id: string }) {
 
   // Aprobar el plan lo pone en la cola; rechazarlo cancela la tarea. Las notas viajan con la decisión.
   const aprobarPlan = useMutation({
-    mutationFn: (notas: string) => api.approveTaskPlan(id, notas ? { notas } : {}),
+    mutationFn: (notas: string) => api.approveTaskPlan(id, { ...(notas ? { notas } : {}), plan_hash: t?.plan_hash ?? undefined }),
     onSettled: refrescar,
   });
   const rechazarPlan = useMutation({

@@ -10,6 +10,10 @@ import { getPreferences } from "../preferences";
 import { projectRepoPath } from "./projects";
 import { mensajeSeguro } from "../workspace";
 import { actividadDelTurno, itemDeLinea, registrarActividad } from "../actividad";
+import { crearTarea } from "../tareas";
+import { notifyWorker } from "../worker";
+import { publicarEstado, registrarEvento } from "../eventos";
+import { repositoryActions } from "./repository-actions";
 import {
   conversacionEnCurso,
   liberarConversacion,
@@ -64,7 +68,7 @@ chat.get("/conversations", (c) => {
       "SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name, c.pinned_at, c.cuota_modelo, c.created_at FROM conversations c LEFT JOIN projects p ON p.id = c.project_id ORDER BY (c.pinned_at IS NULL), c.pinned_at DESC, c.created_at DESC, c.rowid DESC",
     )
     .all();
-  return c.json(rows.map((r) => ({ ...r, ocupada: conversacionEnCurso(r.id) })));
+  return c.json(rows.map((r) => ({ ...r, ocupada: chatOcupado(r.id) })));
 });
 
 // POST /api/conversations  body: { title?, projectId? }
@@ -72,10 +76,11 @@ chat.get("/conversations", (c) => {
 chat.post("/conversations", async (c) => {
   const body = await c.req
     .json<{ title?: string; projectId?: string | null }>()
-    .catch(() => ({}) as { title?: string; projectId?: string | null });
+    .catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "invalid_body" }, 400);
   const id = crypto.randomUUID();
-  const title = body.title?.trim() || "Nuevo chat";
-  const projectId = body.projectId || null;
+  const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "Nuevo chat";
+  const projectId = typeof body.projectId === "string" ? body.projectId : null;
   if (projectId && !projectRepoPath(projectId)) return c.json({ error: "project_not_found" }, 400);
   db.query("INSERT INTO conversations (id, title, project_id) VALUES (?, ?, ?)").run(
     id,
@@ -88,7 +93,7 @@ chat.post("/conversations", async (c) => {
 // DELETE /api/conversations/:id  -> borra el chat y sus mensajes. El uso registrado se conserva para las analíticas.
 chat.delete("/conversations/:id", (c) => {
   const id = c.req.param("id");
-  if (conversacionEnCurso(id)) return c.json({ error: "conversation_busy" }, 409);
+  if (chatOcupado(id)) return c.json({ error: "conversation_busy" }, 409);
   const result = db.query("DELETE FROM conversations WHERE id = ?").run(id);
   if (result.changes === 0) return c.json({ error: "conversation_not_found" }, 404);
   return c.json({ ok: true });
@@ -108,6 +113,18 @@ chat.get("/conversations/:id/messages", (c) => {
   return c.json(messages);
 });
 
+chat.get("/conversations/:id/tasks", (c) => {
+  const id = c.req.param("id");
+  if (!leerConversacion(id)) return c.json({ error: "conversation_not_found" }, 404);
+  const filas = db.query<{ plan: string | null; reporte: string | null; [key: string]: unknown }, [string]>(
+    "SELECT id,title,status,model,effort,plan,reporte,plan_aprobado_en,plan_hash,approved_hash,error,conversation_id,created_at FROM tasks WHERE conversation_id=? ORDER BY created_at,rowid",
+  ).all(id);
+  const json = (valor: string | null): unknown => {
+    try { return valor ? JSON.parse(valor) : null; } catch { return null; }
+  };
+  return c.json(filas.map((fila) => ({ ...fila, plan: json(fila.plan), reporte: json(fila.reporte) })));
+});
+
 // Instrucción de "Seguir": el mensaje visible del usuario y lo que se le pide al agente.
 const SEGUIR_VISIBLE = "Seguir donde se quedó";
 const SEGUIR_INSTRUCCION = "Termina la respuesta que quedó a medias. Responde solo con lo que falta.";
@@ -124,9 +141,40 @@ function leerConversacion(id: string): ConversationRow | null {
 
 // Un mensaje en curso o un proyecto que se está revisando impiden responder: el chat espera.
 function motivoDeBloqueo(conv: ConversationRow): "conversation_busy" | "proyecto_ocupado" | null {
-  if (conversacionEnCurso(conv.id)) return "conversation_busy";
+  if (chatOcupado(conv.id)) return "conversation_busy";
   if (conv.project_id && proyectoRevisandose(conv.project_id)) return "proyecto_ocupado";
   return null;
+}
+
+function chatOcupado(id: string): boolean {
+  return conversacionEnCurso(id) || db.query(
+    "SELECT 1 FROM tasks WHERE conversation_id=? AND status IN ('queued','analyzing','running','waiting_approval') LIMIT 1",
+  ).get(id) !== null;
+}
+
+function tareaDelChat(id: string) {
+  return db.query<{ id: string; status: string }, [string]>(
+    "SELECT id,status FROM tasks WHERE conversation_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1",
+  ).get(id);
+}
+
+// Una conversación conserva su clon y sesión; cada nueva petición necesita un plan nuevo.
+function encolarTurno(conv: ConversationRow, prompt: string, model: string): string {
+  const anterior = tareaDelChat(conv.id);
+  if (!anterior) return crearTarea({
+    prompt, model, effort: conv.effort, projectId: conv.project_id, conversationId: conv.id,
+  });
+  db.transaction(() => {
+    db.query("UPDATE repository_actions SET state='superseded' WHERE task_id=? AND state='pending'").run(anterior.id);
+    db.query(
+      "UPDATE tasks SET prompt=?,model=?,effort=?,status='queued',plan=NULL,plan_hash=NULL,approved_hash=NULL,plan_aprobado_en=NULL,reporte=NULL,result=NULL,error=NULL,finished_at=NULL,modelo_agotado=NULL,continuar=0 WHERE id=?",
+    ).run(prompt, model, conv.effort, anterior.id);
+    db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(conv.id);
+    registrarEvento(anterior.id, "turno_encolado", "Nuevo mensaje de la conversación");
+  })();
+  publicarEstado(anterior.id);
+  notifyWorker();
+  return anterior.id;
 }
 
 // El mensaje del usuario se guarda antes de ejecutar: así aparece en los demás dispositivos
@@ -172,14 +220,17 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
   const inicio = Date.now();
   let result: ResultadoAgente;
   try {
+    const cwd = join(chatWorkspace, conversationId);
+    mkdirSync(cwd, { recursive: true });
     result = await ejecutarAgente({
       prompt,
       model,
       variant: conv.effort,
       sessionId: conv.runner_session_id,
-      cwd: conv.repo_path ?? chatWorkspace,
+      cwd,
       timeoutMs: TIEMPO_TURNO_MS,
       projectId: conv.project_id,
+      conversationId,
       estilo: "chat",
       // Cada paso del agente (texto intermedio o acción) se guarda y se publica mientras corre.
       onLinea: (linea) => {
@@ -238,25 +289,6 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       );
     }
 
-    if (result.usage) {
-      // El uso se registra con el modelo que respondió (puede ser el de respaldo) y con el proyecto del chat.
-      const u = result.usage;
-      db.query(
-        `INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cost, project_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        crypto.randomUUID(),
-        conversationId,
-        result.modelo.split("/")[0],
-        result.modelo,
-        u.input,
-        u.output,
-        u.reasoning,
-        u.cacheRead,
-        u.cost,
-        conv.project_id,
-      );
-    }
   })();
 }
 
@@ -283,7 +315,8 @@ export function avisarTurnosInterrumpidos(): number {
   const chats = db
     .query<{ id: string }, []>(
       `SELECT c.id FROM conversations c
-       WHERE (SELECT m.role FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) = 'user'`,
+       WHERE NOT EXISTS (SELECT 1 FROM tasks t WHERE t.conversation_id=c.id)
+       AND (SELECT m.role FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) = 'user'`,
     )
     .all();
   for (const { id } of chats) {
@@ -298,16 +331,37 @@ chat.post("/conversations/:id/messages", async (c) => {
   const conv = leerConversacion(conversationId);
   if (!conv) return c.json({ error: "conversation_not_found" }, 404);
 
-  const body = await c.req.json<{ content?: string }>().catch(() => ({}) as { content?: string });
-  const content = body.content?.trim() ?? "";
+  const body = await c.req.json<{ content?: unknown }>().catch(() => null);
+  const content = typeof body?.content === "string" ? body.content.trim() : "";
   if (!content || content.length > MAX_CONTENIDO) {
     return c.json({ error: "invalid_content" }, 400);
   }
   const bloqueo = motivoDeBloqueo(conv);
   if (bloqueo) return c.json({ error: bloqueo }, 409);
 
+  // Las órdenes directas de Git crean una tarjeta de autorización, sin ejecutar al agente.
+  const pedido = /^(?:(?:haz|hacer|ejecuta|realiza|crea|crear|por favor)\s+)*(?:un\s+)?(?:git\s+(init|commit|push)|(?:un\s+)?(commit|push|pr)|(?:gh\s+pr\s+create)|(pull request))(?:\s+.*)?[.!]?$/i.exec(content);
+  if (pedido && conv.project_id) {
+    const response = await repositoryActions.request(`http://telo/projects/${conv.project_id}/acciones`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: (pedido[1] || pedido[2] || "pr").toLowerCase(),
+        conversationId, taskId: tareaDelChat(conversationId)?.id,
+      }),
+    });
+    if (!response.ok) return response;
+    const turno = guardarMensajeUsuario(conversationId, content);
+    publicarChat(conversationId, "terminado");
+    return c.json({ messages: [turno], action: await response.json() }, 202);
+  }
+
   const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
   const turno = guardarMensajeUsuario(conversationId, content);
+  if (conv.project_id) {
+    const taskId = encolarTurno(conv, content, model);
+    publicarChat(conversationId, "en_curso");
+    return c.json({ messages: [turno], taskId }, 202);
+  }
   iniciarTurno(conv, turno, content, model);
   return c.json({ messages: [turno] }, 202);
 });
@@ -325,6 +379,22 @@ chat.post("/conversations/:id/seguir", async (c) => {
   if (model === conv.cuota_modelo) return c.json({ error: "modelo_sin_cambio" }, 409);
   const bloqueo = motivoDeBloqueo(conv);
   if (bloqueo) return c.json({ error: bloqueo }, 409);
+
+  if (conv.project_id) {
+    const tarea = tareaDelChat(conversationId);
+    if (!tarea || tarea.status !== "sin_cuota") return c.json({ error: "chat_sin_cuota" }, 409);
+    const turno = guardarMensajeUsuario(conversationId, SEGUIR_VISIBLE);
+    db.transaction(() => {
+      db.query("UPDATE tasks SET status='queued',model=?,effort=?,modelo_agotado=NULL,error=NULL,finished_at=NULL,continuar=1 WHERE id=?")
+        .run(model, conv.effort, tarea.id);
+      db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(conversationId);
+      registrarEvento(tarea.id, "seguida", `Modelo ${model}`);
+    })();
+    publicarEstado(tarea.id);
+    publicarChat(conversationId, "en_curso");
+    notifyWorker();
+    return c.json({ messages: [turno], taskId: tarea.id }, 202);
+  }
 
   const ultimoMensaje = conv.runner_session_id === null
     ? db

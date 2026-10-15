@@ -12,6 +12,9 @@ import { AvisoCuota } from "../components/cuota-aviso";
 import { VistaDocumento } from "../components/documentos";
 import { HistorialPrompts, type PromptEnviado } from "../components/chat-historial";
 import { MenuComandosChat, type ComandoChat } from "../components/chat-comandos";
+import { PlanRevision } from "../components/plan-revision";
+import { AccionesRepositorioChat } from "../components/repository-approval";
+import { sugerenciasChat } from "../lib/sugerencias";
 import { effortLabel, errorText, formatWhen, tierBars } from "../lib/model";
 import {
   componerMensaje,
@@ -23,6 +26,7 @@ import {
 } from "../lib/adjuntos";
 import { useShell } from "../components/shell-context";
 import "../styles-chat.css";
+import "../styles-flujo.css";
 
 type Patch = { model?: string | null; effort?: string | null; title?: string; pinned?: boolean };
 
@@ -118,6 +122,7 @@ export function ChatPage() {
   }, [selectedId]);
   const cambiarBorrador = (texto: string) => {
     setDraft(texto);
+    setSugerenciaOculta(false);
     setSlashActivo(0);
     setSlashOculto(false);
     if (selectedId) guardarBorrador(selectedId, texto);
@@ -134,6 +139,7 @@ export function ChatPage() {
   // Menú de "/": activo es la fila marcada; oculto lo cierra con Escape hasta que el texto cambie.
   const [slashActivo, setSlashActivo] = useState(0);
   const [slashOculto, setSlashOculto] = useState(false);
+  const [sugerenciaOculta, setSugerenciaOculta] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -153,6 +159,7 @@ export function ChatPage() {
   const conversations = useQuery({
     queryKey: ["conversations"],
     queryFn: api.listConversations,
+    refetchInterval: 4_000,
   });
 
   // Abre el chat más reciente al cargar si no hay uno seleccionado
@@ -178,6 +185,13 @@ export function ChatPage() {
 
   const current: Conversation | null =
     conversations.data?.find((c) => c.id === selectedId) ?? null;
+  const tareasChat = useQuery({
+    queryKey: ["conversation-tasks", selectedId],
+    queryFn: () => api.conversationTasks(selectedId!),
+    enabled: !!selectedId && !!current?.project_id,
+    refetchInterval: 3_000,
+  });
+  const tareaChat = current?.project_id ? tareasChat.data?.[0] : undefined;
   const modelList: ModelInfo[] = models.data?.models ?? [];
   const modelInfo = modelList.find((m) => m.id === current?.model) ?? null;
   const lista = messages.data ?? [];
@@ -216,10 +230,18 @@ export function ChatPage() {
   // Pasos del agente en vivo, por chat. Llegan por el canal (evento "actividad") mientras el agente corre.
   const [vivos, setVivos] = useState<Record<string, { turnoId: string; pasos: PasoActividad[] }>>({});
   useEventosVivos({}, (evento) => {
+    if (evento.tipo === "tarea" || evento.tipo === "evento") {
+      void qc.invalidateQueries({ queryKey: ["conversation-tasks", selectedId] });
+      void qc.invalidateQueries({ queryKey: ["messages", selectedId] });
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      return;
+    }
     // Un turno empezó o terminó, aquí o en otro dispositivo: la lista y los mensajes se piden de nuevo.
     if (evento.tipo === "chat") {
       void qc.invalidateQueries({ queryKey: ["conversations"] });
       void qc.invalidateQueries({ queryKey: ["messages", evento.conversacion_id] });
+      void qc.invalidateQueries({ queryKey: ["conversation-tasks", evento.conversacion_id] });
+      void qc.invalidateQueries({ queryKey: ["repository-actions", evento.conversacion_id] });
       return;
     }
     if (evento.tipo !== "actividad") return;
@@ -266,6 +288,8 @@ export function ChatPage() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["messages", selectedId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["conversation-tasks", selectedId] });
+      qc.invalidateQueries({ queryKey: ["repository-actions", selectedId] });
     },
   });
 
@@ -423,7 +447,7 @@ export function ChatPage() {
   // Mantiene visible el último mensaje, incluido el de "pensando".
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.data?.length, send.isPending, selectedId]);
+  }, [messages.data?.length, send.isPending, selectedId, tareaChat?.status, tareaChat?.plan_hash]);
 
   // Solo llega aquí un fallo que no se guardó (409 si el chat ya responde, 4xx o 5xx del servidor).
   const sendError = send.isError ? errorText(send.error) : null;
@@ -436,7 +460,12 @@ export function ChatPage() {
   const ultimoMensaje = lista.at(-1);
   const yaGuardado = send.isPending && ultimoMensaje?.role === "user" && ultimoMensaje.content === send.variables?.content;
   // Pensando: se envió aquí o el chat está ocupado (otro dispositivo lo envió).
-  const pensando = send.isPending || seguirChat.isPending || !!current?.ocupada;
+  const tareaActiva = !!tareaChat && ["queued", "analyzing", "running"].includes(tareaChat.status);
+  const pensando = send.isPending || seguirChat.isPending || (tareaChat ? tareaActiva : !!current?.ocupada);
+  const sugerencia = !sugerenciaOculta && !pensando && !draft.startsWith("/")
+    ? sugerenciasChat(lista).find((s) => !draft || (s.toLocaleLowerCase().startsWith(draft.toLocaleLowerCase()) && s.length > draft.length))
+    : undefined;
+  useEffect(() => setSugerenciaOculta(false), [selectedId, lista.length]);
 
   // Cuando el chat deja de estar ocupado, sus pasos ya están guardados en el servidor: se vacían los en vivo.
   useEffect(() => {
@@ -800,6 +829,17 @@ export function ChatPage() {
               {pensando && (
                 <IndicadorPensando modelo={nombreAgente} vivo={(selectedId && vivos[selectedId]?.pasos) || []} />
               )}
+              {tareaChat && <PlanRevision key={`${tareaChat.id}:${tareaChat.plan_hash}`} tarea={tareaChat} />}
+              {selectedId && current?.project_id && (
+                <AccionesRepositorioChat
+                  key={selectedId}
+                  conversationId={selectedId}
+                  projectId={current.project_id}
+                  taskId={tareaChat?.id}
+                  terminada={!!tareaChat && ["done", "failed", "cancelled", "interrupted"].includes(tareaChat.status)}
+                />
+              )}
+              {tareasChat.isError && current?.project_id && <p className="tl-alerta" role="alert">{errorText(tareasChat.error)}</p>}
               {current?.cuota_modelo && !pensando && (
                 <AvisoCuota
                   modeloAgotado={modelList.find((m) => m.id === current.cuota_modelo)?.name ?? current.cuota_modelo}
@@ -924,11 +964,12 @@ export function ChatPage() {
                 value={draft}
                 placeholder="Escribe un mensaje, pega o arrastra archivos, o usa / para comandos"
                 aria-label="Mensaje"
-                aria-autocomplete={menuAbierto ? "list" : undefined}
+                aria-autocomplete={menuAbierto ? "list" : sugerencia ? "inline" : undefined}
                 aria-activedescendant={menuAbierto ? `comando-chat-${comandosFiltrados[indiceSlash]?.id}` : undefined}
                 onChange={(e) => cambiarBorrador(e.target.value)}
                 onPaste={alPegar}
                 onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
+                  if (e.nativeEvent.isComposing) return;
                   if (menuAbierto) {
                     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                       e.preventDefault();
@@ -947,12 +988,26 @@ export function ChatPage() {
                       return;
                     }
                   }
+                  if (e.key === "Escape") {
+                    setSugerenciaOculta(true);
+                    return;
+                  }
+                  if (e.key === "Tab" && !e.shiftKey && !menuAbierto && sugerencia) {
+                    e.preventDefault();
+                    cambiarBorrador(sugerencia);
+                    return;
+                  }
                   if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
                     submit();
                   }
                 }}
               />
+              {sugerencia && (
+                <button type="button" className="composer-suggestion" onClick={() => { cambiarBorrador(sugerencia); inputRef.current?.focus(); }} aria-label={`Completar sugerencia: ${sugerencia}`}>
+                  <span>{sugerencia}</span><kbd>Tab</kbd>
+                </button>
+              )}
 
               <input
                 ref={fileRef}
@@ -965,7 +1020,7 @@ export function ChatPage() {
                 }}
               />
 
-              {/* Fila 1: herramientas, modelo y enviar. Fila 2: esfuerzo del modelo y Uso. */}
+              {/* Herramientas, selector conjunto de modelo y esfuerzo, y envío. */}
               <div className="tl-composer-barra">
                 <div className="tl-composer-izq">
                   <button
@@ -1042,22 +1097,6 @@ export function ChatPage() {
               </div>
 
               <div className="tl-composer-pie">
-                {modelInfo && modelInfo.variants.length > 0 && (
-                  <div className="tl-esfuerzo" role="radiogroup" aria-label="Esfuerzo del modelo">
-                    {["", ...modelInfo.variants].map((v) => (
-                      <button
-                        key={v || "auto"}
-                        type="button"
-                        role="radio"
-                        className="tl-esfuerzo-opcion"
-                        aria-checked={(efectoActual ?? "") === v}
-                        onClick={() => configure.mutate({ effort: v || null })}
-                      >
-                        {v ? effortLabel(v) : "Auto"}
-                      </button>
-                    ))}
-                  </div>
-                )}
                 <button
                   ref={usoRef}
                   type="button"

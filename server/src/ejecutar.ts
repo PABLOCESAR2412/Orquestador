@@ -6,7 +6,7 @@ import { entornoDeProyecto } from "./secretos";
 import { entornoProveedores } from "./claves-proveedor";
 import { redactar } from "./redaccion";
 import { AislamientoError } from "./runners/aislamiento";
-import { ErrorAgente, runOpenCode, type RunResult } from "./runners/opencode";
+import { ErrorAgente, runOpenCode, type RunResult, type Usage } from "./runners/opencode";
 import { conMemoria, extraerMemoria, guardarMemoria, memoriaDelProyecto, quitarBloqueMemoria } from "./memoria";
 
 // Longitud mínima de un valor de secreto para ocultarlo en la salida. Más corto, aparecería en texto normal.
@@ -28,6 +28,8 @@ export type OpcionesAgente = {
   // Solo para la tarea: registra el cambio de modelo en su historial.
   taskId?: string;
   projectId?: string | null;
+  conversationId?: string | null;
+  soloLectura?: boolean;
   // Solo para la tarea: pide al agente escribir la memoria del proyecto al final y la guarda.
   aprender?: boolean;
   // Solo para chats: añade instrucciones de estilo (respuestas concretas y verificables). Las tareas no lo usan.
@@ -36,6 +38,23 @@ export type OpcionesAgente = {
 
 // `modelo` es el que realmente respondió (puede ser el de respaldo), para registrar el uso.
 export type ResultadoAgente = RunResult & { modelo: string };
+
+// Cada paso se persiste al llegar: fallos, cancelaciones y respaldos conservan el consumo previo.
+export function registrarUsoAgente(
+  modelo: string,
+  uso: Usage,
+  contexto: Pick<OpcionesAgente, "conversationId" | "projectId" | "taskId">,
+): void {
+  db.query(
+    `INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens,
+      reasoning_tokens, cache_read_tokens, cost, project_id, task_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    crypto.randomUUID(), contexto.conversationId ?? null, modelo.split("/")[0], modelo,
+    uso.input, uso.output, uso.reasoning, uso.cacheRead, uso.cost,
+    contexto.projectId ?? null, contexto.taskId ?? null,
+  );
+}
 
 // Saturación o límite del proveedor: justifica probar otro modelo.
 const PATRON_PROVEEDOR = /\b(429|5\d\d)\b|rate limit|too many requests|overloaded|quota/i;
@@ -113,7 +132,7 @@ function etiquetaDelError(err: unknown): string {
 export function conInstrucciones(projectId: string | null | undefined, prompt: string): string {
   if (!projectId) return prompt;
   const fila = db
-    .query<{ instrucciones: string | null }, [string]>("SELECT instrucciones FROM projects WHERE id = ?")
+    .query<{ instrucciones: string | null; compartir_contexto: number }, [string]>("SELECT instrucciones, compartir_contexto FROM projects WHERE id = ?")
     .get(projectId);
   const texto = fila?.instrucciones?.trim();
   if (!texto) return prompt;
@@ -182,6 +201,7 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
     onLinea: opts.onLinea ? (linea: string) => opts.onLinea?.(ocultarValores(linea, ocultos)) : undefined,
     extraEnv: propias,
     onSesion: alSesion,
+    soloLectura: opts.soloLectura,
   };
 
   // Un error puede traer fragmentos de la salida del agente: también se limpia.
@@ -217,6 +237,7 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
       model: opts.model,
       variant: opts.variant ?? undefined,
       sessionId: opts.sessionId ?? null,
+      onUso: (uso) => registrarUsoAgente(opts.model, uso, opts),
     });
     return terminar(r, opts.model);
   } catch (err) {
@@ -240,6 +261,7 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
         model: respaldo,
         variant: await varianteSoportada(respaldo, opts.variant),
         sessionId: sesion,
+        onUso: (uso) => registrarUsoAgente(respaldo, uso, opts),
       });
       return terminar(r, respaldo);
     } catch (errRespaldo) {

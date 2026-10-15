@@ -60,7 +60,7 @@ function textoDe(nodo: ReactNode): string {
 
 const COMPONENTES: Components = {
   // Los bloques ``` llegan como <pre><code class="language-x">: se muestran con su pestaña y copiar.
-  pre({ children }) {
+  pre({ children }: { children?: ReactNode }) {
     const hijo = Children.toArray(children)[0];
     if (isValidElement<{ className?: string; children?: ReactNode }>(hijo)) {
       const etiqueta = /language-(\S+)/.exec(hijo.props.className ?? "")?.[1] ?? "";
@@ -69,7 +69,7 @@ const COMPONENTES: Components = {
     return <pre>{children}</pre>;
   },
   // Enlaces en pestaña nueva, sin pasar la referencia de la conversación.
-  a({ href, children }) {
+  a({ href, children }: { href?: string; children?: ReactNode }) {
     return (
       <a href={href} target="_blank" rel="noopener noreferrer">
         {children}
@@ -77,7 +77,7 @@ const COMPONENTES: Components = {
     );
   },
   // Las tablas anchas se desplazan dentro de su bloque, no en toda la página.
-  table({ children }) {
+  table({ children }: { children?: ReactNode }) {
     return (
       <div className="tl-tabla-wrap">
         <table>{children}</table>

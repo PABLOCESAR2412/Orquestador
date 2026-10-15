@@ -10,6 +10,7 @@ import { ProyectoInstrucciones } from "../components/proyecto-instrucciones";
 import { ProyectoMemoria } from "../components/proyecto-memoria";
 import { ProyectoArchivos } from "../components/proyecto-archivos";
 import { ProyectoSkills } from "../components/proyecto-skills";
+import { ProyectoConfiguracion } from "../components/proyecto-configuracion";
 import { ProyectoSecretos } from "../components/proyecto-secretos";
 import { ProyectoSiguientePaso } from "../components/proyecto-siguiente";
 import { ProyectoClave } from "../components/proyecto-clave";
@@ -134,6 +135,7 @@ export function ProjectDetailPage() {
             <ProyectoInstrucciones proyecto={proyecto} />
             <ProyectoMemoria id={proyecto.id} memoria={datos.memoria} />
             <ProyectoSkills id={proyecto.id} />
+            <ProyectoConfiguracion key={proyecto.id} id={proyecto.id} />
             <ProyectoArchivos id={proyecto.id} />
             <ProyectoSecretos id={proyecto.id} />
             <ProyectoClave id={proyecto.id} />

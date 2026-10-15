@@ -1,3 +1,8 @@
+import { createHash } from "node:crypto";
+import { itemDeLinea, registrarActividad } from "./actividad";
+import { repositoryActions } from "./routes/repository-actions";
+import { proyectoOcupado, reservarProyecto, soltarProyecto } from "./ocupacion";
+import { capturarAlcance, comprobarAlcance } from "./alcance-plan";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "./config";
@@ -61,6 +66,7 @@ type QueuedTask = {
   repo_path: string | null;
   project_id: string | null;
   provider_session_id: string | null;
+  conversation_id: string | null;
   // 1 si el plan ya fue aprobado: la tarea va directo al obrero.
   aprobado: number;
   // 1 si la tarea se detuvo por cuota agotada y debe retomar su sesión (ver pausarPorCuota).
@@ -85,7 +91,7 @@ export function notifyWorker() {
 function nextQueued(): QueuedTask | null {
   return db
     .query<QueuedTask, []>(
-      "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado, t.continuar FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC LIMIT 1",
+      "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, t.conversation_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado, t.continuar FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC LIMIT 1",
     )
     .get();
 }
@@ -118,22 +124,15 @@ function finish(
   }
 }
 
-function recordUsage(model: string, u: Usage, projectId: string | null, taskId: string) {
-  db.query(
-    `INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cost, project_id, task_id)
-     VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    crypto.randomUUID(),
-    model.split("/")[0],
-    model,
-    u.input,
-    u.output,
-    u.reasoning,
-    u.cacheRead,
-    u.cost,
-    projectId,
-    taskId,
-  );
+function hashPlan(plan: Plan): string {
+  return createHash("sha256").update(JSON.stringify(plan)).digest("hex");
+}
+
+function avisarChat(id: string, texto?: string) {
+  const conv = db.query<{ conversation_id: string | null }, [string]>("SELECT conversation_id FROM tasks WHERE id=?").get(id)?.conversation_id;
+  if (!conv) return;
+  if (texto) db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES (?,?,'assistant',?)").run(crypto.randomUUID(), conv, redactar(texto));
+  publicar({ tipo: "chat", conversacion_id: conv, estado: "terminado" });
 }
 
 function recortarLinea(linea: string): string {
@@ -193,6 +192,8 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
       timeoutMs: TASK_TIMEOUT_MS,
       signal: controller.signal,
       taskId: task.id,
+      conversationId: task.conversation_id,
+      soloLectura: estadoActual(task.id) === "analyzing",
       projectId: task.project_id,
       // Solo el obrero aprende del proyecto: al terminar, guarda su memoria.
       aprender,
@@ -202,22 +203,19 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
         task.provider_session_id = sid;
         db.query("UPDATE tasks SET provider_session_id = ? WHERE id = ?").run(sid, task.id);
         registrarEvento(task.id, "sesion_asignada", sid);
+        if (task.conversation_id) db.query("UPDATE conversations SET runner_session_id=? WHERE id=?").run(sid, task.conversation_id);
       },
       onLinea: (linea) => {
         if (!linea.trim()) return;
         salida.linea(linea);
+        if (task.conversation_id) {
+          const turno = db.query<{id:string},[string]>("SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(task.conversation_id);
+          const item = itemDeLinea(linea);
+          if (turno && item) registrarActividad(task.conversation_id, turno.id, item);
+        }
         publicar({ tipo: "salida", task_id: task.id, linea: recortarLinea(linea) });
       },
     });
-    // El uso se registra antes de seguir: si el servidor cae después, el gasto ya quedó anotado.
-    // Un fallo al anotarlo no debe marcar como fallida una tarea que sí avanzó.
-    if (result.usage) {
-      try {
-        recordUsage(result.modelo, result.usage, task.project_id, task.id);
-      } catch (err) {
-        console.error("Registro de uso de la tarea:", mensajeSeguro(err));
-      }
-    }
     return result;
   } catch (err) {
     if (agotado) throw new TiempoAgotado("El agente superó los 30 minutos sin terminar.");
@@ -267,12 +265,14 @@ async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Pr
   const plan = validacion.valor;
   const numero = contarPlanes(task.id) + 1;
   db.transaction(() => {
-    db.query("UPDATE tasks SET plan = ? WHERE id = ?").run(JSON.stringify(plan), task.id);
+    const contenido = JSON.stringify(plan), hash = hashPlan(plan);
+    db.query("UPDATE tasks SET plan=?, plan_hash=?, approved_hash=NULL, plan_aprobado_en=NULL WHERE id=?").run(contenido, hash, task.id);
+    db.query("INSERT INTO task_plans(task_id,plan,hash) VALUES (?,?,?)").run(task.id, contenido, hash);
     registrarEvento(task.id, "plan_creado", `Versión ${numero}: ${plan.objetivo}`);
   })();
 
   if (!replanificacion && !requiereAprobacion(plan)) {
-    db.query("UPDATE tasks SET plan_aprobado_en = datetime('now') WHERE id = ?").run(task.id);
+    db.query("UPDATE tasks SET plan_aprobado_en = datetime('now'), approved_hash=plan_hash WHERE id = ?").run(task.id);
     registrarEvento(task.id, "plan_aprobado", "Automático: el plan no necesita aprobación");
     return "aprobado";
   }
@@ -291,12 +291,20 @@ async function faseObrero(
   const { task } = ctx;
   const plan = planGuardado(task.id);
   if (!plan) throw new ErrorFase("No hay un plan que ejecutar.");
+  const aprobacion = db.query<{plan_hash:string|null; approved_hash:string|null},[string]>("SELECT plan_hash,approved_hash FROM tasks WHERE id=?").get(task.id)!;
+  if (aprobacion.plan_hash && (aprobacion.approved_hash !== aprobacion.plan_hash || hashPlan(plan) !== aprobacion.plan_hash))
+    throw new ErrorFase("El plan cambió después de su aprobación. Revisa y aprueba la versión actual.");
+  const alcance = task.project_id ? await capturarAlcance(ctx.cwd, plan.pasos.flatMap(p => p.archivos)) : null;
 
   db.query("UPDATE tasks SET status = 'running' WHERE id = ?").run(task.id);
   publicarEstado(task.id);
   registrarEvento(task.id, "obrero_iniciado", `Modelo ${task.model} · ejecuta el plan aprobado`);
 
   const respuesta = await llamar(ctx, promptDeFase(ctx, promptObrero(plan)), true);
+  if (alcance) {
+    const fuera = await comprobarAlcance(alcance);
+    if (fuera.length) return { desviacion: "Se detectaron cambios fuera del plan: " + fuera.slice(0,20).join(", ") + ". Se conservan para revisión." };
+  }
   const reporte = validarReporte(extraerJson(respuesta.textoFinal) ?? extraerJson(respuesta.text), respuesta.textoFinal);
   if (reporte.desviacion) return { desviacion: reporte.desviacion };
   return { reporte, texto: respuesta.text };
@@ -306,13 +314,25 @@ async function faseObrero(
 // vigente, nada se ejecuta hasta que el usuario lo apruebe de nuevo.
 function pedirReplanificacion(id: string, motivo: string) {
   db.transaction(() => {
-    db.query("UPDATE tasks SET status = 'analyzing', plan_aprobado_en = NULL WHERE id = ?").run(id);
+    db.query("UPDATE tasks SET status = 'analyzing', plan_aprobado_en = NULL, approved_hash=NULL WHERE id = ?").run(id);
     registrarEvento(id, "replanificada", motivo);
   })();
   publicarEstado(id);
 }
 
 async function runTask(task: QueuedTask) {
+  if (task.project_id && (proyectoOcupado(task.project_id) || !reservarProyecto(task.project_id))) {
+    await Bun.sleep(500);
+    return;
+  }
+  try {
+    await ejecutarTarea(task);
+  } finally {
+    if (task.project_id) soltarProyecto(task.project_id);
+  }
+}
+
+async function ejecutarTarea(task: QueuedTask) {
   // Con proyecto de Git, la tarea trabaja en su clon; con proyecto sin Git, en la carpeta del proyecto;
   // sin proyecto, en su carpeta temporal.
   let cwd: string;
@@ -329,7 +349,9 @@ async function runTask(task: QueuedTask) {
     // preparaba, la cancelación ya quedó registrada.
     if (estadoActual(task.id) !== "queued") return;
     const texto =
-      err instanceof ErrorTarea ? "La copia de trabajo de la tarea no está disponible." : mensajeSeguro(err);
+      err instanceof ErrorTarea
+        ? err.code === "proyecto_sin_git" ? "Inicializa Git desde la configuración del proyecto antes de lanzar una tarea." : "La copia de trabajo de la tarea no está disponible."
+        : mensajeSeguro(err);
     finish(task.id, "failed", { error: `No se pudo preparar la tarea: ${texto}` });
     return;
   }
@@ -377,6 +399,14 @@ async function runTask(task: QueuedTask) {
       finish(task.id, "failed", { result: texto, reporte, error: reporte.resumen });
     } else {
       finish(task.id, "done", { result: texto, reporte });
+      if (task.conversation_id) db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(task.conversation_id);
+      if (task.conversation_id && task.project_id) {
+        const accion = ["commit","push","pr"].find(a => planGuardado(task.id)?.requiere_aprobacion.includes(a as "commit"|"push"|"pr"));
+        if (accion) await repositoryActions.request(`http://telo/projects/${task.project_id}/acciones`, {
+          method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({action:accion,conversationId:task.conversation_id,taskId:task.id}),
+        });
+      }
     }
   } catch (err) {
     if (cancelRequested.has(task.id)) {
@@ -431,6 +461,7 @@ async function loop() {
 
 // Llamar una sola vez al arrancar el servidor.
 export function startWorker() {
+  db.query("UPDATE repository_actions SET state='failed',result='El servidor se reinició durante la acción. Comprueba el repositorio antes de solicitarla otra vez.' WHERE state='executing'").run();
   // Una tarea "running" o "analyzing" al arrancar quedó sin proceso por un reinicio: se marca
   // como interrumpida, no como fallida, para que el usuario decida qué hacer.
   // Una tarea en "waiting_approval" no tiene proceso: sigue esperando al usuario.
@@ -470,21 +501,22 @@ export function cancelTask(id: string): CancelOutcome {
   return "not_cancellable";
 }
 
-export type ResultadoPlan = "ok" | "not_found" | "not_waiting";
+export type ResultadoPlan = "ok" | "not_found" | "not_waiting" | "stale";
 
 // El usuario aprueba el plan: la tarea vuelve a la cola y el obrero lo ejecuta.
 // Las notas se guardan en el plan y el obrero las recibe junto a él.
-export function aprobarPlan(id: string, notas: string | null): ResultadoPlan {
+export function aprobarPlan(id: string, notas: string | null, hash?: string): ResultadoPlan {
   const fila = db
-    .query<{ status: string; plan: string | null }, [string]>("SELECT status, plan FROM tasks WHERE id = ?")
+    .query<{ status: string; plan: string | null; plan_hash:string|null }, [string]>("SELECT status, plan, plan_hash FROM tasks WHERE id = ?")
     .get(id);
   if (!fila) return "not_found";
   if (fila.status !== "waiting_approval" || !fila.plan) return "not_waiting";
 
+  if (hash !== undefined && hash !== fila.plan_hash) return "stale";
   const plan = JSON.parse(fila.plan) as Plan;
   if (notas) plan.notas = redactar(notas).slice(0, MAX_NOTAS);
   db.transaction(() => {
-    db.query("UPDATE tasks SET status = 'queued', plan = ?, plan_aprobado_en = datetime('now') WHERE id = ?").run(
+    db.query("UPDATE tasks SET status = 'queued', plan = ?, plan_aprobado_en = datetime('now'), approved_hash = plan_hash WHERE id = ?").run(
       JSON.stringify(plan),
       id,
     );

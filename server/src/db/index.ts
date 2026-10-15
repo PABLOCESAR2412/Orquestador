@@ -420,6 +420,43 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    // Acciones de repositorio, configuración Git por proyecto, planes y vínculo de tareas con chat.
+    name: "022_acciones_git_planes",
+    sql: `
+      ALTER TABLE tasks ADD COLUMN plan_hash TEXT;
+      ALTER TABLE tasks ADD COLUMN approved_hash TEXT;
+      ALTER TABLE tasks ADD COLUMN conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL;
+      ALTER TABLE projects ADD COLUMN compartir_contexto INTEGER NOT NULL DEFAULT 0;
+      CREATE TABLE task_plans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        plan TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        approved_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE project_git (
+        project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        remote TEXT,
+        author_name TEXT NOT NULL DEFAULT 'Telo',
+        author_email TEXT NOT NULL DEFAULT 'telo@localhost',
+        base_branch TEXT NOT NULL DEFAULT 'main'
+      );
+      CREATE TABLE repository_actions (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
+        task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+        action TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'pending',
+        result TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX tasks_conversation ON tasks(conversation_id);
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -446,7 +483,14 @@ const pendientes = migrations.filter((m) => !applied.has(m.name));
 if (pendientes.length > 0 && applied.size > 0) copiarAntesDeMigrar(pendientes[0].name);
 
 // Tablas cuyas claves foráneas se revisan tras una migración sinClaves.
-const TABLAS_CON_CLAVES = ["tasks", "task_events", "task_approvals"];
+const TABLAS_CON_CLAVES = [
+  "tasks",
+  "task_events",
+  "task_approvals",
+  "task_plans",
+  "project_git",
+  "repository_actions",
+];
 
 function aplicarMigracion(m: Migration) {
   const registrar = () => db.query("INSERT INTO schema_migrations (name) VALUES (?)").run(m.name);
@@ -463,6 +507,7 @@ function aplicarMigracion(m: Migration) {
     db.transaction(() => {
       db.exec(m.sql);
       for (const tabla of TABLAS_CON_CLAVES) {
+        if (!db.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(tabla)) continue;
         const rotas = db.query(`PRAGMA foreign_key_check(${tabla})`).all();
         if (rotas.length > 0) throw new Error(`La migración ${m.name} dejó claves foráneas rotas en ${tabla}`);
       }

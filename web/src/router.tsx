@@ -6,13 +6,15 @@ import {
   redirect,
   useRouterState,
 } from "@tanstack/react-router";
-import { ChatPage } from "./pages/chat";
-import { LoginPage } from "./pages/login";
-import { TasksPage } from "./pages/tasks";
-import { AnalyticsPage } from "./pages/analytics";
-import { SettingsPage } from "./pages/settings";
-import { ProjectsPage } from "./pages/proyectos";
-import { ProjectDetailPage } from "./pages/proyecto";
+import { lazy, Suspense } from "react";
+
+const ChatPage = lazy(() => import("./pages/chat").then((m) => ({ default: m.ChatPage })));
+const LoginPage = lazy(() => import("./pages/login").then((m) => ({ default: m.LoginPage })));
+const TasksPage = lazy(() => import("./pages/tasks").then((m) => ({ default: m.TasksPage })));
+const AnalyticsPage = lazy(() => import("./pages/analytics").then((m) => ({ default: m.AnalyticsPage })));
+const SettingsPage = lazy(() => import("./pages/settings").then((m) => ({ default: m.SettingsPage })));
+const ProjectsPage = lazy(() => import("./pages/proyectos").then((m) => ({ default: m.ProjectsPage })));
+const ProjectDetailPage = lazy(() => import("./pages/proyecto").then((m) => ({ default: m.ProjectDetailPage })));
 
 import { ShellProvider } from "./components/shell-context";
 import { Shell } from "./components/shell";
@@ -20,12 +22,15 @@ import { Shell } from "./components/shell";
 function Layout() {
   // La pantalla de entrada va sin barra lateral.
   const sinMarco = useRouterState({ select: (s) => s.location.pathname === "/entrar" });
-  if (sinMarco) return <Outlet />;
+  const contenido = (
+    <Suspense fallback={<p className="muted-note container" role="status">Cargando pantalla…</p>}>
+      <Outlet />
+    </Suspense>
+  );
+  if (sinMarco) return contenido;
   return (
     <ShellProvider>
-      <Shell>
-        <Outlet />
-      </Shell>
+      <Shell>{contenido}</Shell>
     </ShellProvider>
   );
 }
