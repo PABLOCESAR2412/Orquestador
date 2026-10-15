@@ -64,6 +64,6 @@
     { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "El analizador rechaza rutas fuera del workspace y dentro de .git antes de aprobar", "pr": null },
     { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Chat: tiempo de respuesta, copiar y escuchar mensajes, actividad con iconos y sugerencias contextuales", "pr": null },
     { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Chat: actividad en vivo desplazable y resumen de cambios con diff revisable", "pr": null },
-    { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Ajustes: modelos Google y Codex, guardado, Skills CLI y acceso GitHub por sesión", "pr": null }
+    { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Ajustes: modelos Google y Codex, guardado, Skills CLI y acceso GitHub por sesión", "pr": 47 }
   ]
 }
