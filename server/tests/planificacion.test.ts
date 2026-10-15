@@ -17,8 +17,8 @@ describe("plan del analizador", () => {
   test("valida el reporte del obrero y admite solicitar revisión", () => {
     const reporte = {
       resumen: "Listo",
-      cambios: [{ archivo: "src/saludo.ts", tipo: "editar" }],
-      pruebas: [{ comando: "bun test", resultado: "ok" }],
+      cambios: [{ archivo: "src/saludo.ts", tipo: "editar" as const }],
+      pruebas: [{ comando: "bun test", resultado: "ok" as const }],
       pendientes: [],
       diff_disponible: true,
     };

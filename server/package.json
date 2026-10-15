@@ -6,9 +6,18 @@
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json",
     "test:worker": "TELO_TEST_WORKER=1 bun test tests/worker-flujo.test.ts"
   },
   "dependencies": {
-    "hono": "^4.13.13"
+    "docx": "^9.10.0",
+    "exceljs": "^4.4.0",
+    "hono": "^4.13.13",
+    "mammoth": "^1.13.0",
+    "marked": "^18.1.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "typescript": "^7.0.2"
   }
 }

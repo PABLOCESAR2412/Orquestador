@@ -9,7 +9,7 @@ export function PlanRevision({ tarea }: { tarea: Task }) {
   const [feedback, setFeedback] = useState("");
   const decision = useMutation({
     mutationFn: (decision: "approve" | "revise") =>
-      api.decidePlan(tarea.id, tarea.plan_hash!, decision, feedback),
+      api.decidePlan(tarea.id, { decision, plan_hash: tarea.plan_hash!, feedback }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["tasks"] });
       void qc.invalidateQueries({ queryKey: ["task", tarea.id] });
@@ -17,19 +17,12 @@ export function PlanRevision({ tarea }: { tarea: Task }) {
     },
   });
   if (
-    tarea.phase !== "waiting_approval" ||
+    tarea.status !== "waiting_approval" ||
     !tarea.plan ||
-    !["queued", "interrupted"].includes(tarea.status)
+    !tarea.plan_hash
   )
     return null;
-  const p = JSON.parse(tarea.plan) as {
-    objetivo: string;
-    pasos: { id: number; descripcion: string; archivos: string[] }[];
-    criterios_de_aceptacion: string[];
-    preguntas: string[];
-    riesgos: string[];
-    requiere_aprobacion: string[];
-  };
+  const p = tarea.plan;
   return (
     <section className="panel approval-panel" aria-label="Aprobar plan">
       <h2>Revisa el plan</h2>
@@ -84,7 +77,7 @@ export function PlanRevision({ tarea }: { tarea: Task }) {
         <button
           type="button"
           className="primary"
-          disabled={decision.isPending || p.preguntas.length > 0 || !!tarea.error}
+          disabled={decision.isPending || p.preguntas.length > 0}
           onClick={() => decision.mutate("approve")}
         >
           Aprobar y ejecutar

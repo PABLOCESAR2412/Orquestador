@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -16,12 +16,16 @@ const { guardarSkill, listarSkills, borrarSkill, importarSkill, buscarSkills } =
   "../src/skills-proyecto"
 );
 const fetchOriginal = globalThis.fetch;
+const carpetaProyecto = join(raiz, "proyectos", "skills-importador");
 afterEach(() => {
   globalThis.fetch = fetchOriginal;
   db.query("DELETE FROM projects WHERE id = ?").run("skills-test");
+  rmSync(carpetaProyecto, { recursive: true, force: true });
 });
 function proyecto() {
-  db.query("INSERT OR IGNORE INTO projects (id, name) VALUES (?, ?)").run("skills-test", "Skills");
+  mkdirSync(carpetaProyecto, { recursive: true });
+  db.query("INSERT OR IGNORE INTO projects (id, name, repo_path) VALUES (?, ?, ?)")
+    .run("skills-test", "Skills", carpetaProyecto);
   return "skills-test";
 }
 const URL_SKILL = "https://github.com/anthropics/skills/blob/main/skills/pdf/SKILL.md";
@@ -29,14 +33,18 @@ const URL_SKILL = "https://github.com/anthropics/skills/blob/main/skills/pdf/SKI
 test("guardar y reemplazar instrucciones pegadas, aisladas por proyecto y sin secretos", () => {
   const id = proyecto();
   guardarSkill(id, { name: "mi-skill", content: "Instrucción ghp_" + "abcdefghijklmnopqrstuvwx" });
-  expect(listarSkills(id)[0].content).toBe("Instrucción ***");
-  guardarSkill(id, { name: "mi-skill", content: "Nueva instrucción" });
-  expect(listarSkills(id)).toEqual([
-    { name: "mi-skill", content: "Nueva instrucción", source: null },
-  ]);
-  expect(listarSkills("otro")).toEqual([]);
-  expect(borrarSkill("otro", "mi-skill")).toBe(false);
+  expect(listarSkills(id)[0].content).toContain("Instrucción ***");
+  const guardada = guardarSkill(id, { name: "mi-skill", content: "Nueva instrucción" });
+  expect(guardada.content).toContain("name: mi-skill\ndescription:");
+  expect(guardada.content).toContain("Nueva instrucción");
+  expect(listarSkills(id)).toEqual([guardada]);
+  const archivo = join(carpetaProyecto, ".opencode", "skills", "mi-skill", "SKILL.md");
+  expect(readFileSync(archivo, "utf8")).toBe(guardada.content);
+  expect(() => listarSkills("otro")).toThrow("project_not_found");
+  expect(() => borrarSkill("otro", "mi-skill")).toThrow("project_not_found");
   expect(borrarSkill(id, "mi-skill")).toBe(true);
+  expect(existsSync(archivo)).toBe(false);
+  expect(borrarSkill(id, "mi-skill")).toBe(false);
 });
 
 test("valida nombres, contenido y existencia del proyecto", () => {
@@ -50,6 +58,17 @@ test("valida nombres, contenido y existencia del proyecto", () => {
   expect(() => guardarSkill("inexistente", { name: "skill", content: "texto" })).toThrow(
     "project_not_found",
   );
+  db.query("UPDATE projects SET repo_path = NULL WHERE id = ?").run(id);
+  expect(() => guardarSkill(id, { name: "skill", content: "texto" })).toThrow("project_not_found");
+});
+
+test("conserva el frontmatter y exige nombre y descripción válidos", () => {
+  const id = proyecto();
+  const content = "---\nname: mi-skill\ndescription: Mi instrucción\nlicense: MIT\n---\nContenido";
+  expect(guardarSkill(id, { name: "mi-skill", content }).content).toBe(content);
+  expect(() => guardarSkill(id, { name: "otra", content })).toThrow("skill_nombre_no_coincide");
+  expect(() => guardarSkill(id, { name: "mi-skill", content: "---\nname: mi-skill\n---\nTexto" }))
+    .toThrow("skill_sin_descripcion");
 });
 
 test("rechaza hosts, credenciales, puertos, redirecciones de ruta y query antes de fetch", async () => {
@@ -57,7 +76,7 @@ test("rechaza hosts, credenciales, puertos, redirecciones de ruta y query antes 
   globalThis.fetch = (async () => {
     llamadas++;
     return new Response("texto");
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
   for (const url of [
     "http://github.com/a/b/blob/main/skills/pdf/SKILL.md",
     URL_SKILL + "?token=secreto",
@@ -84,15 +103,17 @@ test("importa Markdown de GitHub sin ejecutar scripts ni seguir redirects", asyn
     return new Response("# PDF\nInstrucciones");
   }) as typeof fetch;
   const skill = await importarSkill(proyecto(), URL_SKILL);
-  expect(skill).toEqual({ name: "pdf", content: "# PDF\nInstrucciones", source: URL_SKILL });
+  expect(skill).toMatchObject({ name: "pdf", source: URL_SKILL });
+  expect(skill.content).toContain("# PDF\nInstrucciones");
+  expect(skill.content).toContain(`source: ${URL_SKILL}`);
   expect(listarSkills("skills-test")).toEqual([skill]);
 });
 
 test("limita la descarga y no guarda documentos truncados o fallidos", async () => {
   const id = proyecto();
-  globalThis.fetch = (async () => new Response("a".repeat(16_001))) as typeof fetch;
+  globalThis.fetch = (async () => new Response("a".repeat(16_001))) as unknown as typeof fetch;
   await expect(importarSkill(id, URL_SKILL)).rejects.toThrow("skill_too_large");
-  globalThis.fetch = (async () => new Response("error", { status: 404 })) as typeof fetch;
+  globalThis.fetch = (async () => new Response("error", { status: 404 })) as unknown as typeof fetch;
   await expect(importarSkill(id, URL_SKILL)).rejects.toThrow("skill_download_failed");
   expect(listarSkills(id)).toEqual([]);
 });

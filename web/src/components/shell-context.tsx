@@ -3,7 +3,6 @@ import {
   useContext,
   useState,
   useCallback,
-  useEffect,
   type ReactNode,
 } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
@@ -22,6 +21,14 @@ interface ShellContextType {
   setPaletteOpen: (open: boolean) => void;
   triggerPalette: () => void;
   closePalette: () => void;
+  // Panel de configuración del chat (se abre desde la barra superior).
+  configAbierta: boolean;
+  setConfigAbierta: (open: boolean) => void;
+  triggerConfig: () => void;
+  // Diálogo «Nuevo proyecto»: lo abre la barra lateral, Ctrl+N o la vista de proyectos.
+  nuevoProyectoAbierto: boolean;
+  setNuevoProyectoAbierto: (open: boolean) => void;
+  abrirNuevoProyecto: () => void;
 }
 
 const ShellContext = createContext<ShellContextType | null>(null);
@@ -31,6 +38,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [configAbierta, setConfigAbierta] = useState(false);
+  const [nuevoProyectoAbierto, setNuevoProyectoAbierto] = useState(false);
   const navigate = useNavigate();
   const routerState = useRouterState();
 
@@ -39,6 +48,17 @@ export function ShellProvider({ children }: { children: ReactNode }) {
 
   const triggerPalette = useCallback(() => setPaletteOpen(true), []);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
+
+  // Configuración del chat: si no estás en Chat, primero te lleva allí.
+  const triggerConfig = useCallback(() => {
+    setConfigAbierta(true);
+    if (routerState.location.pathname !== "/chat") void navigate({ to: "/chat" });
+  }, [navigate, routerState.location.pathname]);
+
+  const abrirNuevoProyecto = useCallback(() => {
+    setDrawerOpen(false);
+    setNuevoProyectoAbierto(true);
+  }, []);
 
   const triggerNewTask = useCallback(() => {
     setNewTaskOpen(true);
@@ -49,28 +69,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     }
   }, [closeDrawer, navigate, routerState.location.pathname]);
 
-  // Shortcut ⌘N / Ctrl+N para nueva tarea
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Solo ⌘N o Ctrl+N: Ctrl+Shift+N (ventana privada) y Alt siguen siendo del navegador.
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "n") {
-        const target = e.target as HTMLElement | null;
-        if (
-          target &&
-          (target.tagName === "INPUT" ||
-            target.tagName === "TEXTAREA" ||
-            target.isContentEditable)
-        ) {
-          return;
-        }
-        e.preventDefault();
-        triggerNewTask();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [triggerNewTask]);
-
+  // El atajo ⌘N / Ctrl+N vive en Shell: según la pantalla crea un chat o abre una tarea.
   return (
     <ShellContext.Provider
       value={{
@@ -87,6 +86,12 @@ export function ShellProvider({ children }: { children: ReactNode }) {
         setPaletteOpen,
         triggerPalette,
         closePalette,
+        configAbierta,
+        setConfigAbierta,
+        triggerConfig,
+        nuevoProyectoAbierto,
+        setNuevoProyectoAbierto,
+        abrirNuevoProyecto,
       }}
     >
       {children}

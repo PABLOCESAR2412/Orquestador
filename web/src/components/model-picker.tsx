@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState, type RefObject } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { ModelInfo } from "../api";
-import { formatPrice } from "../lib/model";
+import { formatPrice, nombreProveedor } from "../lib/model";
 import { CostMeter, EffortControl, useDialogo } from "./controls";
 import "../styles-picker.css";
 
@@ -22,6 +22,19 @@ type Props = {
 
 const MAX_RESULTS = 120;
 
+const plural = (n: number) => (n === 1 ? "1 modelo" : `${n} modelos`);
+
+// Alto mínimo del selector de escritorio: buscador, conteo y al menos una fila visibles.
+const ALTO_MINIMO = 160;
+
+// Borde superior de lo visible desde el compositor: el primer ancestro que recorta (scroll u overflow oculto) o la ventana.
+function limiteVisible(desde: HTMLElement): number {
+  for (let n = desde.parentElement; n; n = n.parentElement) {
+    if (/auto|hidden|scroll/.test(getComputedStyle(n).overflowY)) return n.getBoundingClientRect().top;
+  }
+  return 0;
+}
+
 export function ModelPicker({
   models,
   currentId,
@@ -39,8 +52,8 @@ export function ModelPicker({
   const [draftId, setDraftId] = useState(currentId);
   const [draftEffort, setDraftEffort] = useState(currentEffort);
   const draftModel = models.find((m) => m.id === draftId) ?? null;
-  const esfuerzoValido =
-    draftEffort && draftModel?.variants.includes(draftEffort) ? draftEffort : null;
+  const esfuerzoValido = draftEffort && draftModel?.variants.includes(draftEffort) ? draftEffort : null;
+  const seleccionadoId = conEsfuerzo ? draftId : currentId;
   const q = query.trim().toLowerCase();
   const dialogRef = useRef<HTMLDivElement>(null);
   // Si no hay disparador, vuelve el elemento que tenía el foco al abrir.
@@ -53,6 +66,22 @@ export function ModelPicker({
   };
   useDialogo(dialogRef, cerrar);
 
+  // En escritorio el selector flota sobre su compositor. Si no cabe por encima de la barra superior, se acorta
+  // para que el buscador no quede oculto. En móvil es una hoja fija (sin ancla) y no se toca.
+  useLayoutEffect(() => {
+    const el = dialogRef.current;
+    const ancla = el?.offsetParent as HTMLElement | null | undefined;
+    if (!el || !ancla) return;
+    const ajustar = () => {
+      // 10 px de separación con el compositor y 8 px de aire bajo el borde visible.
+      const disponible = ancla.getBoundingClientRect().top - limiteVisible(ancla) - 18;
+      el.style.maxHeight = `${Math.max(ALTO_MINIMO, Math.min(window.innerHeight * 0.6, disponible))}px`;
+    };
+    ajustar();
+    window.addEventListener("resize", ajustar);
+    return () => window.removeEventListener("resize", ajustar);
+  }, []);
+
   const elegir = (m: ModelInfo | null, esfuerzo: string | null = null) => {
     devolverFoco();
     onSelect(m, conEsfuerzo ? esfuerzo : undefined);
@@ -64,40 +93,54 @@ export function ModelPicker({
     // Al cambiar de modelo solo se conserva un esfuerzo compatible.
     setDraftEffort((v) => (v && m?.variants.includes(v) ? v : null));
   };
-  const seleccionadoId = conEsfuerzo ? draftId : currentId;
+  const esActual = (m: ModelInfo) => m.id === currentId;
 
   const groups = useMemo(() => {
     const matches = models.filter((m) => {
       if (onlyFree && !m.free) return false;
-      if (q) return `${m.name} ${m.id} ${m.group}`.toLowerCase().includes(q);
+      if (q) return `${m.name} ${m.id} ${m.group} ${m.provider}`.toLowerCase().includes(q);
       return m.recommended;
     });
 
-    const byGroup = new Map<string, ModelInfo[]>();
+    // Primero por proveedor (de dónde viene el modelo) y dentro, por familia.
+    const porProveedor = new Map<string, Map<string, ModelInfo[]>>();
     for (const m of q ? matches.slice(0, MAX_RESULTS) : matches) {
-      const bucket = byGroup.get(m.group) ?? [];
+      const familias = porProveedor.get(m.provider) ?? new Map<string, ModelInfo[]>();
+      const bucket = familias.get(m.group) ?? [];
       bucket.push(m);
-      byGroup.set(m.group, bucket);
+      familias.set(m.group, bucket);
+      porProveedor.set(m.provider, familias);
     }
-    return [...byGroup.entries()];
+    const grupos: [string, [string, ModelInfo[]][]][] = [...porProveedor.entries()].map(([prov, familias]) => [
+      prov,
+      [...familias.entries()],
+    ]);
+    return grupos;
   }, [models, q, onlyFree]);
 
+  // Modelos listados tras filtrar: es el contador "N modelos disponibles".
+  const listados = useMemo(
+    () => groups.reduce((total, [, familias]) => total + familias.reduce((n, [, items]) => n + items.length, 0), 0),
+    [groups],
+  );
+
+  // Fila de un modelo: nombre con "✓ Activo" si es el actual; precio arriba y costo abajo.
   const fila = (m: ModelInfo) => (
-    <button
-      type="button"
-      className="picker-item"
-      aria-current={m.id === seleccionadoId || undefined}
-      aria-pressed={conEsfuerzo ? m.id === draftId : undefined}
-      onClick={() => seleccionar(m)}
-    >
+    <button type="button" className="picker-item" aria-current={esActual(m) || undefined} aria-pressed={conEsfuerzo ? m.id === draftId : undefined} onClick={() => seleccionar(m)}>
       <span className="picker-main">
-        <span className="picker-name">{m.name}</span>
+        <span className="picker-nombre-linea">
+          <span className="picker-name">{m.name}</span>
+          {esActual(m) && <span className="picker-activo">✓ Activo</span>}
+        </span>
         <span className="picker-id">{m.id}</span>
       </span>
       <span className="picker-meta">
-        <CostMeter tier={m.costTier} />
         <span className="picker-price" title="Precio de entrada / salida por millón de tokens">
           {formatPrice(m)}
+        </span>
+        <span className="picker-costo">
+          <span className="picker-costo-etiqueta">Costo</span>
+          <CostMeter tier={m.costTier} />
         </span>
       </span>
     </button>
@@ -106,22 +149,28 @@ export function ModelPicker({
   return (
     <>
       <div className="scrim" onClick={cerrar} />
-      <div
-        className={`picker${conEsfuerzo ? " picker-con-esfuerzo" : ""}`}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Elegir modelo"
-        ref={dialogRef}
-      >
+      <div className={`picker${conEsfuerzo ? " picker-con-esfuerzo" : ""}`} role="dialog" aria-modal="true" aria-label="Elegir modelo" ref={dialogRef}>
         <div className="picker-head">
-          <input
-            className="picker-search"
-            autoFocus
-            placeholder="Buscar modelo"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Buscar modelo"
-          />
+          <div className="picker-buscar">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <line x1="20" y1="20" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              className="picker-search"
+              autoFocus
+              placeholder="Buscar modelo"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Buscar modelo"
+            />
+          </div>
+        </div>
+
+        <div className="picker-barra">
+          <span className="picker-conteo" aria-live="polite">
+            {!cargando && !error && (listados === 1 ? "1 modelo disponible" : `${listados} modelos disponibles`)}
+          </span>
           <button
             type="button"
             className={`pill${onlyFree ? " on" : ""}`}
@@ -137,7 +186,7 @@ export function ModelPicker({
             <button
               type="button"
               className="picker-item"
-              aria-current={seleccionadoId === null || undefined}
+              aria-current={currentId === null || undefined}
               aria-pressed={conEsfuerzo ? draftId === null : undefined}
               onClick={() => seleccionar(null)}
             >
@@ -148,7 +197,12 @@ export function ModelPicker({
             </button>
           )}
 
-          {cargando && <p className="muted-note pad">Cargando modelos…</p>}
+          {cargando && (
+            <p className="picker-cargando" role="status">
+              <span className="picker-spinner" aria-hidden="true" />
+              Consultando catálogo de modelos del servidor…
+            </p>
+          )}
 
           {!cargando && error && (
             <div className="picker-estado">
@@ -164,17 +218,25 @@ export function ModelPicker({
           )}
 
           {!cargando && !error && groups.length === 0 && (
-            <p className="muted-note pad">Ningún modelo coincide.</p>
+            <p className="muted-note pad">Ningún modelo coincide con la búsqueda.</p>
           )}
 
           {!cargando &&
             !error &&
-            groups.map(([group, items]) => (
-              <section key={group}>
-                <h3 className="group-title">{group}</h3>
-                {items.map((m) => (
-                  <div key={m.id} className="picker-modelo">
-                    {fila(m)}
+            groups.map(([proveedor, familias]) => (
+              <section key={proveedor} className="picker-proveedor">
+                <h3 className="group-title">{nombreProveedor(proveedor)}</h3>
+                {familias.map(([familia, items]) => (
+                  <div key={familia} className="picker-familia">
+                    <div className="picker-familia-cabecera">
+                      <h4 className="picker-familia-titulo">{familia}</h4>
+                      <span className="picker-familia-conteo">{plural(items.length)}</span>
+                    </div>
+                    {items.map((m) => (
+                      <div key={m.id} className="picker-modelo">
+                        {fila(m)}
+                      </div>
+                    ))}
                   </div>
                 ))}
               </section>
@@ -195,9 +257,7 @@ export function ModelPicker({
               onChange={setDraftEffort}
             />
             <div className="picker-confirmacion">
-              <button type="button" className="ghost" onClick={cerrar}>
-                Cancelar
-              </button>
+              <button type="button" className="ghost" onClick={cerrar}>Cancelar</button>
               <button
                 type="button"
                 className="primary"

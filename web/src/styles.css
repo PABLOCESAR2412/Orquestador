@@ -8,7 +8,9 @@
   --radius-pill: 9999px;
   --sidebar-w: 260px;
   --rail-w: 260px;
-  --col: 720px;
+  /* Ancho de contenido único: todas las pantallas y el chat usan este valor. */
+  --ancho-contenido: 960px;
+  --col: var(--ancho-contenido);
   --font: "Geist", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
   font-family: var(--font);
@@ -366,6 +368,13 @@ button:disabled { opacity: 0.4; cursor: default; }
   white-space: nowrap;
 }
 
+.sidebar-conv-texto {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .sidebar-empty {
   padding: 8px 10px;
   font-size: 12px;
@@ -498,7 +507,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   z-index: 40;
 }
 .nav-inner {
-  max-width: 720px;
+  max-width: var(--ancho-contenido);
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -525,7 +534,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 .container {
   width: 100%;
-  max-width: 720px;
+  max-width: var(--ancho-contenido);
   margin: 0 auto;
   padding: 24px 16px 120px 16px;
   display: flex;
@@ -1151,6 +1160,61 @@ button:disabled { opacity: 0.4; cursor: default; }
   line-height: 1.55;
   overflow-x: auto;
 }
+/* Clave pública del proyecto: etiqueta y acciones de mostrar y copiar en una fila */
+.clave-fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+}
+.clave-etiqueta {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.clave-acciones {
+  display: flex;
+  gap: 6px;
+}
+.clave-icono {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.clave-icono.is-copiada {
+  color: var(--ink);
+}
+.clave-oculta {
+  overflow-x: hidden;
+  color: var(--ink-2);
+  letter-spacing: 0.08em;
+}
+/* La huella no trae espacios: se parte donde haga falta para no salir del panel en el teléfono */
+.clave-huella {
+  overflow-wrap: anywhere;
+}
+/* Pasos para pegar la clave en GitHub y clonar */
+.clonar-pasos {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.mono-inline {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
 .files-table {
   width: 100%;
   border-collapse: collapse;
@@ -1572,13 +1636,16 @@ button:disabled { opacity: 0.4; cursor: default; }
   display: flex;
   flex-direction: column;
   padding: 12px 12px 10px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 22px;
   background: var(--surface);
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-/* El compositor no muestra el contorno del campo: el anillo va en la caja (DESIGN: foco visible). */
-.composer-box:focus-within { border-color: var(--line-strong); outline: 2px solid var(--signal); outline-offset: 2px; }
+/* El compositor no muestra el contorno del campo: el foco va en la caja, con un borde más claro y un halo suave. */
+.composer-box:focus-within {
+  border-color: var(--ink-3);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 8%, transparent);
+}
 .composer-box textarea {
   width: 100%;
   min-height: 24px;
@@ -1691,6 +1758,24 @@ button:disabled { opacity: 0.4; cursor: default; }
   font-size: 15px;
 }
 .picker-search::placeholder { color: var(--ink-2); }
+.picker-buscar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-lowest);
+  color: var(--ink-2);
+}
+.picker-buscar:focus-within { border-color: var(--line-strong); color: var(--ink); }
+.picker-buscar svg { flex-shrink: 0; }
+.picker-buscar .picker-search { padding: 0; min-height: 0; }
+/* El foco se muestra en el contenedor (borde); el contorno del propio campo sobraba. */
+.picker-search:focus-visible { outline: none; }
 .pill {
   flex-shrink: 0;
   padding: 5px 11px;
@@ -1701,6 +1786,15 @@ button:disabled { opacity: 0.4; cursor: default; }
   font-size: 12px;
 }
 .pill.on { color: var(--ink); border-color: var(--line-strong); background: var(--surface-2); }
+.picker-barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.picker-conteo { min-width: 0; color: var(--ink-2); font-size: 12px; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .picker-list { overflow-y: auto; padding: 6px; }
 .group-title { margin: 10px 10px 4px; font-size: 12px; font-weight: 500; color: var(--ink-2); }
@@ -1717,12 +1811,30 @@ button:disabled { opacity: 0.4; cursor: default; }
   text-align: left;
 }
 .picker-item:hover { background: var(--surface-2); }
-.picker-item[aria-current="true"] { box-shadow: inset 2px 0 0 var(--signal); }
+/* Modelo activo: fondo y borde neutros */
+.picker-item[aria-current="true"] { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--line-strong); }
 .picker-main { display: flex; flex-direction: column; min-width: 0; }
+.picker-nombre-linea { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.picker-activo {
+  flex-shrink: 0;
+  padding: 0 7px;
+  min-height: 18px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
 .picker-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .picker-id { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .picker-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
 .picker-price { font-size: 11px; color: var(--ink-2); white-space: nowrap; }
+/* Costo: etiqueta encima de las barras, al pie de la fila */
+.picker-costo { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.picker-costo-etiqueta { color: var(--ink-3); font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; }
 
 .scrim { position: fixed; inset: 0; z-index: 20; background: transparent; }
 .scrim.dim { background: var(--scrim); }
@@ -1779,7 +1891,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 /* Tareas en segundo plano */
 .page {
-  width: min(100%, 760px);
+  width: min(100%, var(--ancho-contenido));
   min-height: 100dvh;
   margin: 0 auto;
   padding: 24px 20px 40px;
@@ -2323,10 +2435,16 @@ button:disabled { opacity: 0.4; cursor: default; }
 .panel h2 { margin: 0; font-size: 16px; font-weight: 600; }
 .panel > .muted-note { margin: -8px 0 0; }
 
-/* Aviso de nueva versión (modal centrado) */
+/* Aviso de nueva versión (modal centrado). Su velo cubre toda la app, barra lateral y cabecera
+   incluidas, con desenfoque; el diálogo queda encima del velo. */
+.update-capa {
+  z-index: 200;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
 .update-dialog {
   position: fixed;
-  z-index: 30;
+  z-index: 201;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
@@ -2765,20 +2883,30 @@ button:disabled { opacity: 0.4; cursor: default; }
 .conv-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
 .conv-row .sidebar-conv { flex: 1; min-width: 0; }
 .conv-busy { margin-left: auto; flex-shrink: 0; }
-.conv-more {
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+/* Iconos de cada chat: renombrar, anclar y eliminar. Se ven al pasar el cursor o enfocar la fila, y siempre en pantallas táctiles. */
+.conv-acciones { flex-shrink: 0; display: flex; align-items: center; gap: 2px; }
+.conv-icono {
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--ink-2);
+  opacity: 0;
+  transition: opacity 0.12s ease;
 }
-.conv-more:hover,
-.conv-more[aria-expanded="true"] { color: var(--ink); background: var(--surface); }
+.conv-row:hover .conv-icono,
+.conv-row:focus-within .conv-icono { opacity: 1; }
+.conv-icono:hover { color: var(--ink); background: var(--surface); }
+.conv-icono.is-activo { opacity: 1; color: var(--ink); }
+.conv-icono.is-peligro:hover { color: var(--danger); }
+@media (hover: none) {
+  .conv-icono { opacity: 1; }
+}
 .conv-menu {
   display: flex;
   flex-direction: column;
@@ -2886,10 +3014,13 @@ button:disabled { opacity: 0.4; cursor: default; }
 .uso-btn:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); }
 .uso-btn[aria-expanded="true"] { color: var(--ink); background: var(--surface-2); border-color: var(--line-strong); }
 .picker-modelo { display: flex; flex-direction: column; }
-.picker-niveles { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 10px 10px; }
+/* Niveles de esfuerzo: solo bajo el modelo activo */
+.picker-niveles { display: flex; flex-direction: column; gap: 6px; padding: 2px 10px 10px; }
+.picker-niveles-etiqueta { color: var(--ink-2); font-size: 11.5px; }
+.picker-niveles-opciones { display: flex; flex-wrap: wrap; gap: 6px; }
 .picker-nivel {
   min-height: 32px;
-  padding: 5px 11px;
+  padding: 5px 9px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: transparent;
@@ -2898,7 +3029,40 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .picker-nivel:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); }
 .picker-nivel[aria-pressed="true"] { color: var(--ink); background: var(--surface-2); border-color: var(--line-strong); }
-.picker-estado { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 10px; }
+/* Error con Reintentar en la misma línea; la carga muestra un giro y una frase */
+.picker-estado { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 12px 10px; }
+.picker-estado .error { margin: 0; flex: 1 1 200px; }
+.picker-cargando { display: flex; align-items: center; gap: 10px; margin: 0; padding: 14px 10px; color: var(--ink-2); font-size: 13px; }
+.picker-spinner {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--ink);
+  border-radius: 50%;
+  animation: picker-giro 0.8s linear infinite;
+}
+@keyframes picker-giro { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .picker-spinner { animation-duration: 2.4s; }
+}
+
+/* Proveedor y familia: encabezado en mayúsculas y banda de familia con conteo */
+.picker-proveedor { display: flex; flex-direction: column; }
+.picker-proveedor > .group-title { margin: 14px 10px 4px; color: var(--ink-2); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.picker-familia { display: flex; flex-direction: column; }
+.picker-familia-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 0 2px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: var(--surface-lowest);
+}
+.picker-familia-titulo { margin: 0; min-width: 0; color: var(--ink); font-size: 12.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-familia-conteo { flex-shrink: 0; color: var(--ink-3); font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
 
 /* Panel de uso: flota sobre el compositor, junto al chip. En móvil sube como hoja. */
 .uso-panel {
@@ -3220,3 +3384,323 @@ button:disabled { opacity: 0.4; cursor: default; }
 .log-time { color: var(--ink-2); flex-shrink: 0; }
 .log-pid { color: var(--ink-2); flex-shrink: 0; }
 .log-msg { color: var(--ink); }
+
+/* Proyectos: tarjetas en cuadrícula y la ventana «Nuevo proyecto» */
+.proyectos-cuadricula {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.proyectos-cuadricula > li { display: flex; min-width: 0; }
+.proyecto-tarjeta {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.proyecto-tarjeta:hover { border-color: var(--line-strong); }
+.proyecto-tarjeta-enlace {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ink);
+  text-decoration: none;
+}
+.proyecto-tarjeta-enlace:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; border-radius: var(--radius-sm); }
+.proyecto-tarjeta-cabecera { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.proyecto-tarjeta-nombre { font-size: 18px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+/* La carpeta cabe en una línea: si no, se recorta con elipsis en vez de partirse en varias. */
+.proyecto-tarjeta-ruta {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.proyecto-tarjeta-metricas { font-size: 13px; color: var(--ink-2); }
+.proyecto-tarjeta-estado { font-size: 12px; color: var(--ink-3); }
+.proyecto-tarjeta-acciones { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; align-items: center; }
+/* Pie de la tarjeta: solo iconos, de 40 px para el dedo. */
+.proyecto-tarjeta-pie { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: auto; }
+.proyecto-icono {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.proyecto-icono:hover:not(:disabled) { color: var(--ink); background: var(--surface-hover); }
+.proyecto-icono:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.proyecto-icono:disabled { opacity: 0.5; cursor: default; }
+.proyecto-icono.is-activo { color: var(--ink); }
+.proyecto-icono.is-peligro:hover:not(:disabled) { color: var(--danger); }
+.proyecto-tarjeta-confirmar { background: var(--danger); color: var(--bg); }
+.proyecto-tarjeta-form { display: flex; flex-direction: column; gap: 12px; }
+
+/* Memoria del proyecto: edición a mano. El texto va a 16 px para que iOS no amplíe el campo al escribir. */
+.proyecto-memoria-acciones { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.proyecto-memoria-form { display: flex; flex-direction: column; gap: 12px; }
+.proyecto-memoria-texto {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 200px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.proyecto-memoria-texto:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.proyecto-memoria-texto:disabled { opacity: 0.6; }
+.clonar-acciones { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+.proyecto-nuevo {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(calc(100% - 32px), 520px);
+  max-height: min(86dvh, 760px);
+  border-radius: 14px;
+}
+.proyecto-nuevo .tl-dialogo-h2 { flex: 1 1 auto; min-width: 0; }
+.proyecto-nuevo .mono-block { white-space: pre-wrap; word-break: break-all; margin: 0; }
+.proyecto-nuevo-form { display: flex; flex-direction: column; gap: 14px; }
+.proyecto-nuevo-acciones { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.proyecto-opcion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  color: var(--ink);
+  font-size: 14px;
+  cursor: pointer;
+}
+.proyecto-opcion input { width: 18px; height: 18px; margin: 0; accent-color: var(--signal); }
+@media (max-width: 640px) {
+  .proyecto-nuevo {
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    transform: none;
+    width: 100%;
+    max-height: none;
+    height: 100dvh;
+    border-radius: 0;
+    border-width: 0;
+  }
+  .proyecto-tarjeta-acciones .btn-ghost,
+  .proyecto-tarjeta-acciones .btn-primary { min-height: 40px; }
+}
+
+/* Aviso de cuota agotada (tareas y chats). El ámbar marca la alerta; el texto sigue en --ink. */
+.cuota-aviso {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--signal);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin: 12px 0;
+}
+.cuota-aviso-titulo { margin: 0; font-weight: 600; color: var(--ink); }
+.cuota-aviso-texto,
+.cuota-aviso-ayuda { margin: 0; color: var(--ink-2); font-size: 13px; }
+.cuota-aviso-acciones { display: flex; flex-wrap: wrap; gap: 8px; }
+.cuota-aviso-acciones button { min-height: 40px; }
+.cuota-aviso .error { margin: 0; }
+/* El selector de modelo abre hacia abajo desde el aviso (fuera del compositor, no hay nada encima). */
+.cuota-selector { position: relative; height: 0; }
+.cuota-selector .picker { top: 10px; bottom: auto; }
+
+/* Instalación de OpenCode, inicio de sesión de Codex y skills (Ajustes y pestaña del proyecto). */
+.instalar,
+.login-codex,
+.skills {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  min-width: 0;
+}
+.instalar-confirmar,
+.login-codex-paso {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-lowest);
+}
+.instalar-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.login-codex-enlace {
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.login-codex-codigo {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+.skills-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+.skills-cabecera .aj-nota {
+  flex: 1 1 260px;
+  margin: 0;
+}
+.skills-nueva {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-lowest);
+}
+.skills-etiqueta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.skills-entrada {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 16px;
+}
+.skills-lista {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.skills-fila {
+  box-sizing: border-box;
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+}
+.skills-fila:hover {
+  border-color: var(--line-strong);
+}
+.skills-fila.is-activa {
+  border-color: var(--primary);
+  background: var(--surface-2);
+}
+.skills-fila-nombre {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.skills-fila-texto {
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.skills-fila-texto.is-aviso {
+  color: var(--signal);
+}
+.skills-editor {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-lowest);
+  min-width: 0;
+}
+.skills-editor-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.skills-editor-titulo {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.skills-peso {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.skills-peso.is-aviso {
+  color: var(--signal);
+}
+.skills-texto {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 280px;
+  max-height: 60vh;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.skills-peligro {
+  color: var(--danger);
+}
+.skills-peligro:hover:not(:disabled) {
+  border-color: var(--danger-line);
+}

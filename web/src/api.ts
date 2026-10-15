@@ -8,6 +8,20 @@ export type Conversation = {
   pinned_at?: string | null;
   // Hay un mensaje en curso (puede venir de otro dispositivo).
   ocupada?: boolean;
+  // Modelo que se quedó sin cuota en el último turno: el chat espera a que se cambie de modelo y se siga.
+  cuota_modelo?: string | null;
+  created_at: string;
+};
+
+export type FormatoDocumento = "docx" | "xlsx" | "html" | "txt" | "md";
+
+// Documento guardado desde un mensaje del chat. El archivo se pide aparte (archivo) o en vista previa.
+export type Documento = {
+  id: string;
+  conversation_id: string;
+  titulo: string;
+  formato: FormatoDocumento;
+  bytes: number;
   created_at: string;
 };
 
@@ -20,7 +34,20 @@ export type Project = {
   instrucciones: string | null;
   // Nombre de la carpeta dentro de la raíz de proyectos.
   carpeta: string;
+  // Repo de GitHub de origen (si el proyecto se creó clonándolo) y cuándo se clonó. Sin clonado, la carpeta espera.
+  origen_url?: string | null;
+  clonado_en?: string | null;
+  // Actividad del proyecto (GET /api/projects): chats, tareas y el último mensaje o tarea. Null si no hay.
+  chats?: number;
+  tareas?: number;
+  ultima_actividad?: string | null;
 };
+
+// Revisión de un repo de GitHub sin clave: público o privado (un nombre mal escrito también parece privado).
+export type VerificacionGithub = { url: string; repo: string; visibilidad: "publico" | "privado" };
+
+// Clonado iniciado en el chat del proyecto: el mensaje de la instrucción y el chat donde se ve el avance.
+export type ClonadoIniciado = { conversacion_id: string; turno_id: string };
 
 export type ProjectDetail = {
   project: Project;
@@ -79,24 +106,8 @@ export type Programada = {
 };
 
 export type ProgramadaInput =
-  | {
-      titulo?: string;
-      prompt: string;
-      model?: string | null;
-      effort?: string | null;
-      projectId?: string | null;
-      frecuencia: "cada_horas";
-      cada_horas: number;
-    }
-  | {
-      titulo?: string;
-      prompt: string;
-      model?: string | null;
-      effort?: string | null;
-      projectId?: string | null;
-      frecuencia: "diaria";
-      hora: string;
-    };
+  | { titulo?: string; prompt: string; model?: string | null; effort?: string | null; projectId?: string | null; frecuencia: "cada_horas"; cada_horas: number }
+  | { titulo?: string; prompt: string; model?: string | null; effort?: string | null; projectId?: string | null; frecuencia: "diaria"; hora: string };
 
 export type TaskDiffArchivo = {
   ruta: string;
@@ -119,13 +130,7 @@ export type TaskDiff = {
   hash: string | null;
   remoto: boolean;
   aprobaciones: {
-    commit: {
-      estado: "pendiente" | "aprobada";
-      sha: string;
-      hash: string;
-      decidida_en: string;
-      mensaje: string;
-    } | null;
+    commit: { estado: "pendiente" | "aprobada"; sha: string; hash: string; decidida_en: string; mensaje: string } | null;
     push: { sha: string; remoto: string; decidida_en: string } | null;
   };
 };
@@ -139,21 +144,22 @@ export type UsoProveedor = {
   precision: "medida_telo" | "sin_datos";
 };
 
+// Estado de la unidad orquestador en systemd. Fuera de systemd (desarrollo), disponible es false.
+export type ServicioEstado = {
+  disponible: boolean;
+  activo: string | null;
+  subestado: string | null;
+  desde: string | null;
+  pid: number | null;
+};
+
+// Últimas líneas del diario del servicio, ya redactadas por el servidor.
+export type RegistrosServidor = { lineas: number; texto: string; generado: string };
+
 export type ServidorEstado = {
   generado: string;
-  proceso: {
-    arrancado: string;
-    segundosActivo: number;
-    bun: string;
-    rssMb: number;
-    plataforma: string;
-  };
-  disco: {
-    etiqueta: "datos" | "proyectos";
-    totalBytes: number;
-    usadoBytes: number;
-    libreBytes: number;
-  }[];
+  proceso: { arrancado: string; segundosActivo: number; bun: string; rssMb: number; plataforma: string };
+  disco: { etiqueta: "datos" | "proyectos"; totalBytes: number; usadoBytes: number; libreBytes: number }[];
   carpetas: { nombre: string; bytes: number; archivos: number }[];
   herramientas: { nombre: string; version: string | null; disponible: boolean }[];
   costos: { mesUsd: number; ultimos30dUsd: number; llamadas30d: number; tokens30d: number };
@@ -169,6 +175,9 @@ export type ProviderStatus = {
   // Nombre de la variable de entorno (nunca su valor) y si llega a los agentes.
   variable: string | null;
   enAgente: boolean;
+  // La clave se puede guardar desde Ajustes, y `guardada` dice si ya está guardada ahí.
+  guardable: boolean;
+  guardada: boolean;
 };
 
 export type Message = {
@@ -196,15 +205,45 @@ export type ModelInfo = {
   recommended: boolean;
 };
 
-export type TaskStatus = "queued" | "running" | "interrupted" | "done" | "failed" | "cancelled";
+// analyzing: el analizador escribe el plan. waiting_approval: el plan espera la decisión del usuario.
+// sin_cuota: el modelo se quedó sin tokens; la tarea espera un modelo distinto para seguir.
+export type TaskStatus =
+  | "queued"
+  | "analyzing"
+  | "waiting_approval"
+  | "running"
+  | "interrupted"
+  | "sin_cuota"
+  | "done"
+  | "failed"
+  | "cancelled";
+
+export type TaskPlanStep = { id: number; descripcion: string; archivos: string[] };
+
+// Plan del analizador (AGENTS.md). `notas` son las que el usuario escribió al aprobarlo.
+export type TaskPlan = {
+  objetivo: string;
+  supuestos: string[];
+  pasos: TaskPlanStep[];
+  criterios_de_aceptacion: string[];
+  requiere_aprobacion: ("commit" | "push" | "pr")[];
+  riesgos: string[];
+  preguntas: string[];
+  notas?: string;
+};
+
+// Reporte del obrero. `desviacion` trae el motivo cuando el obrero no siguió el plan.
+export type TaskReport = {
+  estado: "completado" | "fallo" | "desviacion";
+  resumen: string;
+  cambios: { archivo: string; tipo: string }[];
+  pruebas: { comando: string; resultado: string }[];
+  pendientes: string[];
+  diff_disponible: boolean;
+  desviacion: string | null;
+};
 
 export type Task = {
-  phase: "analyzing" | "waiting_approval" | "executing" | "completed";
-  plan: string | null;
-  plan_hash: string | null;
-  approved_hash: string | null;
-  report: string | null;
-  conversation_id: string | null;
   id: string;
   title: string;
   prompt: string;
@@ -213,11 +252,20 @@ export type Task = {
   status: TaskStatus;
   result: string | null;
   error: string | null;
+  // Plan y reporte son null hasta que el analizador y el obrero los entregan.
+  plan: TaskPlan | null;
+  reporte: TaskReport | null;
+  plan_aprobado_en: string | null;
+  conversation_id?: string | null;
+  plan_hash?: string | null;
+  approved_hash?: string | null;
   project_id?: string | null;
   // Tarea creada como reintento de otra.
   retry_of?: string | null;
   // Tiene la sesión del agente: puede continuar donde quedó.
   reanudable: boolean;
+  // Modelo que se quedó sin cuota (solo en tareas sin_cuota).
+  modelo_agotado?: string | null;
   // Git: rama de trabajo del clon y commit base (solo tareas de un proyecto con Git).
   rama: string | null;
   base_commit: string | null;
@@ -228,9 +276,6 @@ export type Task = {
 };
 
 export type TaskEventKind =
-  | "plan_listo"
-  | "plan_aprobado"
-  | "plan_revision"
   | "creada"
   | "iniciada"
   | "sesion_asignada"
@@ -243,19 +288,37 @@ export type TaskEventKind =
   | "clon_creado"
   | "commit_aprobado"
   | "push_aprobado"
-  | "push_fallido";
+  | "push_fallido"
+  | "plan_creado"
+  | "plan_pendiente"
+  | "plan_aprobado"
+  | "plan_rechazado"
+  | "replanificada"
+  | "obrero_iniciado"
+  | "plan_revision"
+  | "sin_cuota"
+  | "turno_encolado"
+  | "seguida";
 
 // Evento en vivo del canal /api/eventos-vivos (SSE).
+// Un paso del agente en un chat, en orden dentro de su turno. Un texto intermedio trae el texto en
+// `titulo`; una acción trae su título, su herramienta y una vista previa en `detalle`.
+export type PasoActividad = {
+  seq: number;
+  tipo: "texto" | "accion";
+  herramienta: string | null;
+  titulo: string;
+  detalle: string | null;
+  estado: "hecha" | "error" | "texto";
+};
+
 export type EventoVivo =
   | { tipo: "tarea"; id: string; status: TaskStatus; finished_at: string | null }
-  | {
-      tipo: "evento";
-      task_id: string;
-      kind: TaskEventKind;
-      detail: string | null;
-      created_at: string;
-    }
-  | { tipo: "salida"; task_id: string; linea: string };
+  | { tipo: "evento"; task_id: string; kind: TaskEventKind; detail: string | null; created_at: string }
+  | { tipo: "salida"; task_id: string; linea: string }
+  | { tipo: "actividad"; conversacion_id: string; turno_id: string; paso: PasoActividad }
+  // Un turno del chat empezó o terminó: los demás dispositivos vuelven a pedir sus mensajes.
+  | { tipo: "chat"; conversacion_id: string; estado: "en_curso" | "terminado" };
 
 export type TaskEvent = {
   id: number;
@@ -311,6 +374,45 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Instalación de una herramienta del servidor (hoy OpenCode). El servidor solo ejecuta su comando fijo.
+export type InstalacionHerramienta = {
+  herramienta: string;
+  nombre: string;
+  comando: string;
+  estado: "inactiva" | "instalando" | "lista" | "error";
+  instalada: boolean;
+  iniciada: string | null;
+  terminada: string | null;
+  motivo: string | null;
+  salida: string;
+};
+
+// Inicio de sesión de Codex por código de dispositivo. El token nunca llega a la app.
+export type LoginCodex = {
+  estado: "inactivo" | "esperando" | "conectado" | "fallido";
+  conectada: boolean;
+  url: string | null;
+  codigo: string | null;
+  salida: string;
+  motivo: string | null;
+  iniciada: string | null;
+};
+
+export type SkillResumen = {
+  nombre: string;
+  descripcion: string | null;
+  valida: boolean;
+  bytes: number;
+  modificada: string;
+};
+
+export type SkillDetalle = SkillResumen & { contenido: string };
+
+// Skills globales (sin proyecto) o las del proyecto indicado.
+function skillsRuta(projectId?: string): string {
+  return projectId ? `/api/projects/${projectId}/skills` : "/api/skills";
+}
+
 export const api = {
   projectGit: (id: string) => request<GitConfig>(`/api/projects/${id}/git`),
   saveProjectGit: (
@@ -335,24 +437,39 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ compartir }),
     }),
-  projectSkills: (id: string) => request<ProjectSkill[]>(`/api/projects/${id}/skills`),
+  projectSkills: (id: string) => request<ProjectSkill[]>(`/api/projects/${id}/skills-importadas`),
   searchSkills: (q: string) =>
-    request<{ name: string; url: string }[]>(`/api/skills/buscar?q=${encodeURIComponent(q)}`),
+    request<{ name: string; url: string }[]>(`/api/skills/catalogo/buscar?q=${encodeURIComponent(q)}`),
   saveProjectSkill: (id: string, body: { name?: string; content?: string; url?: string }) =>
-    request<ProjectSkill>(`/api/projects/${id}/skills`, {
+    request<ProjectSkill>(`/api/projects/${id}/skills-importadas`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
   deleteProjectSkill: (id: string, name: string) =>
-    request<{ ok: boolean }>(`/api/projects/${id}/skills/${encodeURIComponent(name)}`, {
+    request<{ ok: boolean }>(`/api/projects/${id}/skills-importadas/${encodeURIComponent(name)}`, {
       method: "DELETE",
     }),
-  conversationTasks: (id: string) => request<Task[]>(`/api/conversations/${id}/tareas`),
-  decidePlan: (id: string, hash: string, decision: "approve" | "revise", feedback?: string) =>
-    request<Task>(`/api/tasks/${id}/plan`, {
+  conversationTasks: (id: string) => request<Task[]>(`/api/conversations/${id}/tasks`),
+  decidePlan: (
+    id: string,
+    optsOrHash: string | { decision: "approve" | "revise"; plan_hash: string; feedback?: string },
+    decision?: "approve" | "revise",
+    feedback?: string,
+  ) => {
+    const body =
+      typeof optsOrHash === "string"
+        ? { decision, hash: optsOrHash, plan_hash: optsOrHash, feedback }
+        : {
+            decision: optsOrHash.decision,
+            hash: optsOrHash.plan_hash,
+            plan_hash: optsOrHash.plan_hash,
+            feedback: optsOrHash.feedback,
+          };
+    return request<Task>(`/api/tasks/${id}/plan`, {
       method: "POST",
-      body: JSON.stringify({ hash, decision, feedback }),
-    }),
+      body: JSON.stringify(body),
+    });
+  },
   repositoryActions: (id: string) =>
     request<RepositoryAction[]>(`/api/conversations/${id}/acciones`),
   requestRepositoryAction: (
@@ -374,6 +491,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ approve }),
     }),
+
   health: () => request<{ ok: boolean; time: string }>("/api/health"),
   runnerStatus: () =>
     request<{ opencode: boolean; bwrap: boolean; aislamiento: boolean }>("/api/runner"),
@@ -388,6 +506,9 @@ export const api = {
       body: JSON.stringify({ projectId: projectId ?? null }),
     }),
   listMessages: (id: string) => request<Message[]>(`/api/conversations/${id}/messages`),
+  // Pasos del agente de un turno (el id es el del mensaje del usuario).
+  listTurnoActividad: (conversacionId: string, turnoId: string) =>
+    request<PasoActividad[]>(`/api/conversations/${conversacionId}/turnos/${turnoId}/actividad`),
   sendMessage: (id: string, content: string) =>
     request<{ messages: Message[] }>(`/api/conversations/${id}/messages`, {
       method: "POST",
@@ -409,23 +530,38 @@ export const api = {
     }>(`/api/conversations/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteConversation: (id: string) =>
     request<{ ok: boolean }>(`/api/conversations/${id}`, { method: "DELETE" }),
+  listDocumentos: (conversacionId: string) =>
+    request<Documento[]>(`/api/documentos?conversacion_id=${encodeURIComponent(conversacionId)}`),
+  crearDocumento: (body: { mensaje_id: string; formato: FormatoDocumento; titulo?: string }) =>
+    request<Documento>("/api/documentos", { method: "POST", body: JSON.stringify(body) }),
+  eliminarDocumento: (id: string) =>
+    request<{ ok: boolean }>(`/api/documentos/${id}`, { method: "DELETE" }),
   updateProject: (id: string, patch: { name?: string; pinned?: boolean; instrucciones?: string }) =>
     request<Project>(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   listTaskEvents: (id: string) => request<TaskEvent[]>(`/api/tasks/${id}/eventos`),
-  taskOutput: (id: string) =>
-    request<{ texto: string; truncado: boolean }>(`/api/tasks/${id}/salida`),
+  taskOutput: (id: string) => request<{ texto: string; truncado: boolean }>(`/api/tasks/${id}/salida`),
   taskDiff: (id: string) => request<TaskDiff>(`/api/tasks/${id}/diff`),
   approveTask: (id: string, body: { accion: "commit" | "push"; hash: string; mensaje?: string }) =>
     request<{ accion: "commit" | "push"; sha: string; rama: string; remoto?: string }>(
       `/api/tasks/${id}/aprobar`,
       { method: "POST", body: JSON.stringify(body) },
     ),
+  // El plan espera al usuario: aprobarlo lo pone en la cola; las notas llegan al obrero.
+  approveTaskPlan: (id: string, body: { notas?: string; plan_hash?: string }) =>
+    request<Task>(`/api/tasks/${id}/aprobar-plan`, { method: "POST", body: JSON.stringify(body) }),
+  rejectTaskPlan: (id: string, body: { motivo?: string }) =>
+    request<Task>(`/api/tasks/${id}/rechazar-plan`, { method: "POST", body: JSON.stringify(body) }),
   getProject: (id: string) => request<ProjectDetail>(`/api/projects/${id}`),
   // Solo sugiere: el texto se revisa en el campo de instrucciones y se guarda desde ahí.
   suggestProjectInstructions: (id: string) =>
     request<{ texto: string; fuentes: string[] }>(`/api/projects/${id}/instrucciones/sugeridas`),
-  clearProjectMemory: (id: string) =>
-    request<{ ok: boolean }>(`/api/projects/${id}/memoria`, { method: "DELETE" }),
+  clearProjectMemory: (id: string) => request<{ ok: boolean }>(`/api/projects/${id}/memoria`, { method: "DELETE" }),
+  // Corrige la memoria a mano. Texto vacío la borra. El servidor la redacta y la limita a 4 000 caracteres.
+  saveProjectMemory: (id: string, texto: string) =>
+    request<{ texto: string | null; actualizada_en: string | null }>(`/api/projects/${id}/memoria`, {
+      method: "PUT",
+      body: JSON.stringify({ texto }),
+    }),
   listProjectFiles: (id: string, ruta = "") =>
     request<{ ruta: string; entradas: ProjectFileEntry[] }>(
       `/api/projects/${id}/archivos?ruta=${encodeURIComponent(ruta)}`,
@@ -441,12 +577,9 @@ export const api = {
       { method: "PUT", body: JSON.stringify({ valor }) },
     ),
   deleteProjectSecret: (id: string, nombre: string) =>
-    request<{ ok: boolean }>(`/api/projects/${id}/secretos/${encodeURIComponent(nombre)}`, {
-      method: "DELETE",
-    }),
+    request<{ ok: boolean }>(`/api/projects/${id}/secretos/${encodeURIComponent(nombre)}`, { method: "DELETE" }),
   getProjectSshKey: (id: string) => request<ProjectSshKey>(`/api/projects/${id}/clave-ssh`),
-  createProjectSshKey: (id: string) =>
-    request<ProjectSshKey>(`/api/projects/${id}/clave-ssh`, { method: "POST" }),
+  createProjectSshKey: (id: string) => request<ProjectSshKey>(`/api/projects/${id}/clave-ssh`, { method: "POST" }),
   deleteProjectSshKey: (id: string) =>
     request<{ ok: boolean }>(`/api/projects/${id}/clave-ssh`, { method: "DELETE" }),
   listProgramadas: () => request<Programada[]>("/api/programadas"),
@@ -460,17 +593,41 @@ export const api = {
     request<Task>(`/api/programadas/${id}/ejecutar`, { method: "POST", body: "{}" }),
   usage: () => request<{ generado: string; proveedores: UsoProveedor[] }>("/api/uso"),
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
-  resumeTask: (id: string) =>
-    request<Task>(`/api/tasks/${id}/reanudar`, { method: "POST", body: "{}" }),
-  retryTask: (id: string) =>
-    request<Task>(`/api/tasks/${id}/reintentar`, { method: "POST", body: "{}" }),
-  listQuotas: () => request<{ generado: string; proveedores: QuotaProvider[] }>("/api/cuotas"),
-  createQuota: (body: {
-    provider: string;
-    label: string;
-    remainingUsd: number;
-    limitUsd?: number | null;
-  }) => request<{ id: string }>("/api/cuotas", { method: "POST", body: JSON.stringify(body) }),
+  serverService: () => request<ServicioEstado>("/api/servidor/servicio"),
+  serverLogs: (lineas = 100) => request<RegistrosServidor>(`/api/servidor/logs?lineas=${lineas}`),
+  // Instalación de OpenCode: el servidor exige `confirmar: true` y ejecuta solo su comando fijo.
+  herramientaInstalacion: (id: string) => request<InstalacionHerramienta>(`/api/herramientas/${id}/instalacion`),
+  instalarHerramienta: (id: string) =>
+    request<InstalacionHerramienta>(`/api/herramientas/${id}/instalacion`, {
+      method: "POST",
+      body: JSON.stringify({ confirmar: true }),
+    }),
+  // Inicio de sesión de Codex: la app solo ve la URL, el código y si existe la sesión.
+  codexLogin: () => request<LoginCodex>("/api/providers/codex/login"),
+  iniciarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "POST", body: "{}" }),
+  cancelarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "DELETE" }),
+  // Skills: sin projectId, las globales de Ajustes; con projectId, las de la carpeta del proyecto.
+  listSkills: (projectId?: string) => request<{ skills: SkillResumen[] }>(skillsRuta(projectId)),
+  getSkill: (nombre: string, projectId?: string) =>
+    request<SkillDetalle>(`${skillsRuta(projectId)}/${encodeURIComponent(nombre)}`),
+  saveSkill: (nombre: string, contenido: string, projectId?: string) =>
+    request<{ creada: boolean }>(`${skillsRuta(projectId)}/${encodeURIComponent(nombre)}`, {
+      method: "PUT",
+      body: JSON.stringify({ contenido }),
+    }),
+  deleteSkill: (nombre: string, projectId?: string) =>
+    request<{ ok: boolean }>(`${skillsRuta(projectId)}/${encodeURIComponent(nombre)}`, { method: "DELETE" }),
+  resumeTask: (id: string) => request<Task>(`/api/tasks/${id}/reanudar`, { method: "POST", body: "{}" }),
+  // Tras una cuota agotada: vuelve a la cola con otro modelo y retoma la sesión.
+  continueTask: (id: string, body: { model?: string; effort?: string | null } = {}) =>
+    request<Task>(`/api/tasks/${id}/seguir`, { method: "POST", body: JSON.stringify(body) }),
+  continueChat: (id: string) =>
+    request<{ messages: Message[] }>(`/api/conversations/${id}/seguir`, { method: "POST", body: "{}" }),
+  retryTask: (id: string) => request<Task>(`/api/tasks/${id}/reintentar`, { method: "POST", body: "{}" }),
+  listQuotas: () =>
+    request<{ generado: string; proveedores: QuotaProvider[] }>("/api/cuotas"),
+  createQuota: (body: { provider: string; label: string; remainingUsd: number; limitUsd?: number | null }) =>
+    request<{ id: string }>("/api/cuotas", { method: "POST", body: JSON.stringify(body) }),
   updateQuota: (id: string, body: { remainingUsd: number; limitUsd?: number | null }) =>
     request<{ ok: boolean }>(`/api/cuotas/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteQuota: (id: string) => request<{ ok: boolean }>(`/api/cuotas/${id}`, { method: "DELETE" }),
@@ -481,22 +638,33 @@ export const api = {
     model?: string | null;
     effort?: string | null;
     projectId?: string | null;
-  }) => request<Task>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
+  }) =>
+    request<Task>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
   cancelTask: (id: string) =>
     request<{ outcome: string }>(`/api/tasks/${id}/cancel`, { method: "POST", body: "{}" }),
   listProjects: () => request<Project[]>("/api/projects"),
-  createProject: (body: { name: string } | { path: string; name?: string }) =>
+  // Con url, la carpeta queda vacía para clonar ese repo de GitHub (ver verificarRepositorioGithub).
+  createProject: (body: { name: string; url?: string } | { path: string; name?: string }) =>
     request<Project>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
+  verificarRepositorioGithub: (url: string) =>
+    request<VerificacionGithub>("/api/github/verificar", { method: "POST", body: JSON.stringify({ url }) }),
+  // Empieza el clonado en el chat del proyecto. Responde al instante; el avance se ve en ese chat.
+  cloneProject: (id: string) => request<ClonadoIniciado>(`/api/projects/${id}/clonar`, { method: "POST" }),
   deleteProject: (id: string) =>
     request<{ ok: boolean }>(`/api/projects/${id}`, { method: "DELETE" }),
   listProviders: () => request<ProviderStatus[]>("/api/providers"),
+  // La clave se escribe una vez y nunca vuelve por la API. Guardar otra vez la reemplaza.
+  setProviderKey: (id: string, valor: string) =>
+    request<{ id: string; configurada: boolean; actualizada_en: string }>(
+      `/api/claves-proveedor/${encodeURIComponent(id)}`,
+      { method: "PUT", body: JSON.stringify({ valor }) },
+    ),
+  deleteProviderKey: (id: string) =>
+    request<{ ok: boolean }>(`/api/claves-proveedor/${encodeURIComponent(id)}`, { method: "DELETE" }),
   getPreferences: () => request<Preferences>("/api/preferences"),
   savePreferences: (patch: Partial<Preferences>) =>
     request<Preferences>("/api/preferences", { method: "PUT", body: JSON.stringify(patch) }),
-  getAnalytics: (
-    days: number,
-    filtros: { proyecto?: string | null; modelo?: string | null } = {},
-  ) => {
+  getAnalytics: (days: number, filtros: { proyecto?: string | null; modelo?: string | null } = {}) => {
     const q = new URLSearchParams({ days: String(days) });
     if (filtros.proyecto) q.set("proyecto", filtros.proyecto);
     if (filtros.modelo) q.set("modelo", filtros.modelo);
@@ -504,29 +672,8 @@ export const api = {
   },
   googleEstado: () => request<GoogleEstado>("/api/google/estado"),
   // Devuelve la URL de Google; la interfaz la abre en la misma pestaña.
-  googleConectar: () =>
-    request<{ url: string }>("/api/google/conectar", { method: "POST", body: "{}" }),
+  googleConectar: () => request<{ url: string }>("/api/google/conectar", { method: "POST", body: "{}" }),
   googleDesconectar: () => request<{ ok: boolean }>("/api/google", { method: "DELETE" }),
-};
-
-export type ProjectSkill = { name: string; content: string; source: string | null };
-export type GitConfig = {
-  remote: string | null;
-  author_name: string;
-  author_email: string;
-  base_branch: string;
-  inicializado: boolean;
-  ocupado: boolean;
-  token: boolean;
-  ssh: boolean;
-};
-export type RepositoryAction = {
-  id: string;
-  action: string;
-  payload: string;
-  state: string;
-  result: string | null;
-  task_id: string | null;
 };
 
 // Estado de la conexión con Google. Nunca incluye tokens: solo el correo de la cuenta.
@@ -571,4 +718,24 @@ export type Analytics = {
     alertPercent: number;
     status: "ok" | "alerta" | "excedido";
   } | null;
+};
+
+export type ProjectSkill = { name: string; content: string; source: string | null };
+export type GitConfig = {
+  remote: string | null;
+  author_name: string;
+  author_email: string;
+  base_branch: string;
+  inicializado: boolean;
+  ocupado: boolean;
+  token: boolean;
+  ssh: boolean;
+};
+export type RepositoryAction = {
+  id: string;
+  action: string;
+  payload: string;
+  state: string;
+  result: string | null;
+  task_id: string | null;
 };

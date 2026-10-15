@@ -255,3 +255,105 @@ describe("API de proyectos", () => {
     expect(await res.json()).toEqual({ error: "project_not_found" });
   });
 });
+
+describe("métricas de la lista de proyectos", () => {
+  test("cuenta chats y tareas, y toma la última actividad del mensaje o de la tarea más reciente", async () => {
+    const { db } = await import("../src/db");
+    const proyecto = crypto.randomUUID();
+    db.query("INSERT INTO projects (id, name, repo_path) VALUES (?, 'Con actividad', ?)").run(
+      proyecto,
+      join(process.env.TELO_PROYECTOS_DIR!, "con-actividad"),
+    );
+    const chat = crypto.randomUUID();
+    db.query("INSERT INTO conversations (id, title, project_id) VALUES (?, 'Chat del proyecto', ?)").run(chat, proyecto);
+    db.query("INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'user', 'hola', '2026-10-05 10:00:00')").run(
+      crypto.randomUUID(),
+      chat,
+    );
+    db.query(
+      "INSERT INTO tasks (id, title, prompt, model, status, project_id, created_at) VALUES (?, 'Tarea', 'hacer algo', 'opencode/x', 'done', ?, '2026-10-09 08:00:00')",
+    ).run(crypto.randomUUID(), proyecto);
+
+    const lista = (await (await projects.request("/projects")).json()) as {
+      id: string;
+      chats: number;
+      tareas: number;
+      ultima_actividad: string | null;
+    }[];
+    expect(lista.find((p) => p.id === proyecto)).toMatchObject({
+      chats: 1,
+      tareas: 1,
+      ultima_actividad: "2026-10-09 08:00:00",
+    });
+  });
+
+  test("un proyecto sin chats ni tareas tiene ceros y actividad nula", async () => {
+    const { db } = await import("../src/db");
+    const vacio = crypto.randomUUID();
+    db.query("INSERT INTO projects (id, name, repo_path) VALUES (?, 'Vacío', ?)").run(
+      vacio,
+      join(process.env.TELO_PROYECTOS_DIR!, "vacio"),
+    );
+    const lista = (await (await projects.request("/projects")).json()) as {
+      id: string;
+      chats: number;
+      tareas: number;
+      ultima_actividad: string | null;
+    }[];
+    expect(lista.find((p) => p.id === vacio)).toMatchObject({ chats: 0, tareas: 0, ultima_actividad: null });
+  });
+});
+
+describe("memoria editada a mano", () => {
+  const json = (cuerpo: unknown) => ({
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(cuerpo),
+  });
+
+  async function proyectoNuevo(): Promise<string> {
+    const { db } = await import("../src/db");
+    const id = crypto.randomUUID();
+    db.query("INSERT INTO projects (id, name, repo_path) VALUES (?, 'Memoria', ?)").run(
+      id,
+      join(process.env.TELO_PROYECTOS_DIR!, `memoria-${id.slice(0, 8)}`),
+    );
+    return id;
+  }
+
+  test("un proyecto que no existe responde 404", async () => {
+    const res = await projects.request("/projects/no-existe/memoria", json({ texto: "algo" }));
+    expect(res.status).toBe(404);
+  });
+
+  test("guarda el texto y lo oculta en las credenciales que contenga", async () => {
+    const id = await proyectoNuevo();
+    const token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789";
+    const res = await projects.request(`/projects/${id}/memoria`, json({ texto: `Usar el repo. Token: ${token}` }));
+    expect(res.status).toBe(200);
+    const cuerpo = (await res.json()) as { texto: string; actualizada_en: string };
+    expect(cuerpo.texto).toContain("Usar el repo.");
+    expect(cuerpo.texto).not.toContain(token);
+    expect(cuerpo.actualizada_en).not.toBeNull();
+  });
+
+  test("un texto vacío borra la memoria", async () => {
+    const id = await proyectoNuevo();
+    await projects.request(`/projects/${id}/memoria`, json({ texto: "algo que recordar" }));
+    const res = await projects.request(`/projects/${id}/memoria`, json({ texto: "   " }));
+    expect(await res.json()).toEqual({ texto: null, actualizada_en: null });
+  });
+
+  test("más de 4 000 caracteres se rechaza con un código claro", async () => {
+    const id = await proyectoNuevo();
+    const res = await projects.request(`/projects/${id}/memoria`, json({ texto: "x".repeat(4_001) }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "memoria_demasiado_larga" });
+  });
+
+  test("un cuerpo sin texto se rechaza", async () => {
+    const id = await proyectoNuevo();
+    const res = await projects.request(`/projects/${id}/memoria`, json({ otra: 1 }));
+    expect(res.status).toBe(400);
+  });
+});

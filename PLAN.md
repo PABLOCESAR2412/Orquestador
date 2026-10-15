@@ -1,19 +1,6 @@
 # PLAN.md: hoja de ruta de Orquestador
 
-Estado local al 15 de octubre de 2026. Una fase no se marca desplegada hasta comprobarla en el VM.
-
-## Implementación local pendiente de despliegue
-
-- Migración 016: versiones y aprobación del plan, reporte del obrero, skills, configuración Git, contexto compartido y autorizaciones de repositorio. Las migraciones 014 (memoria) y 015 (clave SSH) ya estaban ocupadas; no se modificaron.
-- Tareas y chats usan la misma cola: analizador con workspace de solo lectura, plan JSON validado, aprobación por hash y obrero con reporte JSON. Los desvíos detectados sobre archivos Git detienen la ejecución y requieren una nueva versión del plan, conservando los cambios. `status` conserva compatibilidad; `phase` distingue análisis, espera de aprobación, ejecución y finalización.
-- Cada conversación conserva su tarea y clon. Dos chats no escriben en la misma carpeta. Los proyectos se reservan durante las operaciones del worker y durante las revisiones del servidor.
-- Init, commit, push y PR requieren una autorización visible. El backend ejecuta Git; el agente tiene `.git` de solo lectura. La configuración del proyecto permite definir identidad, remoto HTTPS de GitHub, rama destino y token cifrado. El token tiene prioridad sobre SSH. PR exige subida aprobada del mismo commit.
-- La limpieza conserva los clones ligados a chats y el trabajo pendiente: archivos modificados, ignorados y commits sin subida aprobada. Solo elimina tareas antiguas cuyo contenido está limpio y respaldado por una subida aprobada o sigue en el commit base.
-- Se registra consumo por cada evento `step_finish`, incluidos intentos fallidos, cancelados y modelo de respaldo. Las cifras de uso son las informadas a Telo, no una consulta del saldo o historial de Google.
-- Skills por proyecto: pegar instrucciones, importar el documento `SKILL.md` de GitHub o buscarlo en los catálogos oficiales de Anthropic/OpenAI. No se ejecutan instaladores ni se descargan recursos adjuntos.
-- Chat: esfuerzo dentro del selector de modelo, progreso con tiempo transcurrido y sugerencias a partir del historial local que se completan con Tab. Compartir contexto entre chats del proyecto es opcional.
-
-La validación local no incluye credenciales reales de GitHub o Google ni un despliegue. La hoja de ruta histórica siguiente conserva las decisiones y pendientes de infraestructura; este bloque sustituye sus referencias antiguas a las migraciones del analizador.
+Estado al 14 de octubre de 2026. Una fase no se marca como hecha hasta cumplir sus criterios de aceptación.
 
 ## Visión
 
@@ -41,17 +28,19 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 
 ### 4. Rediseño visual: en curso
 - Sistema de diseño en `DESIGN.md`. Pantallas generadas en Stitch con `docs/design/STITCH_PROMPT.md`. `impeccable` como guía de revisión.
+- Revisión automática del 14 de octubre: 32 capturas (8 vistas, 390 y 1440 px, claro y oscuro) sin desbordes horizontales ni errores de consola. Falta revisar el resto a ojo y el contraste AA.
 - **Criterio:** las cinco pantallas revisadas a 390 px y 1440 px. Contraste AA. Solo tokens de color. Sin cambios de comportamiento.
 
-### 5. Analizador y obrero por tarea: diseño listo (`AGENTS.md`)
-- Estado (`feat/revision-agentes`, sin merge): las migraciones 010–012 cubren lo que no es el analizador (Git por tarea, aprobaciones, secretos, programadas). La migración **013** (`013_oauth_google`) ya está: estados de inicio de sesión y conexión de Google. El analizador y sus estados `planning`, `waiting_approval`, `executing` y `waiting_user` pasan a la **migración 014**. Pendiente.
-- Separar planificación y ejecución. Migración `014` (de la `005` a la `013` ya están usadas): estados `planning`, `waiting_approval`, `executing`, `waiting_user` y `completed`, además de los actuales. Tablas para versiones del plan, aprobaciones y eventos por tarea.
-- Cada tarea tiene un `task_id` propio. Cada proveedor guarda su `provider_session_id`, así cambiar de proveedor no cambia la identidad de la tarea.
-- Si el obrero necesita desviarse del plan aprobado, la tarea vuelve a `waiting_approval`. No reinterpreta el plan por su cuenta.
-- **Criterio:** el analizador produce un JSON válido. El obrero ejecuta solo el plan aprobado. El reporte queda guardado. "Continuar" reanuda la misma sesión y el mismo workspace.
+### 5. Analizador y obrero por tarea: mergeada (PR #28). Falta la prueba con OpenCode real
+- Migración `019_analizador_obrero`: la tabla `tasks` se reconstruye con los estados `analyzing` y `waiting_approval`, y las columnas `plan`, `reporte` y `plan_aprobado_en`. Es la única migración que se aplica con claves foráneas apagadas (`sinClaves`); el runner comprueba la integridad antes de confirmar. El historial (`task_events`) y las aprobaciones (`task_approvals`) se conservan.
+- El analizador produce un plan en JSON (`server/src/plan.ts`). Si el plan pide commit, push o PR, o trae preguntas, la tarea espera en `waiting_approval`. Si no, pasa directo al obrero.
+- El obrero ejecuta solo el plan aprobado, en la misma sesión y carpeta que el analizador, y guarda un reporte en JSON. Si se desvía, la tarea vuelve al analizador con el motivo; el plan se replanifica hasta `MAX_PLANES` (3 versiones) y después la tarea falla.
+- Rutas: `POST /api/tasks/:id/aprobar-plan` (acepta notas para el obrero) y `POST /api/tasks/:id/rechazar-plan`.
+- Pruebas: `server/tests/plan.test.ts` (funciones puras) y `server/tests/analizador.test.ts`, que corre el flujo completo con un `opencode` falso (`server/tests/fixtures/bin/opencode`).
+- Pendiente: probar con OpenCode real en el VM. Los criterios de aceptación se cumplen con el falso; con un modelo real, el JSON del analizador y el reporte del obrero pueden necesitar ajuste de los prompts.
 
 ### 6. Proyectos de GitHub
-- Estado (`feat/revision-agentes`): cada tarea de un proyecto Git trabaja en su clon (`telo/<id8>`). Aprobación de commit y push ligada al hash del diff; escaneo de secretos antes del commit; push solo a `github.com` por HTTPS con `GITHUB_TOKEN` como secreto del proyecto. Pendiente: probar un push real a GitHub y un agente real en el VM.
+- Estado: mergeada (PR #14). Cada tarea de un proyecto Git trabaja en su clon (`telo/<id8>`). Aprobación de commit y push ligada al hash del diff; escaneo de secretos antes del commit; push solo a `github.com` por HTTPS con `GITHUB_TOKEN` como secreto del proyecto. Pendiente: probar un push real a GitHub y un agente real en el VM.
 - Token de acceso personal fine-grained, cifrado con AES-256-GCM. La clave maestra vive en el archivo de entorno del servicio, fuera del repo.
 - Clonar repos en el VM. Cada tarea corre en el workspace de su proyecto.
 - Antes de commit, push o PR, mostrar el diff en la app y pedir aprobación.
@@ -61,12 +50,12 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - Estado: pendiente. Hoy la app muestra si cada clave existe y si llega a los agentes (sin valores). Google y Codex necesitan un flujo de inicio de sesión que requiere crear credenciales OAuth en la cuenta de Google y decisión del usuario.
 - Flujo guiado: la app inicia el login del CLI en el VM (OpenCode, Google, Codex), muestra el enlace y el código, y espera la confirmación. Estado por proveedor.
 - Incluye Google aunque la cuenta gratuita no sirva para el servidor.
-- Estado de Google (`feat/revision-agentes`, sin merge): preparado con OAuth web y PKCE en lugar del login del CLI de la línea anterior. La app guarda la conexión (token de actualización cifrado) y puede desconectarla con revocación. Solo pide `openid email`. Pendiente de probar con las credenciales de Pablo; el permiso y la API de cuota se confirman en ese paso.
+- Estado de Google (mergeada en PR #15): preparado con OAuth web y PKCE en lugar del login del CLI de la línea anterior. La app guarda la conexión (token de actualización cifrado) y puede desconectarla con revocación. Solo pide `openid email`. Pendiente de probar con las credenciales de Pablo; el permiso y la API de cuota se confirman en ese paso.
 - **Criterio:** al terminar el flujo, el proveedor aparece como conectado. Ninguna clave se pega en la interfaz.
 - **Antes de implementar:** investigar los comandos de login de cada CLI en el VM.
 
 ### 8. Notificaciones
-- Estado: pendiente. Telegram y Discord quedan fuera por decisión del usuario.
+- Estado: pendiente. Telegram y Discord quedan fuera por decisión del usuario. Hoy los avisos del navegador (`web/src/lib/notificaciones.ts`) solo llegan con Telo abierta.
 - Web Push (u otro canal) al fallar, al necesitar aprobación y al terminar una tarea.
 - **Criterio:** cada evento notifica una vez. Reabrir la app no repite las notificaciones.
 
@@ -126,7 +115,7 @@ Según la revisión del 10 de octubre, el núcleo es el motor de tareas, el aisl
 1. Seguridad del runner: entorno sin secretos, cancelación por grupo de procesos. (`fix/runner-seguridad`)
 2. Estados formales y recuperación: `interrupted`, reanudar, reintentar o cancelar. (`006` aplicada. Reanudar y reintentar, en `feat/chats-gestion`, pendiente de revisión.)
 3. Registro de eventos por tarea, para depurar, auditar y alimentar notificaciones. (`009`, en `feat/chats-gestion`.)
-4. Fase 5 (analizador y obrero) y fase 6 (Git con aprobación en el backend).
+4. Fase 5 (analizador y obrero, PR #28) y fase 6 (Git con aprobación en el backend, PR #14): mergeadas. Falta probarlas con OpenCode real en el VM.
 5. Respaldos de la base y del workspace fuera del VM. (`server/scripts/respaldo.ts`, timer en `deploy/` y copia a la PC. Probado en local; falta probar el timer en el VM.)
 6. Fase 9 (acceso por Tailscale) y pendientes de la sección de acceso.
 7. Fases 10, 8 y 13: cuota con niveles de precisión, notificaciones por eventos y panel del VM sin terminal web.

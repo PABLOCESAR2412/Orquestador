@@ -90,7 +90,7 @@ async function tareaConCommit() {
   const copia = await prepararCopia(taskId, p.cwd, p.id);
   writeFileSync(join(copia.cwd, "archivo.txt"), "cambio aprobado\n");
   const antes = await diffDeTarea(taskId);
-  await aprobarTarea(taskId, { accion: "commit", hash: antes.hash, mensaje: "Cambio aprobado" });
+  await aprobarTarea(taskId, { accion: "commit", hash: antes.hash!, mensaje: "Cambio aprobado" });
   const diff = await diffDeTarea(taskId);
   db.query(
     "INSERT INTO task_approvals(id,task_id,accion,diff_hash,commit_sha,rama,remoto) VALUES (?,?,'push',?,?,?,?)",
@@ -105,10 +105,10 @@ test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama
   expect(db.query("SELECT 1 FROM project_git WHERE project_id=?").get(p.id)).toBeNull();
   const respuesta = await pedir(`/projects/${p.id}/acciones`, { action: "pr", taskId: p.taskId });
   expect(respuesta.status).toBe(201);
-  const accion = await respuesta.json();
+  const accion = (await respuesta.json()) as any;
   expect(JSON.parse(accion.payload).remote).toBe(REMOTO);
   let llamadas = 0;
-  globalThis.fetch = (async (url, init) => {
+  globalThis.fetch = (async (url: any, init: any) => {
     llamadas++;
     expect(String(url)).toBe("https://api.github.com/repos/dueno/prueba/pulls");
     expect(init?.method).toBe("POST");
@@ -118,7 +118,7 @@ test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama
     expect(body.head).toBe(p.diff.rama);
     expect(body.base).toBe("main");
     return Response.json({ html_url: "https://github.com/dueno/prueba/pull/1", token: TOKEN });
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
   const aprobada = await pedir(`/acciones/${accion.id}/decidir`, { approve: true });
   const texto = await aprobada.text();
   expect(aprobada.status).toBe(200);
@@ -139,10 +139,10 @@ test("push muestra remoto fijado en clon y no el nuevo remoto de configuración"
   globalThis.fetch = (async () => {
     llamadas++;
     throw new Error("No debe llamar la red");
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
   const respuesta = await pedir(`/projects/${p.id}/acciones`, { action: "push", taskId: p.taskId });
   expect(respuesta.status).toBe(201);
-  const accion = await respuesta.json();
+  const accion = (await respuesta.json()) as any;
   expect(JSON.parse(accion.payload).remote).toBe(REMOTO);
   expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: false })).status).toBe(200);
   expect(llamadas).toBe(0);
@@ -150,15 +150,15 @@ test("push muestra remoto fijado en clon y no el nuevo remoto de configuración"
 
 test("si diff cambia después de solicitar PR, rechaza aprobar antes de llamar GitHub", async () => {
   const p = await tareaConCommit();
-  const accion = await (
+  const accion = (await (
     await pedir(`/projects/${p.id}/acciones`, { action: "pr", taskId: p.taskId })
-  ).json();
+  ).json()) as any;
   writeFileSync(join(p.clon, "archivo.txt"), "cambio posterior sin aprobar\n");
   let llamadas = 0;
   globalThis.fetch = (async () => {
     llamadas++;
     throw new Error("No debe llamar GitHub");
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
   expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: true })).status).toBe(409);
   expect(llamadas).toBe(0);
 });
@@ -172,7 +172,7 @@ test("IDs de conversación y tarea exigen strings antes de consultar SQLite", as
         [campo]: valor,
       });
       expect(respuesta.status).toBe(400);
-      expect((await respuesta.json()).error).toBe("invalid_body");
+      expect(((await respuesta.json()) as any).error).toBe("invalid_body");
     }
   }
   expect(db.query("SELECT 1 FROM repository_actions WHERE project_id=?").get(p.id)).toBeNull();
@@ -185,7 +185,7 @@ test("init rechaza .git archivo que apunta a otro repositorio y conserva su cont
   const p = proyecto();
   const gitdir = `gitdir: ${join(otro.cwd, ".git")}\n`;
   writeFileSync(join(p.cwd, ".git"), gitdir);
-  const accion = await (await pedir(`/projects/${p.id}/acciones`, { action: "init" })).json();
+  const accion = (await (await pedir(`/projects/${p.id}/acciones`, { action: "init" })).json()) as any;
   expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: true })).status).toBe(409);
   expect(readFileSync(join(p.cwd, ".git"), "utf8")).toBe(gitdir);
   expect(readFileSync(join(otro.cwd, ".git", "config"), "utf8")).toBe(configAntes);

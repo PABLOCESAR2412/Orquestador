@@ -1,10 +1,15 @@
+import type { FilaActividad } from "./actividad";
+
 // Bus de eventos en memoria. El worker y las tareas publican; cada conexión SSE se suscribe.
-// No guarda nada: si no hay nadie suscrito, el evento se pierde (el historial está en task_events).
+// No guarda nada: si no hay nadie suscrito, el evento se pierde (el historial está en task_events
+// y, para los chats, en chat_actividad).
 
 export type EventoVivo =
   | { tipo: "tarea"; id: string; status: string; finished_at: string | null }
   | { tipo: "evento"; task_id: string; kind: string; detail: string | null; created_at: string }
-  | { tipo: "salida"; task_id: string; linea: string };
+  | { tipo: "salida"; task_id: string; linea: string }
+  | { tipo: "actividad"; conversacion_id: string; turno_id: string; paso: FilaActividad }
+  | { tipo: "chat"; conversacion_id: string; estado: "en_curso" | "terminado" };
 
 export type Suscriptor = (evento: EventoVivo) => void;
 

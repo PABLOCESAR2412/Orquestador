@@ -17,6 +17,20 @@ export const EFFORT_LABELS: Record<string, string> = {
 
 export const effortLabel = (value: string) => EFFORT_LABELS[value] ?? value;
 
+// Nombre legible del proveedor (el id de la API viene de OpenCode, por ejemplo "opencode" o "anthropic").
+const PROVEEDOR_LABEL: Record<string, string> = {
+  opencode: "OpenCode Zen",
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  google: "Google",
+  deepseek: "DeepSeek",
+  github: "GitHub Copilot",
+  openrouter: "OpenRouter",
+};
+
+export const nombreProveedor = (id: string) =>
+  PROVEEDOR_LABEL[id] ?? (id ? id.charAt(0).toUpperCase() + id.slice(1) : "Otro");
+
 export const TIER_LABEL: Record<CostTier, string> = {
   gratis: "Gratis",
   economico: "Económico",
@@ -43,18 +57,18 @@ export function formatPrice(m: ModelInfo): string {
 
 export const STATUS_LABEL: Record<TaskStatus, string> = {
   queued: "En cola",
+  analyzing: "Analizando",
+  waiting_approval: "Espera tu aprobación",
   running: "Corriendo",
   done: "Lista",
   interrupted: "Interrumpida",
+  sin_cuota: "Sin cuota",
   failed: "Falló",
   cancelled: "Cancelada",
 };
 
 // Historial de una tarea (tabla task_events del servidor).
 export const EVENT_LABEL: Record<TaskEventKind, string> = {
-  plan_listo: "Plan listo para revisar",
-  plan_aprobado: "Plan aprobado",
-  plan_revision: "El plan necesita revisión",
   creada: "Creada",
   iniciada: "Iniciada",
   sesion_asignada: "Sesión del agente asignada",
@@ -64,10 +78,20 @@ export const EVENT_LABEL: Record<TaskEventKind, string> = {
   reintento_creado: "Reintento creado",
   terminada: "Terminada",
   modelo_respaldo: "Modelo de respaldo",
+  sin_cuota: "Se acabó la cuota del modelo",
+  seguida: "Seguida con otro modelo",
   clon_creado: "Copia de trabajo creada",
   commit_aprobado: "Commit aprobado",
   push_aprobado: "Rama subida al remoto",
   push_fallido: "Falló la subida al remoto",
+  plan_creado: "Plan del analizador",
+  plan_pendiente: "Plan listo, espera tu aprobación",
+  plan_aprobado: "Plan aprobado",
+  plan_rechazado: "Plan rechazado",
+  plan_revision: "El plan necesita revisión",
+  turno_encolado: "Nuevo mensaje de la conversación",
+  replanificada: "Replanificada por desviación",
+  obrero_iniciado: "Obrero ejecutando el plan",
 };
 
 // Montos en dólares: centavos normales; cifras menores a un centavo con cuatro decimales.
@@ -109,6 +133,25 @@ export function sanearDetalle(texto: string, maximo = 160): string {
     .replace(/[A-Za-z]:\\[^\s'"]+/g, "[ruta]")
     .replace(/(^|[\s'"`(=])\/(?:[\w.@+-]+\/)+[\w.@+-]*/g, "$1[ruta]")
     .slice(0, maximo);
+}
+
+// Motivos que el servidor devuelve dentro de una respuesta correcta (instalación y login), no como error HTTP.
+export function motivoTexto(motivo: string | null): string | null {
+  if (!motivo) return null;
+  switch (motivo) {
+    case "npm_fallo":
+      return "npm no pudo instalar OpenCode. Revisa la salida de abajo.";
+    case "no_visible_tras_instalar":
+      return "La instalación terminó, pero el CLI no aparece en el servidor. Revisa la salida de abajo.";
+    case "tiempo_agotado":
+      return "La operación tardó demasiado y se detuvo.";
+    case "login_no_completado":
+      return "El inicio de sesión no se completó. Vuelve a intentarlo.";
+    case "cancelado":
+      return "Inicio de sesión cancelado.";
+    default:
+      return "No se pudo completar la operación.";
+  }
 }
 
 export function errorText(err: unknown): string {
@@ -153,17 +196,41 @@ export function errorText(err: unknown): string {
           : "El modelo no respondió. Intenta de nuevo.";
       case "invalid_content":
       case "invalid_prompt":
-        return "El texto está vacío o supera los 10 000 caracteres.";
+        return "El texto está vacío o supera los 30 000 caracteres.";
+      case "documento_no_generado":
+        return "No se pudo crear el documento con ese formato. Prueba con otro o revisa el texto.";
+      case "documento_muy_grande":
+        return "El documento es demasiado grande para guardarlo.";
+      case "documento_no_encontrado":
+        return "Este documento ya no existe.";
+      case "vista_no_disponible":
+        return "No se pudo generar la vista previa de este documento.";
+      case "formato_invalido":
+        return "Ese formato de documento no está disponible.";
+      case "mensaje_no_encontrado":
+        return "El mensaje ya no existe en el chat.";
       case "task_not_cancellable":
         return "Esta tarea ya terminó.";
       case "task_not_resumable":
         return "Solo se pueden reanudar tareas interrumpidas o fallidas.";
       case "task_without_session":
         return "Esta tarea no llegó a iniciar una sesión. Puedes reintentarla.";
+      case "cuota_agotada":
+        return "Se acabó la cuota de este modelo. Cambia de modelo y pulsa Seguir.";
+      case "modelo_sin_cambio":
+        return "Ese modelo ya no tiene cuota. Elige otro para seguir.";
+      case "task_not_continuable":
+        return "Solo se pueden seguir tareas detenidas por falta de cuota.";
+      case "chat_sin_cuota":
+        return "Este chat no está detenido por falta de cuota.";
       case "task_not_retryable":
         return "Esta tarea no se puede reintentar en este estado.";
       case "task_not_found":
         return "Esta tarea ya no existe.";
+      case "task_not_waiting_plan":
+        return "Esta tarea no está esperando la aprobación de un plan.";
+      case "invalid_notas":
+        return "Las notas son demasiado largas. El máximo es de 2000 caracteres.";
       case "conversation_busy":
         return "Este chat todavía está respondiendo. Espera a que termine.";
       case "aislamiento_no_disponible":
@@ -216,6 +283,50 @@ export function errorText(err: unknown): string {
         return "Ese proyecto ya no existe.";
       case "invalid_project_name":
         return "El nombre del proyecto debe tener entre 1 y 60 caracteres.";
+      case "confirmacion_requerida":
+        return "Confirma la instalación para continuar.";
+      case "instalacion_en_curso":
+        return "Ya hay una instalación en marcha. Espera a que termine.";
+      case "npm_no_disponible":
+        return "No encuentro npm en el servidor. Hace falta Node.js (que trae npm) instalado en el VM.";
+      case "ya_instalada":
+        return "OpenCode ya está instalado en el servidor.";
+      case "herramienta_desconocida":
+        return "Esa herramienta no se puede instalar desde Telo.";
+      case "codex_no_instalado":
+        return "Codex no está instalado en el servidor, así que no se puede iniciar sesión desde aquí.";
+      case "login_en_curso":
+        return "Ya hay un inicio de sesión en curso. Termínalo o cancélalo antes de empezar otro.";
+      case "skill_nombre_invalido":
+        return "El nombre usa solo minúsculas, números y guiones, sin guiones seguidos ni al principio o al final, y hasta 64 caracteres.";
+      case "skill_sin_frontmatter":
+        return "La skill necesita una cabecera entre tres guiones con name y description.";
+      case "skill_nombre_no_coincide":
+        return "El name de la cabecera debe ser igual al nombre de la skill.";
+      case "skill_sin_descripcion":
+        return "La cabecera necesita una description con lo que hace la skill y cuándo usarla.";
+      case "skill_descripcion_larga":
+        return "La description puede tener hasta 1 024 caracteres.";
+      case "skill_demasiado_grande":
+        return "La skill puede pesar hasta 64 KB.";
+      case "skill_contiene_secreto":
+        return "La skill contiene un secreto del servidor o una credencial. Quítalo y vuelve a guardar.";
+      case "skill_ruta_no_permitida":
+        return "La carpeta de la skill es un enlace o no es una carpeta normal, así que Telo no la toca.";
+      case "skill_no_encontrada":
+        return "Esa skill ya no existe.";
+      case "skill_no_guardada":
+        return "No se pudo guardar la skill. El archivo anterior sigue igual.";
+      case "skill_con_archivos":
+        return "La carpeta tiene otros archivos además de SKILL.md. Bórralos en tu equipo y vuelve a intentarlo.";
+      case "skill_contenido_invalido":
+        return "Falta el contenido de la skill.";
+      case "memoria_demasiado_larga":
+        return "La memoria puede tener hasta 4 000 caracteres. Acórtala y vuelve a guardar.";
+      case "registros_no_disponibles":
+        return "Los registros solo se leen en el servidor, con systemd (el VM). Aquí no hay un servicio que leer.";
+      case "sin_permiso_diario":
+        return "El usuario del servidor no puede leer el diario del sistema. En el VM hay que añadirlo al grupo systemd-journal.";
       case "invalid_instrucciones":
         return "Las instrucciones pueden tener hasta 8 000 caracteres.";
       case "archivo_binario":
@@ -228,6 +339,12 @@ export function errorText(err: unknown): string {
         return "El valor debe tener entre 1 y 8 192 caracteres.";
       case "secret_not_found":
         return "Ese secreto ya no existe.";
+      case "proveedor_desconocido":
+        return "Ese proveedor no existe en Telo.";
+      case "clave_proveedor_invalida":
+        return "La clave no tiene el formato esperado. Pégala completa, sin espacios ni saltos de línea.";
+      case "proveedor_sin_clave":
+        return "Este proveedor no tiene una clave guardada en Telo.";
       case "clave_existente":
         return "Este proyecto ya tiene una clave de GitHub. Bórrala antes de crear otra.";
       case "clave_sin_cifrado":
@@ -236,6 +353,30 @@ export function errorText(err: unknown): string {
         return "No se pudo crear la clave de GitHub en el servidor. Intenta de nuevo.";
       case "clave_no_encontrada":
         return "Este proyecto no tiene clave de GitHub.";
+      case "invalid_github_url":
+        return "Pega la dirección de un repositorio de GitHub, por ejemplo https://github.com/dueño/repo.";
+      case "url_no_valida":
+        return "Esa dirección no es un repositorio de GitHub.";
+      case "project_sin_origen":
+        return "Este proyecto no viene de GitHub, así que no hay nada que clonar.";
+      case "project_ya_clonado":
+        return "Este proyecto ya está clonado.";
+      case "clonado_en_curso":
+        return "Ya se está clonando este proyecto. Espera a que termine.";
+      case "carpeta_no_vacia":
+        return "La carpeta del proyecto ya tiene archivos, así que no se puede clonar encima.";
+      case "clave_no_autorizada":
+        return "GitHub no acepta la clave de este proyecto. Agrégala en el repositorio (Settings → Deploy keys) y vuelve a intentar.";
+      case "repo_no_encontrado":
+        return "GitHub no encuentra ese repositorio, o la clave no tiene acceso a él. Revisa la dirección y la clave.";
+      case "host_no_verificado":
+        return "La identidad de GitHub no coincide con la fijada en Telo. No se clonó nada.";
+      case "sin_red_github":
+        return "El servidor no llega a GitHub por SSH. Revisa su conexión e intenta de nuevo.";
+      case "verificacion_fallo":
+        return "No se pudo revisar el repositorio. Revisa la dirección y la conexión del servidor, y vuelve a intentarlo.";
+      case "clonado_fallo":
+        return "No se pudo clonar el repositorio. Intenta de nuevo; si sigue fallando, revisa que la clave esté en GitHub.";
       case "clave_ilegible":
         return "La clave de GitHub de este proyecto no se puede leer. Bórrala y crea otra.";
       case "invalid_schedule":

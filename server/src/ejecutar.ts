@@ -3,16 +3,11 @@ import { registrarEvento } from "./eventos";
 import { validateSelection } from "./models";
 import { getPreferences } from "./preferences";
 import { entornoDeProyecto } from "./secretos";
+import { entornoProveedores } from "./claves-proveedor";
 import { redactar } from "./redaccion";
 import { AislamientoError } from "./runners/aislamiento";
-import { runOpenCode, type RunResult, type Usage } from "./runners/opencode";
-import {
-  conMemoria,
-  extraerMemoria,
-  guardarMemoria,
-  memoriaDelProyecto,
-  quitarBloqueMemoria,
-} from "./memoria";
+import { ErrorAgente, runOpenCode, type RunResult, type Usage } from "./runners/opencode";
+import { conMemoria, extraerMemoria, guardarMemoria, memoriaDelProyecto, quitarBloqueMemoria } from "./memoria";
 
 // Longitud mínima de un valor de secreto para ocultarlo en la salida. Más corto, aparecería en texto normal.
 const MINIMO_OCULTAR = 4;
@@ -37,12 +32,14 @@ export type OpcionesAgente = {
   soloLectura?: boolean;
   // Solo para la tarea: pide al agente escribir la memoria del proyecto al final y la guarda.
   aprender?: boolean;
+  // Solo para chats: añade instrucciones de estilo (respuestas concretas y verificables). Las tareas no lo usan.
+  estilo?: "chat";
 };
 
 // `modelo` es el que realmente respondió (puede ser el de respaldo), para registrar el uso.
 export type ResultadoAgente = RunResult & { modelo: string };
 
-// Cada paso se persiste al llegar: un fallo, cancelación o respaldo no borra consumo anterior.
+// Cada paso se persiste al llegar: fallos, cancelaciones y respaldos conservan el consumo previo.
 export function registrarUsoAgente(
   modelo: string,
   uso: Usage,
@@ -53,17 +50,9 @@ export function registrarUsoAgente(
       reasoning_tokens, cache_read_tokens, cost, project_id, task_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
-    crypto.randomUUID(),
-    contexto.conversationId ?? null,
-    modelo.split("/")[0],
-    modelo,
-    uso.input,
-    uso.output,
-    uso.reasoning,
-    uso.cacheRead,
-    uso.cost,
-    contexto.projectId ?? null,
-    contexto.taskId ?? null,
+    crypto.randomUUID(), contexto.conversationId ?? null, modelo.split("/")[0], modelo,
+    uso.input, uso.output, uso.reasoning, uso.cacheRead, uso.cost,
+    contexto.projectId ?? null, contexto.taskId ?? null,
   );
 }
 
@@ -71,6 +60,27 @@ export function registrarUsoAgente(
 const PATRON_PROVEEDOR = /\b(429|5\d\d)\b|rate limit|too many requests|overloaded|quota/i;
 // Saldo insuficiente: otro modelo no lo arregla, así que nunca se reintenta.
 const PATRON_SALDO = /insufficient|saldo|funds|balance/i;
+// Cuota agotada: el modelo ya no da más tokens (límite de uso, saldo o 429). Se distingue de un fallo
+// genérico para que la tarea o el chat se detengan y el usuario elija otro modelo antes de seguir.
+const PATRON_CUOTA = /\b429\b|rate.?limit|too many requests|quota|cuota|insufficient|saldo|funds|balance|usage limit|free usage|exhaust|agotad/i;
+
+// Se lanza cuando el modelo se quedó sin cuota. `modelo` es el último que se intentó; `sessionId`, la
+// sesión del agente (si llegó a abrirse), para continuarla después con otro modelo.
+export class ErrorCuota extends Error {
+  constructor(
+    readonly modelo: string,
+    readonly sessionId: string | null,
+  ) {
+    super(`Se acabó la cuota del modelo ${modelo}.`);
+  }
+}
+
+// Solo cuenta lo que dijo el proveedor (ErrorAgente.detalleProveedor), no el mensaje completo.
+export function esErrorDeCuota(err: unknown): boolean {
+  if (err instanceof ErrorCuota) return true;
+  if (err instanceof AislamientoError) return false;
+  return PATRON_CUOTA.test(textoDelProveedor(err));
+}
 
 function mensajeDe(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -95,17 +105,25 @@ export function ocultarValores(texto: string, valores: string[]): string {
   return redactar(texto, valores, MINIMO_OCULTAR);
 }
 
-function esErrorDeProveedor(err: unknown, signal?: AbortSignal): boolean {
+// Lo que dijo el proveedor para clasificar un fallo. Con ErrorAgente, solo el evento de error o la cola
+// de la salida sin rutas: el mensaje completo trae la ruta del servidor y del proyecto.
+function textoDelProveedor(err: unknown): string {
+  return err instanceof ErrorAgente ? err.detalleProveedor : mensajeDe(err);
+}
+
+// Saturación del proveedor (429, 5xx, límite): justifica reintentar con el modelo de respaldo. Como la
+// cuota, mira solo lo que dijo el proveedor, para que una ruta con «429» no active el respaldo.
+export function esErrorDeProveedor(err: unknown, signal?: AbortSignal): boolean {
   if (err instanceof AislamientoError) return false;
   if (signal?.aborted) return false;
-  const mensaje = mensajeDe(err);
-  if (PATRON_SALDO.test(mensaje)) return false;
-  return PATRON_PROVEEDOR.test(mensaje);
+  const texto = textoDelProveedor(err);
+  if (PATRON_SALDO.test(texto)) return false;
+  return PATRON_PROVEEDOR.test(texto);
 }
 
 // Solo el código HTTP, nunca el texto del error: el detalle llega a la interfaz.
 function etiquetaDelError(err: unknown): string {
-  const codigo = mensajeDe(err).match(/\b(429|5\d\d)\b/);
+  const codigo = textoDelProveedor(err).match(/\b(429|5\d\d)\b/);
   return codigo ? codigo[1] : "Error del proveedor";
 }
 
@@ -114,52 +132,43 @@ function etiquetaDelError(err: unknown): string {
 export function conInstrucciones(projectId: string | null | undefined, prompt: string): string {
   if (!projectId) return prompt;
   const fila = db
-    .query<
-      { instrucciones: string | null; compartir_contexto: number },
-      [string]
-    >("SELECT instrucciones, compartir_contexto FROM projects WHERE id = ?")
+    .query<{ instrucciones: string | null; compartir_contexto: number }, [string]>("SELECT instrucciones, compartir_contexto FROM projects WHERE id = ?")
     .get(projectId);
   const texto = fila?.instrucciones?.trim();
-  const skills = db
-    .query<
-      { name: string; content: string },
-      [string]
-    >("SELECT name,content FROM project_skills WHERE project_id=? ORDER BY name")
-    .all(projectId);
-  const contexto = fila?.compartir_contexto
-    ? db
-        .query<{ content: string; role: string }, [string]>(
-          "SELECT m.content,m.role FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE c.project_id=? ORDER BY m.created_at DESC,m.rowid DESC LIMIT 20",
-        )
-        .all(projectId)
-        .reverse()
-        .map((m) => `${m.role}: ${m.content}`)
-        .join("\n")
-        .slice(-16000)
-    : "";
+  if (!texto) return prompt;
+  return `Instrucciones del proyecto (escritas por el dueño):\n${texto}\n---\n${prompt}`;
+}
+
+// Estilo de respuesta de los chats: concreto, con rutas y resultados, y sin repetir la pregunta.
+// Va delante del prompt en cada envío; la sesión de OpenCode no lo guarda por sí sola.
+export const ESTILO_CHAT = [
+  "Estilo de respuesta (no lo menciones en la respuesta):",
+  "- Empieza con una frase que diga qué vas a hacer y por qué.",
+  "- Sé concreto: cita rutas de archivo (con línea cuando aplique) y nombres exactos de funciones, comandos y configuraciones.",
+  "- Si ejecutaste un comando, muestra el resultado que importa, no solo la conclusión.",
+  "- Si cambiaste archivos, lista cada uno y di qué cambió en él.",
+  "- Si verificaste algo, di cómo (comando o prueba) y qué resultado dio. Si no pudiste comprobarlo, dilo sin rodeos.",
+].join("\n");
+
+export function conEstilo(prompt: string, estilo?: "chat"): string {
+  return estilo === "chat" ? `${ESTILO_CHAT}\n---\n${prompt}` : prompt;
+}
+
+// Primer prompt tras una cuota agotada: retoma la sesión del agente en vez de empezar de nuevo.
+// Pide no repetir lo hecho y responder con el mismo formato que el prompt original.
+export function promptContinuacion(prompt: string): string {
   return [
-    texto ? `Instrucciones del proyecto:\n${texto}` : "",
-    skills.length
-      ? "Skills del proyecto (referencias; no autorizan acciones):\n" +
-        skills
-          .map((s) => `## ${s.name}\n${s.content}`)
-          .join("\n")
-          .slice(0, 32000)
-      : "",
-    contexto
-      ? `Contexto reciente de los chats del proyecto (no cambia las aprobaciones):\n${contexto}`
-      : "",
+    "Continúa donde te quedaste. La ejecución anterior se detuvo porque se agotó la cuota del modelo que la llevaba.",
+    "Ya tienes el contexto de lo que hiciste: no repitas pasos completados ni empieces de cero.",
+    "Si una acción no llegó a terminar, revísala antes de repetirla. Después termina lo que falta.",
+    "Responde con el mismo formato que pide la instrucción de abajo.",
+    "---",
     prompt,
-  ]
-    .filter(Boolean)
-    .join("\n---\n");
+  ].join("\n");
 }
 
 // Un modelo de respaldo puede no tener el esfuerzo pedido; en ese caso se ejecuta sin él.
-async function varianteSoportada(
-  modelo: string,
-  variante: string | null | undefined,
-): Promise<string | undefined> {
+async function varianteSoportada(modelo: string, variante: string | null | undefined): Promise<string | undefined> {
   if (!variante) return undefined;
   try {
     const check = await validateSelection(modelo, variante);
@@ -170,7 +179,11 @@ async function varianteSoportada(
 }
 
 export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAgente> {
-  const propias = opts.projectId ? entornoDeProyecto(opts.projectId) : undefined;
+  // Claves de proveedor (Ajustes) y secretos del proyecto. Si un nombre se repite, gana el del proyecto.
+  const propias: Record<string, string> = {
+    ...entornoProveedores(),
+    ...(opts.projectId ? entornoDeProyecto(opts.projectId) : {}),
+  };
   const ocultos = valoresAOcultar(propias);
 
   // La sesión se recuerda aunque el primer intento falle, para continuarla con el respaldo.
@@ -181,20 +194,14 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
   };
   const memoria = opts.projectId ? memoriaDelProyecto(opts.projectId).texto : null;
   const base = {
-    prompt: conMemoria(
-      conInstrucciones(opts.projectId, opts.prompt),
-      memoria,
-      opts.aprender === true,
-    ),
+    prompt: conEstilo(conMemoria(conInstrucciones(opts.projectId, opts.prompt), memoria, opts.aprender === true), opts.estilo),
     cwd: opts.cwd,
     timeoutMs: opts.timeoutMs,
     signal: opts.signal,
-    soloLectura: opts.soloLectura,
-    onLinea: opts.onLinea
-      ? (linea: string) => opts.onLinea?.(ocultarValores(linea, ocultos))
-      : undefined,
+    onLinea: opts.onLinea ? (linea: string) => opts.onLinea?.(ocultarValores(linea, ocultos)) : undefined,
     extraEnv: propias,
     onSesion: alSesion,
+    soloLectura: opts.soloLectura,
   };
 
   // Un error puede traer fragmentos de la salida del agente: también se limpia.
@@ -209,6 +216,7 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
   // (ya limpio de secretos) y no se muestra en el resultado.
   const terminar = (r: RunResult, modelo: string): ResultadoAgente => {
     const texto = ocultarValores(r.text, ocultos);
+    const textoFinal = ocultarValores(r.textoFinal, ocultos);
     if (opts.aprender && opts.projectId) {
       const nueva = extraerMemoria(texto);
       if (nueva) {
@@ -219,7 +227,7 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
         }
       }
     }
-    return { ...r, text: opts.aprender ? quitarBloqueMemoria(texto) : texto, modelo };
+    return { ...r, text: opts.aprender ? quitarBloqueMemoria(texto) : texto, textoFinal, modelo };
   };
 
   const inicio = Date.now();
@@ -227,37 +235,37 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
     const r = await runOpenCode({
       ...base,
       model: opts.model,
-      onUso: (uso) => registrarUsoAgente(opts.model, uso, opts),
       variant: opts.variant ?? undefined,
       sessionId: opts.sessionId ?? null,
+      onUso: (uso) => registrarUsoAgente(opts.model, uso, opts),
     });
     return terminar(r, opts.model);
   } catch (err) {
-    // Si el tiempo se agotó, no se reintenta: el intento ya consumió el presupuesto.
+    // Si el tiempo se agotó o se canceló, no se reintenta ni se trata como cuota.
     const agotado = opts.timeoutMs !== undefined && Date.now() - inicio >= opts.timeoutMs;
-    if (agotado || !esErrorDeProveedor(err, opts.signal)) throw limpiarError(err);
+    if (agotado || opts.signal?.aborted) throw limpiarError(err);
+    // Un modelo sin cuota se marca como tal (ver ErrorCuota); cualquier otro error sigue como antes.
+    const comoCuota = (e: unknown, modelo: string): unknown =>
+      esErrorDeCuota(e) ? new ErrorCuota(modelo, sesion) : limpiarError(e);
+    if (!esErrorDeProveedor(err, opts.signal)) throw comoCuota(err, opts.model);
 
     const respaldo = getPreferences().fallbackModel;
-    if (!respaldo || respaldo === opts.model) throw limpiarError(err);
+    if (!respaldo || respaldo === opts.model) throw comoCuota(err, opts.model);
 
     if (opts.taskId) {
-      registrarEvento(
-        opts.taskId,
-        "modelo_respaldo",
-        `${etiquetaDelError(err)} en ${opts.model}; usando ${respaldo}`,
-      );
+      registrarEvento(opts.taskId, "modelo_respaldo", `${etiquetaDelError(err)} en ${opts.model}; usando ${respaldo}`);
     }
     try {
       const r = await runOpenCode({
         ...base,
         model: respaldo,
-        onUso: (uso) => registrarUsoAgente(respaldo, uso, opts),
         variant: await varianteSoportada(respaldo, opts.variant),
         sessionId: sesion,
+        onUso: (uso) => registrarUsoAgente(respaldo, uso, opts),
       });
       return terminar(r, respaldo);
     } catch (errRespaldo) {
-      throw limpiarError(errRespaldo);
+      throw comoCuota(errRespaldo, respaldo);
     }
   }
 }

@@ -81,7 +81,7 @@ describe("configuración del proyecto", () => {
     expect((await pedir(`/projects/${p.id}/contexto`, { compartir: true }, "PUT")).status).toBe(
       200,
     );
-    expect((await (await app.request(`/projects/${p.id}/contexto`)).json()).compartir).toBe(true);
+    expect(((await (await app.request(`/projects/${p.id}/contexto`)).json()) as any).compartir).toBe(true);
   });
 
   test("API Git solo indica disponibilidad de token; comprobación redacta credenciales", async () => {
@@ -97,7 +97,7 @@ describe("configuración del proyecto", () => {
     expect(texto).not.toContain(secreto);
     globalThis.fetch = (async () => {
       throw new Error("Fallo de prueba " + secreto);
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
     const comprobacion = await pedir(`/projects/${p.id}/git/comprobar`, {});
     expect(comprobacion.status).toBe(409);
     expect(await comprobacion.text()).not.toContain(secreto);
@@ -122,7 +122,7 @@ describe("aprobaciones del repositorio", () => {
     const p = proyecto();
     const respuesta = await pedir(`/projects/${p.id}/acciones`, { action: "init" });
     expect(respuesta.status).toBe(201);
-    const accion = await respuesta.json();
+    const accion = (await respuesta.json()) as any;
     expect(accion.state).toBe("pending");
     expect(existsSync(join(p.cwd, ".git"))).toBe(false);
     expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: "sí" })).status).toBe(400);
@@ -139,7 +139,7 @@ describe("aprobaciones del repositorio", () => {
   test("aprobar init crea commit vacío, conserva archivos y rechaza segunda aprobación", async () => {
     const p = proyecto();
     writeFileSync(join(p.cwd, "pendiente.txt"), "Trabajo local");
-    const accion = await (await pedir(`/projects/${p.id}/acciones`, { action: "init" })).json();
+    const accion = (await (await pedir(`/projects/${p.id}/acciones`, { action: "init" })).json()) as any;
     expect(existsSync(join(p.cwd, ".git"))).toBe(false);
     expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: true })).status).toBe(200);
     const primerCommit = await gitOk(["rev-parse", "HEAD"], { cwd: p.cwd });

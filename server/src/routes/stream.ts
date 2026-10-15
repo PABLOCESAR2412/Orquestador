@@ -1,8 +1,9 @@
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { cantidadSuscriptores, suscribir, type EventoVivo } from "../bus";
+import { sinLimiteDeInactividad } from "../conexion";
 
-// Canal en vivo: estados de tareas, eventos del historial y líneas de salida del agente.
+// Canal en vivo: estados de tareas, eventos del historial, líneas de salida del agente y pasos de los chats.
 // Contrato: scratchpad/contrato.md (sección Tareas).
 
 const PING_MS = 25_000;
@@ -10,18 +11,6 @@ const PING_MS = 25_000;
 const MAX_SUSCRIPTORES = 20;
 
 export const stream = new Hono();
-
-// Bun corta a los 10 s las conexiones sin datos. El SSE pasa largos ratos sin nada que decir,
-// así que se desactiva el límite solo para esta conexión (server.timeout(req, 0)).
-// Bun pasa el servidor como segundo argumento de fetch, y Hono lo recibe como c.env.
-function sinLimiteDeInactividad(c: Context) {
-  const servidor = c.env as { timeout?: (req: Request, segundos: number) => void } | undefined;
-  try {
-    servidor?.timeout?.(c.req.raw, 0);
-  } catch {
-    // Sin esta función (otro runtime o pruebas), la conexión sigue; solo puede cortarse por inactividad.
-  }
-}
 
 function aMensaje(evento: EventoVivo): { event: string; data: string } {
   if (evento.tipo === "tarea") {
@@ -39,6 +28,18 @@ function aMensaje(evento: EventoVivo): { event: string; data: string } {
         detail: evento.detail,
         created_at: evento.created_at,
       }),
+    };
+  }
+  if (evento.tipo === "actividad") {
+    return {
+      event: "actividad",
+      data: JSON.stringify({ conversacion_id: evento.conversacion_id, turno_id: evento.turno_id, paso: evento.paso }),
+    };
+  }
+  if (evento.tipo === "chat") {
+    return {
+      event: "chat",
+      data: JSON.stringify({ conversacion_id: evento.conversacion_id, estado: evento.estado }),
     };
   }
   return { event: "salida", data: JSON.stringify({ task_id: evento.task_id, linea: evento.linea }) };

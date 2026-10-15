@@ -22,6 +22,7 @@ const TITULO_FINAL: Partial<Record<Task["status"], string>> = {
   failed: "Falló",
   cancelled: "Cancelada",
   interrupted: "Interrumpida",
+  sin_cuota: "Sin cuota",
 };
 
 // Deriva los pasos del estado real: la tarea, sus eventos y la revisión de Git (si la tiene).
@@ -36,9 +37,13 @@ export function derivarPasos(args: {
   const estado = tarea.status;
   const enCola = estado === "queued";
   const corriendo = estado === "running";
-  const terminal = !enCola && !corriendo;
+  const analizando = estado === "analyzing";
+  const esperando = estado === "waiting_approval";
+  const terminal = !enCola && !corriendo && !analizando && !esperando;
   const kinds = new Set((eventos ?? []).map((e) => e.kind));
-  const iniciada = Boolean(tarea.started_at) || kinds.has("iniciada");
+  // Con plan, el obrero empieza cuando el plan se aprueba. Sin plan (tareas anteriores), corre desde el inicio.
+  const conPlan = Boolean(tarea.plan) || kinds.has("plan_creado") || analizando || esperando;
+  const iniciada = conPlan ? kinds.has("obrero_iniciado") : Boolean(tarea.started_at) || kinds.has("iniciada");
 
   const pasos: Paso[] = [];
 
@@ -55,6 +60,30 @@ export function derivarPasos(args: {
     estado: enCola ? "actual" : "hecho",
     detalle: enCola ? "Espera su turno. El servidor corre una tarea a la vez." : "Salió de la cola",
   });
+
+  if (conPlan) {
+    let plan: Paso;
+    if (analizando) {
+      plan = { id: "plan", titulo: "Plan", estado: "actual", detalle: "El analizador escribe el plan" };
+    } else if (esperando) {
+      plan = {
+        id: "plan",
+        titulo: "Plan",
+        estado: "actual",
+        detalle: "Revisa el plan y apruébalo para que el obrero empiece",
+      };
+    } else if (tarea.plan_aprobado_en || kinds.has("plan_aprobado")) {
+      plan = { id: "plan", titulo: "Plan", estado: "hecho", detalle: "Aprobado" };
+    } else {
+      plan = {
+        id: "plan",
+        titulo: "Plan",
+        estado: estado === "failed" ? "fallo" : "pendiente",
+        detalle: terminal ? "No se aprobó" : "Todavía no se aprueba",
+      };
+    }
+    pasos.push(plan);
+  }
 
   if (corriendo) {
     pasos.push({
@@ -125,6 +154,13 @@ export function derivarPasos(args: {
     final = { id: "final", titulo, estado: "fallo", detalle: cuando(tarea.finished_at) };
   } else if (estado === "cancelled") {
     final = { id: "final", titulo, estado: "hecho", detalle: "Se canceló antes de terminar" };
+  } else if (estado === "sin_cuota") {
+    final = {
+      id: "final",
+      titulo,
+      estado: "actual",
+      detalle: "Elige otro modelo y pulsa Seguir",
+    };
   } else if (estado === "interrupted") {
     final = {
       id: "final",

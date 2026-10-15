@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { aislamientoActivo } from "../runners/aislamiento";
+import { hallarEjecutable } from "../ejecutable";
+
 
 export const runner = new Hono();
 
@@ -7,8 +9,8 @@ export const runner = new Hono();
 // Sin bwrap, ningún chat ni tarea puede correr (falla cerrado), así que es lo primero que conviene ver.
 runner.get("/runner", (c) =>
   c.json({
-    opencode: Bun.which("opencode") !== null,
-    bwrap: Bun.which("bwrap") !== null,
+    opencode: hallarEjecutable("opencode") !== null,
+    bwrap: hallarEjecutable("bwrap") !== null,
     aislamiento: aislamientoActivo(),
   }),
 );

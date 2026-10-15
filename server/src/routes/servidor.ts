@@ -4,6 +4,9 @@ import { join, resolve } from "node:path";
 import { config } from "../config";
 import { db } from "../db";
 import { medirCarpeta } from "../archivos-proyecto";
+import { redactar } from "../redaccion";
+import { hallarEjecutable } from "../ejecutable";
+
 
 // Estado del servidor para la página Servidor. Ninguna respuesta incluye rutas absolutas,
 // nombre de equipo ni IPs: las carpetas se nombran por su función y los errores de herramientas se limpian.
@@ -114,7 +117,7 @@ async function carpetasCacheadas(): Promise<Carpeta[]> {
 // Versión de una herramienta: primera línea, sin rutas. Nunca lanza error.
 async function versionDe(nombre: string): Promise<{ disponible: boolean; version: string | null }> {
   if (nombre === "bun") return { disponible: true, version: Bun.version };
-  if (Bun.which(nombre) === null) return { disponible: false, version: null };
+  if (hallarEjecutable(nombre) === null) return { disponible: false, version: null };
 
   const proc = Bun.spawn([nombre, "--version"], {
     stdin: "ignore",
@@ -224,4 +227,99 @@ servidor.get("/servidor", async (c) => {
     herramientas,
     ...costosYTareas(),
   });
+});
+
+// Servicio y registros. Ambos leen el sistema con comandos fijos y sin shell. El entorno es el mínimo,
+// así que ninguna variable del servidor llega a estos comandos. Fuera de systemd (desarrollo) responden
+// "no disponible" en vez de fallar.
+
+const SERVICIO = "orquestador";
+const TIEMPO_COMANDO_MS = 4_000;
+const LINEAS_POR_DEFECTO = 100;
+const LINEAS_MAXIMAS = 300;
+
+type Servicio = { disponible: boolean; activo: string | null; subestado: string | null; desde: string | null; pid: number | null };
+
+// Ejecuta un comando con tiempo límite. Devuelve null si el programa no existe o no se puede lanzar.
+async function ejecutarFijo(argv: string[]): Promise<{ codigo: number; salida: string } | null> {
+  let proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
+  try {
+    proc = Bun.spawn(argv, { stdin: "ignore", stdout: "pipe", stderr: "pipe", env: entornoMinimo() });
+  } catch {
+    return null;
+  }
+  const reloj = setTimeout(() => proc.kill(9), TIEMPO_COMANDO_MS);
+  try {
+    const [salida, errores, codigo] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    return { codigo, salida: salida + errores };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(reloj);
+  }
+}
+
+export async function estadoDelServicio(): Promise<Servicio> {
+  const r = await ejecutarFijo([
+    "systemctl",
+    "show",
+    SERVICIO,
+    "-p",
+    "ActiveState,SubState,ActiveEnterTimestamp,MainPID",
+    "--no-pager",
+  ]);
+  if (!r || r.codigo !== 0) return { disponible: false, activo: null, subestado: null, desde: null, pid: null };
+  const campos = new Map(
+    r.salida
+      .split("\n")
+      .map((linea) => linea.split("="))
+      .filter((p) => p.length >= 2)
+      .map(([clave, ...resto]) => [clave, resto.join("=")]),
+  );
+  const pid = Number(campos.get("MainPID"));
+  return {
+    disponible: true,
+    activo: campos.get("ActiveState") ?? null,
+    subestado: campos.get("SubState") ?? null,
+    desde: campos.get("ActiveEnterTimestamp") || null,
+    pid: Number.isInteger(pid) && pid > 0 ? pid : null,
+  };
+}
+
+export type RegistrosResultado =
+  | { ok: true; texto: string }
+  | { ok: false; motivo: "registros_no_disponibles" | "sin_permiso_diario" };
+
+// Últimas líneas del diario de la unidad. La salida se redacta antes de salir del servidor.
+export async function registrosDelServicio(lineas: number): Promise<RegistrosResultado> {
+  const r = await ejecutarFijo([
+    "journalctl",
+    "-u",
+    SERVICIO,
+    "-n",
+    String(lineas),
+    "--no-pager",
+    "-o",
+    "short-iso",
+  ]);
+  if (!r) return { ok: false, motivo: "registros_no_disponibles" };
+  if (r.codigo !== 0) return { ok: false, motivo: "sin_permiso_diario" };
+  const secretos = [process.env.TELO_CLAVE, process.env.TELO_CLAVE_CIFRADO].filter((v): v is string => !!v);
+  return { ok: true, texto: redactar(r.salida, secretos) };
+}
+
+// GET /api/servidor/servicio -> estado de la unidad orquestador en systemd
+servidor.get("/servidor/servicio", async (c) => c.json(await estadoDelServicio()));
+
+// GET /api/servidor/logs?lineas=100 -> últimas líneas del registro (máximo 300)
+servidor.get("/servidor/logs", async (c) => {
+  const pedidas = Number(c.req.query("lineas") ?? LINEAS_POR_DEFECTO);
+  const lineas = Number.isInteger(pedidas) ? Math.min(LINEAS_MAXIMAS, Math.max(1, pedidas)) : LINEAS_POR_DEFECTO;
+  const r = await registrosDelServicio(lineas);
+  if (!r.ok) return c.json({ error: r.motivo }, 503);
+  return c.json({ lineas, texto: r.texto, generado: new Date().toISOString() });
 });

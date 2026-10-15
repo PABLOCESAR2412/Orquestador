@@ -31,7 +31,7 @@ export function crearTarea(opts: NuevaTarea): string {
 
   db.transaction(() => {
     db.query(
-      "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id, retry_of, phase, conversation_id) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, 'analyzing', ?)",
+      "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id, retry_of, conversation_id) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?)",
     ).run(
       id,
       titulo,

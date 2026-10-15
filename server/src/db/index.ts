@@ -11,7 +11,10 @@ db.exec("PRAGMA foreign_keys = ON;");
 // Si otra escritura tiene el archivo bloqueado, espera hasta 5 s antes de fallar.
 db.exec("PRAGMA busy_timeout = 5000;");
 
-type Migration = { name: string; sql: string };
+// sinClaves: la migración reconstruye una tabla que otras referencian con ON DELETE CASCADE.
+// Con claves foráneas activas, SQLite borraría en cascada esas filas al hacer DROP TABLE, así que
+// el runner la aplica con PRAGMA foreign_keys = OFF y comprueba la integridad antes de confirmar.
+type Migration = { name: string; sql: string; sinClaves?: boolean };
 
 const migrations: Migration[] = [
   {
@@ -280,29 +283,163 @@ const migrations: Migration[] = [
     `,
   },
   {
-    name: "016_planes_skills_contexto",
+    // Documentos guardados desde un mensaje del chat (Word, Excel, HTML, texto o Markdown). El archivo
+    // se guarda en la base para que entre en la copia de respaldo. Se borran con su chat.
+    name: "016_documentos",
     sql: `
-      ALTER TABLE tasks ADD COLUMN phase TEXT NOT NULL DEFAULT 'executing';
-      ALTER TABLE tasks ADD COLUMN plan TEXT;
+      CREATE TABLE documentos (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        titulo TEXT NOT NULL,
+        formato TEXT NOT NULL CHECK (formato IN ('docx', 'xlsx', 'html', 'txt', 'md')),
+        bytes INTEGER NOT NULL,
+        contenido BLOB NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX documentos_conversacion ON documentos(conversation_id, created_at);
+    `,
+  },
+  {
+    // Proyectos clonados desde GitHub: la URL de origen y la fecha del clonado. Hasta clonar,
+    // la carpeta está vacía y la clave SSH del proyecto espera a que se pegue en el repositorio.
+    name: "017_clonado_github",
+    sql: `
+      ALTER TABLE projects ADD COLUMN origen_url TEXT;
+      ALTER TABLE projects ADD COLUMN clonado_en TEXT;
+    `,
+  },
+  {
+    // Pasos del agente en un chat (texto intermedio y acciones con su vista previa), por turno.
+    // turno_id es el id del mensaje del usuario que lo originó. Se borran con su chat.
+    name: "018_actividad_chat",
+    sql: `
+      CREATE TABLE chat_actividad (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        turno_id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        tipo TEXT NOT NULL CHECK (tipo IN ('texto', 'accion')),
+        herramienta TEXT,
+        titulo TEXT NOT NULL,
+        detalle TEXT,
+        estado TEXT NOT NULL CHECK (estado IN ('hecha', 'error', 'texto')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE UNIQUE INDEX chat_actividad_turno_seq ON chat_actividad(conversation_id, turno_id, seq);
+    `,
+  },
+  {
+    // Analizador y obrero: una tarea pasa por 'analyzing' (el analizador escribe el plan) y
+    // 'waiting_approval' (espera la aprobación del usuario) antes de 'running'. El plan, el reporte
+    // final y la fecha de aprobación se guardan en la propia tarea.
+    // Se reconstruye la tabla: task_events y task_approvals referencian tasks(id) con ON DELETE CASCADE,
+    // por eso la migración corre con claves foráneas apagadas (ver sinClaves arriba).
+    name: "019_analizador_obrero",
+    sinClaves: true,
+    sql: `
+      CREATE TABLE tasks_nueva (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        model TEXT NOT NULL,
+        effort TEXT,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'analyzing', 'waiting_approval', 'running', 'interrupted', 'done', 'failed', 'cancelled')),
+        result TEXT,
+        error TEXT,
+        workspace TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        started_at TEXT,
+        finished_at TEXT,
+        project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+        provider_session_id TEXT,
+        retry_of TEXT,
+        rama TEXT,
+        base_commit TEXT,
+        plan TEXT,
+        reporte TEXT,
+        plan_aprobado_en TEXT
+      );
+      INSERT INTO tasks_nueva (id, title, prompt, model, effort, status, result, error, workspace, created_at, started_at, finished_at, project_id, provider_session_id, retry_of, rama, base_commit)
+        SELECT id, title, prompt, model, effort, status, result, error, workspace, created_at, started_at, finished_at, project_id, provider_session_id, retry_of, rama, base_commit FROM tasks;
+      DROP TABLE tasks;
+      ALTER TABLE tasks_nueva RENAME TO tasks;
+      CREATE INDEX tasks_status_created ON tasks (status, created_at);
+    `,
+  },
+  {
+    // Cuota agotada: la tarea se detiene en 'sin_cuota' con el modelo que se quedó sin tokens
+    // (modelo_agotado). `continuar` indica que la siguiente ejecución retoma la sesión. El chat guarda
+    // el modelo agotado en cuota_modelo hasta que se sigue o se envía un mensaje que sí responde.
+    // Reconstruye tasks como 019 (task_events y task_approvals referencian tasks): sinClaves.
+    name: "020_cuota_seguir",
+    sinClaves: true,
+    sql: `
+      CREATE TABLE tasks_nueva (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        model TEXT NOT NULL,
+        effort TEXT,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'analyzing', 'waiting_approval', 'running', 'interrupted', 'sin_cuota', 'done', 'failed', 'cancelled')),
+        result TEXT,
+        error TEXT,
+        workspace TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        started_at TEXT,
+        finished_at TEXT,
+        project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+        provider_session_id TEXT,
+        retry_of TEXT,
+        rama TEXT,
+        base_commit TEXT,
+        plan TEXT,
+        reporte TEXT,
+        plan_aprobado_en TEXT,
+        modelo_agotado TEXT,
+        continuar INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO tasks_nueva (id, title, prompt, model, effort, status, result, error, workspace, created_at, started_at, finished_at, project_id, provider_session_id, retry_of, rama, base_commit, plan, reporte, plan_aprobado_en)
+        SELECT id, title, prompt, model, effort, status, result, error, workspace, created_at, started_at, finished_at, project_id, provider_session_id, retry_of, rama, base_commit, plan, reporte, plan_aprobado_en FROM tasks;
+      DROP TABLE tasks;
+      ALTER TABLE tasks_nueva RENAME TO tasks;
+      CREATE INDEX tasks_status_created ON tasks (status, created_at);
+      ALTER TABLE conversations ADD COLUMN cuota_modelo TEXT;
+    `,
+  },
+  {
+    // Claves de proveedor (Groq, NVIDIA, Gemini) guardadas desde Ajustes, cifradas con la clave maestra.
+    // Una fila por proveedor; el valor nunca sale por la API.
+    name: "021_claves_proveedor",
+    sql: `
+      CREATE TABLE provider_keys (
+        proveedor TEXT PRIMARY KEY,
+        iv TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        value_enc TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `,
+  },
+  {
+    // Acciones de repositorio, configuración Git por proyecto, planes y vínculo de tareas con chat.
+    name: "022_acciones_git_planes",
+    sql: `
       ALTER TABLE tasks ADD COLUMN plan_hash TEXT;
       ALTER TABLE tasks ADD COLUMN approved_hash TEXT;
       ALTER TABLE tasks ADD COLUMN conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL;
-      ALTER TABLE tasks ADD COLUMN report TEXT;
       ALTER TABLE projects ADD COLUMN compartir_contexto INTEGER NOT NULL DEFAULT 0;
       CREATE TABLE task_plans (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-        plan TEXT NOT NULL, hash TEXT NOT NULL, approved_at TEXT,
+        plan TEXT NOT NULL,
+        hash TEXT NOT NULL,
+        approved_at TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-      CREATE TABLE project_skills (
-        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        name TEXT NOT NULL, content TEXT NOT NULL, source TEXT,
-        PRIMARY KEY (project_id, name)
       );
       CREATE TABLE project_git (
         project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
-        remote TEXT, author_name TEXT NOT NULL DEFAULT 'Telo',
+        remote TEXT,
+        author_name TEXT NOT NULL DEFAULT 'Telo',
         author_email TEXT NOT NULL DEFAULT 'telo@localhost',
         base_branch TEXT NOT NULL DEFAULT 'main'
       );
@@ -311,8 +448,10 @@ const migrations: Migration[] = [
         project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
         conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
         task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
-        action TEXT NOT NULL, payload TEXT NOT NULL,
-        state TEXT NOT NULL DEFAULT 'pending', result TEXT,
+        action TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'pending',
+        result TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE INDEX tasks_conversation ON tasks(conversation_id);
@@ -326,10 +465,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 );`);
 
 const applied = new Set(
-  db
-    .query<{ name: string }, []>("SELECT name FROM schema_migrations")
-    .all()
-    .map((r) => r.name),
+  db.query<{ name: string }, []>("SELECT name FROM schema_migrations").all().map((r) => r.name),
 );
 
 // Antes de cambiar una base que ya tiene datos, guarda una copia consistente (VACUUM INTO)
@@ -346,11 +482,44 @@ function copiarAntesDeMigrar(primera: string) {
 const pendientes = migrations.filter((m) => !applied.has(m.name));
 if (pendientes.length > 0 && applied.size > 0) copiarAntesDeMigrar(pendientes[0].name);
 
+// Tablas cuyas claves foráneas se revisan tras una migración sinClaves.
+const TABLAS_CON_CLAVES = [
+  "tasks",
+  "task_events",
+  "task_approvals",
+  "task_plans",
+  "project_git",
+  "repository_actions",
+];
+
+function aplicarMigracion(m: Migration) {
+  const registrar = () => db.query("INSERT INTO schema_migrations (name) VALUES (?)").run(m.name);
+  if (!m.sinClaves) {
+    db.transaction(() => {
+      db.exec(m.sql);
+      registrar();
+    })();
+    return;
+  }
+  // PRAGMA foreign_keys no cambia dentro de una transacción, por eso se apaga fuera.
+  db.exec("PRAGMA foreign_keys = OFF;");
+  try {
+    db.transaction(() => {
+      db.exec(m.sql);
+      for (const tabla of TABLAS_CON_CLAVES) {
+        if (!db.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(tabla)) continue;
+        const rotas = db.query(`PRAGMA foreign_key_check(${tabla})`).all();
+        if (rotas.length > 0) throw new Error(`La migración ${m.name} dejó claves foráneas rotas en ${tabla}`);
+      }
+      registrar();
+    })();
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON;");
+  }
+}
+
 for (const m of migrations) {
   if (applied.has(m.name)) continue;
-  db.transaction(() => {
-    db.exec(m.sql);
-    db.query("INSERT INTO schema_migrations (name) VALUES (?)").run(m.name);
-  })();
+  aplicarMigracion(m);
   console.log(`Migración aplicada: ${m.name}`);
 }

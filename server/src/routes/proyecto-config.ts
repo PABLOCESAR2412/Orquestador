@@ -20,15 +20,15 @@ proyectoConfig.use("/projects/:id/*", async (c, next) => {
   if (!projectRepoPath(c.req.param("id"))) return c.json({ error: "project_not_found" }, 404);
   await next();
 });
-proyectoConfig.get("/skills/buscar", async (c) => {
+proyectoConfig.get("/skills/catalogo/buscar", async (c) => {
   try {
     return c.json(await buscarSkills(c.req.query("q") ?? ""));
   } catch (e) {
     return c.json({ error: e instanceof SkillError ? e.code : "skill_catalog_failed" }, 502);
   }
 });
-proyectoConfig.get("/projects/:id/skills", (c) => c.json(listarSkills(c.req.param("id"))));
-proyectoConfig.post("/projects/:id/skills", async (c) => {
+proyectoConfig.get("/projects/:id/skills-importadas", (c) => c.json(listarSkills(c.req.param("id"))));
+proyectoConfig.post("/projects/:id/skills-importadas", async (c) => {
   const b = await leerCuerpoJson<{ name: string; content: string; url?: string }>(c);
   if (!b) return c.json({ error: "invalid_body" }, 400);
   try {
@@ -43,7 +43,7 @@ proyectoConfig.post("/projects/:id/skills", async (c) => {
     );
   }
 });
-proyectoConfig.delete("/projects/:id/skills/:name", (c) => {
+proyectoConfig.delete("/projects/:id/skills-importadas/:name", (c) => {
   try {
     borrarSkill(c.req.param("id"), c.req.param("name"));
     return c.json({ ok: true });

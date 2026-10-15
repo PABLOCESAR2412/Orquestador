@@ -1,3 +1,6 @@
+// Script de consola: el export vacío lo marca como módulo para poder usar await arriba.
+export {};
+
 const txt = await Bun.stdin.text();
 const parts = txt.split(/^(\S+\/\S+)$/m).slice(1);
 const rows: Record<string, string | number>[] = [];

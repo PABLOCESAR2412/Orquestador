@@ -9,14 +9,10 @@ export function sesionValida(id: unknown): id is string {
   return typeof id === "string" && PATRON_SESION.test(id);
 }
 
-export type Usage = {
-  input: number;
-  output: number;
-  reasoning: number;
-  cacheRead: number;
-  cost: number;
-};
-export type RunResult = { text: string; sessionId: string | null; usage: Usage | null };
+export type Usage = { input: number; output: number; reasoning: number; cacheRead: number; cost: number };
+// `text` une todo lo que el agente escribió. `textoFinal` es lo que dijo después de su última
+// herramienta: la respuesta, sin la narración de los pasos (que el chat muestra aparte).
+export type RunResult = { text: string; textoFinal: string; sessionId: string | null; usage: Usage | null };
 
 type OpenCodeEvent = {
   type: string;
@@ -29,6 +25,17 @@ type OpenCodeEvent = {
     tokens?: { input: number; output: number; reasoning: number; cache: { read: number } };
   };
 };
+
+// Algunos proveedores omiten campos de uso. Nunca se guardan NaN ni contadores negativos.
+function usoDelEvento(ev: OpenCodeEvent): Usage | null {
+  if (ev.type !== "step_finish" || !ev.part?.tokens) return null;
+  const t = ev.part.tokens;
+  const numero = (n: unknown) => typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : 0;
+  return {
+    input: numero(t.input), output: numero(t.output), reasoning: numero(t.reasoning),
+    cacheRead: numero(t.cache?.read), cost: numero(ev.part.cost),
+  };
+}
 
 function parseEvents(stdout: string): OpenCodeEvent[] {
   const events: OpenCodeEvent[] = [];
@@ -49,26 +56,30 @@ function failureDetail(stdout: string, stderr: string, events: OpenCodeEvent[]):
   return (stderr || stdout).trim().slice(-800) || "sin salida";
 }
 
+// Error de una ejecución del agente. `detalleProveedor` es lo que dijo el proveedor para clasificar el
+// fallo (cuota, saturación): el evento de error, o la cola de la salida sin rutas del servidor. Así una
+// carpeta llamada "saldo" o "cuota" no convierte en cuota un error que no lo es.
+export class ErrorAgente extends Error {
+  constructor(
+    mensaje: string,
+    readonly detalleProveedor: string,
+  ) {
+    super(mensaje);
+  }
+}
+
+export function detalleDelProveedor(stdout: string, stderr: string, events: OpenCodeEvent[]): string {
+  const errorEvent = events.find((e) => e.type === "error");
+  if (errorEvent) return JSON.stringify(errorEvent).slice(0, 800);
+  return (stderr || stdout).trim().slice(-800).replace(/\S*[\\/]\S*/g, " ");
+}
+
 // El agente solo hereda estas variables. Todo lo demás del servidor se omite: claves de otros
 // servicios, tokens y cualquier variable que se agregue al entorno del VM en el futuro.
 const VARIABLES_PERMITIDAS = new Set([
-  "PATH",
-  "HOME",
-  "USER",
-  "LOGNAME",
-  "SHELL",
-  "LANG",
-  "TERM",
-  "TZ",
-  "TMPDIR",
-  "SSL_CERT_FILE",
-  "NODE_EXTRA_CA_CERTS",
-  "HTTP_PROXY",
-  "HTTPS_PROXY",
-  "NO_PROXY",
-  "http_proxy",
-  "https_proxy",
-  "no_proxy",
+  "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "TERM", "TZ", "TMPDIR",
+  "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS",
+  "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
 ]);
 const PREFIJOS_PERMITIDOS = ["LC_", "XDG_", "OPENCODE_"];
 
@@ -101,8 +112,7 @@ function entornoDelAgente(propias?: Record<string, string>): Record<string, stri
   for (const [clave, valor] of Object.entries(propias ?? {})) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(clave)) continue;
     if (esVariableReservada(clave) || clave === "GITHUB_TOKEN") continue;
-    if (VARIABLES_PERMITIDAS.has(clave) || PREFIJOS_PERMITIDOS.some((p) => clave.startsWith(p)))
-      continue;
+    if (VARIABLES_PERMITIDAS.has(clave) || PREFIJOS_PERMITIDOS.some((p) => clave.startsWith(p))) continue;
     env[clave] = valor;
   }
   return env;
@@ -136,8 +146,7 @@ async function leerLineas(
     const { done, value } = await lector.read();
     if (done) break;
     const texto = decodificador.decode(value, { stream: true });
-    // El historial completo vive en disco; la memoria solo conserva la cola de salida.
-    todo = (todo + texto).slice(-2 * 1024 * 1024);
+    todo += texto;
     pendiente += texto;
     let corte = pendiente.indexOf("\n");
     while (corte !== -1) {
@@ -166,6 +175,7 @@ export async function runOpenCode(opts: {
   // Variables extra solo para esta ejecución. Nunca se aceptan nombres TELO_*.
   extraEnv?: Record<string, string>;
   soloLectura?: boolean;
+  // Se persiste cada paso antes de conocer el resultado del proceso.
   onUso?: (uso: Usage) => void;
 }): Promise<RunResult> {
   // Lanza AislamientoError si la carpeta no es permitida o falta bubblewrap.
@@ -205,25 +215,15 @@ export async function runOpenCode(opts: {
 
   let sesionAvisada: string | null = null;
   const alLeerLinea = (linea: string) => {
-    let ev: OpenCodeEvent | null = null;
+    let ev: OpenCodeEvent | undefined;
     try {
       ev = JSON.parse(linea) as OpenCodeEvent;
     } catch {
-      /* Salida no estructurada. */
+      // La CLI también puede escribir líneas sin JSON.
     }
-    if (ev?.type === "step_finish" && ev.part?.tokens) {
-      const t = ev.part.tokens;
-      const numero = (n: unknown) =>
-        typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : 0;
-      // Un fallo de persistencia debe verse; no se oculta como si fuera JSON inválido.
-      opts.onUso?.({
-        input: numero(t.input),
-        output: numero(t.output),
-        reasoning: numero(t.reasoning),
-        cacheRead: numero(t.cache?.read),
-        cost: numero(ev.part.cost),
-      });
-    }
+    const uso = ev && usoDelEvento(ev);
+    // No ocultar un fallo de persistencia como si fuera una línea JSON inválida.
+    if (uso) opts.onUso?.(uso);
     // Un fallo del llamador (p. ej. al escribir el registro) no debe cortar al agente.
     if (opts.onLinea) {
       try {
@@ -232,9 +232,8 @@ export async function runOpenCode(opts: {
         // se ignora: la salida sigue llegando al resultado
       }
     }
-    if (!opts.onSesion || !linea.includes("sessionID")) return;
+    if (!opts.onSesion || !ev) return;
     try {
-      const ev = JSON.parse(linea) as OpenCodeEvent;
       if (sesionValida(ev.sessionID) && ev.sessionID !== sesionAvisada) {
         sesionAvisada = ev.sessionID;
         opts.onSesion(ev.sessionID);
@@ -249,14 +248,11 @@ export async function runOpenCode(opts: {
     [stdout, stderr, code] = await Promise.race([
       Promise.all([
         leerLineas(proc.stdout, alLeerLinea),
-        leerLineas(proc.stderr, () => {}),
+        new Response(proc.stderr).text(),
         proc.exited,
       ]),
       aborted,
     ]);
-  } catch (err) {
-    terminarGrupo(proc.pid);
-    throw err;
   } finally {
     clearTimeout(timer);
   }
@@ -264,29 +260,46 @@ export async function runOpenCode(opts: {
   const events = parseEvents(stdout);
 
   if (code !== 0) {
-    throw new Error(`opencode salió con código ${code}: ${failureDetail(stdout, stderr, events)}`);
+    throw new ErrorAgente(
+      `opencode salió con código ${code}: ${failureDetail(stdout, stderr, events)}`,
+      detalleDelProveedor(stdout, stderr, events),
+    );
   }
 
   let text = "";
+  let textoTrasHerramientas = "";
   let sessionId: string | null = null;
   let usage: Usage | null = null;
 
   for (const ev of events) {
     if (sesionValida(ev.sessionID)) sessionId = ev.sessionID;
-    if (ev.type === "text" && ev.part?.text) text += ev.part.text;
-    if (ev.type === "step_finish" && ev.part?.tokens) {
-      const t = ev.part.tokens;
+    if (ev.type === "text" && ev.part?.text) {
+      text += ev.part.text;
+      textoTrasHerramientas += ev.part.text;
+    }
+    // Lo dicho antes de una herramienta es narración del paso, no la respuesta final.
+    if (ev.part?.type === "tool") textoTrasHerramientas = "";
+    const paso = usoDelEvento(ev);
+    if (paso) {
       usage ??= { input: 0, output: 0, reasoning: 0, cacheRead: 0, cost: 0 };
-      usage.input += t.input;
-      usage.output += t.output;
-      usage.reasoning += t.reasoning;
-      usage.cacheRead += t.cache.read;
-      usage.cost += ev.part.cost ?? 0;
+      usage.input += paso.input;
+      usage.output += paso.output;
+      usage.reasoning += paso.reasoning;
+      usage.cacheRead += paso.cacheRead;
+      usage.cost += paso.cost;
     }
   }
 
   if (!text.trim()) {
-    throw new Error(`opencode no devolvió texto: ${failureDetail(stdout, stderr, events)}`);
+    throw new ErrorAgente(
+      `opencode no devolvió texto: ${failureDetail(stdout, stderr, events)}`,
+      detalleDelProveedor(stdout, stderr, events),
+    );
   }
-  return { text: text.trim(), sessionId, usage };
+  return {
+    text: text.trim(),
+    textoFinal: textoTrasHerramientas.trim() || text.trim(),
+    sessionId,
+    usage,
+  };
 }

@@ -259,7 +259,7 @@ async function contextoGit(taskId: string): Promise<Contexto> {
   const fila = filaTarea(taskId);
   // En cola también cuenta: el worker la marca "running" justo después de preparar el clon, y no
   // debe haber git del servidor sobre el clon mientras el agente arranca.
-  if (fila.status === "running" || fila.status === "queued")
+  if (fila.status === "running" || fila.status === "queued" || fila.status === "analyzing")
     throw new ErrorTarea("task_running", 409);
   if (!fila.rama || !fila.base_commit) throw new ErrorTarea("task_without_repo", 409);
 

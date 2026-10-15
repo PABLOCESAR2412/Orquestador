@@ -54,4 +54,8 @@ export default defineConfig({
   server: {
     proxy: { "/api": "http://localhost:3000" },
   },
+  build: {
+    // Las fuentes van como archivos aparte: la CSP del servidor (font-src 'self') bloquea las incrustadas como data:.
+    assetsInlineLimit: 0,
+  },
 });

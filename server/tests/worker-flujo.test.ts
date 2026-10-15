@@ -146,9 +146,9 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
 
   test("analiza en solo lectura, espera aprobación y ejecuta sin poder hacer commit", async () => {
     const { id, conversacion, clon } = await nueva();
-    await esperar(() => fila(id).phase === "waiting_approval" || fila(id).status === "failed", id);
+    await esperar(() => fila(id).status === "waiting_approval" || fila(id).status === "failed", id);
     expect(fila(id).error).toBeNull();
-    expect(fila(id).phase).toBe("waiting_approval");
+    expect(fila(id).status).toBe("waiting_approval");
     expect(JSON.parse(fila(id).plan).supuestos).toContain("solo lectura verificada");
     expect(existsSync(join(clon, "escritura-analizador.txt"))).toBe(false);
     expect(existsSync(join(clon, "permitido.txt"))).toBe(false);
@@ -157,7 +157,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     await esperar(() => ["done", "failed", "interrupted"].includes(fila(id).status), id);
     expect(fila(id).error).toBeNull();
     expect(fila(id).status).toBe("done");
-    expect(JSON.parse(fila(id).report).pruebas[0].comando).toBe("git commit bloqueado");
+    expect(JSON.parse(fila(id).reporte).pruebas[0].comando).toBe("git commit bloqueado");
     expect(readFileSync(join(clon, "permitido.txt"), "utf8")).toBe("trabajo conservado\n");
     expect(
       db
@@ -170,7 +170,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
 
   test("prepara commit y push sucesivos y exige autorización separada", async () => {
     const { id, clon } = await nueva("fixture/git");
-    await esperar(() => fila(id).phase === "waiting_approval" || fila(id).status === "failed", id);
+    await esperar(() => fila(id).status === "waiting_approval" || fila(id).status === "failed", id);
     expect(fila(id).error).toBeNull();
     const headInicial = (await gitSeguro(["rev-parse", "HEAD"], { cwd: clon })).stdout.trim();
     expect((await aprobar(id)).status).toBe(200);
@@ -222,13 +222,12 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
 
   test("detiene cambios fuera del plan y exige revisión conservando el diff", async () => {
     const { id, clon } = await nueva("fixture/fuera");
-    await esperar(() => fila(id).phase === "waiting_approval" || fila(id).status === "failed", id);
+    await esperar(() => fila(id).status === "waiting_approval" || fila(id).status === "failed", id);
     expect(fila(id).error).toBeNull();
     const hash = fila(id).plan_hash;
     expect((await aprobar(id)).status).toBe(200);
     await esperar(() => ["done", "failed", "interrupted"].includes(fila(id).status), id);
     expect(fila(id).status).toBe("interrupted");
-    expect(fila(id).phase).toBe("waiting_approval");
     expect(fila(id).approved_hash).toBeNull();
     expect(fila(id).error).toContain("extra.txt");
     expect(existsSync(join(clon, "extra.txt"))).toBe(true);

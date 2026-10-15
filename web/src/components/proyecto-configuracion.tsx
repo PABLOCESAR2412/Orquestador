@@ -9,7 +9,7 @@ export function ProyectoConfiguracion({ id }: { id: string }) {
   return (
     <>
       <ProyectoGit id={id} />
-      <ProyectoSkills id={id} />
+      <ImportarSkills id={id} />
       <ContextoProyecto id={id} />
     </>
   );
@@ -202,12 +202,8 @@ function ProyectoGit({ id }: { id: string }) {
   );
 }
 
-function ProyectoSkills({ id }: { id: string }) {
+function ImportarSkills({ id }: { id: string }) {
   const qc = useQueryClient();
-  const skills = useQuery({
-    queryKey: ["project-skills", id],
-    queryFn: () => api.projectSkills(id),
-  });
   const [nombre, setNombre] = useState(""),
     [contenido, setContenido] = useState(""),
     [url, setUrl] = useState("");
@@ -221,43 +217,16 @@ function ProyectoSkills({ id }: { id: string }) {
       setUrl("");
       setNombre("");
       setAbierto(false);
-      void qc.invalidateQueries({ queryKey: ["project-skills", id] });
+      void qc.invalidateQueries({ queryKey: ["skills", id] });
     },
   });
-  const borrar = useMutation({
-    mutationFn: (name: string) => api.deleteProjectSkill(id, name),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["project-skills", id] }),
-  });
   return (
-    <section className="panel approval-panel" aria-label="Skills del proyecto">
-      <h2>Skills del proyecto</h2>
+    <section className="panel approval-panel" aria-label="Importar skills">
+      <h2>Importar skills</h2>
       <p className="hint">
         Se incluyen como instrucciones en cada tarea y chat de este proyecto. Puedes pegar un
         prompt, importar un SKILL.md de GitHub o buscar por nombre.
       </p>
-      {skills.isPending && <p>Cargando skills…</p>}
-      {skills.data?.length === 0 && <p>Aún no hay skills.</p>}
-      {skills.data?.map((s) => (
-        <div key={s.name} className="skill-entry">
-          <details>
-            <summary>{s.name}</summary>
-            {s.source && (
-              <a href={s.source} target="_blank" rel="noreferrer">
-                Ver fuente
-              </a>
-            )}
-            <pre>{s.content}</pre>
-          </details>
-          <button
-            type="button"
-            className="ghost"
-            disabled={borrar.isPending}
-            onClick={() => borrar.mutate(s.name)}
-          >
-            Quitar {s.name}
-          </button>
-        </div>
-      ))}
       <button
         type="button"
         className="ghost"
@@ -343,7 +312,7 @@ function ProyectoSkills({ id }: { id: string }) {
           </p>
         </div>
       )}
-      {[skills.error, buscar.error, guardar.error, borrar.error].filter(Boolean).map((e, i) => (
+      {[buscar.error, guardar.error].filter(Boolean).map((e, i) => (
         <p key={i} className="error" role="alert">
           {errorText(e)}
         </p>

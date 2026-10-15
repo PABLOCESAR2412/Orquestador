@@ -1,6 +1,15 @@
 import { db } from "./db";
 import { redactar } from "./redaccion";
 import { valoresDeProyecto } from "./secretos";
+import {
+  borrarSkill as borrarSkillArchivo,
+  guardarSkill as guardarSkillArchivo,
+  leerSkill,
+  listarSkills as listarSkillsArchivos,
+  leerFrontmatter,
+  SkillError as SkillArchivoError,
+  type AmbitoSkills,
+} from "./skills";
 
 export type SkillProyecto = { name: string; content: string; source: string | null };
 export type SkillEncontrada = { name: string; url: string; description?: string };
@@ -8,7 +17,7 @@ export type SkillEncontrada = { name: string; url: string; description?: string 
 export class SkillError extends Error {
   constructor(
     readonly code: string,
-    readonly status: 400 | 404 | 502 = 400,
+    readonly status: 400 | 404 | 409 | 413 | 502 = 400,
   ) {
     super(code);
   }
@@ -102,14 +111,31 @@ async function descargar(url: string, limite: number): Promise<string> {
   }
 }
 
+function ambitoProyecto(projectId: string): AmbitoSkills {
+  const proyecto = db.query<{ repo_path: string | null }, [string]>(
+    "SELECT repo_path FROM projects WHERE id = ?",
+  ).get(projectId);
+  if (!proyecto?.repo_path) throw new SkillError("project_not_found", 404);
+  return { ambito: "proyecto", carpeta: proyecto.repo_path };
+}
+
+// El importador y el editor usan los mismos archivos que ya carga OpenCode.
+function operacionArchivo<T>(operacion: () => T): T {
+  try {
+    return operacion();
+  } catch (error) {
+    if (error instanceof SkillArchivoError) throw new SkillError(error.code, error.status);
+    throw error;
+  }
+}
+
 export function listarSkills(projectId: string): SkillProyecto[] {
+  const ambito = ambitoProyecto(projectId);
   const valores = valoresDeProyecto(projectId);
-  return db
-    .query<SkillProyecto, [string]>(
-      "SELECT name, content, source FROM project_skills WHERE project_id = ? ORDER BY name",
-    )
-    .all(projectId)
-    .map((skill) => ({ ...skill, content: redactar(skill.content, valores) }));
+  return operacionArchivo(() => listarSkillsArchivos(ambito).map(({ nombre }) => {
+    const content = redactar(leerSkill(ambito, nombre).contenido, valores);
+    return { name: nombre, content, source: leerFrontmatter(content)?.source ?? null };
+  }));
 }
 
 export function guardarSkill(
@@ -124,23 +150,33 @@ export function guardarSkill(
   ) {
     throw new SkillError("invalid_skill_content");
   }
-  if (!db.query("SELECT id FROM projects WHERE id = ?").get(projectId))
-    throw new SkillError("project_not_found", 404);
+  const ambito = ambitoProyecto(projectId);
+  let content = redactar(input.content, valoresDeProyecto(projectId));
   const source = input.source == null ? null : documentoGitHub(input.source).source;
-  const content = redactar(input.content, valoresDeProyecto(projectId));
-  db.query(
-    `INSERT INTO project_skills (project_id, name, content, source) VALUES (?, ?, ?, ?)
-    ON CONFLICT(project_id, name) DO UPDATE SET content = excluded.content, source = excluded.source`,
-  ).run(projectId, input.name, content, source);
-  return { name: input.name, content, source };
+  if (!/^---\r?\n/.test(content)) {
+    content = `---\nname: ${input.name}\ndescription: Instrucciones de ${input.name} para este proyecto.\n---\n${content}`;
+  }
+  if (input.source !== undefined) {
+    content = content.replace(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/, (_, cabecera: string, salto: string) => {
+      const campos = cabecera.split(/\r?\n/).filter((linea) => !/^source\s*:/.test(linea));
+      if (source) campos.push(`source: ${source}`);
+      return `---\n${campos.join("\n")}\n---${salto}`;
+    });
+  }
+  operacionArchivo(() => guardarSkillArchivo(ambito, input.name, content));
+  return { name: input.name, content, source: leerFrontmatter(content)?.source ?? null };
 }
 
 export function borrarSkill(projectId: string, name: string): boolean {
   validarNombre(name);
-  return (
-    db.query("DELETE FROM project_skills WHERE project_id = ? AND name = ?").run(projectId, name)
-      .changes > 0
-  );
+  const ambito = ambitoProyecto(projectId);
+  try {
+    operacionArchivo(() => borrarSkillArchivo(ambito, name));
+    return true;
+  } catch (error) {
+    if (error instanceof SkillError && error.code === "skill_no_encontrada") return false;
+    throw error;
+  }
 }
 
 async function cargarCatalogos(): Promise<SkillEncontrada[]> {

@@ -1,25 +1,60 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as TeclaReact, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { api, ApiError, type ModelInfo, type Preferences, type ProviderStatus } from "../api";
-import { AppNav } from "../components/nav";
 import { EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
+import { useEventosVivos } from "../lib/eventos-vivos";
 import { isIOS, isStandalone, useInstallPrompt } from "../lib/install";
-import { errorText } from "../lib/model";
+import { errorText, formatUsd } from "../lib/model";
 import { guardarTema, leerTema, type Tema } from "../lib/tema";
-import { BotonTema } from "../components/tema-boton";
-import { duracion } from "../components/tarea-formato";
-import { useLatencia } from "../lib/latencia";
+import {
+  guardarNotificacionesActivas,
+  notificacionesActivas,
+  notificacionesSoportadas,
+  pedirPermisoNotificaciones,
+} from "../lib/notificaciones";
+import { AlmacenamientoServidor, ErrorConReintento, EstadoServidor, useMuestrasLatencia } from "./servidor";
+import "../styles-ajustes.css";
+import { InstalarHerramienta } from "../components/instalar-herramienta";
+import { LoginCodexPanel } from "../components/login-codex";
+import { SkillsEditor } from "../components/skills-editor";
 
 const ALERT_OPTIONS = [50, 60, 70, 80, 90, 100];
 
+type Pestana = "proveedores" | "servidor" | "almacenamiento";
+const PESTANAS: { id: Pestana; texto: string }[] = [
+  { id: "proveedores", texto: "Proveedores IA" },
+  { id: "servidor", texto: "Estado del servidor" },
+  { id: "almacenamiento", texto: "Almacenamiento" },
+];
+
+// El prefijo de un modelo ("openai/...") no siempre es el id del proveedor en el servidor ("codex").
+const PROVEEDOR_DE_PREFIJO: Record<string, string> = { openai: "codex" };
+
+function proveedorDeModelo(modelo: string | null | undefined): string | null {
+  if (!modelo) return null;
+  const prefijo = modelo.split("/")[0];
+  return PROVEEDOR_DE_PREFIJO[prefijo] ?? prefijo;
+}
+
+const OPCIONES_TEMA: { valor: Tema; texto: string }[] = [
+  { valor: "sistema", texto: "Sistema" },
+  { valor: "oscuro", texto: "Oscuro" },
+  { valor: "claro", texto: "Claro" },
+];
+
 export function SettingsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const pestana: Pestana = useSearch({ from: "/ajustes" }).pestana ?? "proveedores";
+
   const prefs = useQuery({ queryKey: ["preferences"], queryFn: api.getPreferences });
   const models = useQuery({ queryKey: ["models"], queryFn: api.listModels, staleTime: 5 * 60_000 });
   const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000 });
-  const runner = useQuery({ queryKey: ["runner"], queryFn: api.runnerStatus, refetchInterval: 60_000 });
-  const latencia = useLatencia();
+  const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders });
+  const cuotas = useQuery({ queryKey: ["cuotas"], queryFn: api.listQuotas });
+  const latencia = useMuestrasLatencia();
   const install = useInstallPrompt();
 
   const [draft, setDraft] = useState<Preferences | null>(null);
@@ -27,13 +62,23 @@ export function SettingsPage() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const [logsCleared, setLogsCleared] = useState(false);
 
   const value: Preferences | undefined = draft ?? prefs.data;
 
   useEffect(() => {
     if (prefs.data) setBudgetText(prefs.data.monthlyBudgetUsd?.toString() ?? "");
   }, [prefs.data]);
+
+  // Cambios de tareas en vivo: el estado del servidor se vuelve a pedir con una pausa, para no repetir la consulta en ráfaga.
+  const pausa = useRef<number | undefined>(undefined);
+  useEventosVivos({}, (evento) => {
+    if (evento.tipo !== "tarea" && evento.tipo !== "evento") return;
+    window.clearTimeout(pausa.current);
+    pausa.current = window.setTimeout(() => {
+      void qc.invalidateQueries({ queryKey: ["servidor"] });
+    }, 1_500);
+  });
+  useEffect(() => () => window.clearTimeout(pausa.current), []);
 
   const modelList: ModelInfo[] = models.data?.models ?? [];
   const modelInfo = modelList.find((m) => m.id === value?.defaultModel) ?? null;
@@ -75,431 +120,407 @@ export function SettingsPage() {
       }
     }
     setLocalError(null);
+    // El respaldo se guarda al elegirlo, así que el borrador no lo pisa.
     const { fallbackModel: _respaldo, ...resto } = draft;
     save.mutate({ ...resto, monthlyBudgetUsd: budget });
   };
 
-  const dirty = draft !== null || budgetText !== (prefs.data?.monthlyBudgetUsd?.toString() ?? "");
+  const savedBudget = prefs.data?.monthlyBudgetUsd?.toString() ?? "";
+  const dirty = draft !== null || budgetText !== savedBudget;
+
+  const descartar = () => {
+    setDraft(null);
+    setBudgetText(savedBudget);
+    setLocalError(null);
+    setSaved(false);
+  };
+
+  // Presupuesto que se está escribiendo (o guardado), para las cifras de cada proveedor.
+  const presupuesto = (() => {
+    const t = budgetText.trim().replace(",", ".");
+    const n = Number(t);
+    return t !== "" && Number.isFinite(n) && n >= 0 ? n : null;
+  })();
+
+  // Primario y respaldo salen de los modelos elegidos, no de un orden fijo.
+  const primarioId = proveedorDeModelo(value?.defaultModel);
+  const respaldoId = proveedorDeModelo(prefs.data?.fallbackModel);
+  const etiquetaDe = (p: ProviderStatus): string | null =>
+    p.id === primarioId ? "Primario" : p.id === respaldoId ? "Respaldo" : p.variable === null ? "Local" : null;
+
+  const gastoDe = (id: string): number | null => cuotas.data?.proveedores.find((q) => q.id === id)?.gastoMesUsd ?? null;
+
+  // Diagnóstico por proveedor: cuántos modelos ve OpenCode y cuántos llegan al selector del chat.
+  const modelosDe = (id: string): { total: number; enSelector: number } | null => {
+    if (!models.isSuccess) return null;
+    const del = models.data.models.filter((m) => proveedorDeModelo(m.id) === id);
+    return { total: del.length, enSelector: del.filter((m) => m.recommended).length };
+  };
+
+  const elegirPestana = (p: Pestana) => {
+    void navigate({ to: "/ajustes", search: { pestana: p }, replace: true });
+  };
+
+  const teclaPestana = (e: TeclaReact<HTMLButtonElement>, indice: number) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    e.preventDefault();
+    const paso = e.key === "ArrowRight" ? 1 : PESTANAS.length - 1;
+    const siguiente = PESTANAS[(indice + paso) % PESTANAS.length];
+    elegirPestana(siguiente.id);
+    document.getElementById(`aj-tab-${siguiente.id}`)?.focus();
+  };
+
+  const configurados = proveedores.data?.filter((p) => p.configured).length ?? 0;
+  const datos = servidor.data;
+  const plataforma = datos?.proceso.plataforma;
+  const eyebrow = ["Sistema / Control", plataforma].filter(Boolean).join(" · ");
+  const hora = datos ? new Date(datos.generado).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" }) : null;
+
+  const estadoGuardado = dirty ? "Cambios sin guardar detectados" : saved ? "Cambios guardados" : "Sincronizado";
 
   return (
-    <div className="page-wrap">
-      <AppNav variant="row" />
-      <main className="container">
-        {/* Header */}
-        <header className="header-row">
-          <div className="title-group" style={{ flexDirection: "column", alignItems: "flex-start", gap: "4px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", fontFamily: "var(--font-mono)", color: "var(--ink-2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              <span>Sistema / Control</span>
-              <span>•</span>
-              <span>Instancia local</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}>
-              <h1 className="page-title">Ajustes y Servidor</h1>
-              <span style={{ fontSize: "12px", fontFamily: "var(--font-mono)", color: "var(--ink-2)" }}>ID: inst_local_daemon</span>
-            </div>
-            <p style={{ color: "var(--ink-2)", fontSize: "13px", margin: 0 }}>
+    <div className="aj-raiz">
+      <form
+        className="aj-page"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <header className="aj-cabecera">
+          <div className="aj-cabecera-texto">
+            {eyebrow && <p className="aj-eyebrow">{eyebrow}</p>}
+            <h1 className="aj-titulo">Ajustes y Servidor</h1>
+            <p className="aj-descripcion">
               Configuración de motores de IA, claves API y telemetría de la instancia persistente.
             </p>
           </div>
-          <BotonTema />
         </header>
 
-        {/* Telemetry Summary Cards */}
-        <section className="telemetry-grid" aria-label="Telemetría de la instancia">
-          <div className="kpi">
-            <div className="kpi-head">
-              <span className="kpi-label">Tiempo Activo</span>
-              <span className="kpi-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              </span>
-            </div>
-            <div className="kpi-value">{servidor.data ? duracion(servidor.data.proceso.segundosActivo) : "—"}</div>
-            <div className="kpi-foot">PID {servidor.data?.proceso ? (servidor.data.proceso as { pid?: number }).pid ?? "40912" : "—"}</div>
+        <div className="aj-fila-pestanas">
+          <div className="aj-pestanas" role="tablist" aria-label="Secciones de ajustes">
+            {PESTANAS.map((p, indice) => (
+              <button
+                key={p.id}
+                id={`aj-tab-${p.id}`}
+                type="button"
+                role="tab"
+                className="aj-pestana"
+                aria-selected={pestana === p.id}
+                aria-controls={`aj-panel-${p.id}`}
+                tabIndex={pestana === p.id ? 0 : -1}
+                onClick={() => elegirPestana(p.id)}
+                onKeyDown={(e) => teclaPestana(e, indice)}
+              >
+                {p.texto}
+              </button>
+            ))}
           </div>
+          {hora && <span className="aj-sincronia">Datos del servidor · {hora}</span>}
+        </div>
 
-          <div className="kpi">
-            <div className="kpi-head">
-              <span className="kpi-label">Workers Activos</span>
-              <span className="kpi-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-              </span>
+        <div role="tabpanel" id={`aj-panel-${pestana}`} aria-labelledby={`aj-tab-${pestana}`} className="aj-panel">
+          {pestana === "proveedores" && (
+            <div className="aj-stack">
+              <section className="aj-kpis" aria-label="Telemetría de la instancia">
+                <Kpi
+                  etiqueta="Tiempo activo"
+                  icono={<IconoReloj />}
+                  valor={datos ? duracionCorta(datos.proceso.segundosActivo) : "—"}
+                  pie={datos ? `Desde ${fechaUtc(datos.proceso.arrancado)} UTC` : "Sin datos"}
+                />
+                <Kpi
+                  etiqueta="Workers activos"
+                  icono={<IconoRed />}
+                  valor={datos ? `${datos.tareas.en_curso} / 1` : "—"}
+                  pie={datos ? `${datos.tareas.en_cola} en cola` : "Sin datos"}
+                  barra={datos ? Math.min(1, datos.tareas.en_curso) : undefined}
+                />
+                <Kpi
+                  etiqueta="Latencia API"
+                  icono={<IconoRayo />}
+                  valor={latencia.ms != null ? `${latencia.ms} ms` : latencia.midiendo ? "…" : "—"}
+                  pie={
+                    latencia.p50 != null && latencia.p99 != null
+                      ? `p50: ${latencia.p50} ms · p99: ${latencia.p99} ms`
+                      : "Sin medidas todavía"
+                  }
+                />
+                <Kpi
+                  etiqueta="Memoria RAM"
+                  icono={<IconoChip />}
+                  valor={datos ? `${datos.proceso.rssMb.toLocaleString("es", { maximumFractionDigits: 1 })} MB` : "—"}
+                  pie="RSS del proceso"
+                />
+              </section>
+
+              <section className="aj-seccion" aria-labelledby="aj-motores-titulo">
+                <div className="aj-seccion-cabecera">
+                  <div className="aj-titulo-con-chip">
+                    <h2 id="aj-motores-titulo" className="aj-titulo-seccion">
+                      Motores de Inferencia
+                    </h2>
+                    <span className="aj-chip">
+                      {proveedores.data ? `${configurados} configurados` : "Consultando…"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="aj-btn"
+                    disabled
+                    title="La app todavía no puede añadir motores: los proveedores se configuran en el servidor."
+                  >
+                    <IconoMas />
+                    Añadir motor personalizado
+                  </button>
+                </div>
+
+                {proveedores.isError && (
+                  <ErrorConReintento error={proveedores.error} onReintentar={() => void proveedores.refetch()} />
+                )}
+                {proveedores.isPending && <p className="aj-nota">Consultando proveedores…</p>}
+                {proveedores.data?.map((p) => (
+                  <TarjetaProveedor
+                    key={p.id}
+                    p={p}
+                    etiqueta={etiquetaDe(p)}
+                    gasto={gastoDe(p.id)}
+                    presupuesto={presupuesto}
+                    modelos={modelosDe(p.id)}
+                  />
+                ))}
+              </section>
+
+              <section className="aj-seccion" aria-labelledby="aj-skills-titulo">
+                <h2 id="aj-skills-titulo" className="aj-titulo-seccion">
+                  Skills
+                </h2>
+                <article className="aj-tarjeta">
+                  <SkillsEditor ayuda="Globales: OpenCode las lee en todos los proyectos. Se guardan en ~/.config/opencode/skills." />
+                </article>
+              </section>
+
+              {!value && prefs.isError && <p className="aj-error" role="alert">No se pudieron cargar los ajustes.</p>}
+              {!value && !prefs.isError && <p className="aj-nota">Cargando ajustes…</p>}
+
+              {value && (
+                <>
+                  <article className="aj-tarjeta" aria-labelledby="aj-modelos-titulo">
+                    <h3 id="aj-modelos-titulo" className="aj-tarjeta-titulo-simple">
+                      Modelos
+                    </h3>
+
+                    <div className="aj-fila-campo" role="group" aria-labelledby="aj-modelo-predeterminado">
+                      <span id="aj-modelo-predeterminado" className="aj-campo-etiqueta-fija">
+                        Modelo predeterminado
+                      </span>
+                      <div className="anchor">
+                        <button
+                          type="button"
+                          className="model-chip"
+                          aria-haspopup="dialog"
+                          aria-expanded={pickerOpen}
+                          onClick={() => setPickerOpen((o) => !o)}
+                        >
+                          <span className="model-chip-name">{modelInfo?.name ?? value.defaultModel ?? "Predeterminado"}</span>
+                        </button>
+                        {pickerOpen && (
+                          <ModelPicker
+                            models={modelList}
+                            currentId={value.defaultModel}
+                            onSelect={pickModel}
+                            onClose={() => setPickerOpen(false)}
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="aj-fila-campo">
+                      <span id="aj-esfuerzo" className="aj-campo-etiqueta-fija">
+                        Esfuerzo
+                      </span>
+                      <EffortControl
+                        variants={modelInfo?.variants ?? []}
+                        value={value.defaultEffort}
+                        disabled={!value.defaultModel}
+                        onChange={(effort) => update({ defaultEffort: effort })}
+                      />
+                    </div>
+
+                    <SelectorRespaldo models={models.data?.models ?? []} modelosListos={models.isSuccess} prefs={prefs.data} />
+                    {models.isError && (
+                      <div className="aj-error-bloque" role="alert">
+                        <p className="aj-error">{errorText(models.error)}</p>
+                        <button type="button" className="aj-btn" onClick={() => void models.refetch()}>
+                          Reintentar
+                        </button>
+                      </div>
+                    )}
+                  </article>
+
+                  <article className="aj-tarjeta" aria-labelledby="aj-presupuesto-titulo">
+                    <div className="aj-tarjeta-cabecera">
+                      <h3 id="aj-presupuesto-titulo" className="aj-tarjeta-titulo-simple">
+                        Presupuesto mensual y aviso
+                      </h3>
+                      <span className="aj-mono aj-dato-cabecera">
+                        {presupuesto !== null ? `US$ ${presupuesto.toFixed(2)} / mes` : "Sin límite"}
+                      </span>
+                    </div>
+
+                    <div className="aj-fila-campo">
+                      <label htmlFor="budget" className="aj-campo-etiqueta-fija">
+                        Límite mensual (USD)
+                      </label>
+                      <input
+                        id="budget"
+                        className="aj-input"
+                        inputMode="decimal"
+                        placeholder="Sin límite"
+                        value={budgetText}
+                        onChange={(e) => {
+                          setSaved(false);
+                          setBudgetText(e.target.value);
+                          if (!draft && value) setDraft({ ...value });
+                        }}
+                      />
+                    </div>
+
+                    <div className="aj-fila-campo">
+                      <span id="aj-aviso" className="aj-campo-etiqueta-fija">
+                        Avisar al
+                      </span>
+                      <div className="segmented" role="group" aria-labelledby="aj-aviso">
+                        {ALERT_OPTIONS.map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            aria-pressed={value.budgetAlertPercent === p}
+                            onClick={() => update({ budgetAlertPercent: p })}
+                          >
+                            {p} %
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <p className="aj-nota">
+                      Gastado en el mes en curso:{" "}
+                      {datos ? formatUsd(datos.costos.mesUsd) : "—"}.
+                    </p>
+                    {localError && (
+                      <p className="aj-error" role="alert">
+                        {localError}
+                      </p>
+                    )}
+                  </article>
+                </>
+              )}
+
+              <GooglePanel />
+
+              <section className="aj-seccion" aria-labelledby="aj-aplicacion-titulo">
+                <h2 id="aj-aplicacion-titulo" className="aj-titulo-seccion">
+                  Aplicación
+                </h2>
+                <div className="aj-stack">
+                  <article className="aj-tarjeta" aria-labelledby="aj-instalar-titulo">
+                    <h3 id="aj-instalar-titulo" className="aj-tarjeta-titulo-simple">
+                      Instalar la aplicación
+                    </h3>
+                    <p className="aj-nota">Instala Telo como aplicación independiente en tu teléfono o PC.</p>
+                    {isStandalone() ? (
+                      <p className="aj-nota">Ya está instalada como aplicación independiente en este dispositivo.</p>
+                    ) : install.canInstall ? (
+                      <div>
+                        <button type="button" className="aj-btn aj-btn-primario" onClick={() => void install.promptInstall()}>
+                          Instalar Telo
+                        </button>
+                      </div>
+                    ) : isIOS() ? (
+                      <p className="aj-nota">En iPhone / Safari: toca Compartir y luego “Agregar a pantalla de inicio”.</p>
+                    ) : (
+                      <p className="aj-nota">
+                        Tu navegador no ofrece instalarla desde aquí. Abre el menú del navegador y selecciona “Instalar app”.
+                      </p>
+                    )}
+                  </article>
+
+                  <TemaPanel />
+                  <NotificacionesPanel />
+                  <SesionPanel />
+                </div>
+              </section>
             </div>
-            <div className="kpi-value">{servidor.data ? `${servidor.data.tareas.en_curso} / 1` : "—"}</div>
-            <div className="kpi-foot">{servidor.data?.tareas.en_cola ?? 0} en cola</div>
-          </div>
+          )}
 
-          <div className="kpi">
-            <div className="kpi-head">
-              <span className="kpi-label">Latencia API</span>
-              <span className="kpi-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-              </span>
-            </div>
-            <div className="kpi-value">{latencia.ms != null ? `${latencia.ms} ms` : "—"}</div>
-            <div className="kpi-foot">p99: {latencia.ms != null ? `${Math.round(latencia.ms * 1.2)} ms` : "—"}</div>
-          </div>
+          {pestana === "servidor" && <EstadoServidor latencia={latencia} />}
+          {pestana === "almacenamiento" && <AlmacenamientoServidor />}
+        </div>
 
-          <div className="kpi">
-            <div className="kpi-head">
-              <span className="kpi-label">Memoria RAM</span>
-              <span className="kpi-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-              </span>
-            </div>
-            <div className="kpi-value">{servidor.data ? `${servidor.data.proceso.rssMb.toLocaleString("es")} MB` : "—"}</div>
-            <div className="kpi-foot">RSS proceso</div>
-          </div>
-        </section>
-
-        {prefs.isError && (
-          <section className="panel" aria-live="polite">
-            <p className="error" role="alert">
-              No se pudieron cargar los ajustes.
-            </p>
-          </section>
+        {save.isError && (
+          <p className="aj-error" role="alert">
+            {errorText(save.error)}
+          </p>
         )}
 
-        {/* Motores de inferencia */}
         {value && (
-          <form
-            className="settings"
-            onSubmit={(e) => {
-              e.preventDefault();
-              submit();
-            }}
-          >
-            <div className="card-top" style={{ marginBottom: "-4px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <h2 className="panel-title" style={{ fontSize: "18px" }}>Motores de Inferencia</h2>
-                <span className="panel-tag">3 configurados</span>
-              </div>
+          <div className="aj-barra-guardado">
+            <div className="aj-estado-guardado">
+              <span className={`aj-punto${dirty ? "" : " is-ok"}`} aria-hidden="true" />
+              <span role="status">{estadoGuardado}</span>
             </div>
-
-            {/* Card 1: Codex Platform (Modelo por defecto) */}
-            <article className="engine-card">
-              <div className="engine-head">
-                <div className="engine-title-group">
-                  <div className="engine-icon">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                  </div>
-                  <div className="engine-info">
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span className="engine-name">Codex Platform</span>
-                      <span className="panel-tag" style={{ fontSize: "11px", padding: "1px 6px" }}>Primario</span>
-                    </div>
-                    <span className="engine-desc">Modelo por defecto para chats y tareas nuevas</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="anchor">
-                <button
-                  type="button"
-                  className="model-chip"
-                  aria-haspopup="dialog"
-                  aria-expanded={pickerOpen}
-                  onClick={() => setPickerOpen((o) => !o)}
-                >
-                  <span className="model-chip-name">{modelInfo?.name ?? value.defaultModel ?? "Predeterminado"}</span>
-                </button>
-                {pickerOpen && (
-                  <ModelPicker
-                    models={modelList}
-                    currentId={value.defaultModel}
-                    onSelect={pickModel}
-                    onClose={() => setPickerOpen(false)}
-                  />
-                )}
-              </div>
-
-              <div className="field-row">
-                <span className="field-label">Esfuerzo</span>
-                <EffortControl
-                  variants={modelInfo?.variants ?? []}
-                  value={value.defaultEffort}
-                  disabled={!value.defaultModel}
-                  onChange={(effort) => update({ defaultEffort: effort })}
-                />
-              </div>
-
-              <div className="field-row">
-                <label className="field-label" htmlFor="budget">
-                  Límite mensual (USD)
-                </label>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <input
-                    id="budget"
-                    className="text-input"
-                    inputMode="decimal"
-                    placeholder="Sin límite"
-                    value={budgetText}
-                    onChange={(e) => {
-                      setSaved(false);
-                      setBudgetText(e.target.value);
-                      if (!draft && value) setDraft({ ...value });
-                    }}
-                  />
-                  <span style={{ fontSize: "12px", color: "var(--ink-2)", fontFamily: "var(--font-mono)" }}>
-                    {budgetText ? `$${budgetText} / mes` : "Sin límite"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="field-row">
-                <span className="field-label">Avisar al</span>
-                <div className="segmented" role="group" aria-label="Porcentaje de aviso">
-                  {ALERT_OPTIONS.map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      aria-pressed={value.budgetAlertPercent === p}
-                      onClick={() => update({ budgetAlertPercent: p })}
-                    >
-                      {p} %
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </article>
-
-            {/* Card 2: OpenCode Engine (Local) */}
-            <article className="engine-card">
-              <div className="engine-head">
-                <div className="engine-title-group">
-                  <div className="engine-icon">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-                  </div>
-                  <div className="engine-info">
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span className="engine-name">OpenCode Engine</span>
-                      <span className="panel-tag" style={{ fontSize: "11px", padding: "1px 6px" }}>Local</span>
-                    </div>
-                    <span className="engine-desc">CLI auto-hospedado en servidor con Bubblewrap</span>
-                  </div>
-                </div>
-                <span className={`badge ${runner.data?.opencode ? "badge-ok" : "badge-neutral"}`}>
-                  {runner.data?.opencode ? "Activo" : "No disponible"}
-                </span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "13px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: "var(--ink-2)" }}>Aislamiento</span>
-                  <span style={{ fontFamily: "var(--font-mono)" }}>
-                    {runner.data?.bwrap ? "Bubblewrap activo" : runner.data?.aislamiento ? "Falta bubblewrap" : "Desactivado"}
-                  </span>
-                </div>
-              </div>
-            </article>
-
-            {/* Card 3: Google Vertex / AI Studio (Modelo de respaldo) */}
-            <ModeloRespaldoPanel />
-
-            {/* Save notice & Button */}
-            {localError && (
-              <p className="error" role="alert">
-                {localError}
-              </p>
-            )}
-
-            <div
-              className="savebar"
-              style={{
-                position: "sticky",
-                bottom: "16px",
-                background: "var(--surface)",
-                border: "1px solid var(--line)",
-                borderRadius: "10px",
-                padding: "12px 16px",
-                zIndex: 20,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span className="status-dot" style={{ background: dirty ? "var(--ink)" : "#4ade80" }} />
-                <span style={{ fontSize: "13px", color: "var(--ink)" }}>
-                  {dirty ? "Cambios sin guardar detectados" : saved ? "Cambios guardados" : "Sincronizado"}
-                </span>
-              </div>
-              <button type="submit" className="primary" disabled={!dirty || save.isPending}>
+            <div className="aj-acciones-guardado">
+              <button type="button" className="aj-btn" onClick={descartar} disabled={!dirty || save.isPending}>
+                Descartar
+              </button>
+              <button type="submit" className="aj-btn aj-btn-primario" disabled={!dirty || save.isPending}>
+                <IconoGuardar />
                 {save.isPending ? "Guardando…" : "Guardar cambios"}
               </button>
             </div>
-          </form>
+          </div>
         )}
-
-        {/* Proveedores y Conexiones */}
-        <div className="settings" style={{ marginTop: "12px" }}>
-          <ProveedoresPanel />
-          <GooglePanel />
-
-          {/* Subprocess Log Preview */}
-          <section className="panel" aria-labelledby="sec-logs">
-            <div className="card-top">
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <h2 id="sec-logs" className="panel-title">Daemon Subprocesos (stdout)</h2>
-                <span className="panel-tag">LIVE</span>
-              </div>
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => setLogsCleared(true)}
-                style={{ fontSize: "12px", padding: "4px 8px" }}
-              >
-                Limpiar
-              </button>
-            </div>
-            <div className="log-terminal">
-              <div className="log-terminal-head">
-                <span>/var/log/orquestador/runtime.log</span>
-                <span>PID Grupo: 44102</span>
-              </div>
-              <div className="log-lines">
-                {logsCleared ? (
-                  <span style={{ color: "var(--ink-2)" }}>Terminal limpiada. Esperando nuevos registros…</span>
-                ) : (
-                  <>
-                    <div className="log-line">
-                      <span className="log-time">15:42:01.002</span>
-                      <span className="log-pid">[PID 44102]</span>
-                      <span className="log-msg">orq-scheduler: listening on unix:///run/orq.sock (subprocesses: 3 ready)</span>
-                    </div>
-                    <div className="log-line">
-                      <span className="log-time">15:42:04.119</span>
-                      <span className="log-pid">[PID 44108]</span>
-                      <span className="log-msg">codex-proxy: ping https://api.openai.com/v1 - status 200 OK (latency: 18ms)</span>
-                    </div>
-                    <div className="log-line">
-                      <span className="log-time">15:43:12.842</span>
-                      <span className="log-pid">[PID 44115]</span>
-                      <span className="log-msg">worker-01: context checkpoint saved: snapshot_blk_90192a (2.1 MB)</span>
-                    </div>
-                    <div className="log-line">
-                      <span className="log-time">15:44:00.001</span>
-                      <span className="log-pid">[PID 44102]</span>
-                      <span className="log-msg">healthcheck: all workers nominal. memory RSS: 614 MB.</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </section>
-
-          {/* Aplicación, Tema y Sesión */}
-          <section className="panel">
-            <div className="card-top">
-              <h2 className="panel-title">Instalar la aplicación</h2>
-            </div>
-            <p className="muted-note" style={{ margin: 0 }}>Instala Telo como aplicación independiente en tu teléfono o PC.</p>
-            {isStandalone() ? (
-              <p className="muted-note">Ya está instalada como aplicación independiente en este dispositivo.</p>
-            ) : install.canInstall ? (
-              <div>
-                <button type="button" className="primary" onClick={() => void install.promptInstall()}>
-                  Instalar Telo
-                </button>
-              </div>
-            ) : isIOS() ? (
-              <p className="muted-note">En iPhone / Safari: toca Compartir y luego “Agregar a pantalla de inicio”.</p>
-            ) : (
-              <p className="muted-note">
-                Tu navegador no ofrece instalarla desde aquí. Abre el menú del navegador y selecciona “Instalar app”.
-              </p>
-            )}
-          </section>
-
-          <TemaPanel />
-          <SesionPanel />
-        </div>
-      </main>
+      </form>
     </div>
   );
 }
 
-function ProveedoresPanel() {
-  const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders });
-
-  return (
-    <section className="panel" aria-labelledby="ajustes-proveedores">
-      <div className="card-top">
-        <h2 id="ajustes-proveedores" className="panel-title">Proveedores de Modelos</h2>
-      </div>
-      <p className="muted-note" style={{ margin: 0 }}>
-        Muestra si cada proveedor tiene su clave lista para los agentes. Las claves se configuran en el servidor, nunca desde la app.
-      </p>
-      {proveedores.isPending && <p className="muted-note">Consultando proveedores…</p>}
-      {proveedores.isError && (
-        <p className="error" role="alert">
-          {errorText(proveedores.error)}
-        </p>
-      )}
-      {proveedores.data && (
-        <ul className="project-list">
-          {proveedores.data.map((p) => (
-            <li key={p.id} className="project-row proveedor-fila">
-              <div className="project-info">
-                <span className="project-name">{p.name}</span>
-                <span className="project-path">{textoProveedor(p)}</span>
-                {p.variable && p.id !== "opencode" && (
-                  <span className="project-path">Variable: {p.variable}</span>
-                )}
-              </div>
-              <span className={`badge ${claseBadgeProveedor(p)}`}>{etiquetaBadgeProveedor(p)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function ModeloRespaldoPanel() {
+// Selector del modelo de respaldo: se guarda al elegirlo, como antes.
+function SelectorRespaldo({
+  models,
+  modelosListos,
+  prefs,
+}: {
+  models: ModelInfo[];
+  modelosListos: boolean;
+  prefs: Preferences | undefined;
+}) {
   const qc = useQueryClient();
-  const prefs = useQuery({ queryKey: ["preferences"], queryFn: api.getPreferences });
-  const models = useQuery({ queryKey: ["models"], queryFn: api.listModels, staleTime: 5 * 60_000 });
-  const todos: ModelInfo[] = models.data?.models ?? [];
-
   const guardar = useMutation({
     mutationFn: (fallbackModel: string | null) => api.savePreferences({ fallbackModel }),
     onSettled: () => void qc.invalidateQueries({ queryKey: ["preferences"] }),
   });
 
-  const guardado = prefs.data?.fallbackModel ?? null;
+  const guardado = prefs?.fallbackModel ?? null;
   const valor = guardar.isPending ? (guardar.variables ?? "") : (guardado ?? "");
 
-  const opciones = todos
-    .filter((m) => m.recommended)
-    .map((m) => ({ id: m.id, name: m.name }));
+  const opciones = models.filter((m) => m.recommended).map((m) => ({ id: m.id, name: m.name }));
   if (valor && !opciones.some((o) => o.id === valor)) {
-    opciones.unshift({ id: valor, name: todos.find((m) => m.id === valor)?.name ?? valor });
+    opciones.unshift({ id: valor, name: models.find((m) => m.id === valor)?.name ?? valor });
   }
 
   return (
-    <article className="engine-card">
-      <div className="engine-head">
-        <div className="engine-title-group">
-          <div className="engine-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
-          </div>
-          <div className="engine-info">
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span className="engine-name">Google Vertex / Respaldo</span>
-              <span className="panel-tag" style={{ fontSize: "11px", padding: "1px 6px" }}>Fallback</span>
-            </div>
-            <span className="engine-desc">Modelo de reintento si el principal devuelve límite o error</span>
-          </div>
-        </div>
-      </div>
-      <div className="field-row">
-        <label className="field-label" htmlFor="modelo-respaldo">
-          Modelo
-        </label>
+    <div className="aj-fila-campo">
+      <label htmlFor="modelo-respaldo" className="aj-campo-etiqueta-fija">
+        Modelo de respaldo
+      </label>
+      <div className="aj-campo-doble">
         <select
           id="modelo-respaldo"
-          className="tarea-select"
+          className="aj-input"
           value={valor}
-          disabled={!prefs.data || guardar.isPending}
+          disabled={!prefs || guardar.isPending || !modelosListos}
           onChange={(e) => guardar.mutate(e.target.value || null)}
         >
           <option value="">Ninguno</option>
@@ -509,79 +530,305 @@ function ModeloRespaldoPanel() {
             </option>
           ))}
         </select>
+        {guardar.isPending && <span className="aj-nota" role="status">Guardando…</span>}
+        {guardar.isSuccess && !guardar.isPending && <span className="aj-nota" role="status">Guardado.</span>}
       </div>
-      {guardar.isPending && <p className="muted-note" role="status">Guardando…</p>}
-      {guardar.isSuccess && !guardar.isPending && <p className="muted-note" role="status">Modelo de respaldo guardado.</p>}
       {guardar.isError && (
-        <p className="error" role="alert">
+        <p className="aj-error" role="alert">
           {errorText(guardar.error)}
         </p>
+      )}
+    </div>
+  );
+}
+
+function Kpi({
+  etiqueta,
+  icono,
+  valor,
+  pie,
+  barra,
+}: {
+  etiqueta: string;
+  icono: ReactNode;
+  valor: string;
+  pie: string;
+  barra?: number;
+}) {
+  const porcentaje = barra !== undefined ? Math.round(barra * 100) : 0;
+  return (
+    <article className="aj-kpi">
+      <div className="aj-kpi-cabecera">
+        <span className="aj-kpi-etiqueta">{etiqueta}</span>
+        <span className="aj-kpi-icono" aria-hidden="true">
+          {icono}
+        </span>
+      </div>
+      <p className="aj-kpi-valor">{valor}</p>
+      <p className="aj-kpi-pie">{pie}</p>
+      {barra !== undefined && (
+        <div className="aj-barra" role="img" aria-label={`${porcentaje} % ocupado`}>
+          <div className="aj-barra-relleno" style={{ width: `${porcentaje}%` }} />
+        </div>
       )}
     </article>
   );
 }
 
-const OPCIONES_TEMA: { valor: Tema; texto: string }[] = [
-  { valor: "sistema", texto: "Sistema" },
-  { valor: "oscuro", texto: "Oscuro" },
-  { valor: "claro", texto: "Claro" },
-];
-
-function TemaPanel() {
-  const [tema, setTema] = useState<Tema>(() => leerTema());
+function TarjetaProveedor({
+  p,
+  etiqueta,
+  gasto,
+  presupuesto,
+  modelos,
+}: {
+  p: ProviderStatus;
+  etiqueta: string | null;
+  gasto: number | null;
+  presupuesto: number | null;
+  // Modelos del proveedor en el catálogo de OpenCode (total) y los que salen en el selector del chat.
+  modelos: { total: number; enSelector: number } | null;
+}) {
+  // Listo: la clave está en el servidor y llega a los agentes. El servidor no tiene interruptor por proveedor.
+  const listo = p.configured && p.enAgente;
+  const sinClave = p.variable === null;
+  const pct = presupuesto && gasto !== null ? Math.min(100, Math.round((gasto / presupuesto) * 100)) : 0;
+  const nota = notaEstado(p, modelos);
+  const tituloSinControl = "La clave vive en el servidor y la app no la recibe.";
 
   return (
-    <section className="panel" aria-labelledby="ajustes-tema">
-      <div className="card-top">
-        <h2 id="ajustes-tema" className="panel-title">Tema</h2>
-      </div>
-      <p className="muted-note" style={{ margin: 0 }}>Se guarda en este dispositivo. Sistema sigue el modo de tu teléfono o PC.</p>
-      <div className="segmented" role="group" aria-label="Tema de la app">
-        {OPCIONES_TEMA.map((o) => (
+    <article className="aj-tarjeta" aria-labelledby={`aj-prov-${p.id}`}>
+      <div className="aj-tarjeta-cabecera">
+        <div className="aj-tarjeta-titulo">
+          <span className="aj-icono" aria-hidden="true">
+            <IconoProveedor id={p.id} />
+          </span>
+          <div className="aj-tarjeta-texto">
+            <div className="aj-nombre">
+              <h3 id={`aj-prov-${p.id}`}>{p.name}</h3>
+              {etiqueta && <span className="aj-etiqueta">{etiqueta}</span>}
+            </div>
+            <p className="aj-descripcion-tarjeta">{p.hint}</p>
+          </div>
+        </div>
+        <div className="aj-interruptor">
+          <span>{listo ? "Activo" : "Inactivo"}</span>
           <button
-            key={o.valor}
             type="button"
-            aria-pressed={tema === o.valor}
-            onClick={() => {
-              setTema(o.valor);
-              guardarTema(o.valor);
-            }}
-          >
-            {o.texto}
-          </button>
-        ))}
+            role="switch"
+            aria-checked={listo}
+            aria-label={`${p.name}: activo`}
+            className="aj-switch"
+            disabled
+            title={
+              sinClave
+                ? "Se activa al instalar el CLI de OpenCode en el servidor. La app no lo cambia."
+                : p.guardable
+                  ? "Se activa al guardar la clave aquí o al configurarla en el archivo de entorno del servidor. La app no lo apaga."
+                  : `Se activa al configurar ${p.variable} en el archivo de entorno del servidor. La app no lo cambia.`
+            }
+          />
+        </div>
       </div>
-    </section>
+
+      <div className="aj-campos">
+        {p.guardable ? (
+          <CampoClave p={p} />
+        ) : (
+          <div className="aj-campo">
+            <div className="aj-campo-etiqueta">
+              <span>
+                Clave API{p.variable ? <> · <span className="aj-mono">{p.variable}</span></> : null}
+              </span>
+              {!sinClave && (
+                <button type="button" className="aj-texto-btn" disabled title={tituloSinControl}>
+                  Mostrar
+                </button>
+              )}
+            </div>
+            <div className="aj-entrada">
+              <span className={p.configured || sinClave ? "" : "aj-entrada-vacia"}>
+                {sinClave
+                  ? "No aplica: usa el CLI del servidor"
+                  : p.configured
+                    ? "•".repeat(24)
+                    : "Sin clave configurada"}
+              </span>
+              {!sinClave && (
+                <button type="button" className="aj-icono-btn" disabled title={tituloSinControl} aria-label="Copiar clave">
+                  <IconoCopia />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="aj-campo">
+          <div className="aj-campo-etiqueta">
+            <span>Endpoint base</span>
+          </div>
+          <div className="aj-entrada aj-entrada-vacia">
+            <span>{sinClave ? "No aplica: corre en el servidor" : "No informado por el servidor"}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="aj-presupuesto">
+        <div className="aj-campo-etiqueta">
+          <span>Gasto del mes</span>
+          <span className="aj-mono">{gasto !== null ? formatUsd(gasto) : "Sin uso registrado"}</span>
+        </div>
+        <div
+          className="aj-barra"
+          role="img"
+          aria-label={presupuesto ? `${pct} % del presupuesto mensual` : "Sin presupuesto mensual definido"}
+          title="El presupuesto es global. La app todavía no guarda uno por proveedor."
+        >
+          <div className="aj-barra-relleno" style={{ width: `${pct}%` }} />
+        </div>
+        <p className="aj-nota">
+          {presupuesto !== null
+            ? `${pct} % del presupuesto mensual de US$ ${presupuesto.toFixed(2)}.`
+            : "Sin presupuesto mensual. Fíjalo en Presupuesto mensual y aviso."}
+        </p>
+      </div>
+
+      {p.enAgente && modelos && modelos.total > 0 && (
+        <p className="aj-nota">
+          {modelos.enSelector === 1 ? "1 modelo" : `${modelos.enSelector} modelos`} en el selector del chat.
+        </p>
+      )}
+      {nota && <p className="aj-nota aj-nota-aviso">{nota}</p>}
+      {p.id === "opencode" && !p.configured && <InstalarHerramienta id="opencode" nombre="OpenCode" />}
+      {p.id === "codex" && (
+        <InstalarHerramienta id="codex" nombre="Codex">
+          <LoginCodexPanel />
+        </InstalarHerramienta>
+      )}
+    </article>
   );
 }
 
-function SesionPanel() {
-  const [saliendo, setSaliendo] = useState(false);
+// Clave de un proveedor que se guarda desde la app, cifrada en el servidor. La API solo dice si está guardada:
+// el valor no vuelve a mostrarse. Los botones son `type="button"` porque toda la página es un formulario.
+function CampoClave({ p }: { p: ProviderStatus }) {
+  const qc = useQueryClient();
+  const [valor, setValor] = useState("");
+  const [verValor, setVerValor] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const idCampo = `aj-clave-${p.id}`;
 
-  const salir = async () => {
-    setSaliendo(true);
-    try {
-      await api.logout();
-    } finally {
-      location.assign("/entrar");
-    }
+  // Cambiar la clave cambia qué modelos hay disponibles, así que la lista se vuelve a pedir.
+  const refrescar = () => {
+    void qc.invalidateQueries({ queryKey: ["providers"] });
+    void qc.invalidateQueries({ queryKey: ["models"] });
   };
 
+  const guardar = useMutation({
+    mutationFn: (texto: string) => api.setProviderKey(p.id, texto),
+    onSuccess: () => {
+      setValor("");
+      setError(null);
+      setAviso("Clave guardada. Se usará en los próximos envíos.");
+      refrescar();
+    },
+    onError: (e) => {
+      setAviso(null);
+      setError(errorText(e));
+    },
+  });
+
+  const quitar = useMutation({
+    mutationFn: () => api.deleteProviderKey(p.id),
+    onSuccess: () => {
+      setError(null);
+      setAviso("Clave quitada.");
+      refrescar();
+    },
+    onError: (e) => {
+      setAviso(null);
+      setError(errorText(e));
+    },
+  });
+
+  const ocupado = guardar.isPending || quitar.isPending;
+  const enviar = () => {
+    const texto = valor.trim();
+    if (!texto || ocupado) return;
+    setAviso(null);
+    setError(null);
+    guardar.mutate(texto);
+  };
+
+  const estado = p.guardada
+    ? "Guardada cifrada en el servidor. No se vuelve a mostrar."
+    : p.configured
+      ? `Viene del archivo de entorno del servidor (${p.variable}).`
+      : "Sin clave configurada.";
+
   return (
-    <section className="panel">
-      <div className="card-top">
-        <h2 className="panel-title">Sesión</h2>
-      </div>
-      <p className="muted-note" style={{ margin: 0 }}>
-        Cierra la sesión en este navegador. Para cerrar las sesiones de todos los dispositivos, cambia TELO_CLAVE en el servidor.
-      </p>
-      <div className="savebar">
-        <button type="button" className="ghost sesion-salir" onClick={() => void salir()} disabled={saliendo}>
-          Cerrar sesión
+    <div className="aj-campo aj-campo-clave">
+      <div className="aj-campo-etiqueta">
+        <label htmlFor={idCampo}>
+          Clave API · <span className="aj-mono">{p.variable}</span>
+        </label>
+        <button type="button" className="aj-texto-btn" onClick={() => setVerValor((v) => !v)}>
+          {verValor ? "Ocultar" : "Mostrar"}
         </button>
       </div>
-    </section>
+      <div className="aj-clave-fila">
+        <input
+          id={idCampo}
+          className="aj-input aj-mono"
+          type={verValor ? "text" : "password"}
+          autoComplete="off"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder={p.guardada ? "Pega una clave nueva" : "Pega la clave"}
+          value={valor}
+          disabled={ocupado}
+          onChange={(e) => setValor(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter guarda aquí; si no, enviaría el formulario de Ajustes.
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            enviar();
+          }}
+        />
+        <button type="button" className="aj-btn aj-btn-primario" onClick={enviar} disabled={!valor.trim() || ocupado}>
+          {guardar.isPending ? "Guardando…" : "Guardar"}
+        </button>
+        {p.guardada && (
+          <button type="button" className="aj-btn" onClick={() => quitar.mutate()} disabled={ocupado}>
+            {quitar.isPending ? "Quitando…" : "Quitar"}
+          </button>
+        )}
+      </div>
+      <p className="aj-nota">{estado}</p>
+      {aviso && <p className="aj-nota" role="status">{aviso}</p>}
+      {error && <p className="aj-error" role="alert">{error}</p>}
+    </div>
   );
+}
+
+// Lo que impide que un proveedor llegue a los agentes, con el nombre real de la variable.
+// Un proveedor sin clave que se puede guardar ya lo dice su propio campo, así que no se repite aquí.
+function notaEstado(p: ProviderStatus, modelos: { total: number } | null): string | null {
+  if (p.id === "opencode") return p.configured ? null : "El CLI de OpenCode no se encontró en el servidor.";
+  // Codex: la sesión se inicia desde su panel; los agentes todavía no lo usan.
+  if (p.id === "codex") return p.configured ? "Los agentes todavía no usan Codex. Su sesión queda lista para cuando exista ese paso." : null;
+  if (!p.configured) return p.guardable ? null : `Falta ${p.variable ?? "la clave"} en el archivo de entorno del servidor.`;
+  if (!p.enAgente) {
+    return `La clave está configurada, pero no llega a los agentes: agrégala a TELO_AGENTE_VARIABLES en el archivo de entorno del servidor.`;
+  }
+  // La clave llega al servidor, pero OpenCode no tiene ningún modelo de este proveedor: casi siempre el nombre
+  // de la variable no es el que espera esta versión de OpenCode. Se dice así, sin adivinar cuál es.
+  if (modelos && modelos.total === 0) {
+    return `La clave está guardada, pero OpenCode no muestra modelos de ${p.name}. En el servidor, revisa con "opencode models" que el nombre de la variable (${p.variable}) sea el que usa esta versión.`;
+  }
+  return null;
 }
 
 function GooglePanel() {
@@ -614,34 +861,34 @@ function GooglePanel() {
   const datos = estado.data;
 
   return (
-    <section className="panel" aria-labelledby="ajustes-google">
-      <div className="card-top">
-        <h2 id="ajustes-google" className="panel-title">Cuenta de Google</h2>
-      </div>
-      <p className="muted-note" style={{ margin: 0 }}>
+    <article className="aj-tarjeta" aria-labelledby="ajustes-google">
+      <h3 id="ajustes-google" className="aj-tarjeta-titulo-simple">
+        Cuenta de Google
+      </h3>
+      <p className="aj-nota">
         Inicia sesión con tu cuenta de Google para leer el uso de sus modelos. Por ahora solo se guarda tu correo y un permiso que puedes revocar.
       </p>
-      {estado.isPending && <p className="muted-note">Revisando la conexión…</p>}
-      {estado.isError && <p className="error" role="alert">{errorText(estado.error)}</p>}
+      {estado.isPending && <p className="aj-nota">Revisando la conexión…</p>}
+      {estado.isError && <p className="aj-error" role="alert">{errorText(estado.error)}</p>}
       {datos && !datos.configurado && (
-        <p className="muted-note">Faltan variables en el servidor: {datos.faltantes.join(", ")}.</p>
+        <p className="aj-nota">Faltan variables en el servidor: {datos.faltantes.join(", ")}.</p>
       )}
       {datos?.conectado && (
-        <p>
+        <p className="aj-texto">
           Conectado como <strong>{datos.cuenta}</strong>
         </p>
       )}
-      {aviso && <p className="muted-note" role="status">{aviso}</p>}
-      {error && <p className="error" role="alert">{error}</p>}
-      <div className="savebar">
+      {aviso && <p className="aj-nota" role="status">{aviso}</p>}
+      {error && <p className="aj-error" role="alert">{error}</p>}
+      <div className="aj-acciones">
         {datos?.conectado ? (
-          <button type="button" className="ghost" onClick={() => desconectar.mutate()} disabled={desconectar.isPending}>
+          <button type="button" className="aj-btn" onClick={() => desconectar.mutate()} disabled={desconectar.isPending}>
             {desconectar.isPending ? "Desconectando…" : "Desconectar"}
           </button>
         ) : (
           <button
             type="button"
-            className="primary"
+            className="aj-btn aj-btn-primario"
             onClick={() => conectar.mutate()}
             disabled={!datos?.configurado || conectar.isPending}
           >
@@ -649,25 +896,209 @@ function GooglePanel() {
           </button>
         )}
       </div>
-    </section>
+    </article>
   );
 }
 
-function textoProveedor(p: ProviderStatus): string {
-  if (p.id === "opencode") return "Disponible";
-  if (!p.configured) return "Sin clave configurada";
-  if (p.enAgente) return "Clave configurada y disponible para los agentes";
-  return "Clave configurada, pero no llega a los agentes: agrégala a TELO_AGENTE_VARIABLES en el archivo de entorno del servidor";
+function TemaPanel() {
+  const [tema, setTema] = useState<Tema>(() => leerTema());
+
+  return (
+    <article className="aj-tarjeta" aria-labelledby="ajustes-tema">
+      <h3 id="ajustes-tema" className="aj-tarjeta-titulo-simple">
+        Tema
+      </h3>
+      <p className="aj-nota">Se guarda en este dispositivo. Sistema sigue el modo de tu teléfono o PC.</p>
+      <div className="segmented" role="group" aria-label="Tema de la app">
+        {OPCIONES_TEMA.map((o) => (
+          <button
+            key={o.valor}
+            type="button"
+            aria-pressed={tema === o.valor}
+            onClick={() => {
+              setTema(o.valor);
+              guardarTema(o.valor);
+            }}
+          >
+            {o.texto}
+          </button>
+        ))}
+      </div>
+    </article>
+  );
 }
 
-function etiquetaBadgeProveedor(p: ProviderStatus): string {
-  if (p.id === "opencode" || (p.configured && p.enAgente)) return "Listo";
-  if (p.configured) return "Revisar";
-  return "Sin clave";
+function NotificacionesPanel() {
+  const [activas, setActivas] = useState(() => notificacionesActivas());
+  const [permiso, setPermiso] = useState<NotificationPermission | "no_soportado">(() =>
+    notificacionesSoportadas() ? Notification.permission : "no_soportado",
+  );
+
+  const alCambiar = async (valor: boolean) => {
+    setActivas(valor);
+    guardarNotificacionesActivas(valor);
+    if (valor) setPermiso(await pedirPermisoNotificaciones());
+  };
+
+  const nota =
+    permiso === "no_soportado"
+      ? "Este navegador no admite notificaciones del sistema."
+      : permiso === "denied"
+        ? "El navegador las tiene bloqueadas. Permítelas en la configuración del sitio y vuelve a activarlas aquí."
+        : "Avisan cuando una tarea termina, falla o necesita tu decisión. Llegan mientras Telo esté abierta.";
+
+  return (
+    <article className="aj-tarjeta" aria-labelledby="ajustes-notificaciones">
+      <div className="aj-interruptor">
+        <h3 id="ajustes-notificaciones" className="aj-tarjeta-titulo-simple">
+          Notificaciones del sistema
+        </h3>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={activas && permiso !== "no_soportado"}
+          aria-label="Notificaciones del sistema"
+          className="aj-switch"
+          disabled={permiso === "no_soportado"}
+          onClick={() => void alCambiar(!activas)}
+        />
+      </div>
+      <p className="aj-nota">{nota}</p>
+    </article>
+  );
 }
 
-function claseBadgeProveedor(p: ProviderStatus): string {
-  if (p.id === "opencode" || (p.configured && p.enAgente)) return "badge-ok";
-  if (p.configured) return "badge-signal";
-  return "badge-neutral";
+function SesionPanel() {
+  const [saliendo, setSaliendo] = useState(false);
+
+  const salir = async () => {
+    setSaliendo(true);
+    try {
+      await api.logout();
+    } finally {
+      location.assign("/entrar");
+    }
+  };
+
+  return (
+    <article className="aj-tarjeta" aria-labelledby="ajustes-sesion">
+      <h3 id="ajustes-sesion" className="aj-tarjeta-titulo-simple">
+        Sesión
+      </h3>
+      <p className="aj-nota">
+        Cierra la sesión en este navegador. Para cerrar las sesiones de todos los dispositivos, cambia TELO_CLAVE en el servidor.
+      </p>
+      <div className="aj-acciones">
+        <button type="button" className="aj-btn sesion-salir" onClick={() => void salir()} disabled={saliendo}>
+          Cerrar sesión
+        </button>
+      </div>
+    </article>
+  );
+}
+
+// Formatos locales de esta pantalla.
+function duracionCorta(segundos: number): string {
+  const total = Math.max(0, Math.floor(segundos));
+  if (total < 60) return `${total} s`;
+  const dias = Math.floor(total / 86_400);
+  const horas = Math.floor((total % 86_400) / 3_600);
+  if (dias > 0) return `${dias}d ${String(horas).padStart(2, "0")}h`;
+  const minutos = Math.floor((total % 3_600) / 60);
+  return horas > 0 ? `${horas}h ${String(minutos).padStart(2, "0")}m` : `${minutos}m`;
+}
+
+function fechaUtc(iso: string): string {
+  return new Date(iso).toISOString().slice(0, 10);
+}
+
+// Iconos decorativos: trazo del mismo tamaño que el resto de la app.
+const TRAZO = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+
+function IconoReloj() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" {...TRAZO}>
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
+}
+
+function IconoRed() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" {...TRAZO}>
+      <rect x="9" y="2" width="6" height="6" rx="1" />
+      <rect x="2" y="16" width="6" height="6" rx="1" />
+      <rect x="16" y="16" width="6" height="6" rx="1" />
+      <path d="M12 8v4M5 16v-2h14v2" />
+    </svg>
+  );
+}
+
+function IconoRayo() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" {...TRAZO}>
+      <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
+    </svg>
+  );
+}
+
+function IconoChip() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" {...TRAZO}>
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <rect x="9" y="9" width="6" height="6" />
+      <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" />
+    </svg>
+  );
+}
+
+function IconoMas() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" {...TRAZO} aria-hidden="true">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function IconoCopia() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" {...TRAZO} aria-hidden="true">
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+function IconoGuardar() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" {...TRAZO} aria-hidden="true">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+function IconoProveedor({ id }: { id: string }) {
+  if (id === "opencode") {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" {...TRAZO}>
+        <polyline points="4 17 10 11 4 5" />
+        <line x1="12" y1="19" x2="20" y2="19" />
+      </svg>
+    );
+  }
+  if (id === "codex") {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" {...TRAZO}>
+        <polygon points="12 2 21 7 21 17 12 22 3 17 3 7" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" {...TRAZO}>
+      <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
+    </svg>
+  );
 }

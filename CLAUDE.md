@@ -84,6 +84,7 @@ Variables del VM que se agregan con esta fase (en `/etc/orquestador/orquestador.
 6. **Migraciones.** Cada cambio de esquema es una migración nueva y numerada. No edites una migración que ya se aplicó.
 7. **Secretos.** Nada de claves, tokens ni IPs en el repo. Las claves viven en el VM, en un archivo de entorno de systemd fuera del repo.
 8. **Git.** Trabaja en ramas `feat/`, `fix/` o `docs/`. No hagas commit, push ni PR sin que el usuario lo pida. El usuario hace el merge.
+9. **Versión.** Cada cambio terminado agrega una entrada a `cambios` en `web/src/cambios.json` (fecha, tipo, título y PR). Tipos: `grande` para capacidades nuevas del sistema o de infraestructura; `mediano` para funciones o pantallas; `minimo` para ajustes, correcciones y documentación. No escribas la versión a mano: `web/src/lib/version-sistema.ts` la calcula (cada 5 medianos sube el segundo número y cada 10 mínimos el tercero) y la barra lateral la muestra. No confundirla con `version.json` del build, que usa `lib/version.ts`.
 
 ## Skills recomendadas
 
@@ -97,7 +98,7 @@ Variables del VM que se agregan con esta fase (en `/etc/orquestador/orquestador.
 ## Acceso (referencia)
 
 - Desde la PC: `ssh -L 3000:localhost:3000 -L 9090:localhost:9090 -i <tu_clave> orquestador@<IP>`. Luego abre `http://127.0.0.1:3000`. El puerto 9090 es Cockpit.
-- Actualizar el VM: `cd ~/orquestador && git switch main && git pull --ff-only && cd web && bun run build && cd .. && sudo systemctl restart orquestador`.
+- Actualizar el VM a mano: `cd ~/orquestador && git switch main && git pull --ff-only && (cd server && bun install --frozen-lockfile) && (cd web && bun install --frozen-lockfile && bun run build) && sudo systemctl restart orquestador`. Con el timer de `deploy/` esto ocurre solo; ver `deploy/README.md`.
 - No abras puertos en Azure. El acceso remoto es por Tailscale (fase 9 de `PLAN.md`).
 
 ## Seguridad
@@ -136,3 +137,4 @@ Variables del VM que se agregan con esta fase (en `/etc/orquestador/orquestador.
 - `bun run build` pasa.
 - Si hay interfaz: revisada a 390 px y 1440 px, sin errores de consola.
 - Los cambios están en una rama, con una descripción de lo que se probó.
+- Hay una entrada nueva en `web/src/cambios.json` (regla 9).

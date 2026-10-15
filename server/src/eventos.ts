@@ -21,7 +21,16 @@ export type TipoEvento =
   | "clon_creado"
   | "commit_aprobado"
   | "push_aprobado"
-  | "push_fallido";
+  | "push_fallido"
+  | "plan_creado"
+  | "plan_pendiente"
+  | "plan_aprobado"
+  | "plan_rechazado"
+  | "replanificada"
+  | "obrero_iniciado"
+  | "sin_cuota"
+  | "turno_encolado"
+  | "seguida";
 
 export type EventoTarea = {
   id: number;
