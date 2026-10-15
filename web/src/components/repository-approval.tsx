@@ -6,8 +6,9 @@ const labels: Record<string, string> = {
   init: "Inicializar repositorio",
   commit: "Crear commit",
   push: "Subir rama",
+  push_main: "Commit y push a main",
   pr: "Crear pull request",
-  merge: "Hacer merge directo",
+  merge: "Hacer merge a rama principal",
 };
 export function RepositoryApproval({
   accion,
@@ -173,36 +174,62 @@ export function AccionesRepositorioChat({
 
       {projectId && terminada && taskId && (
         <div className="approval-buttons" aria-label="Acciones del repositorio" style={{ marginTop: "0.75rem" }}>
-          {!tieneCommit ? (
-            tieneCambios ? (
-              <button
-                type="button"
-                className="primary"
-                disabled={hayAccionEnCurso}
-                onClick={() => pedir.mutate("commit")}
-                title="Crear un commit en la rama de la tarea con los cambios aprobados"
-              >
-                {pedir.isPending ? "Preparando…" : "Crear commit"}
-              </button>
-            ) : (
-              <span className="hint" style={{ fontSize: "0.85rem" }}>
-                No hay cambios pendientes de guardar en el repositorio.
-              </span>
-            )
-          ) : !tienePush ? (
+          {tieneCambios || !tieneCommit ? (
             <>
               <button
                 type="button"
                 className="primary"
                 disabled={hayAccionEnCurso}
-                onClick={() => pedir.mutate("push")}
-                title="Subir la rama con el commit al repositorio remoto de GitHub"
+                onClick={() => pedir.mutate(diff?.remoto ? "push_main" : "merge")}
+                title={
+                  diff?.remoto
+                    ? "Crear el commit y subir los cambios directamente a la rama principal (main) en GitHub"
+                    : "Crear el commit y fusionarlo directamente en la rama principal local"
+                }
               >
-                {pedir.isPending ? "Preparando…" : "Subir rama (push)"}
+                {pedir.isPending
+                  ? "Preparando…"
+                  : diff?.remoto
+                  ? "Hacer commit y push a main"
+                  : "Hacer merge a rama principal"}
               </button>
+              {diff?.remoto && (
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={hayAccionEnCurso}
+                  onClick={() => pedir.mutate("push")}
+                  title="Subir a una rama secundaria para abrir un Pull Request en GitHub"
+                >
+                  Subir a rama secundaria (PR)
+                </button>
+              )}
               <button
                 type="button"
                 className="ghost"
+                disabled={hayAccionEnCurso}
+                onClick={() => pedir.mutate("commit")}
+                title="Solo crear el commit local en la rama de la tarea"
+              >
+                Solo crear commit
+              </button>
+            </>
+          ) : !tienePush ? (
+            <>
+              {diff?.remoto && (
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={hayAccionEnCurso}
+                  onClick={() => pedir.mutate("push_main")}
+                  title="Subir el commit directamente a la rama principal (main) en GitHub"
+                >
+                  {pedir.isPending ? "Preparando…" : "Subir a main"}
+                </button>
+              )}
+              <button
+                type="button"
+                className={diff?.remoto ? "ghost" : "primary"}
                 disabled={hayAccionEnCurso}
                 onClick={() => pedir.mutate("merge")}
                 title="Fusionar los cambios directamente en la rama principal local"

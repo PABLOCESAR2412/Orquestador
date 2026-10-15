@@ -37,7 +37,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
     message?: string;
     title?: string;
   }>(c);
-  if (!b || !["init", "commit", "push", "pr", "merge"].includes(b.action))
+  if (!b || !["init", "commit", "push", "pr", "merge", "push_main"].includes(b.action))
     return c.json({ error: "invalid_accion" }, 400);
   if (
     (b.conversationId !== undefined &&
@@ -73,14 +73,13 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
     if (b.action === "commit" && diff && diff.archivos.length === 0 && !diff.commit) {
       return c.json({ error: "sin_cambios", detail: "No hay archivos modificados para crear un commit." }, 409);
     }
-    if (b.action === "merge" && (!diff?.commit && !diff?.aprobaciones.commit)) {
-      return c.json({ error: "commit_requerido", detail: "Primero debes crear el commit de la tarea antes de hacer merge." }, 409);
-    }
     const cfg = configGit(projectId);
+    const esPushMain = b.action === "push_main";
+    const ramaDestino = esPushMain ? cfg.base_branch : (diff?.rama ?? null);
     const payload = {
       hash: diff?.hash ?? null,
       diff: diff?.diff ?? "",
-      rama: diff?.rama ?? null,
+      rama: ramaDestino,
       commit: diff?.commit ?? null,
       archivos: diff?.archivos.map((a) => a.ruta) ?? [],
       truncado: diff?.truncado ?? false,
@@ -93,7 +92,9 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
           ? "Inicializar Git y crear un primer commit vacío para habilitar los espacios de trabajo. No añade tus archivos."
           : b.action === "merge"
             ? `Fusionar la rama ${diff?.rama ?? ""} directamente en la rama principal (${cfg.base_branch}).`
-            : null,
+            : b.action === "push_main"
+              ? `Hacer commit y subir los cambios directamente a la rama principal (${cfg.base_branch}) en GitHub.`
+              : null,
     };
     const id = crypto.randomUUID();
     const existente = db
@@ -226,17 +227,43 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         };
       });
       if (!result) throw new Error("El proyecto está ocupado. Reintenta cuando termine.");
-    } else if (row.action === "commit" || row.action === "push") {
+    } else if (row.action === "commit" || row.action === "push" || row.action === "push_main") {
       const actual = await diffDeTarea(row.task_id!);
       if (actual.hash !== p.hash || actual.remoto_url !== p.remote)
         throw new Error(
           "Los cambios o el remoto cambiaron desde que los revisaste. Solicita otra autorización.",
         );
+      const destinoRama = row.action === "push_main" ? (p.base || "main") : (p.rama || undefined);
       result = await aprobarTarea(row.task_id!, {
-        accion: row.action,
+        accion: row.action === "commit" ? "commit" : "push",
         hash: p.hash,
         mensaje: p.message,
+        destinoRama,
       });
+      if (row.action === "push_main") {
+        const cwd = projectRepoPath(row.project_id);
+        if (cwd && tieneGitReal(cwd)) {
+          try {
+            await conProyectoRevisado(row.project_id, async () => {
+              await prepararRepoSeguro(cwd);
+              const cfg = configGit(row.project_id);
+              const clonPath = rutaClon(row.task_id!);
+              const ramaActual = (await gitOkSeguro(["rev-parse", "--abbrev-ref", "HEAD"], { cwd })).trim();
+              if (ramaActual === cfg.base_branch) {
+                const diff = await diffDeTarea(row.task_id!);
+                if (diff.rama) {
+                  await gitOkSeguro(["fetch", clonPath, diff.rama], { cwd });
+                  await gitOkSeguro(["merge", "FETCH_HEAD", "--ff-only"], { cwd }).catch(async () => {
+                    await gitOkSeguro(["merge", "FETCH_HEAD", "-m", `Sincronizar cambios de ${row.task_id!.slice(0, 8)}`], { cwd });
+                  });
+                }
+              }
+            });
+          } catch {
+            // La subida a GitHub fue exitosa; la sincronización local es de mejor esfuerzo.
+          }
+        }
+      }
     } else if (row.action === "merge") {
       const cwd = projectRepoPath(row.project_id);
       if (!cwd) throw new Error("El proyecto ya no está disponible.");
@@ -251,6 +278,14 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         const cfg = configGit(row.project_id);
         const diff = await diffDeTarea(row.task_id!);
         if (!diff.rama) throw new Error("La tarea no tiene una rama asociada.");
+        // Si hay cambios modificados que aún no se han commiteado, hacer el commit primero automáticamente
+        if (!diff.commit && !diff.aprobaciones.commit && diff.archivos.length > 0) {
+          await aprobarTarea(row.task_id!, {
+            accion: "commit",
+            hash: diff.hash || p.hash || "",
+            mensaje: p.message,
+          });
+        }
         const ramaActual = (await gitOkSeguro(["rev-parse", "--abbrev-ref", "HEAD"], { cwd })).trim();
         if (ramaActual !== cfg.base_branch) {
           await gitOkSeguro(["checkout", cfg.base_branch], { cwd });

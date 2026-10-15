@@ -532,58 +532,77 @@ export type ResultadoAprobacion = {
   remoto?: string;
 };
 
+// Función interna de commit ejecutada dentro del cerrojo de la tarea.
+async function commitInterno(
+  taskId: string,
+  ctx: Contexto,
+  hash: string,
+  mensajeValor?: unknown,
+): Promise<ResultadoAprobacion> {
+  const mensaje = mensajeDeCommit(taskId, mensajeValor);
+  const estado = await estadoDelClon(ctx);
+  if (estado.archivos.length === 0) throw new ErrorTarea("sin_cambios", 409);
+  if (estado.hash !== hash) throw new ErrorTarea("cambios_cambiaron", 409);
+  if (estado.archivos.some((a) => a.sensible)) throw new ErrorTarea("archivo_sensible", 409);
+  const conSecretos = archivosConSecretos(estado.completo, valoresDe(ctx.projectId));
+  if (conSecretos.length > 0) {
+    throw new ErrorTarea("secreto_detectado", 409, conSecretos.slice(0, 10).join(", "));
+  }
+  const hayNuevo = await gitSeguro(["diff", "--cached", "--quiet", "HEAD"], { cwd: ctx.clon });
+  if (hayNuevo.code === 0) {
+    const shaActual = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: ctx.clon })).trim();
+    return { accion: "commit", sha: shaActual, rama: ctx.rama };
+  }
+
+  const autor = ctx.projectId
+    ? db
+        .query<
+          { author_name: string; author_email: string },
+          [string]
+        >("SELECT author_name,author_email FROM project_git WHERE project_id=?")
+        .get(ctx.projectId)
+    : null;
+  await gitOkSeguro(
+    [
+      "-c",
+      `user.name=${autor?.author_name ?? "Telo"}`,
+      "-c",
+      `user.email=${autor?.author_email ?? "telo@localhost"}`,
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "-m",
+      mensaje,
+    ],
+    { cwd: ctx.clon },
+  );
+  const sha = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: ctx.clon })).trim();
+  db.query(
+    "INSERT INTO task_approvals (id, task_id, accion, diff_hash, commit_sha, rama, remoto, detalle) VALUES (?, ?, 'commit', ?, ?, ?, NULL, ?)",
+  ).run(crypto.randomUUID(), taskId, estado.hash, sha, ctx.rama, mensaje);
+  registrarEvento(taskId, "commit_aprobado", `${sha.slice(0, 8)} en ${ctx.rama}`);
+  return { accion: "commit", sha, rama: ctx.rama };
+}
+
 // Aprueba un commit o una subida. Siempre contra el hash del diff que vio el usuario.
 export async function aprobarTarea(
   taskId: string,
-  opts: { accion: "commit" | "push"; hash: string; mensaje?: unknown },
+  opts: {
+    accion: "commit" | "push";
+    hash: string;
+    mensaje?: unknown;
+    destinoRama?: string;
+  },
 ): Promise<ResultadoAprobacion> {
-  const mensaje = opts.accion === "commit" ? mensajeDeCommit(taskId, opts.mensaje) : "";
   return conTarea(taskId, async () => {
     const ctx = await contextoGit(taskId);
-    if (opts.accion === "push") return subirAprobado(taskId, ctx, opts.hash);
-
-    const estado = await estadoDelClon(ctx);
-    if (estado.archivos.length === 0) throw new ErrorTarea("sin_cambios", 409);
-    if (estado.hash !== opts.hash) throw new ErrorTarea("cambios_cambiaron", 409);
-    if (estado.archivos.some((a) => a.sensible)) throw new ErrorTarea("archivo_sensible", 409);
-    // Ningún secreto conocido ni credencial con formato reconocible en las líneas añadidas.
-    // Solo se devuelven nombres de archivo, nunca el valor.
-    const conSecretos = archivosConSecretos(estado.completo, valoresDe(ctx.projectId));
-    if (conSecretos.length > 0) {
-      throw new ErrorTarea("secreto_detectado", 409, conSecretos.slice(0, 10).join(", "));
+    if (opts.accion === "push") {
+      return subirAprobado(taskId, ctx, opts.hash, {
+        destinoRama: opts.destinoRama,
+        mensaje: opts.mensaje,
+      });
     }
-    // Si lo que hay ya está commiteado (HEAD tiene el mismo contenido), no hay nada nuevo que commitear.
-    const hayNuevo = await gitSeguro(["diff", "--cached", "--quiet", "HEAD"], { cwd: ctx.clon });
-    if (hayNuevo.code === 0) throw new ErrorTarea("sin_cambios", 409);
-
-    const autor = ctx.projectId
-      ? db
-          .query<
-            { author_name: string; author_email: string },
-            [string]
-          >("SELECT author_name,author_email FROM project_git WHERE project_id=?")
-          .get(ctx.projectId)
-      : null;
-    await gitOkSeguro(
-      [
-        "-c",
-        `user.name=${autor?.author_name ?? "Telo"}`,
-        "-c",
-        `user.email=${autor?.author_email ?? "telo@localhost"}`,
-        "-c",
-        "commit.gpgsign=false",
-        "commit",
-        "-m",
-        mensaje,
-      ],
-      { cwd: ctx.clon },
-    );
-    const sha = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: ctx.clon })).trim();
-    db.query(
-      "INSERT INTO task_approvals (id, task_id, accion, diff_hash, commit_sha, rama, remoto, detalle) VALUES (?, ?, 'commit', ?, ?, ?, NULL, ?)",
-    ).run(crypto.randomUUID(), taskId, estado.hash, sha, ctx.rama, mensaje);
-    registrarEvento(taskId, "commit_aprobado", `${sha.slice(0, 8)} en ${ctx.rama}`);
-    return { accion: "commit", sha, rama: ctx.rama };
+    return commitInterno(taskId, ctx, opts.hash, opts.mensaje);
   });
 }
 
@@ -610,6 +629,7 @@ async function subirAprobado(
   taskId: string,
   ctx: Contexto,
   hash: string,
+  opts?: { destinoRama?: string; mensaje?: unknown },
 ): Promise<ResultadoAprobacion> {
   // El destino sale de remoto.txt, no del clon: el agente puede cambiar el origen del clon, pero no esa URL.
   const guardado = leerRemoto(taskId);
@@ -617,18 +637,29 @@ async function subirAprobado(
   const remoto = urlGithubPermitida(guardado);
   if (!remoto) throw new ErrorTarea("remoto_no_permitido", 409);
 
-  const head = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: ctx.clon })).trim();
-  const aprobacion = aprobacionDe(taskId, "commit");
-  if (!aprobacion || aprobacion.commit_sha !== head) throw new ErrorTarea("commit_requerido", 409);
+  let head = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: ctx.clon })).trim();
+  let aprobacion = aprobacionDe(taskId, "commit");
+
+  // Si no se ha aprobado el commit explícitamente o hay cambios pendientes, se crea el commit automáticamente
+  // para no bloquear al usuario con "commit_requerido".
+  if (!aprobacion || aprobacion.commit_sha !== head || aprobacion.diff_hash !== hash) {
+    const estado = await estadoDelClon(ctx);
+    if (estado.archivos.length > 0) {
+      const commitRes = await commitInterno(taskId, ctx, hash, opts?.mensaje);
+      head = commitRes.sha;
+      aprobacion = aprobacionDe(taskId, "commit");
+    } else if (!aprobacion || aprobacion.commit_sha !== head) {
+      throw new ErrorTarea("commit_requerido", 409);
+    }
+  }
 
   const estado = await estadoDelClon(ctx);
   if (estado.hash !== hash) throw new ErrorTarea("cambios_cambiaron", 409);
-  if (aprobacion.diff_hash !== estado.hash) throw new ErrorTarea("commit_requerido", 409);
+  if (!aprobacion || aprobacion.diff_hash !== estado.hash) throw new ErrorTarea("commit_requerido", 409);
 
-  // Sin force: un push rechazado por no ser fast-forward no pisa nada.
-  // Con clave SSH del proyecto, la subida va por SSH con esa clave. Sin ella, va por HTTPS con el
-  // GITHUB_TOKEN del proyecto, si existe. La clave tiene prioridad: el token no se usa si hay clave.
-  const refspec = `${head}:refs/heads/${ctx.rama}`;
+  // Rama destino: si se especifica (ej. "main" o "master") se usa directamente; de lo contrario la rama de tarea.
+  const ramaDestino = opts?.destinoRama?.trim() || ctx.rama;
+  const refspec = `${head}:refs/heads/${ramaDestino}`;
   const token = (ctx.projectId ? valorSecreto(ctx.projectId, "GITHUB_TOKEN") || null : null) || tokenGithubGlobal();
   const destinoSsh =
     !token && ctx.projectId && clavePublicaDe(ctx.projectId) ? urlSshDeGithub(remoto) : null;
@@ -658,9 +689,10 @@ async function subirAprobado(
 
   db.query(
     "INSERT INTO task_approvals (id, task_id, accion, diff_hash, commit_sha, rama, remoto, detalle) VALUES (?, ?, 'push', ?, ?, ?, ?, NULL)",
-  ).run(crypto.randomUUID(), taskId, estado.hash, head, ctx.rama, remoto);
-  registrarEvento(taskId, "push_aprobado", `${head.slice(0, 8)} a ${remoto} (${ctx.rama})`);
-  return { accion: "push", sha: head, rama: ctx.rama, remoto };
+  ).run(crypto.randomUUID(), taskId, estado.hash, head, ramaDestino, remoto);
+  registrarEvento(taskId, "push_aprobado", `${head.slice(0, 8)} a ${remoto} (${ramaDestino})`);
+
+  return { accion: "push", sha: head, rama: ramaDestino, remoto };
 }
 
 // Al cancelar: el clon se borra solo si no tiene nada que revisar (ni cambios ni commits nuevos).
