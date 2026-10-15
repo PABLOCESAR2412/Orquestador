@@ -2,7 +2,7 @@
 
 Documento de traspaso. Quien lo continúe debe leer también `CLAUDE.md`, `DESIGN.md` y `FASE2.md`.
 
-Rama: `feat/seguir-tras-cuota`. Último commit subido: `67a1c1d` (fase 3, correcciones tras probar en el VM). Las tareas 7, 9 y 10 están **sin commit**, pendientes de aprobación del usuario. No hay PR.
+Rama: `feat/seguir-tras-cuota`. Último commit subido: `79b126e` (merge con el remoto). Las tareas 7, 9 y Codex están en `502b781`. No hay PR.
 
 Leyenda: [x] hecho y verificado · [~] escrito, sin probar · [ ] pendiente
 
@@ -43,12 +43,12 @@ Lista de control. Se marca lo hecho en cada tarea y aquí a la vez.
 - [x] **Tarea 2.** Barra lateral: sin enlace Chat; chats de proyecto visibles con su nombre debajo. Verificada a 390 y 1440 px, sin desborde. `DESIGN.md` y `cambios.json` actualizados.
 - [x] **Tarea 3.** Modelos de Groq, NVIDIA y Gemini visibles cuando su clave llega al CLI; Gemini con dos variables; diagnóstico en Ajustes ("N modelos en el selector" o aviso si OpenCode no tiene modelos del proveedor). Verificado: `bun test` completo en verde (209), `tsc` limpio, y Playwright en Ajustes a 390 y 1440 px. **Pendiente en el VM:** confirmar el id `google` y el nombre de variable de NVIDIA con `opencode models`.
 - [x] **Tarea 4.** Vista de proyectos con métricas (chats, tareas, última actividad desde `GET /api/projects`) y acciones en iconos de 40 px. Verificada a 390 y 1440 px, claro y oscuro: métricas, 40 px, anclar desde el icono, confirmación al eliminar, sin desborde. Pruebas de servidor en `proyectos.test.ts`.
-- [~] **Tarea 5.** Cierre de la fase 3. Hecho: documentación, `cambios.json`, pruebas (servidor 246 en verde, `tsc` limpio, `bun run build`, navegador 29 de 29 en la tarea 7, 9 y 10). Falta: aprobación del commit y del push por el usuario.
+- [x] **Tarea 5.** Cierre de la fase 3. Hecho: documentación, `cambios.json`, pruebas (servidor 246 en verde, `tsc` limpio, `bun run build`, navegador 29 de 29 en las tareas 7, 9 y Codex). Subido con aprobación del usuario: `502b781` y merge `79b126e`.
 - [~] **Tarea 6.** Estado, logs y gasto de Azure en Ajustes. **Hecho:** estado de la unidad y registros (`GET /api/servidor/servicio` y `/logs`, con redacción y sin shell; botón Ver logs activo). Verificado en el navegador y en `servidor-logs.test.ts`. **Pendiente:** gasto de Azure, que espera la decisión del usuario sobre la identidad del VM (ver tarea 6, punto 3).
 - [x] **Tarea 7.** Skills globales y por proyecto, editables desde la app. Verificada en navegador a 390 y 1440 px, y en `skills.test.ts`. **Pendiente en el VM:** confirmar que OpenCode las lista.
 - [x] **Tarea 8.** Memoria del proyecto editable desde la app (`PUT /api/projects/:id/memoria`, con redacción y límite de 4 000 caracteres; botones Editar, Escribir, Guardar, Cancelar y Borrar). Verificada en el navegador a 390 y 1440 px, y en `proyectos.test.ts`. Supuesto confirmado en el código: "memoria" = memoria aprendida por proyecto.
 - [x] **Tarea 9.** Botón "Instalar" de OpenCode con confirmación en dos pasos y comando fijo, verificado con npm falso (`instalacion.test.ts`) y en navegador. **Pendiente en el VM:** que `npm` exista para el servicio, y que `opencode models` liste los modelos de la clave guardada.
-- [~] **Tarea 10.** Codex: login por código de dispositivo, verificado con CLI falso (`login-codex.test.ts`) y en navegador; **pendiente en el VM:** el comando exacto y el archivo de sesión. Gemini: clave de AI Studio (tarea 3). Claude gratis: **sin decisión del usuario, no implementado**.
+- [~] **Tarea 10.** Codex: login por código de dispositivo, verificado con CLI falso (`login-codex.test.ts`) y en navegador; **pendiente en el VM:** el comando exacto y el archivo de sesión. Gemini: clave de AI Studio (tarea 3). Claude: **investigado, no implementado** (ver tarea 10, punto b).
 
 Orden: tareas 1 a 5 primero (ya acordadas), luego 6 a 10 en el orden en que el usuario las pidió. Decisiones tomadas: skills globales y por proyecto (7), instalar OpenCode con confirmación (9), login de Codex en el VM (10a). Pendiente: Claude gratis (10b) y el gasto de Azure (6, necesita la identidad del VM).
 
@@ -248,21 +248,38 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 **Decisiones.**
 - **(a) Codex:** aprobado el login de dispositivo, ejecutado en el VM.
-- **(b) Claude gratis:** **sin decisión del usuario; no se implementa.** La recomendación sigue siendo no copiar tokens. La vía que queda es una clave de API de pago por uso, con el mismo flujo que Groq (tarea 9).
+- **(b) Claude gratis:** investigado en octubre de 2026. **Decisión del usuario: no añadir Claude por ahora.** Solo tiene el plan gratis; la única vía compatible (clave de API) es de pago. No se implementa ningún acceso con cuenta de Claude.
 - **Gemini:** se usa la clave de AI Studio (tarea 3). El inicio de sesión con Google de Telo (`oauth-google.ts`) no sirve para OpenCode.
+
+**Qué dice la documentación oficial (Claude Code, «Legal and compliance»).**
+- El OAuth de cuenta de consumo está pensado «exclusivamente» para quien compra Free, Pro, Max, Team o Enterprise y para las aplicaciones nativas de Anthropic.
+- Los desarrolladores que construyen productos deben usar **clave de API** (Claude Console) o un proveedor de nube. Anthropic **no permite** a terceros «enrutar solicitudes con credenciales de los planes Free, Pro o Max en nombre de sus usuarios», ni «recoger, almacenar o intermediar credenciales o tokens de sesión de Claude.ai».
+- Sí está permitido que una persona inicie sesión con su propia suscripción en el **binario oficial de Claude Code, sin modificar**.
+
+**Qué significa para Telo.**
+- Telo no usa Claude Code para los agentes: usa OpenCode. Usar el OAuth de una cuenta de consumo desde OpenCode, o guardar o reenviar un token de Claude, cae en lo que la documentación prohíbe. **Descartado.**
+- Copiar tokens de claude.ai o de la app de escritorio: **descartado** (mismo motivo).
+- Un runner nuevo que ejecute el binario oficial de Claude Code con la sesión de la persona sería la única vía con cuenta de consumo. Tendría que confirmarse que el plan gratis incluye Claude Code, y eso no se ha podido comprobar: la página de soporte de Anthropic no se pudo leer y las fuentes secundarias no coinciden. **No se recomienda con plan gratis.**
+- **Ruta compatible:** clave de API de Claude Console, con el mismo flujo de tarjeta que Groq y NVIDIA. Es de pago por uso. Hay que confirmar el nombre de la variable que lee OpenCode (`ANTHROPIC_API_KEY`) con `opencode models`.
+
+**Qué hacer (solo si el usuario tiene plan de pago y lo pide).**
+1. `server/src/claves-proveedor.ts`: añadir Anthropic con `ANTHROPIC_API_KEY`, igual que Groq.
+2. `server/src/routes/providers.ts`: tarjeta guardable.
+3. Pruebas: `claves-proveedor.test.ts` y `entorno-proveedores.test.ts`, con el modelo `anthropic/...` en el CLI falso.
 
 **Cómo quedó (Codex).**
 - `server/src/login-cli.ts` lanza `codex login --device-auth` en su propio grupo de procesos, con entorno mínimo. Lee la salida mientras el CLI espera y extrae la URL y el código.
 - Rutas: `GET`, `POST` y `DELETE /api/providers/codex/login`. Una sesión a la vez (409 si ya hay una). Tiempo máximo de 15 minutos. Cancelar termina el grupo.
 - **El token no se lee ni se muestra.** La salida se redacta. El éxito se decide por salida 0 y porque exista el archivo de sesión; ese archivo solo se comprueba, nunca se abre.
 - `~/.codex` no está en la lista de bubblewrap: los agentes no lo ven.
-- En la tarjeta de Codex: "Iniciar sesión" → enlace y código → "Sesión iniciada en el servidor."
+- En la tarjeta de Codex: «Iniciar sesión» → enlace y código → «Sesión iniciada en el servidor». «Ya lo hice» comprueba el estado y mantiene el enlace mientras el CLI espera.
 - Codex **no** es todavía proveedor de los agentes. La tarjeta lo dice.
 
-**Verificado.** `server/tests/login-codex.test.ts` (4 pruebas) con un CLI falso que imprime un token de prueba: el token no aparece en ninguna respuesta, cancelar no deja procesos y sin CLI responde `codex_no_instalado`. En navegador: enlace, código y sesión iniciada, a 390 y 1440 px.
+**Verificado.** `server/tests/login-codex.test.ts` (4 pruebas) con un CLI falso que imprime un token de prueba: el token no aparece en ninguna respuesta, cancelar no deja procesos y sin CLI responde `codex_no_instalado`. En navegador: enlace, código, «Ya lo hice» y sesión iniciada, a 390 y 1440 px.
 
 **No verificado (importante).**
-- La documentación oficial de Codex (`developers.openai.com/codex/auth`) no se pudo leer en esta sesión: el permiso de lectura caducó y la página redirige a `learn.chatgpt.com/docs/auth`. El comando `codex login --device-auth` y la ruta `~/.codex/auth.json` vienen de fuentes de terceros. Antes de darlo por bueno en el VM: `codex login --help` y comprobar qué archivo crea.
+- La documentación oficial de Codex (`developers.openai.com/codex/auth`) no se pudo leer en esta sesión. El comando `codex login --device-auth` y la ruta `~/.codex/auth.json` vienen de fuentes de terceros. Antes de darlo por bueno en el VM: `codex login --help` y comprobar qué archivo crea.
+- **Términos de OpenAI:** no revisados. Antes de usar la sesión de ChatGPT para agentes (con un runner de Codex), hay que comprobar que el caso está permitido.
 - No se sabe si el CLI de Codex está instalado en el VM. Si no lo está, la app lo dice.
 
 **Cambios.** `cambios.json`: grande (entrada añadida, según el plan).
