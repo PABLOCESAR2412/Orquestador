@@ -39,6 +39,16 @@ describe("líneas del agente", () => {
     expect(itemDeLinea(linea)).toEqual({ tipo: "texto", texto: "Voy a leer el archivo." });
   });
 
+  test("la compactación automática del contexto aparece como una acción", () => {
+    expect(itemDeLinea(JSON.stringify({ type: "session.compacted", properties: { sessionID: "ses_prueba" } }))).toEqual({
+      tipo: "accion",
+      herramienta: "compaction",
+      titulo: "Contexto compactado automáticamente",
+      detalle: null,
+      estado: "hecha",
+    });
+  });
+
   test("una lectura terminada muestra la ruta y la vista previa de la salida", () => {
     const item = itemDeLinea(
       herramienta("read", { input: { filePath: "src/app.ts" }, output: "const a = 1;\nexport {};" }),
@@ -102,6 +112,12 @@ describe("títulos y vistas previas", () => {
     const { titulo, detalle } = describirAccion("herramienta_nueva", { x: 1 }, null, null);
     expect(titulo).toBe("Usó herramienta_nueva");
     expect(detalle).toBe('{"x":1}');
+  });
+
+  test("la integración de GitHub se distingue de un comando de terminal", () => {
+    const { titulo, detalle } = describirAccion("github_search_code", { query: "chat" }, "3 resultados", null);
+    expect(titulo).toBe("Usó la integración de GitHub");
+    expect(detalle).toBe("3 resultados");
   });
 
   test("la vista previa recorta a 30 líneas y dice cuántas faltan", () => {

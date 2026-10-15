@@ -70,6 +70,11 @@ function describirSinError(
   const ruta = cadena(entrada.filePath) ?? cadena(entrada.path) ?? "";
   const vista = resultado?.trim() ? vistaDe(resultado) : null;
 
+  if (/^(github|gh)(?:[._-]|$)/i.test(herramienta)) {
+    const entradaTxt = Object.keys(entrada).length ? recortar(JSON.stringify(entrada), MAX_DETALLE) : null;
+    return { titulo: "Usó la integración de GitHub", detalle: vista ?? entradaTxt };
+  }
+
   switch (herramienta) {
     case "read":
       return { titulo: `Leyó ${rutaCorta(ruta) || "un archivo"}`, detalle: vista };
@@ -126,8 +131,17 @@ export function itemDeLinea(linea: string): ItemActividad | null {
   } catch {
     return null;
   }
-  if (!esRegistro(evento) || !esRegistro(evento.part)) return null;
+  if (!esRegistro(evento)) return null;
+  // OpenCode anuncia esta transición como evento de sesión; se guarda en el mismo registro de pasos.
+  if (evento.type === "session.compacted") {
+    return { tipo: "accion", herramienta: "compaction", titulo: "Contexto compactado automáticamente", detalle: null, estado: "hecha" };
+  }
+  if (!esRegistro(evento.part)) return null;
   const parte = evento.part;
+
+  if (parte.type === "compaction" || parte.mode === "compaction" || parte.summary === true) {
+    return { tipo: "accion", herramienta: "compaction", titulo: "Contexto compactado automáticamente", detalle: null, estado: "hecha" };
+  }
 
   if (evento.type === "text" && cadena(parte.text)?.trim()) {
     return { tipo: "texto", texto: recortar(cadena(parte.text)!.trim(), MAX_TEXTO) };

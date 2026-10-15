@@ -3,9 +3,37 @@
 
 function aFecha(sql: string): Date | null {
   if (!sql) return null;
-  const iso = sql.includes("T") ? (sql.endsWith("Z") ? sql : sql + "Z") : sql.replace(" ", "T") + "Z";
+  const tieneZona = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(sql);
+  const iso = tieneZona ? sql : `${sql.replace(" ", "T")}Z`;
   const fecha = new Date(iso);
   return isNaN(fecha.getTime()) ? null : fecha;
+}
+
+function textoDuracion(segundos: number): string {
+  const total = Math.max(0, Math.floor(segundos));
+  if (total < 60) return `${total} s`;
+  const minutos = Math.floor(total / 60);
+  const segundosRestantes = total % 60;
+  if (minutos < 60) return `${minutos} min${segundosRestantes ? ` ${segundosRestantes} s` : ""}`;
+  const horas = Math.floor(minutos / 60);
+  const minutosRestantes = minutos % 60;
+  return `${horas} h${minutosRestantes ? ` ${minutosRestantes} min` : ""}`;
+}
+
+// Tiempo entre el mensaje enviado y la respuesta guardada, o desde un inicio mientras sigue trabajando.
+export function duracionEntre(inicio: string | null, fin: string | null): string | null {
+  if (!inicio || !fin) return null;
+  const desde = aFecha(inicio)?.getTime();
+  const hasta = aFecha(fin)?.getTime();
+  if (desde === undefined || hasta === undefined || hasta < desde) return null;
+  return textoDuracion((hasta - desde) / 1000);
+}
+
+export function tiempoTranscurrido(inicio: string | null, ahora = Date.now()): string | null {
+  if (!inicio) return null;
+  const desde = aFecha(inicio)?.getTime();
+  if (desde === undefined || ahora < desde) return null;
+  return textoDuracion((ahora - desde) / 1000);
 }
 
 // null significa un mensaje que todavía se está enviando.

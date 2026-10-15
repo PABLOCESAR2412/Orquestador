@@ -16,6 +16,7 @@ import { MenuComandosChat, type ComandoChat } from "../components/chat-comandos"
 import { PlanRevision } from "../components/plan-revision";
 import { AccionesRepositorioChat } from "../components/repository-approval";
 import { sugerenciasChat } from "../lib/sugerencias";
+import { duracionEntre } from "../lib/tiempo";
 import { effortLabel, errorText, formatWhen, tierBars } from "../lib/model";
 import {
   componerMensaje,
@@ -209,7 +210,7 @@ export function ChatPage() {
     enabled: !!selectedId && !!current?.project_id,
     refetchInterval: 3_000,
   });
-  const tareaChat = current?.project_id ? tareasChat.data?.[0] : undefined;
+  const tareaChat = current?.project_id ? tareasChat.data?.at(-1) : undefined;
   const modelList: ModelInfo[] = models.data?.models ?? [];
   const modelInfo = modelList.find((m) => m.id === current?.model) ?? null;
   const lista = messages.data ?? [];
@@ -500,6 +501,15 @@ export function ChatPage() {
     for (let j = indice - 1; j >= 0; j--) if (lista[j].role === "user") return lista[j].id;
     return null;
   };
+  const duracionDeRespuesta = (indice: number): string | null => {
+    for (let j = indice - 1; j >= 0; j--) {
+      if (lista[j].role === "user") return duracionEntre(lista[j].created_at, lista[indice].created_at);
+    }
+    return null;
+  };
+  const inicioPensando = tareaActiva
+    ? tareaChat?.started_at ?? tareaChat?.created_at ?? null
+    : [...lista].reverse().find((m) => m.role === "user")?.created_at ?? null;
 
   // Nombres reales: el modelo del chat o "Agente" si el servidor todavía no ha elegido uno.
   const efectoActual = current?.effort ?? null;
@@ -832,6 +842,7 @@ export function ChatPage() {
                     texto={m.content}
                     cuando={m.created_at}
                     modelo={nombreAgente}
+                    duracion={duracionDeRespuesta(i)}
                     proceso={
                       selectedId && turnoDeRespuesta(i)
                         ? { conversacionId: selectedId, turnoId: turnoDeRespuesta(i)! }
@@ -851,7 +862,11 @@ export function ChatPage() {
                 <MensajeUsuario texto={send.variables?.content ?? ""} cuando={null} />
               )}
               {pensando && (
-                <IndicadorPensando modelo={nombreAgente} vivo={(selectedId && vivos[selectedId]?.pasos) || []} />
+                <IndicadorPensando
+                  modelo={nombreAgente}
+                  desde={inicioPensando}
+                  vivo={(selectedId && vivos[selectedId]?.pasos) || []}
+                />
               )}
               {tareaChat && (
                 <div className="tl-tarea-seccion">

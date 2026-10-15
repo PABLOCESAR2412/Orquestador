@@ -112,6 +112,7 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
+* { scrollbar-color: auto; scrollbar-width: auto; }
 html, body, #root { height: 100%; }
 html, body { overflow-x: hidden; }
 body { margin: 0; background: var(--bg); font-family: var(--font); color: var(--ink); }
@@ -512,9 +513,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   display: flex;
   align-items: center;
   overflow-x: auto;
-  scrollbar-width: none;
 }
-.nav-inner::-webkit-scrollbar { display: none; }
 .nav-links { display: flex; align-items: center; gap: 4px; }
 .nav-link {
   color: var(--ink-2);
@@ -1712,7 +1711,6 @@ button:disabled { opacity: 0.4; cursor: default; }
   padding: 2px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  scrollbar-width: none;
 }
 .segmented button {
   flex-shrink: 0;
