@@ -65,6 +65,7 @@
     { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Chat: tiempo de respuesta, copiar y escuchar mensajes, actividad con iconos y sugerencias contextuales", "pr": null },
     { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Chat: actividad en vivo desplazable y resumen de cambios con diff revisable", "pr": null },
     { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Ajustes: modelos Google y Codex, guardado, Skills CLI y acceso GitHub por sesión", "pr": 47 },
-    { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Chat: cola persistente de mensajes con edición, redirección y envío automático", "pr": 48 }
+    { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Chat: cola persistente de mensajes con edición, redirección y envío automático", "pr": 48 },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "La lectura de respuestas usa una voz en español", "pr": null }
   ]
 }
