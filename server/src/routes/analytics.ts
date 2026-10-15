@@ -6,6 +6,7 @@ type Totals = { calls: number; input: number; output: number; cost: number };
 type DayRow = { day: string; cost: number; tokens: number; calls: number };
 type StatusRow = { status: string; n: number };
 type UsoModeloRow = { model: string; cost: number; tokens: number; calls: number };
+type UsoTipoRow = { tipo: "chat" | "tarea" | "otro"; calls: number; tokens: number; cost: number };
 type TareaModeloRow = { model: string; tareas: number; duracion: number | null };
 
 const TASK_STATUSES = ["queued", "analyzing", "waiting_approval", "running", "interrupted", "sin_cuota", "done", "failed", "cancelled"] as const;
@@ -65,6 +66,28 @@ analytics.get("/analytics", (c) => {
          FROM usage u ${usoWhere}`,
     )
     .get(...usoParams)!;
+
+  // Una llamada con task_id pertenece al agente aunque también tenga conversation_id.
+  // Así las tareas iniciadas desde un chat no se cuentan dos veces como chat directo.
+  const usosPorTipo = db
+    .query<UsoTipoRow, string[]>(
+      `SELECT CASE
+                WHEN u.task_id IS NOT NULL THEN 'tarea'
+                WHEN u.conversation_id IS NOT NULL THEN 'chat'
+                ELSE 'otro'
+              END AS tipo,
+              COUNT(*) AS calls,
+              COALESCE(SUM(u.input_tokens + u.output_tokens), 0) AS tokens,
+              COALESCE(SUM(u.cost), 0) AS cost
+         FROM usage u ${usoWhere}
+        GROUP BY tipo`,
+    )
+    .all(...usoParams);
+  const usoPorTipoMap = new Map(usosPorTipo.map((row) => [row.tipo, row]));
+  const byType = (["chat", "tarea", "otro"] as const).map((tipo) => {
+    const row = usoPorTipoMap.get(tipo);
+    return { tipo, calls: row?.calls ?? 0, tokens: row?.tokens ?? 0, cost: row?.cost ?? 0 };
+  });
 
   // Un punto por día, incluidos los días sin uso, para que la gráfica no salte.
   const dayRows = db
@@ -180,6 +203,7 @@ analytics.get("/analytics", (c) => {
       outputTokens: totals.output,
       cost: totals.cost,
     },
+    byType,
     byDay,
     byModel,
     tasks,

@@ -296,3 +296,12 @@ main.an-principal {
   .an-tabla .an-tabla-vacia::before { content: none; }
   .an-pie-tabla { flex-direction: column; align-items: stretch; }
 }
+
+.an-uso-tabla tbody th { display: table-cell; min-width: 180px; font-family: inherit; color: var(--ink); }
+.an-uso-tabla tbody td { font-family: var(--font-mono); font-size: 13px; }
+.an-uso-nombre { display: block; font-size: 14px; font-weight: 500; color: var(--ink); }
+.an-uso-detalle { display: block; margin-top: 3px; font-size: 12px; line-height: 1.4; color: var(--ink-2); }
+@media (max-width: 640px) {
+  .an-uso-tabla tbody th { display: flex; min-width: 0; }
+  .an-uso-tabla tbody td { align-items: flex-start; }
+}
