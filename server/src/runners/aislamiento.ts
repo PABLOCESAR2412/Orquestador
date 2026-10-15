@@ -1,6 +1,8 @@
 import { existsSync, realpathSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { config } from "../config";
+import { hallarEjecutable } from "../ejecutable";
+
 
 // Aislamiento de los agentes con bubblewrap (bwrap). Cada ejecución ve:
 // - su carpeta de trabajo, con escritura (proyecto o carpeta temporal del chat o tarea);
@@ -89,7 +91,7 @@ export function prefijoAislamiento(cwd: string): string[] {
       "La carpeta de trabajo no está permitida para un agente.",
     );
   }
-  if (!Bun.which("bwrap")) {
+  if (!hallarEjecutable("bwrap")) {
     throw new AislamientoError(
       "aislamiento_no_disponible",
       "Falta bubblewrap en el servidor, así que el agente no puede correr aislado. Instálalo con: sudo apt install bubblewrap",
@@ -120,6 +122,10 @@ export function prefijoAislamiento(cwd: string): string[] {
       const ruta = join(home, rel);
       args.push("--bind-try", ruta, ruta);
     }
+    // Las skills globales las edita la app y la persona, no el agente: se montan en solo lectura encima del
+    // estado de OpenCode (bwrap aplica el montaje posterior). Así un agente no deja instrucciones para los demás.
+    const skillsGlobales = join(home, ".config", "opencode", "skills");
+    args.push("--ro-bind-try", skillsGlobales, skillsGlobales);
     for (const rel of HERRAMIENTAS) {
       const ruta = join(home, rel);
       args.push("--ro-bind-try", ruta, ruta);

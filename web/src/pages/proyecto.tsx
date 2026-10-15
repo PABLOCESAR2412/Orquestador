@@ -133,7 +133,7 @@ export function ProjectDetailPage() {
             <ProyectoResumen detalle={datos} />
             <ProyectoInstrucciones proyecto={proyecto} />
             <ProyectoMemoria id={proyecto.id} memoria={datos.memoria} />
-            <ProyectoSkills />
+            <ProyectoSkills id={proyecto.id} />
             <ProyectoArchivos id={proyecto.id} />
             <ProyectoSecretos id={proyecto.id} />
             <ProyectoClave id={proyecto.id} />

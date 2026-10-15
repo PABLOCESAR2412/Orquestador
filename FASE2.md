@@ -147,3 +147,10 @@ Estado detallado en `FASE3.md`. Resumen:
 - [ ] **Codex, Gemini y Claude gratis** (tarea 10). Bloqueada: decidir si se acepta el login de dispositivo de Codex en el VM y si Claude se conecta solo con clave de API.
 
 Corrección de la nota de Gemini: ver sección B.
+
+### Estado tras la fase 3 (tareas 7, 9 y 10)
+
+- Skills globales y por proyecto, editables desde Ajustes y desde el proyecto. Pendiente en el VM: confirmar que OpenCode las lista.
+- OpenCode se puede instalar desde Ajustes con confirmación (comando fijo, `npm install -g --prefix ~/.opencode opencode-ai`). Pendiente: `npm` en el PATH del servicio.
+- Codex: inicio de sesión por código de dispositivo desde Ajustes. Pendiente: confirmar el comando `codex login --device-auth` y el archivo de sesión en el VM. Los agentes todavía no usan Codex.
+- Claude gratis: sin decisión; no se implementa.

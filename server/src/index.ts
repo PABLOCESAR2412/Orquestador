@@ -19,6 +19,10 @@ import { clavesProveedor } from "./routes/claves-proveedor";
 import { claveSshRoute } from "./routes/clave-ssh";
 import { programadasRoute } from "./routes/programadas";
 import { servidor } from "./routes/servidor";
+import { herramientas } from "./routes/herramientas";
+import { skillsRoute } from "./routes/skills";
+import { asegurarRutaInstalada } from "./instalacion";
+import { prepararCarpetaGlobal } from "./skills";
 import { googleRoute } from "./routes/google";
 import { github } from "./routes/github";
 import { uso } from "./routes/uso";
@@ -124,10 +128,17 @@ app.route("/api", clavesProveedor);
 app.route("/api", claveSshRoute);
 app.route("/api", programadasRoute);
 app.route("/api", servidor);
+app.route("/api", herramientas);
+app.route("/api", skillsRoute);
 app.route("/api", uso);
 app.route("/api", googleRoute);
 app.route("/api", github);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
+
+// El CLI de OpenCode instalado desde la app vuelve a estar en PATH tras un reinicio.
+asegurarRutaInstalada();
+// Carpeta de skills globales: existe siempre, para que el agente la vea en solo lectura.
+prepararCarpetaGlobal();
 
 // Un turno del chat que quedó sin respuesta por un reinicio se avisa antes de atender a nadie.
 avisarTurnosInterrumpidos();

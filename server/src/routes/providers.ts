@@ -1,5 +1,8 @@
 import { Hono } from "hono";
 import { proveedorConClave, tieneClaveProveedor } from "../claves-proveedor";
+import { cancelarLoginCodex, estadoLoginCodex, iniciarLoginCodex, LoginError, sesionCodexConectada } from "../login-cli";
+import { hallarEjecutable } from "../ejecutable";
+
 
 type ProviderStatus = {
   id: string;
@@ -54,7 +57,7 @@ function estadoProveedores(): ProviderStatus[] {
     {
       id: "opencode",
       name: "OpenCode",
-      configured: Bun.which("opencode") !== null,
+      configured: hallarEjecutable("opencode") !== null,
       implemented: true,
       hint: "CLI de OpenCode instalado en el servidor.",
       variable: null,
@@ -65,9 +68,9 @@ function estadoProveedores(): ProviderStatus[] {
     {
       id: "codex",
       name: "Codex",
-      configured: Boolean(process.env.OPENAI_API_KEY),
+      configured: Boolean(process.env.OPENAI_API_KEY) || sesionCodexConectada(),
       implemented: false,
-      hint: "Necesita OPENAI_API_KEY en el archivo de entorno del servidor.",
+      hint: "Inicio de sesión con la cuenta de ChatGPT desde esta página. Los agentes todavía no usan Codex.",
       variable: "OPENAI_API_KEY",
       enAgente: enAgente.has("OPENAI_API_KEY"),
       guardable: false,
@@ -98,3 +101,15 @@ export const providers = new Hono();
 
 // GET /api/providers
 providers.get("/providers", (c) => c.json(estadoProveedores()));
+
+// Inicio de sesión de Codex por código de dispositivo (ver login-cli.ts). Solo Codex tiene este flujo.
+providers.get("/providers/codex/login", (c) => c.json(estadoLoginCodex()));
+providers.post("/providers/codex/login", (c) => {
+  try {
+    return c.json(iniciarLoginCodex(), 202);
+  } catch (err) {
+    if (err instanceof LoginError) return c.json({ error: err.code }, err.status);
+    throw err;
+  }
+});
+providers.delete("/providers/codex/login", (c) => c.json(cancelarLoginCodex()));

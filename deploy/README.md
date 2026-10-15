@@ -63,6 +63,11 @@ sudo systemctl restart orquestador
 
 Sin ese permiso, la pestaña muestra un aviso en lugar de los registros. El gasto de Azure necesita aparte una identidad administrada del VM con permiso de lectura de costes (pendiente de decisión; ver `FASE3.md`, tarea 6).
 
+## Instalar OpenCode y el login de Codex desde Ajustes (una vez)
+
+- **Instalar OpenCode** usa `npm` del PATH de `orquestador.service`. Si no hay `npm`, el botón lo dice. Instala en `~/.opencode`, que el agente ya ve en solo lectura. El servidor añade esa carpeta a su PATH sin reiniciar. No hace falta sudo.
+- **Login de Codex** necesita el CLI `codex` en el servidor. Antes de usarlo, confirma con `codex login --help` que existe `--device-auth`, y mira qué archivo de sesión crea (la app espera `~/.codex/auth.json`; si es otro, hay que cambiarlo en `server/src/login-cli.ts`).
+
 ## Qué no cubre
 
 - No corre migraciones a mano: las aplica el servidor al arrancar.

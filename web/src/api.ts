@@ -369,6 +369,45 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Instalación de una herramienta del servidor (hoy OpenCode). El servidor solo ejecuta su comando fijo.
+export type InstalacionHerramienta = {
+  herramienta: string;
+  nombre: string;
+  comando: string;
+  estado: "inactiva" | "instalando" | "lista" | "error";
+  instalada: boolean;
+  iniciada: string | null;
+  terminada: string | null;
+  motivo: string | null;
+  salida: string;
+};
+
+// Inicio de sesión de Codex por código de dispositivo. El token nunca llega a la app.
+export type LoginCodex = {
+  estado: "inactivo" | "esperando" | "conectado" | "fallido";
+  conectada: boolean;
+  url: string | null;
+  codigo: string | null;
+  salida: string;
+  motivo: string | null;
+  iniciada: string | null;
+};
+
+export type SkillResumen = {
+  nombre: string;
+  descripcion: string | null;
+  valida: boolean;
+  bytes: number;
+  modificada: string;
+};
+
+export type SkillDetalle = SkillResumen & { contenido: string };
+
+// Skills globales (sin proyecto) o las del proyecto indicado.
+function skillsRuta(projectId?: string): string {
+  return projectId ? `/api/projects/${projectId}/skills` : "/api/skills";
+}
+
 export const api = {
   health: () => request<{ ok: boolean; time: string }>("/api/health"),
   runnerStatus: () =>
@@ -473,6 +512,28 @@ export const api = {
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
   serverService: () => request<ServicioEstado>("/api/servidor/servicio"),
   serverLogs: (lineas = 100) => request<RegistrosServidor>(`/api/servidor/logs?lineas=${lineas}`),
+  // Instalación de OpenCode: el servidor exige `confirmar: true` y ejecuta solo su comando fijo.
+  herramientaInstalacion: (id: string) => request<InstalacionHerramienta>(`/api/herramientas/${id}/instalacion`),
+  instalarHerramienta: (id: string) =>
+    request<InstalacionHerramienta>(`/api/herramientas/${id}/instalacion`, {
+      method: "POST",
+      body: JSON.stringify({ confirmar: true }),
+    }),
+  // Inicio de sesión de Codex: la app solo ve la URL, el código y si existe la sesión.
+  codexLogin: () => request<LoginCodex>("/api/providers/codex/login"),
+  iniciarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "POST", body: "{}" }),
+  cancelarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "DELETE" }),
+  // Skills: sin projectId, las globales de Ajustes; con projectId, las de la carpeta del proyecto.
+  listSkills: (projectId?: string) => request<{ skills: SkillResumen[] }>(skillsRuta(projectId)),
+  getSkill: (nombre: string, projectId?: string) =>
+    request<SkillDetalle>(`${skillsRuta(projectId)}/${encodeURIComponent(nombre)}`),
+  saveSkill: (nombre: string, contenido: string, projectId?: string) =>
+    request<{ creada: boolean }>(`${skillsRuta(projectId)}/${encodeURIComponent(nombre)}`, {
+      method: "PUT",
+      body: JSON.stringify({ contenido }),
+    }),
+  deleteSkill: (nombre: string, projectId?: string) =>
+    request<{ ok: boolean }>(`${skillsRuta(projectId)}/${encodeURIComponent(nombre)}`, { method: "DELETE" }),
   resumeTask: (id: string) => request<Task>(`/api/tasks/${id}/reanudar`, { method: "POST", body: "{}" }),
   // Tras una cuota agotada: vuelve a la cola con otro modelo y retoma la sesión.
   continueTask: (id: string, body: { model?: string; effort?: string | null } = {}) =>

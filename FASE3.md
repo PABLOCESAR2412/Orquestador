@@ -2,7 +2,7 @@
 
 Documento de traspaso. Quien lo continúe debe leer también `CLAUDE.md`, `DESIGN.md` y `FASE2.md`.
 
-Rama: `feat/seguir-tras-cuota`. Último commit subido: `6dddd05` (turnos del chat en segundo plano). Al empezar la etapa de las tareas 6 a 10, el árbol de trabajo estaba limpio. No hay PR.
+Rama: `feat/seguir-tras-cuota`. Último commit subido: `67a1c1d` (fase 3, correcciones tras probar en el VM). Las tareas 7, 9 y 10 están **sin commit**, pendientes de aprobación del usuario. No hay PR.
 
 Leyenda: [x] hecho y verificado · [~] escrito, sin probar · [ ] pendiente
 
@@ -23,7 +23,7 @@ Leyenda: [x] hecho y verificado · [~] escrito, sin probar · [ ] pendiente
 ## Comandos de verificación
 
 ```
-cd server && bun test                      # suite del servidor (hoy 203 pasan, sin contar chat-turnos)
+cd server && bun test                      # suite del servidor (hoy 246 pasan)
 cd server && bunx tsc --noEmit -p .       # typecheck servidor
 cd web && bun run build                    # typecheck + build web (obligatorio antes de revisar UI)
 ```
@@ -43,14 +43,14 @@ Lista de control. Se marca lo hecho en cada tarea y aquí a la vez.
 - [x] **Tarea 2.** Barra lateral: sin enlace Chat; chats de proyecto visibles con su nombre debajo. Verificada a 390 y 1440 px, sin desborde. `DESIGN.md` y `cambios.json` actualizados.
 - [x] **Tarea 3.** Modelos de Groq, NVIDIA y Gemini visibles cuando su clave llega al CLI; Gemini con dos variables; diagnóstico en Ajustes ("N modelos en el selector" o aviso si OpenCode no tiene modelos del proveedor). Verificado: `bun test` completo en verde (209), `tsc` limpio, y Playwright en Ajustes a 390 y 1440 px. **Pendiente en el VM:** confirmar el id `google` y el nombre de variable de NVIDIA con `opencode models`.
 - [x] **Tarea 4.** Vista de proyectos con métricas (chats, tareas, última actividad desde `GET /api/projects`) y acciones en iconos de 40 px. Verificada a 390 y 1440 px, claro y oscuro: métricas, 40 px, anclar desde el icono, confirmación al eliminar, sin desborde. Pruebas de servidor en `proyectos.test.ts`.
-- [ ] **Tarea 5.** Cierre de la fase 3 (documentación, `cambios.json`, verificación visual, aprobación de commit).
+- [~] **Tarea 5.** Cierre de la fase 3. Hecho: documentación, `cambios.json`, pruebas (servidor 246 en verde, `tsc` limpio, `bun run build`, navegador 29 de 29 en la tarea 7, 9 y 10). Falta: aprobación del commit y del push por el usuario.
 - [~] **Tarea 6.** Estado, logs y gasto de Azure en Ajustes. **Hecho:** estado de la unidad y registros (`GET /api/servidor/servicio` y `/logs`, con redacción y sin shell; botón Ver logs activo). Verificado en el navegador y en `servidor-logs.test.ts`. **Pendiente:** gasto de Azure, que espera la decisión del usuario sobre la identidad del VM (ver tarea 6, punto 3).
-- [ ] **Tarea 7.** Skills configurables desde la app.
+- [x] **Tarea 7.** Skills globales y por proyecto, editables desde la app. Verificada en navegador a 390 y 1440 px, y en `skills.test.ts`. **Pendiente en el VM:** confirmar que OpenCode las lista.
 - [x] **Tarea 8.** Memoria del proyecto editable desde la app (`PUT /api/projects/:id/memoria`, con redacción y límite de 4 000 caracteres; botones Editar, Escribir, Guardar, Cancelar y Borrar). Verificada en el navegador a 390 y 1440 px, y en `proyectos.test.ts`. Supuesto confirmado en el código: "memoria" = memoria aprendida por proyecto.
-- [ ] **Tarea 9.** Claves de proveedores que funcionan desde la app, con botón "Instalar" para OpenCode.
-- [ ] **Tarea 10.** Conectar Codex, Gemini y Claude gratis (requiere decisión del usuario antes de programar).
+- [x] **Tarea 9.** Botón "Instalar" de OpenCode con confirmación en dos pasos y comando fijo, verificado con npm falso (`instalacion.test.ts`) y en navegador. **Pendiente en el VM:** que `npm` exista para el servicio, y que `opencode models` liste los modelos de la clave guardada.
+- [~] **Tarea 10.** Codex: login por código de dispositivo, verificado con CLI falso (`login-codex.test.ts`) y en navegador; **pendiente en el VM:** el comando exacto y el archivo de sesión. Gemini: clave de AI Studio (tarea 3). Claude gratis: **sin decisión del usuario, no implementado**.
 
-Orden: tareas 1 a 5 primero (ya acordadas), luego 6 a 10 en el orden en que el usuario las pidió. Las tareas 6 a 10 no se programan hasta que sus decisiones pendientes estén resueltas, salvo las partes que no dependen de ellas.
+Orden: tareas 1 a 5 primero (ya acordadas), luego 6 a 10 en el orden en que el usuario las pidió. Decisiones tomadas: skills globales y por proyecto (7), instalar OpenCode con confirmación (9), login de Codex en el VM (10a). Pendiente: Claude gratis (10b) y el gasto de Azure (6, necesita la identidad del VM).
 
 Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir el servidor antes de tocar la web. Si una prueba depende de tiempos, subir la espera de `esperar()`, no quitar la comprobación.
 
@@ -172,24 +172,32 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 7. Skills configurables desde la app
+## Tarea 7. Skills configurables desde la app (hecha)
 
-**Qué ya existe.** `web/src/components/proyecto-skills.tsx` es un marcador sin backend.
+**Decisión del usuario.** Globales y por proyecto.
 
-**Por qué es delicado.** OpenCode lee las skills como archivos en disco. El agente corre en bubblewrap y solo ve su carpeta de trabajo, así que las skills globales no están a su alcance. Editarlas desde la app obliga al servidor a escribir fuera del aislamiento, por eso la carpeta y los nombres aceptados deben estar acotados.
+**Cómo quedó.**
+- **Global:** `~/.config/opencode/skills/<nombre>/SKILL.md`. Se edita en Ajustes > Proveedores IA > Skills.
+- **Por proyecto:** `<carpeta del proyecto>/.opencode/skills/<nombre>/SKILL.md`. Se edita en la pestaña del proyecto.
+- **Nombre:** `^[a-z0-9]+(-[a-z0-9]+)*$`, hasta 64 caracteres. Es la misma regla que documenta OpenCode. La carpeta se llama igual que la skill.
+- **Contenido:** cabecera con `name` igual a la carpeta y `description` de 1 a 1 024 caracteres. Máximo 64 KB.
+- **Secretos:** un texto con un secreto conocido (`TELO_CLAVE`, clave de proveedor o token con formato de credencial) se rechaza. No se guarda redactado, porque al editar pisaría el original.
+- **Escritura:** archivo temporal con `O_EXCL` y `O_NOFOLLOW`, `fsync` y renombrado. Ningún tramo de la ruta puede ser un enlace. La lectura también usa `O_NOFOLLOW`.
+- **Borrar:** solo si la carpeta contiene únicamente `SKILL.md`. Si hay más archivos, responde 409 y no toca nada.
+- **Aislamiento:** en bubblewrap, `~/.config/opencode/skills` se monta en **solo lectura**. El agente la lee y no la escribe: si pudiera escribirla, dejaría instrucciones para todos los agentes. La carpeta se crea al arrancar el servidor para que el montaje siempre exista.
+- **Código:** `server/src/skills.ts`, `server/src/routes/skills.ts`, `web/src/components/skills-editor.tsx`, `web/src/components/proyecto-skills.tsx`.
 
-**Qué hacer.**
-1. **Antes de programar:** confirmar en el VM dónde busca OpenCode las skills (ruta global y, si existe, por proyecto) y su formato (carpeta con `SKILL.md`). Anotar aquí la ruta confirmada. No verificado desde aquí.
-2. **Servidor** (`server/src/skills.ts`): listar, leer y guardar skills dentro de una sola carpeta raíz, configurable con `TELO_SKILLS_DIR`. Reglas: nombre de carpeta `^[a-z0-9-]{1,64}$`; tamaño máximo 64 KB por archivo; escritura atómica (archivo temporal y renombrado); no seguir enlaces (`O_NOFOLLOW`, como en `archivos-proyecto.ts`); rechazar `..` y rutas absolutas.
-3. **Rutas:** `GET /api/skills`, `GET|PUT|DELETE /api/skills/:nombre`. Para proyecto, lo mismo bajo `/api/projects/:id/skills` si el paso 1 confirma que OpenCode las lee desde el proyecto.
-4. **Web:** `proyecto-skills.tsx` lista las skills (nombre y la línea `description:` del frontmatter), abre un editor de texto simple para `SKILL.md`, permite guardar y quitar (con confirmación). Ajustes muestra las globales.
-5. **Pruebas** (`server/tests/skills.test.ts`): nombre inválido rechazado; `..` y enlace simbólico rechazados; tamaño excedido; escritura atómica (sin archivo a medias si falla).
+**Diferencia con el plan.** El plan preveía `TELO_SKILLS_DIR`. No se añadió: una variable así podría apuntar fuera de lo que el agente ve. La ruta global es fija.
 
-**Decisión pendiente del usuario:** ¿las skills son globales (todos los proyectos) o por proyecto? Por defecto: globales en Ajustes y por proyecto en la pestaña del proyecto.
+**Límite conocido.** Las skills de proyecto son archivos sin confirmar en el repositorio (aparecen en `git status`). Un chat que trabaja en la carpeta del proyecto las usa. Una tarea de un repositorio Git trabaja en un clon del último commit y no las ve hasta que se confirmen. Llevarlas a esas tareas es una decisión aparte.
 
-**Verificación.** Captura a 390 y 1440 px. Sin errores de consola.
+**Verificado.** `server/tests/skills.test.ts` (14 pruebas): rutas, nombres, cabeceras, tamaño, secretos, enlaces en el archivo y en la carpeta, escritura que falla sin dejar temporales, borrado con archivos extra y proyecto inexistente. En navegador: crear, guardar, aparecer en la lista y escribir en `.opencode/skills` del proyecto, a 390 y 1440 px.
 
-**Cambios.** `mediano`.
+**No verificado en el VM.**
+- Que OpenCode liste `~/.config/opencode/skills` y `.opencode/skills` (la documentación de OpenCode lo describe así; no hay OpenCode en este entorno).
+- El montaje de solo lectura dentro de bubblewrap. Aquí no hay `bwrap`.
+
+**Cambios.** `cambios.json`: mediano (entrada añadida).
 
 ---
 
@@ -210,49 +218,62 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 9. Claves de proveedores que funcionan desde la app, con botón "Instalar"
+## Tarea 9. Claves de proveedores y botón «Instalar» para OpenCode (hecha)
 
-**Qué ya existe.** Claves cifradas de Groq, NVIDIA y Gemini (commit `c66be88`). OpenCode aparece en Ajustes como "Se activa al instalar el CLI", sin acción.
+**Decisión del usuario.** Sí, instalar desde la app, con confirmación.
 
-**Cómo.**
-1. **Que los modelos aparezcan** depende de la tarea 3. Esta tarea no está completa sin ella.
-2. **Gemini con dos variables** (tarea 3, punto 2).
-3. **Botón "Instalar" en OpenCode**, visible solo si `configured` es falso. Ejecuta **un comando fijo** en lista blanca (por ejemplo `npm install -g opencode-ai`; confirmar en el VM cuál es el instalador oficial). Pide confirmación en dos pasos: "¿Instalar OpenCode en el servidor?". Muestra estado (instalando, listo, error) y la salida redactada. Por qué: el usuario no tiene terminal desde el móvil, y un comando fijo evita ejecutar nada arbitrario.
-   - **Decisión pendiente del usuario:** aprobar que la app instale software en el VM. Sin eso, no se implementa.
-   - Tras instalar, el CLI global debe ser legible por el agente. Si está fuera de `~/.opencode`, `~/.local/bin` o `~/.bun`, añadir su carpeta raíz a `TELO_LECTURA_EXTRA` (ver `CLAUDE.md`).
-4. **Proveedores con clave** (Groq, NVIDIA, Gemini): no tienen "Instalar". La clave ya se guarda desde la app.
-5. **Diagnóstico:** "Probar" por proveedor ejecuta `opencode models` con su entorno y cuenta modelos. Es la misma cuenta de la tarea 3.
+**Cómo quedó.**
+- En la tarjeta de OpenCode aparece "Instalar OpenCode" solo si el CLI no se encuentra. El primer paso muestra el comando; el segundo es "Sí, instalar".
+- **Comando fijo:** `npm install -g --prefix ~/.opencode opencode-ai`. La API recibe solo el identificador `opencode`; el servidor exige `confirmar: true` en el cuerpo.
+- Sin shell. Entorno mínimo (PATH, HOME, LC_ALL): ninguna variable `TELO_*` ni clave llega a npm. Tiempo máximo de 10 minutos, con terminación del grupo.
+- La salida pasa por `redaccion.ts`. Los motivos son legibles: npm no disponible, fallo de npm, tiempo agotado, CLI no visible tras instalar.
+- **Por qué npm y no `curl … | bash`.** La documentación de OpenCode recomienda el script, pero ejecutar un script remoto no es un comando fijo. npm instala un paquete versionado. Con `--prefix ~/.opencode` el ejecutable queda en una carpeta que el agente ya ve en solo lectura, así que no hace falta tocar `TELO_LECTURA_EXTRA`.
+- Tras instalar, el servidor añade `~/.opencode/bin` a su PATH sin reiniciar. Al arrancar hace lo mismo (`asegurarRutaInstalada`).
+- **Código:** `server/src/instalacion.ts`, `server/src/routes/herramientas.ts`, `web/src/components/instalar-opencode.tsx`.
 
-**Pruebas:** `entorno-proveedores.test.ts` (ya existe) cubre la clave llegando al agente y al CLI. Añadir: el botón "Instalar" rechaza cualquier comando que no esté en la lista blanca.
+**Corrección hecha durante la verificación.** `Bun.which` usa el PATH con el que arrancó el proceso, no el actual. Tras instalar, el CLI no se veía. Ahora `server/src/ejecutable.ts` (`hallarEjecutable`, `lanzarEnGrupo`, `matarGrupo`) pasa el PATH vivo, y lo usan todos los sitios que buscan programas.
 
-**Verificación.** Captura a 390 y 1440 px. En el VM, el usuario confirma que `opencode models` lista los modelos de la clave guardada.
+**Verificado.** `server/tests/instalacion.test.ts` (7 pruebas): lista fija, confirmación obligatoria, npm ausente, salida redactada, PATH actualizado, sin reinstalar. En navegador: comando visible antes de confirmar, instalación, botón que desaparece y "Activo", a 390 y 1440 px.
 
-**Cambios.** `mediano`.
+**Pendiente en el VM.**
+- Que `npm` esté en el PATH del servicio. Si no está, el botón lo dice. El PATH del servicio viene de su unidad systemd.
+- `opencode models` debe listar los modelos de la clave de Groq guardada (tarea 3).
+- Confirmar el id `google` y el nombre de la variable de NVIDIA.
+
+**Cambios.** `cambios.json`: mediano (entrada añadida).
 
 ---
 
-## Tarea 10. Conectar Codex, Gemini y Claude gratis
+## Tarea 10. Conectar Codex, Gemini y Claude gratis (parcial)
 
-**Investigación (lo que se sabe, sin verificar en el VM).**
-- **Gemini.** La vía limpia es una clave de Google AI Studio, ya cubierta por la clave de Gemini (tarea 3). El inicio de sesión con Google de Telo (`oauth-google.ts`) **no sirve** para OpenCode: sus tokens son de Telo, no del agente.
-- **Codex.** El CLI de Codex puede iniciar sesión con la cuenta de ChatGPT mediante un flujo de dispositivo (código y URL). Lo correcto es ejecutar ese login **en el VM**: la app muestra la URL y el código, y el token queda en el VM (en `~/.codex/`), no en la base de datos ni en el repo. Comprobar el comando exacto en el VM.
-- **Claude gratis.** La API de Anthropic se paga por uso; el plan gratis no incluye acceso por API. Copiar tokens de una sesión de claude.ai o de la app de escritorio a otra herramienta no es recomendable: las condiciones de uso de Anthropic deben confirmarse antes de hacerlo, y los tokens dan acceso a la cuenta. **Recomendación:** no copiar tokens. La alternativa es una clave de API de pago por uso, con el mismo flujo de la tarea 9.
+**Decisiones.**
+- **(a) Codex:** aprobado el login de dispositivo, ejecutado en el VM.
+- **(b) Claude gratis:** **sin decisión del usuario; no se implementa.** La recomendación sigue siendo no copiar tokens. La vía que queda es una clave de API de pago por uso, con el mismo flujo que Groq (tarea 9).
+- **Gemini:** se usa la clave de AI Studio (tarea 3). El inicio de sesión con Google de Telo (`oauth-google.ts`) no sirve para OpenCode.
 
-**Decisión pendiente del usuario (antes de programar).**
-- (a) ¿Se acepta el login de dispositivo de Codex, ejecutado en el VM?
-- (b) ¿Claude se conecta solo con clave de API, o se deja fuera?
+**Cómo quedó (Codex).**
+- `server/src/login-cli.ts` lanza `codex login --device-auth` en su propio grupo de procesos, con entorno mínimo. Lee la salida mientras el CLI espera y extrae la URL y el código.
+- Rutas: `GET`, `POST` y `DELETE /api/providers/codex/login`. Una sesión a la vez (409 si ya hay una). Tiempo máximo de 15 minutos. Cancelar termina el grupo.
+- **El token no se lee ni se muestra.** La salida se redacta. El éxito se decide por salida 0 y porque exista el archivo de sesión; ese archivo solo se comprueba, nunca se abre.
+- `~/.codex` no está en la lista de bubblewrap: los agentes no lo ven.
+- En la tarjeta de Codex: "Iniciar sesión" → enlace y código → "Sesión iniciada en el servidor."
+- Codex **no** es todavía proveedor de los agentes. La tarjeta lo dice.
 
-**Qué hacer (si se aprueba).**
-1. **Servidor** (`server/src/login-cli.ts`): iniciar el login del CLI con lista fija de argumentos, capturar URL y código de la salida, y exponerlos en `GET /api/proveedores/:id/login`. El estado de sesión se comprueba solo por la existencia del archivo de credenciales, nunca leyendo su contenido.
-2. **Nunca** guardar ni mostrar un token. La salida pasa por `redaccion.ts`.
-3. **Web:** en la tarjeta del proveedor, "Iniciar sesión" muestra URL y código, "Ya lo hice" vuelve a comprobar, y el estado se actualiza.
-4. **Pruebas:** un CLI falso que imprime un token de prueba; el token no aparece en ninguna respuesta ni en los logs.
+**Verificado.** `server/tests/login-codex.test.ts` (4 pruebas) con un CLI falso que imprime un token de prueba: el token no aparece en ninguna respuesta, cancelar no deja procesos y sin CLI responde `codex_no_instalado`. En navegador: enlace, código y sesión iniciada, a 390 y 1440 px.
 
-**Cambios.** `grande` (capacidad nueva de infraestructura).
+**No verificado (importante).**
+- La documentación oficial de Codex (`developers.openai.com/codex/auth`) no se pudo leer en esta sesión: el permiso de lectura caducó y la página redirige a `learn.chatgpt.com/docs/auth`. El comando `codex login --device-auth` y la ruta `~/.codex/auth.json` vienen de fuentes de terceros. Antes de darlo por bueno en el VM: `codex login --help` y comprobar qué archivo crea.
+- No se sabe si el CLI de Codex está instalado en el VM. Si no lo está, la app lo dice.
+
+**Cambios.** `cambios.json`: grande (entrada añadida, según el plan).
 
 ---
 
 ## Riesgos conocidos
+
+- Las skills globales las edita la app. Hasta confirmar en el VM que OpenCode las lee, no se sabe si el efecto llega a los agentes.
+- El montaje de solo lectura de `~/.config/opencode/skills` dentro de bubblewrap no se probó con `bwrap` (no está en este entorno).
+- Las skills de proyecto aparecen como archivos sin confirmar en el repositorio.
 
 - Las claves guardadas llegan a **todos** los agentes, no solo al de su proveedor (`ejecutar.ts` inyecta todas). Mejora posible: pasar solo las claves del proveedor del modelo elegido.
 - El chat ya no guarda el mensaje de usuario y la respuesta en la misma transacción que la petición. Si el servidor se cae a mitad de un turno, el aviso de reinicio lo cubre, pero el agente no se reanuda.

@@ -16,6 +16,9 @@ import {
 } from "../lib/notificaciones";
 import { AlmacenamientoServidor, ErrorConReintento, EstadoServidor, useMuestrasLatencia } from "./servidor";
 import "../styles-ajustes.css";
+import { InstalarOpenCode } from "../components/instalar-opencode";
+import { LoginCodexPanel } from "../components/login-codex";
+import { SkillsEditor } from "../components/skills-editor";
 
 const ALERT_OPTIONS = [50, 60, 70, 80, 90, 100];
 
@@ -286,6 +289,15 @@ export function SettingsPage() {
                     modelos={modelosDe(p.id)}
                   />
                 ))}
+              </section>
+
+              <section className="aj-seccion" aria-labelledby="aj-skills-titulo">
+                <h2 id="aj-skills-titulo" className="aj-titulo-seccion">
+                  Skills
+                </h2>
+                <article className="aj-tarjeta">
+                  <SkillsEditor ayuda="Globales: OpenCode las lee en todos los proyectos. Se guardan en ~/.config/opencode/skills." />
+                </article>
               </section>
 
               {!value && prefs.isError && <p className="aj-error" role="alert">No se pudieron cargar los ajustes.</p>}
@@ -687,6 +699,8 @@ function TarjetaProveedor({
         </p>
       )}
       {nota && <p className="aj-nota aj-nota-aviso">{nota}</p>}
+      {p.id === "opencode" && !p.configured && <InstalarOpenCode />}
+      {p.id === "codex" && <LoginCodexPanel />}
     </article>
   );
 }
@@ -799,6 +813,8 @@ function CampoClave({ p }: { p: ProviderStatus }) {
 // Un proveedor sin clave que se puede guardar ya lo dice su propio campo, así que no se repite aquí.
 function notaEstado(p: ProviderStatus, modelos: { total: number } | null): string | null {
   if (p.id === "opencode") return p.configured ? null : "El CLI de OpenCode no se encontró en el servidor.";
+  // Codex: la sesión se inicia desde su panel; los agentes todavía no lo usan.
+  if (p.id === "codex") return p.configured ? "Los agentes todavía no usan Codex. Su sesión queda lista para cuando exista ese paso." : null;
   if (!p.configured) return p.guardable ? null : `Falta ${p.variable ?? "la clave"} en el archivo de entorno del servidor.`;
   if (!p.enAgente) {
     return `La clave está configurada, pero no llega a los agentes: agrégala a TELO_AGENTE_VARIABLES en el archivo de entorno del servidor.`;

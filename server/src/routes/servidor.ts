@@ -5,6 +5,8 @@ import { config } from "../config";
 import { db } from "../db";
 import { medirCarpeta } from "../archivos-proyecto";
 import { redactar } from "../redaccion";
+import { hallarEjecutable } from "../ejecutable";
+
 
 // Estado del servidor para la página Servidor. Ninguna respuesta incluye rutas absolutas,
 // nombre de equipo ni IPs: las carpetas se nombran por su función y los errores de herramientas se limpian.
@@ -115,7 +117,7 @@ async function carpetasCacheadas(): Promise<Carpeta[]> {
 // Versión de una herramienta: primera línea, sin rutas. Nunca lanza error.
 async function versionDe(nombre: string): Promise<{ disponible: boolean; version: string | null }> {
   if (nombre === "bun") return { disponible: true, version: Bun.version };
-  if (Bun.which(nombre) === null) return { disponible: false, version: null };
+  if (hallarEjecutable(nombre) === null) return { disponible: false, version: null };
 
   const proc = Bun.spawn([nombre, "--version"], {
     stdin: "ignore",
