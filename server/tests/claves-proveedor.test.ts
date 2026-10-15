@@ -56,6 +56,7 @@ describe("guardar y leer la clave", () => {
     expect(entornoProveedores()).toEqual({
       GOOGLE_GENERATIVE_AI_API_KEY: valorGemini,
       GEMINI_API_KEY: valorGemini,
+      GOOGLE_API_KEY: valorGemini,
     });
     expect(estadoClaves().find((e) => e.id === "google")).toMatchObject({ configurada: true, variable: "GOOGLE_GENERATIVE_AI_API_KEY" });
   });

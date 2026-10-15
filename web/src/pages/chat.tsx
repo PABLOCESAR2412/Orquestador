@@ -962,7 +962,11 @@ export function ChatPage() {
                 className="tl-composer-input"
                 rows={2}
                 value={draft}
-                placeholder="Escribe un mensaje, pega o arrastra archivos, o usa / para comandos"
+                placeholder={
+                  sugerencia
+                    ? `${sugerencia} (Tab) o escribe un mensaje, pega o arrastra archivos, o usa / para comandos`
+                    : "Escribe un mensaje, pega o arrastra archivos, o usa / para comandos"
+                }
                 aria-label="Mensaje"
                 aria-autocomplete={menuAbierto ? "list" : sugerencia ? "inline" : undefined}
                 aria-activedescendant={menuAbierto ? `comando-chat-${comandosFiltrados[indiceSlash]?.id}` : undefined}
@@ -1003,11 +1007,6 @@ export function ChatPage() {
                   }
                 }}
               />
-              {sugerencia && (
-                <button type="button" className="composer-suggestion" onClick={() => { cambiarBorrador(sugerencia); inputRef.current?.focus(); }} aria-label={`Completar sugerencia: ${sugerencia}`}>
-                  <span>{sugerencia}</span><kbd>Tab</kbd>
-                </button>
-              )}
 
               <input
                 ref={fileRef}
@@ -1020,7 +1019,7 @@ export function ChatPage() {
                 }}
               />
 
-              {/* Herramientas, selector conjunto de modelo y esfuerzo, y envío. */}
+              {/* Herramientas, selector conjunto de modelo y esfuerzo, botón de uso y envío. */}
               <div className="tl-composer-barra">
                 <div className="tl-composer-izq">
                   <button
@@ -1080,6 +1079,20 @@ export function ChatPage() {
                       ))}
                     </span>
                   </button>
+
+                  <button
+                    ref={usoRef}
+                    type="button"
+                    className="tl-boton tl-boton-compacto tl-uso"
+                    aria-haspopup="dialog"
+                    aria-expanded={usoAbierto}
+                    onClick={() => {
+                      setPickerOpen(false);
+                      setUsoAbierto((o) => !o);
+                    }}
+                  >
+                    Uso
+                  </button>
                 </div>
 
                 <div className="tl-composer-der">
@@ -1094,22 +1107,6 @@ export function ChatPage() {
                     </svg>
                   </button>
                 </div>
-              </div>
-
-              <div className="tl-composer-pie">
-                <button
-                  ref={usoRef}
-                  type="button"
-                  className="tl-boton tl-boton-compacto tl-uso"
-                  aria-haspopup="dialog"
-                  aria-expanded={usoAbierto}
-                  onClick={() => {
-                    setPickerOpen(false);
-                    setUsoAbierto((o) => !o);
-                  }}
-                >
-                  Uso
-                </button>
               </div>
             </div>
             <p className="tl-composer-nota">

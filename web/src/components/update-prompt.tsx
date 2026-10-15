@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { EVENTO_VERSION_NUEVA, hayVersionNueva } from "../lib/version";
+import { cerrarEventosVivos } from "../lib/eventos-vivos";
 
 // Cada cuánto se revisa si hay una versión nueva.
 const REVISION_CADA_MS = 5 * 60_000;
@@ -64,6 +65,9 @@ export function UpdatePrompt() {
   }
 
   async function recargar() {
+    // Cerramos el canal en vivo antes de recargar para no dejar conexiones HTTP/2 colgadas
+    // que provoquen net::ERR_HTTP2_PROTOCOL_ERROR en el navegador.
+    cerrarEventosVivos();
     // Con service worker en espera, se activa y la página recarga sola.
     if (esperaActivacion) {
       try {

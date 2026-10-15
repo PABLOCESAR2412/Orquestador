@@ -14,7 +14,7 @@ export type ProveedorConClave = { id: string; etiqueta: string; variables: strin
 export const PROVEEDORES_CON_CLAVE: ProveedorConClave[] = [
   { id: "groq", etiqueta: "Groq", variables: ["GROQ_API_KEY"] },
   { id: "nvidia", etiqueta: "NVIDIA", variables: ["NVIDIA_API_KEY"] },
-  { id: "google", etiqueta: "Google (Gemini)", variables: ["GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY"] },
+  { id: "google", etiqueta: "Google (Gemini)", variables: ["GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"] },
 ];
 
 const MIN_CLAVE = 8;

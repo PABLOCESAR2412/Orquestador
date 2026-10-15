@@ -50,13 +50,3 @@
   flex: 1 1 auto;
   min-height: 40px;
 }
-
-.picker-confirmacion {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.picker-confirmacion button {
-  min-height: 40px;
-}

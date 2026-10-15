@@ -397,15 +397,8 @@
 }
 .tl-enviar:disabled { background: var(--surface-2); color: var(--ink-3); cursor: default; opacity: 1; }
 
-/* Fila 2 del compositor: esfuerzo del modelo y Uso */
-.tl-composer-pie {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-/* Uso va a la derecha; si hay niveles de esfuerzo, el segmentado ya ocupa el espacio. */
-.tl-uso { flex-shrink: 0; margin-left: auto; }
+/* Botón Uso en la barra de acciones del compositor junto al selector de modelo */
+.tl-uso { flex-shrink: 0; margin-left: 0; }
 
 /* Dictado: el punto pulsa mientras escucha */
 .tl-dictado-estado {
