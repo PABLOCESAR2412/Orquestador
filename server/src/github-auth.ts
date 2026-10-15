@@ -21,7 +21,7 @@ export type GithubAuthStorage = {
 const KEY = "github_global_auth";
 
 // Lee el token global de GitHub guardado en app_settings.
-// Se usa como respaldo cuando un proyecto no tiene su propio GITHUB_TOKEN en secretos.
+// Tiene prioridad sobre los tokens por proyecto para que la sesión activa de la cuenta sea la identidad de GitHub.
 export function tokenGithubGlobal(): string | null {
   const row = db
     .query<{ value: string }, [string]>("SELECT value FROM app_settings WHERE key = ?")

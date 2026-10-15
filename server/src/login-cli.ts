@@ -56,14 +56,14 @@ let sesion: Sesion | null = null;
 // Rutas que indican sesión. Se calculan en cada uso: el HOME puede cambiar después de cargar el módulo.
 function archivosAuth(): string[] {
   const home = carpetaHome();
+  const codexHome = process.env.CODEX_HOME;
   return [
+    ...(codexHome ? [join(codexHome, "auth.json")] : []),
     join(home, ".codex", "auth.json"),
     join(home, ".config", "codex", "auth.json"),
     join(home, ".codex", "config.json"),
     join(home, ".config", "codex", "config.json"),
     join(home, ".codex", "session.json"),
-    join(home, ".local", "share", "opencode", "auth.json"),
-    join(home, ".config", "opencode", "auth.json"),
   ];
 }
 

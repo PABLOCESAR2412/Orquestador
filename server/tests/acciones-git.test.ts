@@ -19,6 +19,7 @@ const { aprobarTarea, diffDeTarea, prepararCopia } = await import("../src/worksp
 const { repositoryActions } = await import("../src/routes/repository-actions");
 const { guardarSecreto, entornoDeProyecto } = await import("../src/secretos");
 const { githubApiPr } = await import("../src/routes/proyecto-config");
+const { borrarCuentaGithubGlobal } = await import("../src/github-auth");
 const originalFetch = globalThis.fetch;
 const claveOriginal = process.env.TELO_CLAVE_CIFRADO;
 const proyectos: { id: string; cwd: string; taskId?: string }[] = [];
@@ -28,6 +29,7 @@ const TOKEN_PR = "github_pat_" + "credencialficticiaparapruebas123456789";
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  borrarCuentaGithubGlobal();
 });
 afterAll(() => {
   if (claveOriginal === undefined) delete process.env.TELO_CLAVE_CIFRADO;
@@ -253,7 +255,7 @@ test("merge y push_main ya no se aceptan, y una acción antigua de merge pendien
 test("crear un pull request usa solo GITHUB_PR_TOKEN, sin respaldo a GITHUB_TOKEN", async () => {
   const p = proyecto();
   guardarSecreto(p.id, "GITHUB_TOKEN", TOKEN);
-  await expect(githubApiPr(p.id, "/repos/dueno/prueba/pulls", { title: "x" })).rejects.toThrow("GITHUB_PR_TOKEN");
+  await expect(githubApiPr(p.id, "/repos/dueno/prueba/pulls", { title: "x" })).rejects.toThrow("permiso de Pull requests");
 
   guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
   let autorizacion = "";

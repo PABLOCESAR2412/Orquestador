@@ -158,9 +158,13 @@ export function errorText(err: unknown): string {
   if (err instanceof ApiError) {
     switch (err.code) {
       case "credenciales_git_faltantes":
-        return "Configura un token de GitHub o una clave SSH en este proyecto antes de subir cambios.";
+        return "Inicia sesión con GitHub en Ajustes o configura una clave SSH antes de subir cambios.";
       case "invalid_git_config":
-        return "Revisa el repositorio de GitHub, el nombre, el correo y la rama destino.";
+        return "Revisa el repositorio de GitHub, el nombre y la rama destino.";
+      case "repositorio_inmutable":
+        return "Este proyecto ya tiene un repositorio configurado y no se puede cambiar desde aquí.";
+      case "proyecto_ocupado":
+        return "El proyecto está ocupado por una tarea. Intenta de nuevo cuando termine.";
       case "github_access":
       case "git_action":
         return err.detail
@@ -180,14 +184,20 @@ export function errorText(err: unknown): string {
         return "Pega las instrucciones de la skill, hasta 16 000 caracteres.";
       case "invalid_skill_url":
         return "Usa una URL HTTPS de un archivo SKILL.md en GitHub.";
+      case "invalid_skill_command":
+        return "Pega el comando completo de skills.sh con el formato npx skills add <repositorio> --skill <nombre>.";
+      case "skill_command_ambiguous":
+        return "El repositorio tiene más de una skill con ese nombre. Elige un repositorio que contenga una sola.";
+      case "skill_no_encontrada":
+        return "No se encontró esa skill en el repositorio indicado.";
       case "invalid_skill_query":
         return "Escribe el nombre de la skill que quieres buscar.";
       case "skill_too_large":
         return "El SKILL.md supera el tamaño permitido. Pega solo las instrucciones que necesitas.";
       case "skill_catalog_failed":
-        return "No se pudieron consultar los catálogos. Reintenta o importa el SKILL.md por URL.";
+        return "No se pudo consultar GitHub. Revisa la conexión o inténtalo de nuevo.";
       case "skill_download_failed":
-        return "No se pudo descargar el SKILL.md. Revisa que la URL sea pública.";
+        return "No se pudo descargar el SKILL.md. Comprueba que el repositorio sea público y que el comando sea correcto.";
       case "insufficient_funds":
         return "Saldo insuficiente en el proveedor. Usa un modelo gratuito o recarga saldo.";
       case "runner_failed":

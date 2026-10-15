@@ -120,9 +120,16 @@ export function SettingsPage() {
       }
     }
     setLocalError(null);
-    // El respaldo se guarda al elegirlo, así que el borrador no lo pisa.
-    const { fallbackModel: _respaldo, ...resto } = draft;
-    save.mutate({ ...resto, monthlyBudgetUsd: budget });
+    // Enviar solo campos modificados evita que un modelo antiguo bloquee otro ajuste.
+    const previo = prefs.data;
+    const cambios: Partial<Preferences> = {};
+    if (previo) {
+      for (const campo of ["defaultModel", "defaultEffort", "budgetAlertPercent", "compartirContextoChats"] as const) {
+        if (draft[campo] !== previo[campo]) cambios[campo] = draft[campo] as never;
+      }
+    }
+    if (budget !== (previo?.monthlyBudgetUsd ?? null)) cambios.monthlyBudgetUsd = budget;
+    save.mutate(cambios);
   };
 
   const savedBudget = prefs.data?.monthlyBudgetUsd?.toString() ?? "";
@@ -607,8 +614,8 @@ function TarjetaProveedor({
   // Modelos del proveedor en el catálogo de OpenCode (total) y los que salen en el selector del chat.
   modelos: { total: number; enSelector: number } | null;
 }) {
-  // Listo: la clave está en el servidor y llega a los agentes. El servidor no tiene interruptor por proveedor.
-  const listo = p.configured && p.enAgente;
+  // Codex está activo cuando hay sesión autenticada; los otros motores requieren clave disponible para agentes.
+  const listo = p.id === "codex" ? p.configured : p.configured && p.enAgente;
   const sinClave = p.variable === null;
   const pct = presupuesto && gasto !== null ? Math.min(100, Math.round((gasto / presupuesto) * 100)) : 0;
   const nota = notaEstado(p, modelos);
@@ -638,8 +645,9 @@ function TarjetaProveedor({
             aria-label={`${p.name}: activo`}
             className="aj-switch"
             disabled
-            title={
-              sinClave
+            title={p.id === "codex"
+              ? "Refleja si el servidor tiene una sesión de Codex iniciada."
+              : sinClave
                 ? "Se activa al instalar el CLI de OpenCode en el servidor. La app no lo cambia."
                 : p.guardable
                   ? "Se activa al guardar la clave aquí o al configurarla en el archivo de entorno del servidor. La app no lo apaga."
@@ -650,7 +658,14 @@ function TarjetaProveedor({
       </div>
 
       <div className="aj-campos">
-        {p.guardable ? (
+        {p.id === "codex" ? (
+          <div className="aj-campo">
+            <div className="aj-campo-etiqueta"><span>Sesión de Codex</span></div>
+            <div className="aj-entrada">
+              <span>{p.sesion ? "Iniciada en el servidor; credenciales protegidas" : "Sin sesión de Codex"}</span>
+            </div>
+          </div>
+        ) : p.guardable ? (
           <CampoClave p={p} />
         ) : (
           <div className="aj-campo">
@@ -681,14 +696,14 @@ function TarjetaProveedor({
           </div>
         )}
 
-        <div className="aj-campo">
+        {p.id !== "codex" && <div className="aj-campo">
           <div className="aj-campo-etiqueta">
             <span>Endpoint base</span>
           </div>
           <div className="aj-entrada aj-entrada-vacia">
             <span>{sinClave ? "No aplica: corre en el servidor" : "No informado por el servidor"}</span>
           </div>
-        </div>
+        </div>}
       </div>
 
       <div className="aj-presupuesto">

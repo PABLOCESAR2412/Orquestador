@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { proveedorConClave, tieneClaveProveedor } from "../claves-proveedor";
 import { cancelarLoginCodex, confirmarLoginCodex, estadoLoginCodex, iniciarLoginCodex, LoginError, sesionCodexConectada } from "../login-cli";
 import { hallarEjecutable } from "../ejecutable";
+import { listarModelosCodex } from "../modelos-codex";
 
 
 type ProviderStatus = {
@@ -18,6 +19,7 @@ type ProviderStatus = {
   guardable: boolean;
   // La clave está guardada en Telo (no solo en el archivo de entorno del servidor).
   guardada: boolean;
+  sesion: boolean;
 };
 
 // Variables que el agente recibe del servidor. Sin variable, el proveedor usa su propia
@@ -47,6 +49,7 @@ function proveedorGuardable(id: string, name: string, hint: string, enAgente: Se
     enAgente: guardada || variables.some((v) => enAgente.has(v)),
     guardable: true,
     guardada,
+    sesion: false,
   };
 }
 
@@ -64,6 +67,7 @@ function estadoProveedores(): ProviderStatus[] {
       enAgente: true,
       guardable: false,
       guardada: false,
+      sesion: false,
     },
     {
       id: "codex",
@@ -75,6 +79,7 @@ function estadoProveedores(): ProviderStatus[] {
       enAgente: enAgente.has("OPENAI_API_KEY"),
       guardable: false,
       guardada: false,
+      sesion: sesionCodexConectada(),
     },
     proveedorGuardable(
       "google",
@@ -104,6 +109,14 @@ providers.get("/providers", (c) => c.json(estadoProveedores()));
 
 // Inicio de sesión de Codex por código de dispositivo (ver login-cli.ts). Solo Codex tiene este flujo.
 providers.get("/providers/codex/login", (c) => c.json(estadoLoginCodex()));
+providers.get("/providers/codex/models", async (c) => {
+  if (!sesionCodexConectada()) return c.json({ error: "codex_no_conectado" }, 409);
+  try {
+    return c.json(await listarModelosCodex());
+  } catch {
+    return c.json({ error: "codex_models_unavailable" }, 503);
+  }
+});
 providers.post("/providers/codex/login", (c) => {
   try {
     return c.json(iniciarLoginCodex(), 202);

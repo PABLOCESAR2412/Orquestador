@@ -178,6 +178,7 @@ export type ProviderStatus = {
   // La clave se puede guardar desde Ajustes, y `guardada` dice si ya está guardada ahí.
   guardable: boolean;
   guardada: boolean;
+  sesion: boolean;
 };
 
 export type Message = {
@@ -398,6 +399,8 @@ export type LoginCodex = {
   iniciada: string | null;
 };
 
+export type ModeloCodex = { id: string; name: string; context: number; variants: string[] };
+
 export type SkillResumen = {
   nombre: string;
   descripcion: string | null;
@@ -417,7 +420,7 @@ export const api = {
   projectGit: (id: string) => request<GitConfig>(`/api/projects/${id}/git`),
   saveProjectGit: (
     id: string,
-    body: Pick<GitConfig, "remote" | "author_name" | "author_email" | "base_branch">,
+    body: Pick<GitConfig, "remote" | "author_name" | "base_branch">,
   ) =>
     request<{ ok: boolean }>(`/api/projects/${id}/git`, {
       method: "PUT",
@@ -603,6 +606,7 @@ export const api = {
       body: JSON.stringify({ confirmar: true }),
     }),
   codexLogin: () => request<LoginCodex>("/api/providers/codex/login"),
+  codexModels: () => request<{ generado: string; models: ModeloCodex[] }>("/api/providers/codex/models"),
   iniciarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "POST", body: "{}" }),
   cancelarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "DELETE" }),
   confirmarCodexLogin: () => request<LoginCodex>("/api/providers/codex/confirmar", { method: "POST" }),
@@ -621,6 +625,11 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ contenido }),
     }),
+  installSkill: (comando: string, projectId?: string) =>
+    request<{ name: string; content: string; source: string }>(
+      projectId ? `/api/projects/${projectId}/skills/instalar` : "/api/skills/instalar",
+      { method: "POST", body: JSON.stringify({ comando }) },
+    ),
   deleteSkill: (nombre: string, projectId?: string) =>
     request<{ ok: boolean }>(`${skillsRuta(projectId)}/${encodeURIComponent(nombre)}`, { method: "DELETE" }),
   resumeTask: (id: string) => request<Task>(`/api/tasks/${id}/reanudar`, { method: "POST", body: "{}" }),
@@ -739,14 +748,15 @@ export type Analytics = {
 export type ProjectSkill = { name: string; content: string; source: string | null };
 export type GitConfig = {
   remote: string | null;
+  repository: string | null;
   author_name: string;
-  author_email: string;
   base_branch: string;
   inicializado: boolean;
   ocupado: boolean;
   token: boolean;
   prToken: boolean;
   ssh: boolean;
+  github: GithubCuenta;
 };
 export type RepositoryAction = {
   id: string;

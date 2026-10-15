@@ -9,11 +9,19 @@ export function LoginCodexPanel() {
   const qc = useQueryClient();
   const clave = ["codex-login"];
   const [mensajeConfirmacion, setMensajeConfirmacion] = useState<string | null>(null);
+  const [mostrarDetalles, setMostrarDetalles] = useState(false);
 
   const estado = useQuery({
     queryKey: clave,
     queryFn: api.codexLogin,
     refetchInterval: (consulta) => (consulta.state.data?.estado === "esperando" ? 2_000 : false),
+  });
+  const modelos = useQuery({
+    queryKey: ["codex-models"],
+    queryFn: api.codexModels,
+    enabled: mostrarDetalles && Boolean(estado.data?.conectada),
+    staleTime: 5 * 60_000,
+    retry: false,
   });
 
   const iniciar = useMutation({
@@ -49,6 +57,7 @@ export function LoginCodexPanel() {
 
   const datos = estado.data;
   const esperando = datos?.estado === "esperando";
+  const conectada = Boolean(datos?.conectada && !esperando);
   const error = iniciar.error ?? cancelar.error ?? (estado.isError ? estado.error : null);
 
   return (
@@ -57,10 +66,41 @@ export function LoginCodexPanel() {
         Se inicia en el servidor. Abre el enlace en tu navegador, escribe el código y vuelve aquí.
       </p>
 
-      {datos?.conectada && !esperando && (
+      {conectada && (
         <p className="aj-nota" role="status" style={{ color: "var(--accent)" }}>
           Sesión iniciada en el servidor.
         </p>
+      )}
+
+      {conectada && (
+        <button type="button" className="aj-btn" aria-expanded={mostrarDetalles} onClick={() => setMostrarDetalles((v) => !v)}>
+          {mostrarDetalles ? "Ocultar sesión y modelos" : "Mostrar sesión y modelos"}
+        </button>
+      )}
+
+      {conectada && mostrarDetalles && (
+        <section className="login-codex-modelos" aria-labelledby="login-codex-modelos-titulo">
+          <div className="aj-tarjeta-cabecera">
+            <h4 id="login-codex-modelos-titulo" className="aj-tarjeta-titulo-simple">Modelos disponibles en Codex</h4>
+            <button type="button" className="aj-texto-btn" onClick={() => void modelos.refetch()} disabled={modelos.isFetching}>
+              {modelos.isFetching ? "Actualizando…" : "Actualizar"}
+            </button>
+          </div>
+          <p className="aj-nota">Catálogo de la sesión de ChatGPT. Las tareas de Telo todavía se ejecutan con OpenCode.</p>
+          {modelos.isPending && <p className="aj-nota">Consultando modelos de Codex…</p>}
+          {modelos.isError && <p className="aj-error" role="alert">{errorText(modelos.error)}</p>}
+          {modelos.data && modelos.data.models.length === 0 && <p className="aj-nota">Codex no devolvió modelos disponibles.</p>}
+          {modelos.data && modelos.data.models.length > 0 && (
+            <ul className="login-codex-lista" aria-label="Modelos disponibles en Codex">
+              {modelos.data.models.map((modelo) => (
+                <li key={modelo.id}>
+                  <span><strong>{modelo.name}</strong><small>{modelo.id}</small></span>
+                  {modelo.context > 0 && <span className="aj-mono">{modelo.context.toLocaleString("es")} tokens</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       )}
 
       {esperando && (
@@ -121,7 +161,7 @@ export function LoginCodexPanel() {
         </p>
       )}
 
-      {!esperando && (
+      {!esperando && (!conectada || mostrarDetalles) && (
         <button
           type="button"
           className="aj-btn aj-btn-primario"

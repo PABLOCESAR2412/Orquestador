@@ -8,6 +8,7 @@ import {
   SkillError,
   type AmbitoSkills,
 } from "../skills";
+import { instalarSkillComando, SkillError as ErrorInstalacionSkill } from "../skills-proyecto";
 
 // Skills de OpenCode desde la app: globales (Ajustes) y por proyecto (pestaña del proyecto).
 // Ninguna ruta recibe ni devuelve rutas del disco: el ámbito sale del id del proyecto o del HOME del servidor.
@@ -33,8 +34,31 @@ async function contenidoDe(c: Context): Promise<string | null> {
   return typeof cuerpo?.contenido === "string" ? cuerpo.contenido : null;
 }
 
+async function comandoDe(c: Context): Promise<string | null> {
+  const texto = await c.req.text().catch(() => "");
+  if (new TextEncoder().encode(texto).byteLength > 4096) return null;
+  try {
+    const body = JSON.parse(texto) as { comando?: unknown };
+    return typeof body.comando === "string" ? body.comando : null;
+  } catch {
+    return null;
+  }
+}
+
+async function instalar(c: Context, ambito: AmbitoSkills) {
+  const comando = await comandoDe(c);
+  if (comando === null) return c.json({ error: "invalid_skill_command" }, 400);
+  try {
+    return c.json(await instalarSkillComando(ambito, comando), 201);
+  } catch (err) {
+    if (err instanceof ErrorInstalacionSkill) return c.json({ error: err.code }, err.status);
+    throw err;
+  }
+}
+
 // Global
 skillsRoute.get("/skills", (c) => responder(c, () => ({ skills: listarSkills({ ambito: "global" }) })));
+skillsRoute.post("/skills/instalar", (c) => instalar(c, { ambito: "global" }));
 skillsRoute.get("/skills/:nombre", (c) =>
   responder(c, () => leerSkill({ ambito: "global" }, c.req.param("nombre"))),
 );
@@ -55,6 +79,11 @@ skillsRoute.get("/projects/:id/skills", (c) => {
   const ambito = ambitoDeProyecto(c.req.param("id"));
   if (!ambito) return c.json({ error: "project_not_found" }, 404);
   return responder(c, () => ({ skills: listarSkills(ambito) }));
+});
+skillsRoute.post("/projects/:id/skills/instalar", async (c) => {
+  const ambito = ambitoDeProyecto(c.req.param("id"));
+  if (!ambito) return c.json({ error: "project_not_found" }, 404);
+  return instalar(c, ambito);
 });
 skillsRoute.get("/projects/:id/skills/:nombre", (c) => {
   const ambito = ambitoDeProyecto(c.req.param("id"));
