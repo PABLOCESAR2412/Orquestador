@@ -1,6 +1,6 @@
 # PLAN.md: hoja de ruta de Orquestador
 
-Estado al 9 de octubre de 2026. Una fase no se marca como hecha hasta cumplir sus criterios de aceptación.
+Estado al 14 de octubre de 2026. Una fase no se marca como hecha hasta cumplir sus criterios de aceptación.
 
 ## Visión
 
@@ -28,9 +28,10 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 
 ### 4. Rediseño visual: en curso
 - Sistema de diseño en `DESIGN.md`. Pantallas generadas en Stitch con `docs/design/STITCH_PROMPT.md`. `impeccable` como guía de revisión.
+- Revisión automática del 14 de octubre: 32 capturas (8 vistas, 390 y 1440 px, claro y oscuro) sin desbordes horizontales ni errores de consola. Falta revisar el resto a ojo y el contraste AA.
 - **Criterio:** las cinco pantallas revisadas a 390 px y 1440 px. Contraste AA. Solo tokens de color. Sin cambios de comportamiento.
 
-### 5. Analizador y obrero por tarea: implementada (`feat/analizador-obrero`, sin PR)
+### 5. Analizador y obrero por tarea: mergeada (PR #28). Falta la prueba con OpenCode real
 - Migración `019_analizador_obrero`: la tabla `tasks` se reconstruye con los estados `analyzing` y `waiting_approval`, y las columnas `plan`, `reporte` y `plan_aprobado_en`. Es la única migración que se aplica con claves foráneas apagadas (`sinClaves`); el runner comprueba la integridad antes de confirmar. El historial (`task_events`) y las aprobaciones (`task_approvals`) se conservan.
 - El analizador produce un plan en JSON (`server/src/plan.ts`). Si el plan pide commit, push o PR, o trae preguntas, la tarea espera en `waiting_approval`. Si no, pasa directo al obrero.
 - El obrero ejecuta solo el plan aprobado, en la misma sesión y carpeta que el analizador, y guarda un reporte en JSON. Si se desvía, la tarea vuelve al analizador con el motivo; el plan se replanifica hasta `MAX_PLANES` (3 versiones) y después la tarea falla.
@@ -39,7 +40,7 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - Pendiente: probar con OpenCode real en el VM. Los criterios de aceptación se cumplen con el falso; con un modelo real, el JSON del analizador y el reporte del obrero pueden necesitar ajuste de los prompts.
 
 ### 6. Proyectos de GitHub
-- Estado (`feat/revision-agentes`): cada tarea de un proyecto Git trabaja en su clon (`telo/<id8>`). Aprobación de commit y push ligada al hash del diff; escaneo de secretos antes del commit; push solo a `github.com` por HTTPS con `GITHUB_TOKEN` como secreto del proyecto. Pendiente: probar un push real a GitHub y un agente real en el VM.
+- Estado: mergeada (PR #14). Cada tarea de un proyecto Git trabaja en su clon (`telo/<id8>`). Aprobación de commit y push ligada al hash del diff; escaneo de secretos antes del commit; push solo a `github.com` por HTTPS con `GITHUB_TOKEN` como secreto del proyecto. Pendiente: probar un push real a GitHub y un agente real en el VM.
 - Token de acceso personal fine-grained, cifrado con AES-256-GCM. La clave maestra vive en el archivo de entorno del servicio, fuera del repo.
 - Clonar repos en el VM. Cada tarea corre en el workspace de su proyecto.
 - Antes de commit, push o PR, mostrar el diff en la app y pedir aprobación.
@@ -49,12 +50,12 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - Estado: pendiente. Hoy la app muestra si cada clave existe y si llega a los agentes (sin valores). Google y Codex necesitan un flujo de inicio de sesión que requiere crear credenciales OAuth en la cuenta de Google y decisión del usuario.
 - Flujo guiado: la app inicia el login del CLI en el VM (OpenCode, Google, Codex), muestra el enlace y el código, y espera la confirmación. Estado por proveedor.
 - Incluye Google aunque la cuenta gratuita no sirva para el servidor.
-- Estado de Google (`feat/revision-agentes`, sin merge): preparado con OAuth web y PKCE en lugar del login del CLI de la línea anterior. La app guarda la conexión (token de actualización cifrado) y puede desconectarla con revocación. Solo pide `openid email`. Pendiente de probar con las credenciales de Pablo; el permiso y la API de cuota se confirman en ese paso.
+- Estado de Google (mergeada en PR #15): preparado con OAuth web y PKCE en lugar del login del CLI de la línea anterior. La app guarda la conexión (token de actualización cifrado) y puede desconectarla con revocación. Solo pide `openid email`. Pendiente de probar con las credenciales de Pablo; el permiso y la API de cuota se confirman en ese paso.
 - **Criterio:** al terminar el flujo, el proveedor aparece como conectado. Ninguna clave se pega en la interfaz.
 - **Antes de implementar:** investigar los comandos de login de cada CLI en el VM.
 
 ### 8. Notificaciones
-- Estado: pendiente. Telegram y Discord quedan fuera por decisión del usuario.
+- Estado: pendiente. Telegram y Discord quedan fuera por decisión del usuario. Hoy los avisos del navegador (`web/src/lib/notificaciones.ts`) solo llegan con Telo abierta.
 - Web Push (u otro canal) al fallar, al necesitar aprobación y al terminar una tarea.
 - **Criterio:** cada evento notifica una vez. Reabrir la app no repite las notificaciones.
 
@@ -114,7 +115,7 @@ Según la revisión del 10 de octubre, el núcleo es el motor de tareas, el aisl
 1. Seguridad del runner: entorno sin secretos, cancelación por grupo de procesos. (`fix/runner-seguridad`)
 2. Estados formales y recuperación: `interrupted`, reanudar, reintentar o cancelar. (`006` aplicada. Reanudar y reintentar, en `feat/chats-gestion`, pendiente de revisión.)
 3. Registro de eventos por tarea, para depurar, auditar y alimentar notificaciones. (`009`, en `feat/chats-gestion`.)
-4. Fase 5 (analizador y obrero) y fase 6 (Git con aprobación en el backend).
+4. Fase 5 (analizador y obrero, PR #28) y fase 6 (Git con aprobación en el backend, PR #14): mergeadas. Falta probarlas con OpenCode real en el VM.
 5. Respaldos de la base y del workspace fuera del VM. (`server/scripts/respaldo.ts`, timer en `deploy/` y copia a la PC. Probado en local; falta probar el timer en el VM.)
 6. Fase 9 (acceso por Tailscale) y pendientes de la sección de acceso.
 7. Fases 10, 8 y 13: cuota con niveles de precisión, notificaciones por eventos y panel del VM sin terminal web.
