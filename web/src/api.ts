@@ -745,6 +745,7 @@ export type GitConfig = {
   inicializado: boolean;
   ocupado: boolean;
   token: boolean;
+  prToken: boolean;
   ssh: boolean;
 };
 export type RepositoryAction = {

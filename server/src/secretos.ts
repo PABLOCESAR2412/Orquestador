@@ -65,8 +65,9 @@ const NOMBRES_PROHIBIDOS = new Set([
   "CLASSPATH",
 ]);
 
-// Variable que nunca va al entorno de un agente: solo la usa el servidor para el push.
-const SECRETO_SOLO_SERVIDOR = "GITHUB_TOKEN";
+// Variables que nunca van al entorno de un agente: el servidor las usa para subir (GITHUB_TOKEN)
+// y para crear pull requests (GITHUB_PR_TOKEN).
+export const SECRETOS_SOLO_SERVIDOR: readonly string[] = ["GITHUB_TOKEN", "GITHUB_PR_TOKEN"];
 
 export type CifradoSecreto = { iv: string; tag: string; value_enc: string };
 
@@ -167,17 +168,16 @@ export function borrarSecreto(projectId: string, nombre: string): boolean {
   return db.query("DELETE FROM project_secrets WHERE project_id = ? AND name = ?").run(projectId, nombre).changes > 0;
 }
 
-// Variables de entorno de un proyecto para su agente (sin GITHUB_TOKEN). Un secreto que no
+// Variables de entorno de un proyecto para su agente (sin los secretos solo del servidor). Un secreto que no
 // descifra se omite sin mostrar nada. Nunca lanza error.
 export function entornoDeProyecto(projectId: string): Record<string, string> {
   try {
     const clave = claveMaestra();
     if (!clave) return {};
     const filas = db
-      .query<FilaSecreto, [string, string]>(
-        "SELECT name, iv, tag, value_enc FROM project_secrets WHERE project_id = ? AND name <> ?",
-      )
-      .all(projectId, SECRETO_SOLO_SERVIDOR);
+      .query<FilaSecreto, [string]>("SELECT name, iv, tag, value_enc FROM project_secrets WHERE project_id = ?")
+      .all(projectId)
+      .filter((fila) => !SECRETOS_SOLO_SERVIDOR.includes(fila.name));
 
     const entorno: Record<string, string> = {};
     for (const fila of filas) {

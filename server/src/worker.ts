@@ -18,6 +18,7 @@ import {
   promptObrero,
   promptReparacion,
   requiereAprobacion,
+  sinNotas,
   validarPlan,
   validarReporte,
   type Plan,
@@ -316,7 +317,8 @@ async function faseObrero(
   const plan = planGuardado(task.id);
   if (!plan) throw new ErrorFase("No hay un plan que ejecutar.");
   const aprobacion = db.query<{plan_hash:string|null; approved_hash:string|null},[string]>("SELECT plan_hash,approved_hash FROM tasks WHERE id=?").get(task.id)!;
-  if (aprobacion.plan_hash && (aprobacion.approved_hash !== aprobacion.plan_hash || hashPlan(plan) !== aprobacion.plan_hash))
+  // Las notas se añaden al aprobar y no forman parte del hash del plan aprobado.
+  if (aprobacion.plan_hash && (aprobacion.approved_hash !== aprobacion.plan_hash || hashPlan(sinNotas(plan)) !== aprobacion.plan_hash))
     throw new ErrorFase("El plan cambió después de su aprobación. Revisa y aprueba la versión actual.");
   const alcance = task.project_id ? await capturarAlcance(ctx.cwd, plan.pasos.flatMap(p => p.archivos)) : null;
 

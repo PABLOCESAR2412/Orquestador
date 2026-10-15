@@ -109,6 +109,7 @@ proyectoConfig.get("/projects/:id/git", async (c) => {
     inicializado: repo?.inicializado ?? tieneGitReal(cwd),
     ocupado: repo === null,
     token: !!valorSecreto(id, "GITHUB_TOKEN") || !!tokenGithubGlobal(),
+    prToken: !!valorSecreto(id, "GITHUB_PR_TOKEN"),
     ssh: !!clavePublicaDe(id),
   });
 });
@@ -145,8 +146,23 @@ export async function githubApi(projectId: string, path: string, body?: unknown)
   const token = valorSecreto(projectId, "GITHUB_TOKEN") || tokenGithubGlobal();
   if (!token)
     throw new Error(
-      "Inicia sesión con GitHub en Ajustes o configura GITHUB_TOKEN en los secretos del proyecto. Para crear PR necesita permiso de Pull requests; para subir, Contents de escritura.",
+      "Inicia sesión con GitHub en Ajustes o configura GITHUB_TOKEN en los secretos del proyecto. Para subir necesita Contents de escritura.",
     );
+  return githubLlamar(token, path, body);
+}
+
+// Crear un pull request usa solo GITHUB_PR_TOKEN, con permiso de Pull requests. No hay respaldo a la
+// cuenta de GitHub ni a GITHUB_TOKEN, que puede subir código.
+export async function githubApiPr(projectId: string, path: string, body: unknown) {
+  const token = valorSecreto(projectId, "GITHUB_PR_TOKEN");
+  if (!token)
+    throw new Error(
+      "Configura GITHUB_PR_TOKEN en los secretos del proyecto. Debe tener solo permiso de Pull requests (lectura y escritura).",
+    );
+  return githubLlamar(token, path, body);
+}
+
+async function githubLlamar(token: string, path: string, body?: unknown) {
   const res = await fetch("https://api.github.com" + path, {
     method: body ? "POST" : "GET",
     redirect: "error",

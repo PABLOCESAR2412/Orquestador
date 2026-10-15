@@ -17,12 +17,14 @@ const { config } = await import("../src/config");
 const { gitOk } = await import("../src/git");
 const { aprobarTarea, diffDeTarea, prepararCopia } = await import("../src/workspace");
 const { repositoryActions } = await import("../src/routes/repository-actions");
-const { guardarSecreto } = await import("../src/secretos");
+const { guardarSecreto, entornoDeProyecto } = await import("../src/secretos");
+const { githubApiPr } = await import("../src/routes/proyecto-config");
 const originalFetch = globalThis.fetch;
 const claveOriginal = process.env.TELO_CLAVE_CIFRADO;
 const proyectos: { id: string; cwd: string; taskId?: string }[] = [];
 const REMOTO = "https://github.com/dueno/prueba";
 const TOKEN = "ghp_" + "credencialficticiaparapruebas123456789";
+const TOKEN_PR = "github_pat_" + "credencialficticiaparapruebas123456789";
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -103,6 +105,7 @@ async function tareaConCommit() {
 test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama y base aprobadas", async () => {
   const p = await tareaConCommit();
   expect(db.query("SELECT 1 FROM project_git WHERE project_id=?").get(p.id)).toBeNull();
+  guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
   const respuesta = await pedir(`/projects/${p.id}/acciones`, { action: "pr", taskId: p.taskId });
   expect(respuesta.status).toBe(201);
   const accion = (await respuesta.json()) as any;
@@ -113,17 +116,17 @@ test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama
     expect(String(url)).toBe("https://api.github.com/repos/dueno/prueba/pulls");
     expect(init?.method).toBe("POST");
     expect(init?.redirect).toBe("error");
-    expect(new Headers(init?.headers).get("Authorization")).toBe(`Bearer ${TOKEN}`);
+    expect(new Headers(init?.headers).get("Authorization")).toBe(`Bearer ${TOKEN_PR}`);
     const body = JSON.parse(String(init?.body));
     expect(body.head).toBe(p.diff.rama);
     expect(body.base).toBe("main");
-    return Response.json({ html_url: "https://github.com/dueno/prueba/pull/1", token: TOKEN });
+    return Response.json({ html_url: "https://github.com/dueno/prueba/pull/1", token: TOKEN_PR });
   }) as unknown as typeof fetch;
   const aprobada = await pedir(`/acciones/${accion.id}/decidir`, { approve: true });
   const texto = await aprobada.text();
   expect(aprobada.status).toBe(200);
   expect(llamadas).toBe(1);
-  expect(texto).not.toContain(TOKEN);
+  expect(texto).not.toContain(TOKEN_PR);
   expect(JSON.parse(texto).result).toEqual({ url: "https://github.com/dueno/prueba/pull/1" });
   expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: true })).status).toBe(409);
   expect(llamadas).toBe(1);
@@ -191,39 +194,6 @@ test("init rechaza .git archivo que apunta a otro repositorio y conserva su cont
   expect(readFileSync(join(otro.cwd, ".git", "config"), "utf8")).toBe(configAntes);
 });
 
-test("merge crea primero el commit revisado y aplica sus archivos al proyecto", async () => {
-  const p = await tareaConCommit();
-  writeFileSync(join(p.clon, "archivo.txt"), "cambio nuevo sin commit\n");
-  const solicitud = await pedir(`/projects/${p.id}/acciones`, {action:"merge",taskId:p.taskId});
-  expect(solicitud.status).toBe(201);
-  const accion = await solicitud.json() as any;
-  const respuesta = await pedir(`/acciones/${accion.id}/decidir`, {approve:true});
-  expect(respuesta.status).toBe(200);
-  expect(readFileSync(join(p.cwd,"archivo.txt"),"utf8")).toBe("cambio nuevo sin commit\n");
-  expect((await diffDeTarea(p.taskId)).aprobaciones.commit?.hash).toBe(JSON.parse(accion.payload).hash);
-});
-
-test("merge rechaza un diff o commit posterior a la autorización", async () => {
-  const p = await tareaConCommit();
-  const accion = await (await pedir(`/projects/${p.id}/acciones`, {action:"merge",taskId:p.taskId})).json() as any;
-  writeFileSync(join(p.clon,"archivo.txt"),"posterior\n");
-  const diff = await diffDeTarea(p.taskId);
-  await aprobarTarea(p.taskId,{accion:"commit",hash:diff.hash!});
-  const respuesta = await pedir(`/acciones/${accion.id}/decidir`,{approve:true});
-  expect(respuesta.status).toBe(409);
-  expect((await respuesta.json() as any).error).toBe("cambios_cambiaron");
-  expect(readFileSync(join(p.cwd,"archivo.txt"),"utf8")).toBe("base\n");
-});
-
-test("merge rechaza cambios locales del proyecto sin sobrescribirlos", async () => {
-  const p=await tareaConCommit();
-  const accion=await (await pedir(`/projects/${p.id}/acciones`,{action:"merge",taskId:p.taskId})).json() as any;
-  writeFileSync(join(p.cwd,"archivo.txt"),"trabajo local\n");
-  const respuesta=await pedir(`/acciones/${accion.id}/decidir`,{approve:true});
-  expect(respuesta.status).toBe(409);
-  expect(readFileSync(join(p.cwd,"archivo.txt"),"utf8")).toBe("trabajo local\n");
-});
-
 
 test("una autorización ejecuta commit antes de push y usa la cuenta del servidor como respaldo", async () => {
   const p=await tareaConCommit();
@@ -259,20 +229,45 @@ test("una autorización ejecuta commit antes de push y usa la cuenta del servido
   } finally { espia.mockRestore(); borrarCuentaGithubGlobal(); }
 });
 
-test("fusionar un commit existente conserva una sola aprobación", async () => {
+test("merge y push_main ya no se aceptan, y una acción antigua de merge pendiente no se ejecuta", async () => {
   const p = await tareaConCommit();
-  const accion = await (await pedir(`/projects/${p.id}/acciones`,{action:"merge",taskId:p.taskId})).json() as any;
-  expect((await pedir(`/acciones/${accion.id}/decidir`,{approve:true})).status).toBe(200);
-  expect(db.query<{n:number},[string]>("SELECT COUNT(*) AS n FROM task_approvals WHERE task_id=? AND accion='commit'").get(p.taskId)?.n).toBe(1);
+  expect((await pedir(`/projects/${p.id}/acciones`, { action: "merge", taskId: p.taskId })).status).toBe(400);
+  expect((await pedir(`/projects/${p.id}/acciones`, { action: "push_main", taskId: p.taskId })).status).toBe(400);
+  const antigua = randomUUID();
+  db.query("INSERT INTO repository_actions(id,project_id,conversation_id,task_id,action,payload) VALUES (?,?,?,?,?,?)").run(
+    antigua,
+    p.id,
+    null,
+    p.taskId,
+    "merge",
+    JSON.stringify({ hash: null, commit: null, rama: null, base: "main" }),
+  );
+  const respuesta = await pedir(`/acciones/${antigua}/decidir`, { approve: true });
+  expect(respuesta.status).toBe(409);
+  expect(((await respuesta.json()) as { detail: string }).detail).toContain("ya no está disponible");
+  expect(
+    db.query<{ state: string }, [string]>("SELECT state FROM repository_actions WHERE id=?").get(antigua)?.state,
+  ).toBe("failed");
 });
 
-test("merge conserva archivos ignorados que coinciden con archivos nuevos de la tarea", async () => {
-  const p=await tareaConCommit();
-  writeFileSync(join(p.cwd,".git","info","exclude"),"ignorado.txt\n");
-  writeFileSync(join(p.cwd,"ignorado.txt"),"contenido local ignorado\n");
-  writeFileSync(join(p.clon,"ignorado.txt"),"archivo nuevo de tarea\n");
-  const accion=await (await pedir(`/projects/${p.id}/acciones`,{action:"merge",taskId:p.taskId})).json() as any;
-  expect((await pedir(`/acciones/${accion.id}/decidir`,{approve:true})).status).toBe(409);
-  expect(readFileSync(join(p.cwd,"ignorado.txt"),"utf8")).toBe("contenido local ignorado\n");
-  expect(readFileSync(join(p.cwd,"archivo.txt"),"utf8")).toBe("base\n");
+test("crear un pull request usa solo GITHUB_PR_TOKEN, sin respaldo a GITHUB_TOKEN", async () => {
+  const p = proyecto();
+  guardarSecreto(p.id, "GITHUB_TOKEN", TOKEN);
+  await expect(githubApiPr(p.id, "/repos/dueno/prueba/pulls", { title: "x" })).rejects.toThrow("GITHUB_PR_TOKEN");
+
+  guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
+  let autorizacion = "";
+  globalThis.fetch = (async (_url: unknown, init: RequestInit) => {
+    autorizacion = (init.headers as Record<string, string>).Authorization;
+    return new Response(JSON.stringify({ html_url: "https://github.com/dueno/prueba/pull/1" }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  const pr = (await githubApiPr(p.id, "/repos/dueno/prueba/pulls", { title: "x" })) as { html_url: string };
+  expect(autorizacion).toBe(`Bearer ${TOKEN_PR}`);
+  expect(pr.html_url).toContain("/pull/1");
+
+  // Ninguno de los dos tokens de GitHub llega al entorno del agente.
+  expect(entornoDeProyecto(p.id)).not.toHaveProperty("GITHUB_PR_TOKEN");
+  expect(entornoDeProyecto(p.id)).not.toHaveProperty("GITHUB_TOKEN");
 });

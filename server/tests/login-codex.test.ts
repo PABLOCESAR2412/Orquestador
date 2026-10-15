@@ -11,9 +11,10 @@ const BIN_LENTO = join(RAIZ, "bin-lento");
 const BIN_RAPIDO = join(RAIZ, "bin-rapido");
 const BIN_VACIO = join(RAIZ, "bin-vacio");
 for (const d of [HOME_PRUEBA, BIN_LENTO, BIN_RAPIDO, BIN_VACIO]) mkdirSync(d, { recursive: true });
-process.env.HOME = HOME_PRUEBA;
 process.env.DATA_DIR = join(RAIZ, "data");
-const PATH_ORIGINAL = process.env.PATH;
+// HOME y PATH se fijan en beforeAll y se restauran en afterAll: otros archivos de prueba comparten el proceso.
+let PATH_ORIGINAL = "";
+let HOME_ORIGINAL: string | undefined;
 const TOKEN = "sk-abcdefghijklmnopqrstuvwxyz0123456789";
 const ARCHIVO_SESION = join(HOME_PRUEBA, ".codex", "auth.json");
 
@@ -49,11 +50,16 @@ async function esperar(pred: (e: Awaited<ReturnType<typeof estado>>) => boolean,
 }
 
 beforeAll(() => {
+  PATH_ORIGINAL = process.env.PATH ?? "";
+  HOME_ORIGINAL = process.env.HOME;
+  process.env.HOME = HOME_PRUEBA;
   process.env.PATH = `${BIN_VACIO}:/usr/bin:/bin`;
 });
 
 afterAll(() => {
   process.env.PATH = PATH_ORIGINAL;
+  if (HOME_ORIGINAL === undefined) delete process.env.HOME;
+  else process.env.HOME = HOME_ORIGINAL;
   rmSync(RAIZ, { recursive: true, force: true });
 });
 

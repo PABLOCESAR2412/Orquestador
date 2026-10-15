@@ -163,7 +163,7 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
 }
 
 // Plan sin las notas del usuario: el analizador no las necesita y el obrero las recibe aparte.
-function sinNotas(plan: Plan): Omit<Plan, "notas"> {
+export function sinNotas(plan: Plan): Omit<Plan, "notas"> {
   const { notas: _notas, ...resto } = plan;
   return resto;
 }

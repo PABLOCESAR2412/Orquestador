@@ -635,30 +635,6 @@ export function opcionesDeCredenciales(token: string | null): {
   return { args, env };
 }
 
-// El cerrojo cubre la comprobación, el commit y la fusión del SHA que el usuario revisó.
-export function fusionarTarea(
-  taskId: string,
-  opts: { cwd: string; base: string; hash: string | null; commit: string; mensaje?: string },
-) {
-  return conTarea(taskId, async () => {
-    const ctx = await contextoGit(taskId);
-    const estado = await estadoDelClon(ctx);
-    const head = (await gitOkSeguro(["rev-parse", "HEAD"], {cwd:ctx.clon})).trim();
-    if (estado.hash !== opts.hash || head !== opts.commit)
-      throw new ErrorTarea("cambios_cambiaron", 409);
-    const locales = await gitSeguro(["status", "--porcelain"], {cwd:opts.cwd});
-    if (locales.code !== 0 || locales.stdout.trim())
-      throw new Error("El proyecto tiene cambios locales. Consérvalos antes de fusionar la tarea.");
-    const actual = (await gitOkSeguro(["rev-parse", "--abbrev-ref", "HEAD"], {cwd:opts.cwd})).trim();
-    if (actual !== opts.base) throw new Error("Abre la rama destino del proyecto antes de fusionar.");
-    const sha = estado.hash ? (await commitInterno(taskId, ctx, estado.hash, opts.mensaje)).sha : head;
-    await gitOkSeguro(["fetch", ctx.clon, sha], {cwd:opts.cwd});
-    // Solo avance directo: si las ramas divergieron, se conservan intactas para revisión.
-    await gitOkSeguro(["merge", "--ff-only", "--no-overwrite-ignore", sha], {cwd:opts.cwd});
-    return { mensaje: `Cambios fusionados en ${opts.base}.`, sha, rama:opts.base };
-  });
-}
-
 async function subirAprobado(
   taskId: string,
   ctx: Contexto,
