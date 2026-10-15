@@ -53,18 +53,22 @@ type Sesion = {
 
 let sesion: Sesion | null = null;
 
-const POSIBLES_ARCHIVOS_AUTH = [
-  join(carpetaHome(), ".codex", "auth.json"),
-  join(carpetaHome(), ".config", "codex", "auth.json"),
-  join(carpetaHome(), ".codex", "config.json"),
-  join(carpetaHome(), ".config", "codex", "config.json"),
-  join(carpetaHome(), ".codex", "session.json"),
-  join(carpetaHome(), ".local", "share", "opencode", "auth.json"),
-  join(carpetaHome(), ".config", "opencode", "auth.json"),
-];
+// Rutas que indican sesión. Se calculan en cada uso: el HOME puede cambiar después de cargar el módulo.
+function archivosAuth(): string[] {
+  const home = carpetaHome();
+  return [
+    join(home, ".codex", "auth.json"),
+    join(home, ".config", "codex", "auth.json"),
+    join(home, ".codex", "config.json"),
+    join(home, ".config", "codex", "config.json"),
+    join(home, ".codex", "session.json"),
+    join(home, ".local", "share", "opencode", "auth.json"),
+    join(home, ".config", "opencode", "auth.json"),
+  ];
+}
 
 export function sesionCodexConectada(): boolean {
-  return POSIBLES_ARCHIVOS_AUTH.some((ruta) => existsSync(ruta));
+  return archivosAuth().some((ruta) => existsSync(ruta));
 }
 
 function entornoMinimo(): Record<string, string> {

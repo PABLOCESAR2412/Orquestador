@@ -1,5 +1,5 @@
 import { prefijoAislamiento } from "./aislamiento";
-import { esVariableReservada } from "../secretos";
+import { esVariableReservada, SECRETOS_SOLO_SERVIDOR } from "../secretos";
 
 // Id de sesión de OpenCode. Empieza por letra o cifra: así nunca se lee como una opción de la CLI.
 const PATRON_SESION = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
@@ -101,17 +101,17 @@ function entornoDelAgente(propias?: Record<string, string>): Record<string, stri
   const env: Record<string, string> = {};
   for (const [clave, valor] of Object.entries(process.env)) {
     if (valor === undefined || clave.startsWith("TELO_")) continue;
-    // Una variable del operador en TELO_AGENTE_VARIABLES no puede ser de sistema, de Telo ni el token de GitHub.
+    // Una variable del operador en TELO_AGENTE_VARIABLES no puede ser de sistema, de Telo ni un token de GitHub.
     const permitida =
       VARIABLES_PERMITIDAS.has(clave) ||
       PREFIJOS_PERMITIDOS.some((p) => clave.startsWith(p)) ||
-      (extra.has(clave) && !esVariableReservada(clave) && clave !== "GITHUB_TOKEN");
+      (extra.has(clave) && !esVariableReservada(clave) && !SECRETOS_SOLO_SERVIDOR.includes(clave));
     if (permitida) env[clave] = valor;
   }
   // Los secretos del proyecto no pueden sobrescribir nada del sistema, de Telo ni de la lista permitida.
   for (const [clave, valor] of Object.entries(propias ?? {})) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(clave)) continue;
-    if (esVariableReservada(clave) || clave === "GITHUB_TOKEN") continue;
+    if (esVariableReservada(clave) || SECRETOS_SOLO_SERVIDOR.includes(clave)) continue;
     if (VARIABLES_PERMITIDAS.has(clave) || PREFIJOS_PERMITIDOS.some((p) => clave.startsWith(p))) continue;
     env[clave] = valor;
   }

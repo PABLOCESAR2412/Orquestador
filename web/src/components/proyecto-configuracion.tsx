@@ -157,8 +157,9 @@ function ProyectoGit({ id }: { id: string }) {
           />
         </label>
         <p className="hint">
-          Usa un token limitado a este repositorio: Contents de escritura para push y Pull requests
-          de escritura para crear PR. Puedes usar una clave SSH para push en la sección siguiente.
+          Usa un token limitado a este repositorio con Contents de escritura para subir. Para crear
+          pull requests guarda aparte un token solo con Pull requests como GITHUB_PR_TOKEN en Secretos.
+          Puedes usar una clave SSH para subir en la sección siguiente.
         </p>
         <div>
           <button

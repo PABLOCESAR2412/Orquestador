@@ -2,7 +2,7 @@
 
 Documento de traspaso. Quien lo continúe debe leer también `CLAUDE.md`, `DESIGN.md` y `FASE2.md`.
 
-Rama: `feat/seguir-tras-cuota`. Último commit subido: `79b126e` (merge con el remoto). Las tareas 7, 9 y Codex están en `502b781`. No hay PR.
+Rama de trabajo: `fix/notas-acciones-git`, desde `main` (`90f324e`). Contiene las correcciones de la Tarea 11 y de las pruebas de Codex. Sin commit ni push todavía. La rama `feat/seguir-tras-cuota` ya está en `main` por el PR 35.
 
 Leyenda: [x] hecho y verificado · [~] escrito, sin probar · [ ] pendiente
 
@@ -49,14 +49,16 @@ Lista de control. Se marca lo hecho en cada tarea y aquí a la vez.
 - [x] **Tarea 8.** Memoria del proyecto editable desde la app (`PUT /api/projects/:id/memoria`, con redacción y límite de 4 000 caracteres; botones Editar, Escribir, Guardar, Cancelar y Borrar). Verificada en el navegador a 390 y 1440 px, y en `proyectos.test.ts`. Supuesto confirmado en el código: "memoria" = memoria aprendida por proyecto.
 - [x] **Tarea 9.** Botón "Instalar" de OpenCode con confirmación en dos pasos y comando fijo, verificado con npm falso (`instalacion.test.ts`) y en navegador. **Pendiente en el VM:** que `npm` exista para el servicio, y que `opencode models` liste los modelos de la clave guardada.
 - [~] **Tarea 10.** Codex: login por código de dispositivo, verificado con CLI falso (`login-codex.test.ts`) y en navegador; **pendiente en el VM:** el comando exacto y el archivo de sesión. Instalar Codex desde Ajustes: hecho (misma tarjeta que el login, verificado en navegador a 390 y 1440 px). Gemini: clave de AI Studio (tarea 3). Claude: **investigado, no implementado** (ver tarea 10, punto b).
-- [ ] **Tarea 11.** Acciones git desde los chats (commit, subir y abrir PR, siempre con aprobación). Diseño decidido, sin implementar (ver Tarea 11). La protección de `main` en GitHub ya está hecha.
+- [~] **Tarea 11.** Acciones git desde los chats (commit, subir rama y abrir PR, siempre con aprobación). En `main` desde los PR 36 a 42. En esta rama se quitan la fusión local y el push directo a `main`, el PR usa solo `GITHUB_PR_TOKEN` y las notas del plan dejan de romper la aprobación (ver Tarea 11). La protección de `main` en GitHub ya está hecha.
 - [ ] **Tarea 12.** Cola de mensajes del chat: si envías más mientras el agente responde, se ejecutan en orden. Hoy se rechazan con 409. Pendiente (ver Tarea 12).
 - [ ] **Tarea 13.** Wrangler (Cloudflare) instalable desde Ajustes, con inicio de sesión por código. Pendiente de dos decisiones (ver Tarea 13).
 - [x] **Corrección.** El error «opencode salió con código 143» ya no aparece: el chat explica el límite de 3 minutos. Causa en «Diagnóstico del 143».
 - [x] **Corrección.** `/tmp` propio dentro del sandbox: OpenCode ya no falla con «Read-only file system». Verificado con bwrap real.
+- [x] **Corrección.** Notas del plan: al aprobar con notas, el obrero ya no rechaza el plan con «El plan cambió después de su aprobación». El hash cubre el plan sin las notas (`sinNotas`). La prueba extremo a extremo del analizador pasa.
+- [x] **Corrección.** Pruebas de Codex: `HOME` se fija y se restaura en `beforeAll`/`afterAll`, y las rutas de sesión se calculan en cada uso (`login-cli.ts`). Suite del servidor: 290 pasan, 7 se omiten, 0 fallan.
 - [x] **Barra lateral.** Se quitó el nombre del proyecto debajo de cada chat. Verificada a 390 y 1440 px.
 
-Orden: tareas 1 a 5 primero (ya acordadas), luego 6 a 10 en el orden en que el usuario las pidió. Decisiones tomadas: skills globales y por proyecto (7), instalar OpenCode con confirmación (9), login de Codex en el VM (10a). Pendiente: Claude gratis (10b), el gasto de Azure (6, necesita la identidad del VM) y las acciones git desde los chats (11).
+Orden: tareas 1 a 5 primero (ya acordadas), luego 6 a 10 en el orden en que el usuario las pidió. Decisiones tomadas: skills globales y por proyecto (7), instalar OpenCode con confirmación (9), login de Codex en el VM (10a). Pendiente: Claude gratis (10b), el gasto de Azure (6, necesita la identidad del VM) y lo que queda de las acciones git desde los chats (11).
 
 Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir el servidor antes de tocar la web. Si una prueba depende de tiempos, subir la espera de `esperar()`, no quitar la comprobación.
 
@@ -292,15 +294,18 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 11. Acciones git desde los chats (pendiente)
+## Tarea 11. Acciones git desde los chats (parcial)
 
-**Objetivo.** Que un chat con proyecto pueda crear commits, subir una rama y abrir PR sin que el usuario copie comandos. Ninguna acción se ejecuta sin aprobación explícita en Telo. El agente nunca recibe la clave SSH ni el token de GitHub.
+**Objetivo.** Que un chat con proyecto pueda crear commits, subir una rama y abrir PR sin que el usuario copie comandos. Ninguna acción se ejecuta sin aprobación explícita en Telo. El agente nunca recibe la clave SSH ni los tokens de GitHub.
+
+**Estado.** En el código, las acciones llegan por la API `/projects/:id/acciones` (`routes/repository-actions.ts`), que el chat llama directamente cuando el usuario pide git (`routes/chat.ts`). Cada acción queda aprobada en `repository_actions`. No existe todavía la carpeta `.telo/solicitudes` ni la skill `telo-git` de abajo: esas secciones describen el diseño original. **Pendiente:** que el usuario cree `GITHUB_PR_TOKEN` en los secretos del proyecto, y comprobar con un push directo a `main` que GitHub lo rechaza.
 
 **Decisiones (confirmadas por el usuario).**
 - Permiso por defecto de un chat: **sin git**. Quien quiera git lo activa en la configuración del chat. Los niveles intermedios quedan por definir.
 - Ramas: solo `telo/<id>`. Nunca `main`, nunca force push, nunca borrar ramas y nunca merge. El merge lo hace el usuario.
 - **Subir** (push) sigue con la deploy key y con aprobación previa. Un PR necesita que la rama exista en GitHub, así que "solo PR" no quita el push: es el paso anterior.
-- **PR**: el token de la API tiene solo el permiso *Pull requests: Read and write* (*Metadata: Read* se añade solo), un solo repo y vencimiento de 90 días. Se guarda como secreto `GITHUB_PR_TOKEN`, separado de `GITHUB_TOKEN`, que hoy es el respaldo del push por HTTPS. Si la API responde 403 al crear el PR, se añade *Contents: Read* y se documenta.
+- **PR**: el token de la API tiene solo el permiso *Pull requests: Read and write* (*Metadata: Read* se añade solo), un solo repo y vencimiento de 90 días. Se guarda como secreto `GITHUB_PR_TOKEN`, separado de `GITHUB_TOKEN`, que hoy es el respaldo del push por HTTPS. Si la API responde 403 al crear el PR, se añade *Contents: Read* y se documenta. En el código, el PR usa solo `GITHUB_PR_TOKEN`: sin respaldo a `GITHUB_TOKEN` ni a la cuenta general de GitHub. Ese nombre no entra al entorno del agente.
+- **Fusión local y push a `main` quitados** (decidido el 15 de octubre, para respetar la protección de `main`): `merge` y `push_main` ya no se crean ni se ejecutan. Una acción antigua pendiente de esos tipos falla con un aviso y nunca cae en el camino del PR.
 - **Protección de `main`** en GitHub: hecha por el usuario (*Require a pull request* con 0 aprobaciones, *Do not allow bypassing*, sin force push ni borrado). **Pendiente:** comprobar con un `git push` directo a `main` que GitHub lo rechaza.
 
 **Cómo debe funcionar.**
@@ -317,7 +322,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 - `subirAprobado` (`workspace.ts`) empuja solo `HEAD:refs/heads/telo/<id>`, sin force, y exige un commit aprobado con el hash coincidente.
 - El escaneo de secretos y de archivos sensibles se aplica antes de cada commit.
 
-**Implementación pendiente, en orden.**
+**Implementación pendiente, en orden (diseño original; ver Estado).**
 1. Clon propio para chats con proyecto (extender `workspace.ts`) y una migración nueva para el permiso por chat (la siguiente numerada).
 2. Permiso por chat en la configuración del chat, por `PATCH /api/conversations/:id`. Sin git por defecto.
 3. Lectura de `.telo/solicitudes/*.json` al terminar cada turno, con validación en el servidor.

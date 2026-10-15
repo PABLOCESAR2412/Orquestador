@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type RepositoryAction } from "../api";
 import { errorText } from "../lib/model";
 
+// merge y push_main ya no se crean; quedan aquí solo para mostrar el historial de acciones antiguas.
 const labels: Record<string, string> = {
   init: "Inicializar repositorio",
   commit: "Crear commit",
@@ -60,7 +61,7 @@ export function RepositoryApproval({
     onSettled: onChange,
   });
   const titulo = labels[accion.action] ?? accion.action;
-  const subida = accion.action === "push" || accion.action === "push_main";
+  const subida = accion.action === "push";
   const estado = estados[accion.state] ?? accion.state;
   const cuerpo = (
     <>
@@ -270,32 +271,18 @@ export function AccionesRepositorioChat({
       {projectId && terminada && taskId && diff && !pendiente && (
         <div className="approval-buttons" aria-label="Acciones del repositorio">
           {tieneCambios && !pushVigente && (
-            <>
-              <button
-                type="button"
-                className="primary"
-                disabled={ocupado}
-                onClick={() =>
-                  pedir.mutate(diff.remoto ? "push_main" : "merge")
-                }
-              >
-                {pedir.isPending
-                  ? "Preparando…"
-                  : diff.remoto
-                    ? "Commit y push a principal"
-                    : "Commit y merge local"}
-              </button>
-              {diff.remoto && (
-                <button
-                  type="button"
-                  className="ghost"
-                  disabled={ocupado}
-                  onClick={() => pedir.mutate("push")}
-                >
-                  Subir rama para PR
-                </button>
-              )}
-            </>
+            <button
+              type="button"
+              className="primary"
+              disabled={ocupado}
+              onClick={() => pedir.mutate(diff.remoto ? "push" : "commit")}
+            >
+              {pedir.isPending
+                ? "Preparando…"
+                : diff.remoto
+                  ? "Commit y subir rama para PR"
+                  : "Crear commit"}
+            </button>
           )}
           {puedeCrearPr && (
             <button
@@ -316,16 +303,6 @@ export function AccionesRepositorioChat({
             <span className="approval-files" role="status">
               Cambios subidos a {ramaSubida}.
             </span>
-          )}
-          {tieneCambios && commitVigente && (
-            <button
-              type="button"
-              className="ghost"
-              disabled={ocupado}
-              onClick={() => pedir.mutate("merge")}
-            >
-              Fusionar en proyecto local
-            </button>
           )}
           {!tieneCambios && (
             <span className="approval-files">Sin cambios pendientes.</span>

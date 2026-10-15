@@ -5,16 +5,14 @@ import { db } from "../db";
 import { projectRepoPath, leerCuerpoJson } from "./projects";
 import {
   aprobarTarea,
-  fusionarTarea,
   diffDeTarea,
   ErrorTarea,
   mensajeSeguro,
-  rutaClon,
   urlGithubPermitida,
 } from "../workspace";
 import { conProyectoRevisado } from "../ocupacion";
-import { gitOk, gitOkSeguro, gitSeguro, prepararRepoSeguro, tieneGitReal } from "../git";
-import { configGit, githubApi } from "./proyecto-config";
+import { gitOk, gitOkSeguro, prepararRepoSeguro, tieneGitReal } from "../git";
+import { configGit, githubApiPr } from "./proyecto-config";
 import { redactar } from "../redaccion";
 
 export const repositoryActions = new Hono();
@@ -38,7 +36,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
     message?: string;
     title?: string;
   }>(c);
-  if (!b || !["init", "commit", "push", "pr", "merge", "push_main"].includes(b.action))
+  if (!b || !["init", "commit", "push", "pr"].includes(b.action))
     return c.json({ error: "invalid_accion" }, 400);
   if (
     (b.conversationId !== undefined &&
@@ -75,12 +73,10 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
       return c.json({ error: "sin_cambios", detail: "No hay archivos modificados para crear un commit." }, 409);
     }
     const cfg = configGit(projectId);
-    const esPushMain = b.action === "push_main";
-    const ramaDestino = esPushMain ? cfg.base_branch : (diff?.rama ?? null);
     const payload = {
       hash: diff?.hash ?? null,
       diff: diff?.diff ?? "",
-      rama: ramaDestino,
+      rama: diff?.rama ?? null,
       commit: diff?.commit ?? null,
       archivos: diff?.archivos.map((a) => a.ruta) ?? [],
       truncado: diff?.truncado ?? false,
@@ -91,11 +87,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
       descripcion:
         b.action === "init"
           ? "Inicializar Git y crear un primer commit vacío para habilitar los espacios de trabajo. No añade tus archivos."
-          : b.action === "merge"
-            ? `Fusionar la rama ${diff?.rama ?? ""} directamente en la rama principal (${cfg.base_branch}).`
-            : b.action === "push_main"
-              ? `Hacer commit y subir los cambios directamente a la rama principal (${cfg.base_branch}) en GitHub.`
-              : null,
+          : null,
     };
     const id = crypto.randomUUID();
     const existente = db
@@ -228,13 +220,13 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         };
       });
       if (!result) throw new Error("El proyecto está ocupado. Reintenta cuando termine.");
-    } else if (row.action === "commit" || row.action === "push" || row.action === "push_main") {
+    } else if (row.action === "commit" || row.action === "push") {
       const actual = await diffDeTarea(row.task_id!);
       if (actual.hash !== p.hash || actual.commit !== p.commit || actual.remoto_url !== p.remote)
         throw new Error(
           "Los cambios o el remoto cambiaron desde que los revisaste. Solicita otra autorización.",
         );
-      const destinoRama = row.action === "push_main" ? (p.base || "main") : (p.rama || undefined);
+      const destinoRama = p.rama || undefined;
       result = await aprobarTarea(row.task_id!, {
         accion: row.action === "commit" ? "commit" : "push",
         hash: p.hash,
@@ -242,37 +234,7 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         destinoRama,
         commitEsperado: p.commit,
       });
-      if (row.action === "push_main") {
-        const cwd = projectRepoPath(row.project_id);
-        if (cwd && tieneGitReal(cwd)) {
-          try {
-            await conProyectoRevisado(row.project_id, async () => {
-              await prepararRepoSeguro(cwd);
-              const clonPath = rutaClon(row.task_id!);
-              const ramaActual = (await gitOkSeguro(["rev-parse", "--abbrev-ref", "HEAD"], { cwd })).trim();
-              const limpio = await gitSeguro(["status", "--porcelain"], {cwd});
-              if (ramaActual === p.base && limpio.code === 0 && !limpio.stdout.trim()) {
-                const sha = (result as {sha:string}).sha;
-                await gitOkSeguro(["fetch", clonPath, sha], { cwd });
-                await gitOkSeguro(["merge", "--ff-only", "--no-overwrite-ignore", sha], { cwd });
-              }
-            });
-          } catch {
-            // La subida a GitHub fue exitosa; la sincronización local es de mejor esfuerzo.
-          }
-        }
-      }
-    } else if (row.action === "merge") {
-      const cwd = projectRepoPath(row.project_id);
-      if (!cwd) throw new Error("El proyecto ya no está disponible.");
-      const cfg = configGit(row.project_id);
-      if (cfg.base_branch !== p.base) throw new Error("La rama destino cambió. Solicita otra autorización.");
-      result = await conProyectoRevisado(row.project_id, async () => {
-        if (!(await prepararRepoSeguro(cwd))) throw new Error("El proyecto no tiene un repositorio Git válido.");
-        return fusionarTarea(row.task_id!, {cwd,base:p.base,hash:p.hash,commit:p.commit,mensaje:p.message});
-      });
-      if (!result) throw new Error("El proyecto está ocupado. Reintenta cuando termine.");
-    } else {
+    } else if (row.action === "pr") {
       const diff = await diffDeTarea(row.task_id!);
       if (
         diff.hash !== p.hash ||
@@ -289,7 +251,7 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
       const cfg = configGit(row.project_id);
       if (p.base !== cfg.base_branch || p.remote !== remoto)
         throw new Error("La configuración del repositorio cambió. Solicita otra aprobación.");
-      result = await githubApi(
+      result = await githubApiPr(
         row.project_id,
         "/repos/" + remoto.replace("https://github.com/", "") + "/pulls",
         {
@@ -299,6 +261,9 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
           body: "Cambios revisados y aprobados en Telo.",
         },
       );
+    } else {
+      // Una acción antigua (merge o push_main) pendiente de antes no se ejecuta: no debe caer en el PR.
+      throw new Error("Esta acción ya no está disponible. Solicita una autorización nueva.");
     }
     const seguro = JSON.stringify(
       row.action === "pr" ? { url: (result as { html_url: string }).html_url } : result,
