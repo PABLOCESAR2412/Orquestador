@@ -22,8 +22,7 @@ const GROUPS: { label: string; pattern: RegExp }[] = [
   { label: "Claude", pattern: /claude-(fable|haiku|opus|sonnet)/ },
   { label: "GPT-6", pattern: /gpt-6/ },
   { label: "Codex", pattern: /codex/ },
-  { label: "Gemini Pro 3.1", pattern: /gemini-3\.1-pro/ },
-  { label: "Gemini Flash 3.5-3.8", pattern: /gemini-3\.[5-8]-flash/ },
+  { label: "Gemini", pattern: /gemini/ },
   { label: "DeepSeek", pattern: /deepseek-v4(\.1)?-flash|deepseek-v4-pro/ },
   { label: "Big Pickle", pattern: /big-pickle/ },
 ];

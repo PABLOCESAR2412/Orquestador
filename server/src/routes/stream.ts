@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { streamSSE } from "hono/streaming";
 import { cantidadSuscriptores, suscribir, type EventoVivo } from "../bus";
 import { sinLimiteDeInactividad } from "../conexion";
 
@@ -47,28 +46,74 @@ function aMensaje(evento: EventoVivo): { event: string; data: string } {
 
 // GET /api/eventos-vivos -> text/event-stream
 stream.get("/eventos-vivos", (c) => {
-  if (cantidadSuscriptores() >= MAX_SUSCRIPTORES) return c.json({ error: "demasiadas_conexiones" }, 503);
+  if (cantidadSuscriptores() >= MAX_SUSCRIPTORES) {
+    return c.json({ error: "demasiadas_conexiones" }, 503);
+  }
   sinLimiteDeInactividad(c);
 
-  return streamSSE(c, async (sse) => {
-    const baja = suscribir((evento) => {
-      if (sse.aborted) return;
-      const mensaje = aMensaje(evento);
-      sse.writeSSE(mensaje).catch(() => {
-        // La conexión ya se cerró; la baja llega por onAbort.
-      });
-    });
+  const encoder = new TextEncoder();
+  let ping: ReturnType<typeof setInterval> | undefined;
+  let baja: (() => void) | undefined;
+  let terminado = false;
 
-    // La conexión vive mientras el cliente siga conectado: se resuelve al cerrarse.
-    await new Promise<void>((resolve) => {
-      const ping = setInterval(() => {
-        sse.writeSSE({ event: "ping", data: "{}" }).catch(() => {});
-      }, PING_MS);
-      sse.onAbort(() => {
-        clearInterval(ping);
-        baja();
-        resolve();
+  const limpiar = () => {
+    if (terminado) return;
+    terminado = true;
+    if (ping !== undefined) {
+      clearInterval(ping);
+      ping = undefined;
+    }
+    if (baja) {
+      baja();
+      baja = undefined;
+    }
+  };
+
+  const cuerpo = new ReadableStream({
+    start(controller) {
+      // Abre el canal de inmediato con un comentario SSE para que el proxy envíe cabeceras
+      controller.enqueue(encoder.encode(": ok\n\n"));
+
+      baja = suscribir((evento) => {
+        if (terminado) return;
+        try {
+          const mensaje = aMensaje(evento);
+          controller.enqueue(encoder.encode(`event: ${mensaje.event}\ndata: ${mensaje.data}\n\n`));
+        } catch {
+          limpiar();
+          try {
+            controller.close();
+          } catch {}
+        }
       });
-    });
+
+      ping = setInterval(() => {
+        if (terminado) return;
+        try {
+          controller.enqueue(encoder.encode("event: ping\ndata: {}\n\n"));
+        } catch {
+          limpiar();
+          try {
+            controller.close();
+          } catch {}
+        }
+      }, PING_MS);
+    },
+    cancel() {
+      limpiar();
+    },
+  });
+
+  c.req.raw.signal.addEventListener("abort", () => {
+    limpiar();
+  });
+
+  return new Response(cuerpo, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+    },
   });
 });
