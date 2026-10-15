@@ -37,7 +37,7 @@ function validarNombre(name: unknown): asserts name is string {
   }
 }
 
-// Solo documentos de GitHub: ni redirecciones, otros hosts ni rutas especiales.
+// Soporta URLs de GitHub de archivos SKILL.md o carpetas (/tree/...) de skills.
 function documentoGitHub(input: unknown): { source: string; raw: string; name: string } {
   if (typeof input !== "string" || /[\\\s%?#]/.test(input))
     throw new SkillError("invalid_skill_url");
@@ -60,28 +60,64 @@ function documentoGitHub(input: unknown): { source: string; raw: string; name: s
   if (partesOriginales.some((p) => !/^[A-Za-z0-9._-]+$/.test(p) || p === "." || p === "..")) {
     throw new SkillError("invalid_skill_url");
   }
-  const partes = url.pathname.slice(1).split("/");
+  const partes = url.pathname.slice(1).split("/").filter(Boolean);
+  if (partes.length < 2) throw new SkillError("invalid_skill_url");
   const [owner, repo] = partes;
+
+  let ref = "main";
+  let rutaPartes: string[] = [];
+
   if (url.hostname === "github.com") {
-    if (partes[2] !== "blob") throw new SkillError("invalid_skill_url");
-    partes.splice(2, 1);
-  } else if (url.hostname !== "raw.githubusercontent.com")
+    const tipo = partes[2];
+    if (tipo !== "blob" && tipo !== "tree") throw new SkillError("invalid_skill_url");
+    ref = partes[3] || "main";
+    rutaPartes = partes.slice(4);
+  } else if (url.hostname === "raw.githubusercontent.com") {
+    ref = partes[2] || "main";
+    rutaPartes = partes.slice(3);
+  } else {
     throw new SkillError("invalid_skill_url");
-  if (partes.length < 5 || partes.at(-1) !== "SKILL.md") throw new SkillError("invalid_skill_url");
-  const ref = partes[2];
-  const ruta = partes.slice(3).join("/");
-  const name = partes.at(-2)!;
-  validarNombre(name);
+  }
+
+  let nombreSkill = "";
+  if (rutaPartes.length === 0) {
+    rutaPartes = ["SKILL.md"];
+    nombreSkill = repo;
+  } else {
+    const ultimo = rutaPartes[rutaPartes.length - 1];
+    if (ultimo.includes(".")) {
+      if (!ultimo.toLowerCase().endsWith(".md")) {
+        throw new SkillError("invalid_skill_url");
+      }
+      if (ultimo.toUpperCase() === "SKILL.MD") {
+        nombreSkill = rutaPartes.length > 1 ? rutaPartes[rutaPartes.length - 2] : repo;
+      } else {
+        nombreSkill = ultimo.replace(/\.md$/i, "");
+      }
+    } else {
+      nombreSkill = ultimo;
+      rutaPartes.push("SKILL.md");
+    }
+  }
+
+  validarNombre(nombreSkill);
+  const rutaFinal = rutaPartes.join("/");
   return {
-    source: `https://github.com/${owner}/${repo}/blob/${ref}/${ruta}`,
-    raw: `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${ruta}`,
-    name,
+    source: `https://github.com/${owner}/${repo}/blob/${ref}/${rutaFinal}`,
+    raw: `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${rutaFinal}`,
+    name: nombreSkill,
   };
 }
 
 async function descargar(url: string, limite: number): Promise<string> {
   try {
-    const respuesta = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(10_000) });
+    let respuesta = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(10_000) });
+    if (respuesta.status === 404 && url.includes("/main/")) {
+      // Si la rama no es main, intentar con master
+      const urlMaster = url.replace("/main/", "/master/");
+      const alt = await fetch(urlMaster, { redirect: "error", signal: AbortSignal.timeout(10_000) });
+      if (alt.ok) respuesta = alt;
+    }
     if (!respuesta.ok || !respuesta.body) throw new SkillError("skill_download_failed", 502);
     const lector = respuesta.body.getReader();
     const partes: Uint8Array[] = [];

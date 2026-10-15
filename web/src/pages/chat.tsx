@@ -6,6 +6,7 @@ import { useEventosVivos } from "../lib/eventos-vivos";
 import { ModelPicker } from "../components/model-picker";
 import { UsoPanel } from "../components/uso-panel";
 import { IndicadorPensando, MensajeAgente, MensajeUsuario } from "../components/chat-mensajes";
+import { ProcesoAgente } from "../components/chat-proceso";
 import { copiarTexto } from "../components/chat-contenido";
 import { ChatConfiguracion } from "../components/chat-configuracion";
 import { AvisoCuota } from "../components/cuota-aviso";
@@ -476,7 +477,7 @@ export function ChatPage() {
   // El mensaje que se envió desde este dispositivo ya puede estar en la lista (el sondeo lo trae antes de terminar).
   const ultimoMensaje = lista.at(-1);
   const yaGuardado = send.isPending && ultimoMensaje?.role === "user" && ultimoMensaje.content === send.variables?.content;
-  // Pensando: se envió aquí o el chat está ocupado (otro dispositivo lo envió).
+  const esperandoPlan = tareaChat?.status === "waiting_approval";
   const tareaActiva = !!tareaChat && ["queued", "analyzing", "running"].includes(tareaChat.status);
   const pensando = send.isPending || seguirChat.isPending || (tareaChat ? tareaActiva : !!current?.ocupada);
   const sugerencia = !sugerenciaOculta && !pensando && !draft.startsWith("/")
@@ -486,13 +487,13 @@ export function ChatPage() {
 
   // Cuando el chat deja de estar ocupado, sus pasos ya están guardados en el servidor: se vacían los en vivo.
   useEffect(() => {
-    if (!selectedId || pensando) return;
+    if (!selectedId || pensando || esperandoPlan) return;
     setVivos((prev) => {
       if (!prev[selectedId]) return prev;
       const { [selectedId]: _terminado, ...resto } = prev;
       return resto;
     });
-  }, [pensando, selectedId]);
+  }, [pensando, esperandoPlan, selectedId]);
 
   // Turno de una respuesta: el mensaje del usuario que la precede. Sus pasos se piden al abrir "Ver proceso".
   const turnoDeRespuesta = (indice: number): string | null => {
@@ -852,7 +853,21 @@ export function ChatPage() {
               {pensando && (
                 <IndicadorPensando modelo={nombreAgente} vivo={(selectedId && vivos[selectedId]?.pasos) || []} />
               )}
-              {tareaChat && <PlanRevision key={`${tareaChat.id}:${tareaChat.plan_hash}`} tarea={tareaChat} />}
+              {tareaChat && (
+                <div className="tl-tarea-seccion">
+                  {!pensando && selectedId && (vivos[selectedId]?.pasos.length ?? 0) > 0 && (
+                    <details className="tl-proceso-previo" style={{ marginBottom: "0.5rem" }} open>
+                      <summary style={{ cursor: "pointer", fontSize: "0.85rem", opacity: 0.85 }}>
+                        Consultas y acciones del analizador ({vivos[selectedId]?.pasos.filter((p) => p.tipo === "accion").length} acciones)
+                      </summary>
+                      <div style={{ marginTop: "0.5rem" }}>
+                        <ProcesoAgente pasos={vivos[selectedId].pasos} />
+                      </div>
+                    </details>
+                  )}
+                  <PlanRevision key={`${tareaChat.id}:${tareaChat.plan_hash}`} tarea={tareaChat} />
+                </div>
+              )}
               {selectedId && current?.project_id && (
                 <AccionesRepositorioChat
                   key={selectedId}

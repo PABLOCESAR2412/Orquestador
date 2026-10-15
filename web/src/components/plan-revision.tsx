@@ -77,19 +77,22 @@ export function PlanRevision({ tarea }: { tarea: Task }) {
         <button
           type="button"
           className="primary"
-          disabled={decision.isPending || p.preguntas.length > 0}
+          disabled={decision.isPending}
           onClick={() => decision.mutate("approve")}
         >
-          Aprobar y ejecutar
+          {decision.isPending ? "Aprobando…" : "Aprobar plan"}
         </button>
-        <button
-          type="button"
-          className="ghost"
-          disabled={decision.isPending || !feedback.trim()}
-          onClick={() => decision.mutate("revise")}
-        >
-          Revisar plan
-        </button>
+        {feedback.trim() && (
+          <button
+            type="button"
+            className="ghost"
+            disabled={decision.isPending}
+            onClick={() => decision.mutate("revise")}
+            title="Solicitar al analizador que elabore un nuevo plan con estas aclaraciones"
+          >
+            Re-analizar plan
+          </button>
+        )}
         <button
           type="button"
           className="ghost"

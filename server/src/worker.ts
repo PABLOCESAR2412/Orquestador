@@ -128,6 +128,30 @@ function hashPlan(plan: Plan): string {
   return createHash("sha256").update(JSON.stringify(plan)).digest("hex");
 }
 
+function formatearRespuestaTarea(reporte: Reporte, texto: string): string {
+  let mensaje = reporte.resumen?.trim() || "";
+  if (!mensaje && texto.trim()) {
+    mensaje = texto.trim();
+  }
+  const detalles: string[] = [];
+  if (reporte.cambios && reporte.cambios.length > 0) {
+    const lista = reporte.cambios.map((c) => `- ${c.tipo.toUpperCase()}: \`${c.archivo}\``).join("\n");
+    detalles.push(`**Cambios realizados:**\n${lista}`);
+  }
+  if (reporte.pruebas && reporte.pruebas.length > 0) {
+    const lista = reporte.pruebas.map((p) => `- \`${p.comando}\`: ${p.resultado}`).join("\n");
+    detalles.push(`**Pruebas:**\n${lista}`);
+  }
+  if (reporte.pendientes && reporte.pendientes.length > 0) {
+    const lista = reporte.pendientes.map((p) => `- ${p}`).join("\n");
+    detalles.push(`**Pendientes:**\n${lista}`);
+  }
+  if (detalles.length > 0) {
+    return mensaje ? `${mensaje}\n\n${detalles.join("\n\n")}` : detalles.join("\n\n");
+  }
+  return mensaje || "Tarea completada con éxito.";
+}
+
 function avisarChat(id: string, texto?: string) {
   const conv = db.query<{ conversation_id: string | null }, [string]>("SELECT conversation_id FROM tasks WHERE id=?").get(id)?.conversation_id;
   if (!conv) return;
@@ -397,9 +421,11 @@ async function ejecutarTarea(task: QueuedTask) {
     const { reporte, texto } = resultado;
     if (reporte.estado === "fallo") {
       finish(task.id, "failed", { result: texto, reporte, error: reporte.resumen });
+      avisarChat(task.id, reporte.resumen || "La tarea no se pudo completar.");
     } else {
       finish(task.id, "done", { result: texto, reporte });
       if (task.conversation_id) db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(task.conversation_id);
+      avisarChat(task.id, formatearRespuestaTarea(reporte, texto));
       if (task.conversation_id && task.project_id) {
         const accion = ["commit","push","pr"].find(a => planGuardado(task.id)?.requiere_aprobacion.includes(a as "commit"|"push"|"pr"));
         if (accion) await repositoryActions.request(`http://telo/projects/${task.project_id}/acciones`, {
@@ -411,12 +437,15 @@ async function ejecutarTarea(task: QueuedTask) {
   } catch (err) {
     if (cancelRequested.has(task.id)) {
       finish(task.id, "cancelled", { error: "Cancelada por el usuario." });
+      avisarChat(task.id, "La tarea fue cancelada.");
     } else if (err instanceof ErrorCuota) {
       pausarPorCuota(task.id, err, task.provider_session_id !== null);
     } else if (err instanceof TiempoAgotado || err instanceof ErrorFase) {
       finish(task.id, "failed", { error: err.message });
+      avisarChat(task.id, err.message);
     } else {
       finish(task.id, "failed", { error: mensajeSeguro(err) });
+      avisarChat(task.id, `Error en la tarea: ${mensajeSeguro(err)}`);
     }
   } finally {
     salida.cerrar();

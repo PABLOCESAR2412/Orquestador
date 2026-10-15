@@ -39,7 +39,10 @@ proyectoConfig.post("/projects/:id/skills-importadas", async (c) => {
     );
   } catch (e) {
     return c.json(
-      { error: e instanceof SkillError ? e.code : "invalid_skill_content" },
+      {
+        error: e instanceof SkillError ? e.code : "invalid_skill_content",
+        detail: mensajeSeguro(e),
+      },
       e instanceof SkillError ? e.status : 400,
     );
   }

@@ -7,6 +7,7 @@ const labels: Record<string, string> = {
   commit: "Crear commit",
   push: "Subir rama",
   pr: "Crear pull request",
+  merge: "Hacer merge directo",
 };
 export function RepositoryApproval({
   accion,
@@ -122,6 +123,14 @@ export function AccionesRepositorioChat({
     queryFn: () => api.repositoryActions(conversationId),
     refetchInterval: 3000,
   });
+
+  const diffQuery = useQuery({
+    queryKey: ["task-diff", taskId],
+    queryFn: () => api.taskDiff(taskId!),
+    enabled: Boolean(taskId && terminada),
+    refetchInterval: 4000,
+  });
+
   const refrescar = () => {
     void qc.invalidateQueries({ queryKey: ["repository-actions", conversationId] });
     void qc.invalidateQueries({ queryKey: ["task-diff", taskId] });
@@ -131,28 +140,103 @@ export function AccionesRepositorioChat({
       api.requestRepositoryAction(projectId!, { action, conversationId, taskId }),
     onSuccess: refrescar,
   });
+
+  const listaAcciones = acciones.data ?? [];
+  const accionPendiente = listaAcciones.find((a) => a.state === "pending" || a.state === "executing");
+  const accionMostrar = accionPendiente ?? listaAcciones.at(-1);
+  const anteriores = listaAcciones.filter((a) => a.id !== accionMostrar?.id);
+
+  const diff = diffQuery.data;
+  const tieneCommit = Boolean(diff?.aprobaciones?.commit || diff?.commit);
+  const tienePush = Boolean(diff?.aprobaciones?.push);
+  const tieneCambios = (diff?.archivos?.length ?? 0) > 0;
+  const hayAccionEnCurso = Boolean(accionPendiente) || pedir.isPending;
+
   return (
     <>
-      {acciones.data?.map((a) => (
-        <RepositoryApproval key={a.id} accion={a} onChange={refrescar} />
-      ))}
+      {accionMostrar && (
+        <RepositoryApproval key={accionMostrar.id} accion={accionMostrar} onChange={refrescar} />
+      )}
+
+      {anteriores.length > 0 && (
+        <details className="tl-historico-acciones" style={{ marginTop: "0.5rem", fontSize: "0.85rem", opacity: 0.85 }}>
+          <summary style={{ cursor: "pointer", userSelect: "none" }}>
+            Historial de acciones de Git ({anteriores.length})
+          </summary>
+          <div style={{ marginTop: "0.5rem" }}>
+            {anteriores.map((a) => (
+              <RepositoryApproval key={a.id} accion={a} onChange={refrescar} />
+            ))}
+          </div>
+        </details>
+      )}
+
       {projectId && terminada && taskId && (
-        <div className="approval-buttons" aria-label="Acciones del repositorio">
-          {["commit", "push", "pr"].map((a) => (
-            <button
-              type="button"
-              key={a}
-              className="ghost"
-              disabled={pedir.isPending}
-              onClick={() => pedir.mutate(a)}
-            >
-              {labels[a]}
-            </button>
-          ))}
+        <div className="approval-buttons" aria-label="Acciones del repositorio" style={{ marginTop: "0.75rem" }}>
+          {!tieneCommit ? (
+            tieneCambios ? (
+              <button
+                type="button"
+                className="primary"
+                disabled={hayAccionEnCurso}
+                onClick={() => pedir.mutate("commit")}
+                title="Crear un commit en la rama de la tarea con los cambios aprobados"
+              >
+                {pedir.isPending ? "Preparando…" : "Crear commit"}
+              </button>
+            ) : (
+              <span className="hint" style={{ fontSize: "0.85rem" }}>
+                No hay cambios pendientes de guardar en el repositorio.
+              </span>
+            )
+          ) : !tienePush ? (
+            <>
+              <button
+                type="button"
+                className="primary"
+                disabled={hayAccionEnCurso}
+                onClick={() => pedir.mutate("push")}
+                title="Subir la rama con el commit al repositorio remoto de GitHub"
+              >
+                {pedir.isPending ? "Preparando…" : "Subir rama (push)"}
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                disabled={hayAccionEnCurso}
+                onClick={() => pedir.mutate("merge")}
+                title="Fusionar los cambios directamente en la rama principal local"
+              >
+                Hacer merge a rama principal
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="primary"
+                disabled={hayAccionEnCurso}
+                onClick={() => pedir.mutate("pr")}
+                title="Crear un Pull Request en GitHub"
+              >
+                {pedir.isPending ? "Preparando…" : "Crear pull request"}
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                disabled={hayAccionEnCurso}
+                onClick={() => pedir.mutate("merge")}
+                title="Fusionar los cambios directamente en la rama principal local"
+              >
+                Hacer merge directo
+              </button>
+            </>
+          )}
         </div>
       )}
+
       {pedir.isError && (
-        <p role="alert" className="error">
+        <p role="alert" className="error" style={{ marginTop: "0.5rem" }}>
           {errorText(pedir.error)}
         </p>
       )}
