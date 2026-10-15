@@ -8,6 +8,7 @@ const ALLOWED_FIELDS = new Set([
   "fallbackModel",
   "monthlyBudgetUsd",
   "budgetAlertPercent",
+  "compartirContextoChats",
 ]);
 
 export const preferences = new Hono();
@@ -66,6 +67,10 @@ preferences.put("/preferences", async (c) => {
   const alert = next.budgetAlertPercent;
   if (!Number.isInteger(alert) || alert < 50 || alert > 100) {
     return c.json({ error: "invalid_alert_percent" }, 400);
+  }
+
+  if (typeof next.compartirContextoChats !== "boolean") {
+    return c.json({ error: "invalid_body" }, 400);
   }
 
   savePreferences(next);
