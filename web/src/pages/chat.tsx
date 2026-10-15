@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad } from "../api";
@@ -31,6 +31,49 @@ import "../styles-chat.css";
 import "../styles-flujo.css";
 
 type Patch = { model?: string | null; effort?: string | null; title?: string; pinned?: boolean };
+type MensajeEnCola = { id: string; texto: string; creado: number };
+
+const PREFIJO_COLA = "telo:cola:";
+const claveColaActiva = (id: string) => `telo:cola-activa:${id}`;
+
+function leerColas(): Record<string, MensajeEnCola[]> {
+  const colas: Record<string, MensajeEnCola[]> = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const clave = localStorage.key(i);
+      if (!clave?.startsWith(PREFIJO_COLA)) continue;
+      const id = clave.slice(PREFIJO_COLA.length);
+      const valor: unknown = JSON.parse(localStorage.getItem(clave) ?? "null");
+      if (!Array.isArray(valor)) continue;
+      colas[id] = valor.filter(
+        (item): item is MensajeEnCola =>
+          !!item && typeof item.id === "string" && typeof item.texto === "string" && typeof item.creado === "number",
+      );
+    }
+  } catch {
+    // Si el navegador no permite leer el almacenamiento, la cola vive en memoria.
+  }
+  return colas;
+}
+
+function guardarCola(id: string, mensajes: MensajeEnCola[]) {
+  try {
+    const clave = `${PREFIJO_COLA}${id}`;
+    if (mensajes.length) localStorage.setItem(clave, JSON.stringify(mensajes));
+    else localStorage.removeItem(clave);
+  } catch {
+    // La cola sigue disponible hasta cerrar esta pantalla.
+  }
+}
+
+function colaActivaPara(id: string | null): boolean {
+  if (!id) return true;
+  try {
+    return localStorage.getItem(claveColaActiva(id)) !== "false";
+  } catch {
+    return true;
+  }
+}
 
 // Un archivo adjunto en el compositor, antes de enviar el mensaje.
 type Pendiente = { key: string; lectura: ArchivoLeido };
@@ -125,6 +168,25 @@ export function ChatPage() {
   const setSelectedId = setSelectedConversationId;
 
   const [draft, setDraft] = useState("");
+  const colasIniciales = useRef<Record<string, MensajeEnCola[]> | null>(null);
+  if (colasIniciales.current === null) colasIniciales.current = leerColas();
+  const [colasPorChat, setColasPorChat] = useState<Record<string, MensajeEnCola[]>>(colasIniciales.current);
+  const colasPorChatRef = useRef(colasPorChat);
+  const [colaRevision, setColaRevision] = useState(0);
+  const [falloCola, setFalloCola] = useState<{ conversacionId: string; mensajeId: string } | null>(null);
+  const [menuColaAbierto, setMenuColaAbierto] = useState<string | null>(null);
+  const [editandoColaId, setEditandoColaId] = useState<string | null>(null);
+  const [textoEditadoCola, setTextoEditadoCola] = useState("");
+  const colaEsperandoTurnoRef = useRef<Record<string, { vioAgenteOcupado: boolean; texto: string }>>({});
+  const cambiarCola = (id: string, transformar: (mensajes: MensajeEnCola[]) => MensajeEnCola[]) => {
+    const mensajes = transformar(colasPorChatRef.current[id] ?? []);
+    const siguiente = { ...colasPorChatRef.current };
+    if (mensajes.length) siguiente[id] = mensajes;
+    else delete siguiente[id];
+    colasPorChatRef.current = siguiente;
+    setColasPorChat(siguiente);
+    guardarCola(id, mensajes);
+  };
   // Al cambiar de chat, carga el borrador de ese chat (no se guarda en un efecto para no mezclar chats).
   useEffect(() => {
     if (selectedId) setDraft(leerBorrador(selectedId));
@@ -211,6 +273,12 @@ export function ChatPage() {
     refetchInterval: 3_000,
   });
   const tareaChat = current?.project_id ? tareasChat.data?.at(-1) : undefined;
+  const agenteOcupado =
+    !!current?.ocupada || ["queued", "analyzing", "running", "waiting_approval"].includes(tareaChat?.status ?? "");
+  const cola = selectedId ? colasPorChat[selectedId] ?? [] : [];
+  const colaActiva = useMemo(() => colaActivaPara(selectedId), [selectedId, colaRevision]);
+  const menuColaItem = cola.find((item) => item.id === menuColaAbierto) ?? null;
+  const errorCola = falloCola?.conversacionId === selectedId && cola.some((item) => item.id === falloCola.mensajeId);
   const modelList: ModelInfo[] = models.data?.models ?? [];
   const modelInfo = modelList.find((m) => m.id === current?.model) ?? null;
   const lista = messages.data ?? [];
@@ -282,7 +350,7 @@ export function ChatPage() {
   // Sin respuesta (red caída, móvil dormido) el servidor puede haberlo guardado igual: se mira la lista
   // y, si el mensaje ya está, el envío se da por bueno. Así no se duplica ni se pierde.
   const send = useMutation({
-    mutationFn: async ({ id, content }: { id: string; content: string; restaurar?: Restaurar }) => {
+    mutationFn: async ({ id, content }: { id: string; content: string; restaurar?: Restaurar; colaId?: string }) => {
       const previos = contarEnvios(qc.getQueryData<Message[]>(["messages", id]), content);
       try {
         return await api.sendMessage(id, content);
@@ -293,7 +361,15 @@ export function ChatPage() {
         throw err;
       }
     },
-    onError: (_err, { id, restaurar }) => {
+    onSuccess: (_data, { id, content, colaId }) => {
+      if (colaId) {
+        cambiarCola(id, (mensajes) => mensajes.filter((item) => item.id !== colaId));
+        colaEsperandoTurnoRef.current[id] = { vioAgenteOcupado: agenteOcupado, texto: content };
+        setFalloCola((prev) => (prev?.mensajeId === colaId ? null : prev));
+      }
+    },
+    onError: (_err, { id, restaurar, colaId }) => {
+      if (colaId) setFalloCola({ conversacionId: id, mensajeId: colaId });
       if (!restaurar) return;
       if (id === selectedId) {
         const nuevo = restaurar.texto && draft.trim() ? `${restaurar.texto}\n${draft}` : restaurar.texto || draft;
@@ -304,11 +380,11 @@ export function ChatPage() {
         guardarBorrador(id, restaurar.texto && previo.trim() ? `${restaurar.texto}\n${previo}` : restaurar.texto || previo);
       }
     },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["messages", selectedId] });
+    onSettled: (_data, _error, { id }) => {
+      qc.invalidateQueries({ queryKey: ["messages", id] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
-      qc.invalidateQueries({ queryKey: ["conversation-tasks", selectedId] });
-      qc.invalidateQueries({ queryKey: ["repository-actions", selectedId] });
+      qc.invalidateQueries({ queryKey: ["conversation-tasks", id] });
+      qc.invalidateQueries({ queryKey: ["repository-actions", id] });
     },
   });
 
@@ -342,13 +418,28 @@ export function ChatPage() {
 
   // Adjuntos listos: solo los de texto viajan al agente.
   const adjuntosListos = pendientes.flatMap((p) => (p.lectura.tipo === "texto" ? [p.lectura.adjunto] : []));
+  const bloqueoEnvioCola = !colaActiva && (agenteOcupado || cola.length > 0);
   const puedeEnviar =
-    !!selectedId && !send.isPending && !current?.ocupada && (draft.trim() !== "" || adjuntosListos.length > 0);
+    !!selectedId && !send.isPending && !bloqueoEnvioCola && (draft.trim() !== "" || adjuntosListos.length > 0);
 
   const submit = () => {
     if (!puedeEnviar || !selectedId) return;
     const content = componerMensaje(draft, adjuntosListos);
     if (!content) return;
+    if (agenteOcupado || cola.length > 0) {
+      if (!colaActiva) return;
+      cambiarCola(selectedId, (mensajes) => [
+        ...mensajes,
+        {
+          id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          texto: content,
+          creado: Date.now(),
+        },
+      ]);
+      cambiarBorrador("");
+      setPendientes([]);
+      return;
+    }
     const restaurar: Restaurar = { texto: draft, pendientes };
     // El dictado se corta del todo: sus resultados tardíos no deben volver a llenar el compositor.
     const rec = recRef.current;
@@ -362,6 +453,45 @@ export function ChatPage() {
     setPendientes([]);
     send.mutate({ id: selectedId, content, restaurar });
   };
+
+  const redirigirMensajeCola = (item: MensajeEnCola) => {
+    if (!selectedId) return;
+    const borrador = draft.trim() ? `${draft}\n${item.texto}` : item.texto;
+    cambiarBorrador(borrador);
+    cambiarCola(selectedId, (mensajes) => mensajes.filter((mensaje) => mensaje.id !== item.id));
+    setMenuColaAbierto(null);
+    setEditandoColaId(null);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const cambiarColaActiva = () => {
+    if (!selectedId) return;
+    try {
+      localStorage.setItem(claveColaActiva(selectedId), colaActiva ? "false" : "true");
+    } catch {
+      // El cambio sigue vigente en esta pantalla.
+    }
+    setColaRevision((revision) => revision + 1);
+    setMenuColaAbierto(null);
+  };
+
+  // Envía una sola entrada a la vez. La siguiente espera a que el agente haya ocupado
+  // y liberado el chat, aunque la respuesta HTTP se complete antes de actualizar la vista.
+  useEffect(() => {
+    if (!selectedId) return;
+    const esperando = colaEsperandoTurnoRef.current[selectedId];
+    if (esperando) {
+      if (agenteOcupado) esperando.vioAgenteOcupado = true;
+      const ultimoUsuario = [...lista].reverse().find((mensaje) => mensaje.role === "user");
+      const respuestaRecibida = lista.at(-1)?.role === "assistant" && ultimoUsuario?.content === esperando.texto;
+      if (!agenteOcupado && (esperando.vioAgenteOcupado || respuestaRecibida)) {
+        delete colaEsperandoTurnoRef.current[selectedId];
+      }
+      else return;
+    }
+    if (agenteOcupado || send.isPending || errorCola || cola.length === 0) return;
+    send.mutate({ id: selectedId, content: cola[0].texto, colaId: cola[0].id });
+  }, [selectedId, agenteOcupado, send.isPending, errorCola, cola, lista]);
 
   // Vuelve a enviar el mensaje del usuario que precede a una respuesta.
   const reintentar = (mensajeId: string) => {
@@ -469,7 +599,7 @@ export function ChatPage() {
   }, [messages.data?.length, send.isPending, selectedId, tareaChat?.status, tareaChat?.plan_hash]);
 
   // Solo llega aquí un fallo que no se guardó (409 si el chat ya responde, 4xx o 5xx del servidor).
-  const sendError = send.isError ? errorText(send.error) : null;
+  const sendError = send.isError && !send.variables?.colaId ? errorText(send.error) : null;
   const settingsError = configure.isError ? errorText(configure.error) : null;
   const docError = crearDoc.isError ? errorText(crearDoc.error) : null;
   const anclarError = anclar.isError ? errorText(anclar.error) : null;
@@ -926,6 +1056,148 @@ export function ChatPage() {
             )}
             {modelInfo?.costWarning && <p className="tl-aviso">{modelInfo.costWarning}</p>}
 
+            {cola.length > 0 && (
+              <section
+                className="tl-cola"
+                aria-label={`${cola.length} ${cola.length === 1 ? "mensaje" : "mensajes"} en cola`}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setMenuColaAbierto(null);
+                }}
+              >
+                <div className="tl-cola-cabecera">
+                  <span className="tl-cola-titulo">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M8 7H5a2 2 0 0 0-2 2v10h10v-3" />
+                      <path d="M8 3h13v13H8z" />
+                      <path d="M12 8h5M12 11h5" />
+                    </svg>
+                    <span>{cola.length} {cola.length === 1 ? "mensaje en cola" : "mensajes en cola"}</span>
+                  </span>
+                  <span className="tl-cola-estado" role="status">
+                    {errorCola
+                      ? "No se pudo enviar"
+                      : !colaActiva
+                        ? "Cola desactivada"
+                        : agenteOcupado
+                          ? "Se enviarán al terminar"
+                          : "Enviando siguiente mensaje…"}
+                  </span>
+                </div>
+
+                <div className="tl-cola-lista" aria-label="Mensajes pendientes">
+                  {cola.map((item, indice) => (
+                    <div className="tl-cola-item" key={item.id}>
+                      {editandoColaId === item.id ? (
+                        <div className="tl-cola-editor">
+                          <textarea
+                            autoFocus
+                            rows={2}
+                            aria-label="Editar mensaje en cola"
+                            value={textoEditadoCola}
+                            onChange={(e) => setTextoEditadoCola(e.target.value)}
+                          />
+                          <div className="tl-cola-editor-acciones">
+                            <button
+                              type="button"
+                              className="tl-boton tl-boton-compacto"
+                              disabled={!textoEditadoCola.trim()}
+                              onClick={() => {
+                                cambiarCola(selectedId!, (mensajes) => mensajes.map((mensaje) =>
+                                  mensaje.id === item.id ? { ...mensaje, texto: textoEditadoCola.trim() } : mensaje,
+                                ));
+                                setEditandoColaId(null);
+                                setMenuColaAbierto(null);
+                              }}
+                            >
+                              Guardar
+                            </button>
+                            <button type="button" className="tl-boton tl-boton-compacto" onClick={() => setEditandoColaId(null)}>
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="tl-cola-texto" title={item.texto}>
+                            <span className="tl-cola-indice" aria-hidden="true">{indice + 1}</span>
+                            {item.texto.replace(/\s+/g, " ").trim()}
+                          </p>
+                          <div className="tl-cola-acciones">
+                            <button
+                              type="button"
+                              className="tl-cola-redirigir"
+                              disabled={send.isPending && send.variables?.colaId === item.id}
+                              title="Mover el mensaje al compositor"
+                              aria-label={`Redirigir mensaje ${indice + 1} al compositor`}
+                              onClick={() => redirigirMensajeCola(item)}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M9 14 4 9l5-5" />
+                                <path d="M4 9h9a7 7 0 0 1 7 7v3" />
+                              </svg>
+                              <span>Redirigir</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="tl-accion-icono tl-cola-quitar"
+                              disabled={send.isPending && send.variables?.colaId === item.id}
+                              aria-label={`Quitar mensaje ${indice + 1} de la cola`}
+                              title="Quitar de la cola"
+                              onClick={() => cambiarCola(selectedId!, (mensajes) => mensajes.filter((mensaje) => mensaje.id !== item.id))}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6" />
+                              </svg>
+                            </button>
+                            <div className="tl-cola-menu-wrap">
+                              <button
+                                type="button"
+                                className="tl-accion-icono"
+                                disabled={send.isPending && send.variables?.colaId === item.id}
+                                aria-label={`Más opciones para mensaje ${indice + 1}`}
+                                aria-expanded={menuColaAbierto === item.id}
+                                title="Más opciones"
+                                onClick={() => setMenuColaAbierto((abierto) => abierto === item.id ? null : item.id)}
+                              >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                  <circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {menuColaItem && !(send.isPending && send.variables?.colaId === menuColaItem.id) && (
+                  <div className="tl-cola-menu" role="menu">
+                    <button type="button" role="menuitem" onClick={() => {
+                      setTextoEditadoCola(menuColaItem.texto);
+                      setEditandoColaId(menuColaItem.id);
+                      setMenuColaAbierto(null);
+                    }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 5 4 4M4 20l4-.8L19 8a2.1 2.1 0 0 0-3-3L5 16z" /></svg>
+                      Editar mensaje
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => redirigirMensajeCola(menuColaItem)}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h9a7 7 0 0 1 7 7v3" /></svg>
+                      Redirigir al compositor
+                    </button>
+                    <button type="button" role="menuitem" onClick={cambiarColaActiva}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={colaActiva ? "M18 6 6 18M6 6l12 12" : "M5 12h14M12 5v14"} /></svg>
+                      {colaActiva ? "Desactivar cola" : "Activar cola"}
+                    </button>
+                  </div>
+                )}
+                {errorCola && (
+                  <p className="tl-cola-error" role="alert">
+                    El mensaje sigue guardado en la cola. <button type="button" onClick={() => setFalloCola(null)}>Reintentar</button>
+                  </p>
+                )}
+              </section>
+            )}
+
             <div
               className={`tl-composer-caja${arrastrando ? " is-arrastrando" : ""}`}
               onDragOver={alArrastrar}
@@ -1016,7 +1288,9 @@ export function ChatPage() {
                 rows={2}
                 value={draft}
                 placeholder={
-                  sugerencia
+                  agenteOcupado && colaActiva
+                    ? "El agente está respondiendo; tu mensaje se añadirá a la cola"
+                    : sugerencia
                     ? `${sugerencia} (Tab) o escribe un mensaje, pega o arrastra archivos, o usa / para comandos`
                     : "Escribe un mensaje, pega o arrastra archivos, o usa / para comandos"
                 }
