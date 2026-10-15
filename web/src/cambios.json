@@ -60,6 +60,7 @@
     { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Acciones git: se quitan la fusión local y el push directo a main; el PR usa solo GITHUB_PR_TOKEN", "pr": 43 },
     { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Documentación de la Tarea 11 al día: estado real, decisiones de token y ramas, y pendientes", "pr": 43 },
     { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Botón Recargar del aviso de versión: recarga aunque no haya un service worker en espera", "pr": null },
-    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Archivos con «secretos» en el nombre (secretos.ts) ya no bloquean el commit; «secret» cuenta solo como palabra", "pr": null }
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Archivos con «secretos» en el nombre (secretos.ts) ya no bloquean el commit; «secret» cuenta solo como palabra", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "El analizador rechaza rutas fuera del workspace y dentro de .git antes de aprobar", "pr": null }
   ]
 }

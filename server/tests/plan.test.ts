@@ -4,6 +4,7 @@ import {
   MAX_PLANES,
   promptAnalizador,
   promptObrero,
+  promptReparacion,
   requiereAprobacion,
   validarPlan,
   validarReporte,
@@ -66,6 +67,14 @@ describe("validarPlan", () => {
     expect(v.ok).toBe(false);
     if (!v.ok) expect(v.motivo).toContain("más de 12 pasos");
   });
+
+  test("rechaza rutas fuera del workspace y cualquier segmento .git antes de aprobar", () => {
+    for (const ruta of ["/etc/passwd","\\\\servidor\\archivo","C:/repo/archivo","C:archivo","../otro","src/../../otro",".git/","src/.git/hooks/pre-commit","src\\.GIT\\config","./","src\u0000archivo"]) {
+      const valor = { ...planValido, pasos: [{ descripcion: "Revisar archivos", archivos: [ruta] }] };
+      const validacion = validarPlan(valor);
+      expect(validacion.ok, ruta).toBe(false);
+    }
+  });
 });
 
 describe("requiereAprobacion", () => {
@@ -120,6 +129,13 @@ describe("validarReporte", () => {
 });
 
 describe("prompts", () => {
+  test("el analizador y su reparación omiten .git y rutas externas", () => {
+    expect(promptAnalizador("Prepara un cambio")).toContain(".git no es un archivo del plan");
+    const reparacion = promptReparacion("el paso 1 incluye una ruta dentro de .git");
+    expect(reparacion).toContain("no incluyas rutas absolutas");
+    expect(reparacion).toContain("segmento .git");
+  });
+
   test("el obrero recibe el plan y las notas del usuario", () => {
     const plan = { ...(validarPlan(planValido) as { valor: Plan }).valor, notas: "Usa la rama principal" };
     const texto = promptObrero(plan);
