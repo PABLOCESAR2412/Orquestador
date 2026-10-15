@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad } from "../api";
 import { useEventosVivos } from "../lib/eventos-vivos";
@@ -110,8 +110,15 @@ const nuevaClave = () => String(++contadorPendientes);
 export function ChatPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { selectedConversationId, setSelectedConversationId, triggerPalette, configAbierta, setConfigAbierta } =
-    useShell();
+  const {
+    selectedConversationId,
+    setSelectedConversationId,
+    triggerPalette,
+    configAbierta,
+    setConfigAbierta,
+    setActiveProjectId,
+    setActiveProjectName,
+  } = useShell();
   const selectedId = selectedConversationId;
   const setSelectedId = setSelectedConversationId;
 
@@ -185,6 +192,16 @@ export function ChatPage() {
 
   const current: Conversation | null =
     conversations.data?.find((c) => c.id === selectedId) ?? null;
+
+  useEffect(() => {
+    setActiveProjectId(current?.project_id ?? null);
+    setActiveProjectName(current?.project_name ?? null);
+    return () => {
+      setActiveProjectId(null);
+      setActiveProjectName(null);
+    };
+  }, [current?.project_id, current?.project_name, setActiveProjectId, setActiveProjectName]);
+
   const tareasChat = useQuery({
     queryKey: ["conversation-tasks", selectedId],
     queryFn: () => api.conversationTasks(selectedId!),
@@ -708,13 +725,19 @@ export function ChatPage() {
                 {contexto && <span className="tl-chip-dato">{contexto}</span>}
               </span>
               <h1 className="tl-chat-titulo">{current?.title ?? "Chat"}</h1>
-              {current?.project_name && (
-                <span className="tl-chip tl-chip-proyecto" title={`Proyecto: ${current.project_name}`}>
+              {current?.project_name && current?.project_id && (
+                <Link
+                  to="/proyectos/$id"
+                  params={{ id: current.project_id }}
+                  className="tl-chip tl-chip-proyecto"
+                  title={`Ir al proyecto: ${current.project_name}`}
+                  style={{ textDecoration: "none", cursor: "pointer" }}
+                >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
                   </svg>
                   <span className="tl-chip-texto">{current.project_name}</span>
-                </span>
+                </Link>
               )}
             </div>
             <div className="tl-chat-cabecera-der">

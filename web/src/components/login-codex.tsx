@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type LoginCodex } from "../api";
 import { errorText, motivoTexto } from "../lib/model";
@@ -7,6 +8,7 @@ import { errorText, motivoTexto } from "../lib/model";
 export function LoginCodexPanel() {
   const qc = useQueryClient();
   const clave = ["codex-login"];
+  const [mensajeConfirmacion, setMensajeConfirmacion] = useState<string | null>(null);
 
   const estado = useQuery({
     queryKey: clave,
@@ -16,11 +18,33 @@ export function LoginCodexPanel() {
 
   const iniciar = useMutation({
     mutationFn: api.iniciarCodexLogin,
-    onSuccess: (datos: LoginCodex) => qc.setQueryData(clave, datos),
+    onSuccess: (datos: LoginCodex) => {
+      setMensajeConfirmacion(null);
+      qc.setQueryData(clave, datos);
+    },
   });
   const cancelar = useMutation({
     mutationFn: api.cancelarCodexLogin,
-    onSuccess: (datos: LoginCodex) => qc.setQueryData(clave, datos),
+    onSuccess: (datos: LoginCodex) => {
+      setMensajeConfirmacion(null);
+      qc.setQueryData(clave, datos);
+    },
+  });
+  const confirmar = useMutation({
+    mutationFn: api.confirmarCodexLogin,
+    onSuccess: (datos: LoginCodex) => {
+      qc.setQueryData(clave, datos);
+      if (datos.conectada) {
+        setMensajeConfirmacion("¡Sesión detectada y confirmada en el servidor!");
+      } else {
+        setMensajeConfirmacion(
+          "Aún no detectamos la sesión en el servidor. Si ya completaste la autorización en tu navegador, espera unos segundos y vuelve a pulsar «Ya lo hice»."
+        );
+      }
+    },
+    onError: (err) => {
+      setMensajeConfirmacion(errorText(err));
+    },
   });
 
   const datos = estado.data;
@@ -34,7 +58,7 @@ export function LoginCodexPanel() {
       </p>
 
       {datos?.conectada && !esperando && (
-        <p className="aj-nota" role="status">
+        <p className="aj-nota" role="status" style={{ color: "var(--accent)" }}>
           Sesión iniciada en el servidor.
         </p>
       )}
@@ -56,15 +80,30 @@ export function LoginCodexPanel() {
           <div className="instalar-acciones">
             <button
               type="button"
-              className="aj-btn"
-              onClick={() => void qc.invalidateQueries({ queryKey: clave })}
+              className="aj-btn aj-btn-primario"
+              disabled={confirmar.isPending}
+              onClick={() => {
+                setMensajeConfirmacion(null);
+                confirmar.mutate();
+              }}
             >
-              Ya lo hice
+              {confirmar.isPending ? "Comprobando…" : "Ya lo hice"}
             </button>
             <button type="button" className="aj-btn" disabled={cancelar.isPending} onClick={() => cancelar.mutate()}>
               Cancelar
             </button>
           </div>
+          {mensajeConfirmacion && (
+            <p className="aj-nota aj-nota-aviso" role="status" style={{ marginTop: 8 }}>
+              {mensajeConfirmacion}
+            </p>
+          )}
+          {datos?.salida && (
+            <details style={{ marginTop: 12, fontSize: 13 }}>
+              <summary style={{ cursor: "pointer", opacity: 0.85 }}>Ver salida del terminal</summary>
+              <pre className="aj-registros-texto" style={{ marginTop: 6 }}>{datos.salida}</pre>
+            </details>
+          )}
         </div>
       )}
 

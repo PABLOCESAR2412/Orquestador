@@ -6,8 +6,12 @@ export function hallarEjecutable(nombre: string): string | null {
 
 // Lanza un CLI en su propio grupo de procesos (setsid), como hace runners/opencode.ts. Así, al cancelar o
 // agotar el tiempo se pueden terminar también los hijos, que de lo contrario mantendrían abierta la salida.
-export function lanzarEnGrupo(argv: string[], env: Record<string, string>): Bun.Subprocess<"ignore", "pipe", "pipe"> {
-  return Bun.spawn(["setsid", ...argv], { stdin: "ignore", stdout: "pipe", stderr: "pipe", env });
+export function lanzarEnGrupo(
+  argv: string[],
+  env: Record<string, string>,
+  stdin: "ignore" | "pipe" = "ignore",
+): Bun.Subprocess<"ignore" | "pipe", "pipe", "pipe"> {
+  return Bun.spawn(["setsid", ...argv], { stdin, stdout: "pipe", stderr: "pipe", env });
 }
 
 // Termina el grupo completo del proceso lanzado con lanzarEnGrupo. Si el grupo ya no existe, mata solo al padre.

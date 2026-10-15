@@ -14,6 +14,7 @@ import { gitOk, prepararRepoSeguro, tieneGitReal } from "../git";
 import { urlGithubPermitida, mensajeSeguro } from "../workspace";
 import { valorSecreto } from "../secretos";
 import { clavePublicaDe } from "../clave-ssh";
+import { tokenGithubGlobal } from "../github-auth";
 
 export const proyectoConfig = new Hono();
 proyectoConfig.use("/projects/:id/*", async (c, next) => {
@@ -104,7 +105,7 @@ proyectoConfig.get("/projects/:id/git", async (c) => {
     remote: cfg.remote ?? repo?.remote ?? null,
     inicializado: repo?.inicializado ?? tieneGitReal(cwd),
     ocupado: repo === null,
-    token: !!valorSecreto(id, "GITHUB_TOKEN"),
+    token: !!valorSecreto(id, "GITHUB_TOKEN") || !!tokenGithubGlobal(),
     ssh: !!clavePublicaDe(id),
   });
 });
@@ -138,10 +139,10 @@ proyectoConfig.put("/projects/:id/git", async (c) => {
 });
 
 export async function githubApi(projectId: string, path: string, body?: unknown) {
-  const token = valorSecreto(projectId, "GITHUB_TOKEN");
+  const token = valorSecreto(projectId, "GITHUB_TOKEN") || tokenGithubGlobal();
   if (!token)
     throw new Error(
-      "Configura GITHUB_TOKEN en los secretos del proyecto. Para crear PR necesita permiso de Pull requests; para subir, Contents de escritura.",
+      "Inicia sesión con GitHub en Ajustes o configura GITHUB_TOKEN en los secretos del proyecto. Para crear PR necesita permiso de Pull requests; para subir, Contents de escritura.",
     );
   const res = await fetch("https://api.github.com" + path, {
     method: body ? "POST" : "GET",

@@ -602,10 +602,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ confirmar: true }),
     }),
-  // Inicio de sesión de Codex: la app solo ve la URL, el código y si existe la sesión.
   codexLogin: () => request<LoginCodex>("/api/providers/codex/login"),
   iniciarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "POST", body: "{}" }),
   cancelarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "DELETE" }),
+  confirmarCodexLogin: () => request<LoginCodex>("/api/providers/codex/confirmar", { method: "POST" }),
+  // Cuenta global de GitHub (en Ajustes) para operar sin claves SSH por proyecto.
+  githubCuenta: () => request<GithubCuenta>("/api/github/cuenta"),
+  conectarGithubCuenta: (token: string) =>
+    request<GithubCuenta>("/api/github/cuenta", { method: "POST", body: JSON.stringify({ token }) }),
+  desconectarGithubCuenta: () =>
+    request<{ ok: boolean }>("/api/github/cuenta", { method: "DELETE" }),
   // Skills: sin projectId, las globales de Ajustes; con projectId, las de la carpeta del proyecto.
   listSkills: (projectId?: string) => request<{ skills: SkillResumen[] }>(skillsRuta(projectId)),
   getSkill: (nombre: string, projectId?: string) =>
@@ -685,6 +691,15 @@ export type GoogleEstado = {
   conectado_en: string | null;
 };
 
+export type GithubCuenta = {
+  conectado: boolean;
+  login?: string;
+  name?: string;
+  avatar_url?: string;
+  scopes?: string[];
+  actualizado_en?: string;
+};
+
 export type Preferences = {
   defaultModel: string | null;
   defaultEffort: string | null;
@@ -692,6 +707,7 @@ export type Preferences = {
   budgetAlertPercent: number;
   // Modelo de respaldo si el principal responde 429 o un error del servidor del proveedor.
   fallbackModel: string | null;
+  compartirContextoChats?: boolean;
 };
 
 export type Analytics = {
