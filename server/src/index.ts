@@ -66,7 +66,7 @@ const cabecerasSeguras = secureHeaders({
     defaultSrc: ["'self'"],
     scriptSrc: ["'self'"],
     styleSrc: ["'self'", "'unsafe-inline'"],
-    imgSrc: ["'self'", "data:"],
+    imgSrc: ["'self'", "data:", "https://avatars.githubusercontent.com"],
     connectSrc: ["'self'"],
     workerSrc: ["'self'"],
     manifestSrc: ["'self'"],
