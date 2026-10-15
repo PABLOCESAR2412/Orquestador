@@ -1,0 +1,51 @@
+#!/usr/bin/python3
+"""Agente local determinista: prueba el protocolo sin proveedores ni credenciales."""
+import json
+import pathlib
+import subprocess
+import sys
+import time
+
+
+def evento(tipo, **datos):
+    print(json.dumps({"type": tipo, "sessionID": "ses_fixture_worker", **datos}), flush=True)
+
+
+args = sys.argv[1:]
+modelo = args[args.index("-m") + 1]
+prompt = args[-1]
+evento("step_finish", part={"tokens": {"input": 17, "output": 5, "reasoning": 2, "cache": {"read": 3}}, "cost": 0.004})
+if modelo == "fixture/fallo":
+    print("fallo deliberado después de consumir tokens", file=sys.stderr)
+    sys.exit(1)
+if modelo == "fixture/cancelar":
+    time.sleep(60)
+    sys.exit(0)
+
+if "Actúa SOLO como analizador" in prompt:
+    try:
+        pathlib.Path("escritura-analizador.txt").write_text("prohibido")
+    except OSError:
+        pass
+    else:
+        print("El analizador pudo escribir", file=sys.stderr)
+        sys.exit(1)
+    plan = {"objetivo": "Probar el flujo aislado", "supuestos": ["solo lectura verificada"],
+            "pasos": [{"id": 1, "descripcion": "Crear el archivo aprobado", "archivos": ["permitido.txt"]}],
+            "criterios_de_aceptacion": ["Se conserva el archivo aprobado"],
+            "requiere_aprobacion": ["commit", "push"] if modelo == "fixture/git" else [],
+            "riesgos": [], "preguntas": []}
+    evento("text", part={"text": json.dumps(plan)})
+else:
+    pathlib.Path("permitido.txt").write_text("trabajo conservado\n")
+    intento = subprocess.run(["git", "-c", "user.name=Prueba", "-c", "user.email=prueba@example.invalid",
+                              "commit", "--allow-empty", "-m", "prohibido"], capture_output=True, text=True)
+    if intento.returncode == 0:
+        print("El obrero pudo crear un commit", file=sys.stderr)
+        sys.exit(1)
+    if modelo == "fixture/fuera":
+        pathlib.Path("extra.txt").write_text("fuera del plan, conservar\n")
+    reporte = {"resumen": "Obrero aislado completado", "cambios": [{"archivo": "permitido.txt", "tipo": "crear"}],
+               "pruebas": [{"comando": "git commit bloqueado", "resultado": "ok"}],
+               "pendientes": [], "diff_disponible": True}
+    evento("text", part={"text": json.dumps(reporte)})

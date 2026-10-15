@@ -8,6 +8,11 @@ import { effortLabel, errorText, formatWhen, tierBars } from "../lib/model";
 import { useShell } from "../components/shell-context";
 import { BotonTema } from "../components/tema-boton";
 import { AppNav } from "../components/nav";
+import { PlanRevision } from "../components/plan-revision";
+import { ReporteTarea } from "../components/reporte-tarea";
+import { AccionesRepositorioChat } from "../components/repository-approval";
+import { sugerenciasChat } from "../lib/sugerencias";
+import "../styles-flujo.css";
 
 type Patch = { model?: string | null; effort?: string | null };
 
@@ -33,20 +38,10 @@ function guardarBorrador(id: string, texto: string) {
   }
 }
 
-const EFFORT_OPTIONS = [
-  { id: "low", label: "Bajo" },
-  { id: "medium", label: "Medio" },
-  { id: "high", label: "Alto" },
-];
-
 export function ChatPage() {
   const qc = useQueryClient();
-  const {
-    selectedConversationId,
-    setSelectedConversationId,
-    toggleDrawer,
-    triggerPalette,
-  } = useShell();
+  const { selectedConversationId, setSelectedConversationId, toggleDrawer, triggerPalette } =
+    useShell();
   const selectedId = selectedConversationId;
   const setSelectedId = setSelectedConversationId;
 
@@ -57,8 +52,11 @@ export function ChatPage() {
   }, [selectedId]);
   const cambiarBorrador = (texto: string) => {
     setDraft(texto);
+    setSugerenciaOculta(false);
     if (selectedId) guardarBorrador(selectedId, texto);
   };
+  const [sugerenciaOculta, setSugerenciaOculta] = useState(false);
+  const [segundos, setSegundos] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [usoAbierto, setUsoAbierto] = useState(false);
   // "" significa sin proyecto: el chat usa su carpeta temporal.
@@ -72,6 +70,7 @@ export function ChatPage() {
   const conversations = useQuery({
     queryKey: ["conversations"],
     queryFn: api.listConversations,
+    refetchInterval: 4_000,
   });
 
   // Abre el chat más reciente al cargar si no hay uno seleccionado
@@ -87,6 +86,14 @@ export function ChatPage() {
     staleTime: 5 * 60_000,
   });
 
+  const tareasChat = useQuery({
+    queryKey: ["conversation-tasks", selectedId],
+    queryFn: () => api.conversationTasks(selectedId!),
+    enabled: !!selectedId,
+    refetchInterval: 2000,
+  });
+  const tareaChat = tareasChat.data?.[0];
+  const prefs = useQuery({ queryKey: ["preferences"], queryFn: api.getPreferences });
   const proyectos = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
 
   // Cada 4 s mientras la pestaña está visible: los mensajes que llegan desde otro dispositivo aparecen solos.
@@ -97,10 +104,10 @@ export function ChatPage() {
     refetchInterval: 4_000,
   });
 
-  const current: Conversation | null =
-    conversations.data?.find((c) => c.id === selectedId) ?? null;
+  const current: Conversation | null = conversations.data?.find((c) => c.id === selectedId) ?? null;
   const modelList: ModelInfo[] = models.data?.models ?? [];
-  const modelInfo = modelList.find((m) => m.id === current?.model) ?? null;
+  const modeloEfectivo = current?.model ?? prefs.data?.defaultModel ?? "opencode/big-pickle";
+  const modelInfo = modelList.find((m) => m.id === modeloEfectivo) ?? null;
 
   const create = useMutation({
     mutationFn: (proyecto?: string | null) => api.createConversation(proyecto ?? null),
@@ -151,6 +158,9 @@ export function ChatPage() {
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["messages", selectedId] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["conversation-tasks"] });
+      qc.invalidateQueries({ queryKey: ["repository-actions"] });
+      qc.invalidateQueries({ queryKey: ["uso"] });
     },
   });
 
@@ -180,7 +190,7 @@ export function ChatPage() {
   // Mantiene visible el último mensaje, incluido el de "pensando".
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.data?.length, send.isPending, selectedId]);
+  }, [messages.data?.length, send.isPending, selectedId, tareaChat?.phase]);
 
   const sendError = send.isError ? errorText(send.error) : null;
   const settingsError = configure.isError ? errorText(configure.error) : null;
@@ -188,9 +198,35 @@ export function ChatPage() {
 
   // El mensaje que se envió desde este dispositivo ya puede estar en la lista (el sondeo lo trae antes de terminar).
   const ultimoMensaje = messages.data?.at(-1);
-  const yaGuardado = send.isPending && ultimoMensaje?.role === "user" && ultimoMensaje.content === send.variables?.content;
+  const yaGuardado =
+    send.isPending &&
+    ultimoMensaje?.role === "user" &&
+    ultimoMensaje.content === send.variables?.content;
   // Pensando: se envió aquí o el chat está ocupado (otro dispositivo lo envió).
-  const pensando = send.isPending || !!current?.ocupada;
+  const pensando =
+    send.isPending ||
+    tareaChat?.status === "running" ||
+    (tareaChat?.status === "queued" && tareaChat.phase !== "waiting_approval");
+  useEffect(() => {
+    if (!pensando) {
+      setSegundos(0);
+      return;
+    }
+    const inicio = Date.now();
+    const timer = setInterval(() => setSegundos(Math.floor((Date.now() - inicio) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [pensando]);
+  const sugerencias = sugerenciasChat(messages.data ?? []);
+  const sugerencia =
+    !sugerenciaOculta && !pensando
+      ? sugerencias.find(
+          (s) =>
+            !draft ||
+            (s.toLocaleLowerCase().startsWith(draft.toLocaleLowerCase()) &&
+              s.length > draft.length),
+        )
+      : undefined;
+  useEffect(() => setSugerenciaOculta(false), [selectedId, messages.data?.length]);
 
   // Etiqueta del chip: "Nombre del modelo · Esfuerzo", o "Predeterminado" si el servidor elige.
   const efectoActual = current?.effort ?? null;
@@ -223,7 +259,9 @@ export function ChatPage() {
               <h1 className="page-title">{current?.title ?? "Chat"}</h1>
             </div>
             <span className="page-subtitle">
-              {current?.project_name ? `Proyecto: ${current.project_name}` : "Proyecto: Orquestador Daemon"}
+              {current?.project_name
+                ? `Proyecto: ${current.project_name}`
+                : "Proyecto: Orquestador Daemon"}
             </span>
           </div>
           <div className="header-actions">
@@ -248,7 +286,11 @@ export function ChatPage() {
                 <>
                   <h2>No se pudieron cargar los chats</h2>
                   <p>Revisa la conexión e intenta de nuevo.</p>
-                  <button type="button" className="ghost" onClick={() => void conversations.refetch()}>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => void conversations.refetch()}
+                  >
                     Reintentar
                   </button>
                 </>
@@ -311,25 +353,38 @@ export function ChatPage() {
               {messages.data?.map((m) => {
                 const isUser = m.role === "user";
                 return (
-                  <div key={m.id} className={`chat-msg${isUser ? " chat-msg-user" : " chat-msg-assistant"}`}>
+                  <div
+                    key={m.id}
+                    className={`chat-msg${isUser ? " chat-msg-user" : " chat-msg-assistant"}`}
+                  >
                     <div className="msg-meta">
                       {isUser ? (
                         <span>Tú · {formatWhen(m.created_at)}</span>
                       ) : (
                         <>
                           <span className="msg-author-icon" aria-hidden="true">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
                               <polyline points="16 18 22 12 16 6" />
                               <polyline points="8 6 2 12 8 18" />
                             </svg>
                           </span>
-                          <span>{modelInfo?.name ?? current?.model ?? "Codex CLI"} · {formatWhen(m.created_at)}</span>
+                          <span>
+                            {modelInfo?.name ?? current?.model ?? "Codex CLI"} ·{" "}
+                            {formatWhen(m.created_at)}
+                          </span>
                         </>
                       )}
                     </div>
-                    <div className="msg-content">
-                      {m.content}
-                    </div>
+                    <div className="msg-content">{m.content}</div>
                   </div>
                 );
               })}
@@ -345,7 +400,16 @@ export function ChatPage() {
                 <div className="chat-msg chat-msg-assistant">
                   <div className="msg-meta">
                     <span className="msg-author-icon" aria-hidden="true">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
                         <polyline points="16 18 22 12 16 6" />
                         <polyline points="8 6 2 12 8 18" />
                       </svg>
@@ -354,9 +418,31 @@ export function ChatPage() {
                   </div>
                   <div className="thinking" aria-live="polite">
                     <span className="dot" aria-hidden="true" />
-                    <span className="muted-note">Pensando</span>
+                    <span className="muted-note">
+                      {tareaChat?.phase === "analyzing"
+                        ? "Preparando el plan"
+                        : tareaChat?.status === "queued"
+                          ? "Esperando turno"
+                          : "Ejecutando el plan"}{" "}
+                      · {segundos} s
+                      {segundos >= 20
+                        ? " · El agente sigue trabajando. Puedes salir de esta pantalla."
+                        : ""}
+                    </span>
                   </div>
                 </div>
+              )}
+              {tareaChat && (
+                <PlanRevision key={tareaChat.plan_hash ?? tareaChat.id} tarea={tareaChat} />
+              )}
+              {tareaChat && <ReporteTarea reporte={tareaChat.report} />}
+              {selectedId && (
+                <AccionesRepositorioChat
+                  conversationId={selectedId}
+                  projectId={current?.project_id ?? null}
+                  taskId={tareaChat?.id}
+                  terminada={tareaChat?.status === "done"}
+                />
               )}
               <div ref={endRef} />
             </div>
@@ -393,7 +479,7 @@ export function ChatPage() {
 
                 {usoAbierto && (
                   <UsoPanel
-                    modelo={current?.model ?? null}
+                    modelo={modeloEfectivo}
                     onCerrar={() => setUsoAbierto(false)}
                     disparador={usoRef}
                   />
@@ -408,6 +494,20 @@ export function ChatPage() {
                   aria-label="Mensaje"
                   onChange={(e) => cambiarBorrador(e.target.value)}
                   onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
+                    if (e.key === "Escape") {
+                      setSugerenciaOculta(true);
+                      return;
+                    }
+                    if (
+                      e.key === "Tab" &&
+                      !e.shiftKey &&
+                      !e.nativeEvent.isComposing &&
+                      sugerencia
+                    ) {
+                      e.preventDefault();
+                      cambiarBorrador(sugerencia);
+                      return;
+                    }
                     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                       e.preventDefault();
                       submit();
@@ -415,6 +515,20 @@ export function ChatPage() {
                   }}
                 />
 
+                {sugerencia && (
+                  <button
+                    type="button"
+                    className="composer-suggestion"
+                    onClick={() => {
+                      cambiarBorrador(sugerencia);
+                      inputRef.current?.focus();
+                    }}
+                    aria-label={"Completar sugerencia: " + sugerencia}
+                  >
+                    <span>{sugerencia}</span>
+                    <kbd>Tab</kbd>
+                  </button>
+                )}
                 <div className="composer-controls">
                   <div className="controls-left">
                     <button
@@ -429,7 +543,10 @@ export function ChatPage() {
                       }}
                     >
                       <span>{etiquetaChip}</span>
-                      <div className="cost-meter" title={`Costo: ${tierBars(modelInfo?.costTier ?? "medio")} de 5`}>
+                      <div
+                        className="cost-meter"
+                        title={`Costo: ${tierBars(modelInfo?.costTier ?? "medio")} de 5`}
+                      >
                         {[0, 1, 2, 3, 4].map((i) => (
                           <span
                             key={i}
@@ -438,20 +555,6 @@ export function ChatPage() {
                         ))}
                       </div>
                     </button>
-
-                    <div className="effort-selector" role="radiogroup" aria-label="Esfuerzo del modelo">
-                      {EFFORT_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          className={`effort-opt${efectoActual === opt.id ? " active" : ""}`}
-                          aria-checked={efectoActual === opt.id}
-                          onClick={() => configure.mutate({ effort: efectoActual === opt.id ? null : opt.id })}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
                   </div>
 
                   <div className="controls-right">
@@ -475,8 +578,20 @@ export function ChatPage() {
                       aria-label="Enviar"
                       disabled={!draft.trim() || send.isPending || !!current?.ocupada}
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M12 19V5M5.5 11.5 12 5l6.5 6.5"
+                          stroke="currentColor"
+                          strokeWidth="2.2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
                       </svg>
                     </button>
                   </div>

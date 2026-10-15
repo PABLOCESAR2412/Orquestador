@@ -1,0 +1,62 @@
+.picker.picker-con-esfuerzo .picker-head,
+.picker.picker-con-esfuerzo .picker-configuracion {
+  flex-shrink: 0;
+}
+
+.picker.picker-con-esfuerzo .picker-list {
+  min-height: 0;
+  flex: 1 1 auto;
+  overscroll-behavior: contain;
+}
+
+.picker-configuracion {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.picker-eleccion {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.picker-eleccion strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.picker-eleccion > span {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.picker-configuracion .segmented {
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
+  min-width: 0;
+}
+
+.picker-configuracion .segmented button {
+  flex: 1 1 auto;
+  min-height: 40px;
+}
+
+.picker-confirmacion {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.picker-confirmacion button {
+  min-height: 40px;
+}

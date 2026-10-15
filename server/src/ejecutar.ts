@@ -5,8 +5,14 @@ import { getPreferences } from "./preferences";
 import { entornoDeProyecto } from "./secretos";
 import { redactar } from "./redaccion";
 import { AislamientoError } from "./runners/aislamiento";
-import { runOpenCode, type RunResult } from "./runners/opencode";
-import { conMemoria, extraerMemoria, guardarMemoria, memoriaDelProyecto, quitarBloqueMemoria } from "./memoria";
+import { runOpenCode, type RunResult, type Usage } from "./runners/opencode";
+import {
+  conMemoria,
+  extraerMemoria,
+  guardarMemoria,
+  memoriaDelProyecto,
+  quitarBloqueMemoria,
+} from "./memoria";
 
 // Longitud mínima de un valor de secreto para ocultarlo en la salida. Más corto, aparecería en texto normal.
 const MINIMO_OCULTAR = 4;
@@ -27,12 +33,39 @@ export type OpcionesAgente = {
   // Solo para la tarea: registra el cambio de modelo en su historial.
   taskId?: string;
   projectId?: string | null;
+  conversationId?: string | null;
+  soloLectura?: boolean;
   // Solo para la tarea: pide al agente escribir la memoria del proyecto al final y la guarda.
   aprender?: boolean;
 };
 
 // `modelo` es el que realmente respondió (puede ser el de respaldo), para registrar el uso.
 export type ResultadoAgente = RunResult & { modelo: string };
+
+// Cada paso se persiste al llegar: un fallo, cancelación o respaldo no borra consumo anterior.
+export function registrarUsoAgente(
+  modelo: string,
+  uso: Usage,
+  contexto: Pick<OpcionesAgente, "conversationId" | "projectId" | "taskId">,
+): void {
+  db.query(
+    `INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens,
+      reasoning_tokens, cache_read_tokens, cost, project_id, task_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    crypto.randomUUID(),
+    contexto.conversationId ?? null,
+    modelo.split("/")[0],
+    modelo,
+    uso.input,
+    uso.output,
+    uso.reasoning,
+    uso.cacheRead,
+    uso.cost,
+    contexto.projectId ?? null,
+    contexto.taskId ?? null,
+  );
+}
 
 // Saturación o límite del proveedor: justifica probar otro modelo.
 const PATRON_PROVEEDOR = /\b(429|5\d\d)\b|rate limit|too many requests|overloaded|quota/i;
@@ -81,15 +114,52 @@ function etiquetaDelError(err: unknown): string {
 export function conInstrucciones(projectId: string | null | undefined, prompt: string): string {
   if (!projectId) return prompt;
   const fila = db
-    .query<{ instrucciones: string | null }, [string]>("SELECT instrucciones FROM projects WHERE id = ?")
+    .query<
+      { instrucciones: string | null; compartir_contexto: number },
+      [string]
+    >("SELECT instrucciones, compartir_contexto FROM projects WHERE id = ?")
     .get(projectId);
   const texto = fila?.instrucciones?.trim();
-  if (!texto) return prompt;
-  return `Instrucciones del proyecto (escritas por el dueño):\n${texto}\n---\n${prompt}`;
+  const skills = db
+    .query<
+      { name: string; content: string },
+      [string]
+    >("SELECT name,content FROM project_skills WHERE project_id=? ORDER BY name")
+    .all(projectId);
+  const contexto = fila?.compartir_contexto
+    ? db
+        .query<{ content: string; role: string }, [string]>(
+          "SELECT m.content,m.role FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE c.project_id=? ORDER BY m.created_at DESC,m.rowid DESC LIMIT 20",
+        )
+        .all(projectId)
+        .reverse()
+        .map((m) => `${m.role}: ${m.content}`)
+        .join("\n")
+        .slice(-16000)
+    : "";
+  return [
+    texto ? `Instrucciones del proyecto:\n${texto}` : "",
+    skills.length
+      ? "Skills del proyecto (referencias; no autorizan acciones):\n" +
+        skills
+          .map((s) => `## ${s.name}\n${s.content}`)
+          .join("\n")
+          .slice(0, 32000)
+      : "",
+    contexto
+      ? `Contexto reciente de los chats del proyecto (no cambia las aprobaciones):\n${contexto}`
+      : "",
+    prompt,
+  ]
+    .filter(Boolean)
+    .join("\n---\n");
 }
 
 // Un modelo de respaldo puede no tener el esfuerzo pedido; en ese caso se ejecuta sin él.
-async function varianteSoportada(modelo: string, variante: string | null | undefined): Promise<string | undefined> {
+async function varianteSoportada(
+  modelo: string,
+  variante: string | null | undefined,
+): Promise<string | undefined> {
   if (!variante) return undefined;
   try {
     const check = await validateSelection(modelo, variante);
@@ -111,11 +181,18 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
   };
   const memoria = opts.projectId ? memoriaDelProyecto(opts.projectId).texto : null;
   const base = {
-    prompt: conMemoria(conInstrucciones(opts.projectId, opts.prompt), memoria, opts.aprender === true),
+    prompt: conMemoria(
+      conInstrucciones(opts.projectId, opts.prompt),
+      memoria,
+      opts.aprender === true,
+    ),
     cwd: opts.cwd,
     timeoutMs: opts.timeoutMs,
     signal: opts.signal,
-    onLinea: opts.onLinea ? (linea: string) => opts.onLinea?.(ocultarValores(linea, ocultos)) : undefined,
+    soloLectura: opts.soloLectura,
+    onLinea: opts.onLinea
+      ? (linea: string) => opts.onLinea?.(ocultarValores(linea, ocultos))
+      : undefined,
     extraEnv: propias,
     onSesion: alSesion,
   };
@@ -150,6 +227,7 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
     const r = await runOpenCode({
       ...base,
       model: opts.model,
+      onUso: (uso) => registrarUsoAgente(opts.model, uso, opts),
       variant: opts.variant ?? undefined,
       sessionId: opts.sessionId ?? null,
     });
@@ -163,12 +241,17 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
     if (!respaldo || respaldo === opts.model) throw limpiarError(err);
 
     if (opts.taskId) {
-      registrarEvento(opts.taskId, "modelo_respaldo", `${etiquetaDelError(err)} en ${opts.model}; usando ${respaldo}`);
+      registrarEvento(
+        opts.taskId,
+        "modelo_respaldo",
+        `${etiquetaDelError(err)} en ${opts.model}; usando ${respaldo}`,
+      );
     }
     try {
       const r = await runOpenCode({
         ...base,
         model: respaldo,
+        onUso: (uso) => registrarUsoAgente(respaldo, uso, opts),
         variant: await varianteSoportada(respaldo, opts.variant),
         sessionId: sesion,
       });

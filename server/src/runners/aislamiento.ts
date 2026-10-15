@@ -1,4 +1,4 @@
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { config } from "../config";
 
@@ -23,7 +23,12 @@ export class AislamientoError extends Error {
 const RAIZ_REPO = resolve(import.meta.dir, "../../..");
 
 // Estado de OpenCode dentro del HOME: lectura y escritura.
-const ESTADO_OPENCODE = [".local/share/opencode", ".config/opencode", ".local/state/opencode", ".cache/opencode"];
+const ESTADO_OPENCODE = [
+  ".local/share/opencode",
+  ".config/opencode",
+  ".local/state/opencode",
+  ".cache/opencode",
+];
 // Herramientas instaladas en el HOME: solo lectura.
 const HERRAMIENTAS = [".local/bin", ".opencode", ".bun", ".gitconfig", ".config/git"];
 
@@ -79,7 +84,7 @@ function lecturaExtra(): string[] {
 }
 
 // Argumentos de bwrap que van antes del comando del agente. Vacío si el aislamiento está desactivado.
-export function prefijoAislamiento(cwd: string): string[] {
+export function prefijoAislamiento(cwd: string, soloLectura = false): string[] {
   if (!aislamientoActivo()) return [];
 
   const carpeta = rutaReal(cwd);
@@ -105,9 +110,13 @@ export function prefijoAislamiento(cwd: string): string[] {
 
   const args = [
     "bwrap",
-    "--ro-bind", "/", "/",
-    "--dev", "/dev",
-    "--proc", "/proc",
+    "--ro-bind",
+    "/",
+    "/",
+    "--dev",
+    "/dev",
+    "--proc",
+    "/proc",
     // Sin esto, el agente vería los procesos del servidor y podría leer su entorno (TELO_CLAVE).
     "--unshare-pid",
     "--unshare-ipc",
@@ -131,6 +140,17 @@ export function prefijoAislamiento(cwd: string): string[] {
   for (const ruta of lecturaExtra()) args.push("--ro-bind-try", ruta, ruta);
 
   // La carpeta de trabajo es lo único con escritura fuera del estado de OpenCode.
-  args.push("--bind", carpeta, carpeta, "--chdir", carpeta, "--");
+  args.push(soloLectura ? "--ro-bind" : "--bind", carpeta, carpeta);
+  // El servidor es el único que escribe Git: commit y push pasan por aprobación.
+  const git = join(carpeta, ".git");
+  if (existsSync(git)) {
+    if (!lstatSync(git).isDirectory())
+      throw new AislamientoError(
+        "carpeta_no_permitida",
+        "La carpeta .git del workspace no es segura.",
+      );
+    if (!soloLectura) args.push("--ro-bind", git, git);
+  }
+  args.push("--chdir", carpeta, "--");
   return args;
 }

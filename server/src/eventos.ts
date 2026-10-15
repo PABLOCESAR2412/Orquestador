@@ -6,6 +6,9 @@ import { redactar } from "./redaccion";
 // para auditar y como base de las notificaciones (fase 8).
 
 export type TipoEvento =
+  | "plan_listo"
+  | "plan_aprobado"
+  | "plan_revision"
   | "creada"
   | "iniciada"
   | "sesion_asignada"
@@ -38,7 +41,10 @@ export function registrarEvento(taskId: string, tipo: TipoEvento, detalle?: stri
     .query("INSERT INTO task_events (task_id, kind, detail) VALUES (?, ?, ?)")
     .run(taskId, tipo, detail);
   const fila = db
-    .query<{ created_at: string }, [number | bigint]>("SELECT created_at FROM task_events WHERE id = ?")
+    .query<
+      { created_at: string },
+      [number | bigint]
+    >("SELECT created_at FROM task_events WHERE id = ?")
     .get(lastInsertRowid);
   publicar({
     tipo: "evento",
@@ -52,17 +58,20 @@ export function registrarEvento(taskId: string, tipo: TipoEvento, detalle?: stri
 // Publica el estado actual de una tarea. Llamarlo después de cada cambio de status.
 export function publicarEstado(taskId: string) {
   const fila = db
-    .query<{ id: string; status: string; finished_at: string | null }, [string]>(
-      "SELECT id, status, finished_at FROM tasks WHERE id = ?",
-    )
+    .query<
+      { id: string; status: string; finished_at: string | null },
+      [string]
+    >("SELECT id, status, finished_at FROM tasks WHERE id = ?")
     .get(taskId);
-  if (fila) publicar({ tipo: "tarea", id: fila.id, status: fila.status, finished_at: fila.finished_at });
+  if (fila)
+    publicar({ tipo: "tarea", id: fila.id, status: fila.status, finished_at: fila.finished_at });
 }
 
 export function listarEventos(taskId: string): EventoTarea[] {
   return db
-    .query<EventoTarea, [string]>(
-      "SELECT id, task_id, kind, detail, created_at FROM task_events WHERE task_id = ? ORDER BY id ASC",
-    )
+    .query<
+      EventoTarea,
+      [string]
+    >("SELECT id, task_id, kind, detail, created_at FROM task_events WHERE task_id = ? ORDER BY id ASC")
     .all(taskId);
 }

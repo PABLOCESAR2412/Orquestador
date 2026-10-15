@@ -1,12 +1,13 @@
 import { useMemo, useRef, useState, type RefObject } from "react";
 import type { ModelInfo } from "../api";
-import { effortLabel, formatPrice } from "../lib/model";
-import { CostMeter, useDialogo } from "./controls";
+import { formatPrice } from "../lib/model";
+import { CostMeter, EffortControl, useDialogo } from "./controls";
+import "../styles-picker.css";
 
 type Props = {
   models: ModelInfo[];
   currentId: string | null;
-  // Con conEsfuerzo, cada modelo lista sus niveles debajo; elegir uno fija modelo y esfuerzo a la vez.
+  // Con conEsfuerzo, modelo y esfuerzo se aplican juntos al confirmar.
   conEsfuerzo?: boolean;
   currentEffort?: string | null;
   // El esfuerzo solo llega cuando conEsfuerzo está activo. null significa "Auto".
@@ -35,6 +36,11 @@ export function ModelPicker({
 }: Props) {
   const [query, setQuery] = useState("");
   const [onlyFree, setOnlyFree] = useState(false);
+  const [draftId, setDraftId] = useState(currentId);
+  const [draftEffort, setDraftEffort] = useState(currentEffort);
+  const draftModel = models.find((m) => m.id === draftId) ?? null;
+  const esfuerzoValido =
+    draftEffort && draftModel?.variants.includes(draftEffort) ? draftEffort : null;
   const q = query.trim().toLowerCase();
   const dialogRef = useRef<HTMLDivElement>(null);
   // Si no hay disparador, vuelve el elemento que tenía el foco al abrir.
@@ -52,9 +58,13 @@ export function ModelPicker({
     onSelect(m, conEsfuerzo ? esfuerzo : undefined);
   };
 
-  // Al cambiar de modelo se conserva el esfuerzo si el nuevo también lo admite.
-  const conservado = (m: ModelInfo) => (currentEffort && m.variants.includes(currentEffort) ? currentEffort : null);
-  const esActual = (m: ModelInfo) => m.id === currentId;
+  const seleccionar = (m: ModelInfo | null) => {
+    if (!conEsfuerzo) return elegir(m);
+    setDraftId(m?.id ?? null);
+    // Al cambiar de modelo solo se conserva un esfuerzo compatible.
+    setDraftEffort((v) => (v && m?.variants.includes(v) ? v : null));
+  };
+  const seleccionadoId = conEsfuerzo ? draftId : currentId;
 
   const groups = useMemo(() => {
     const matches = models.filter((m) => {
@@ -72,12 +82,13 @@ export function ModelPicker({
     return [...byGroup.entries()];
   }, [models, q, onlyFree]);
 
-  const fila = (m: ModelInfo, esfuerzo: string | null) => (
+  const fila = (m: ModelInfo) => (
     <button
       type="button"
       className="picker-item"
-      aria-current={esActual(m) || undefined}
-      onClick={() => elegir(m, esfuerzo)}
+      aria-current={m.id === seleccionadoId || undefined}
+      aria-pressed={conEsfuerzo ? m.id === draftId : undefined}
+      onClick={() => seleccionar(m)}
     >
       <span className="picker-main">
         <span className="picker-name">{m.name}</span>
@@ -95,7 +106,13 @@ export function ModelPicker({
   return (
     <>
       <div className="scrim" onClick={cerrar} />
-      <div className="picker" role="dialog" aria-modal="true" aria-label="Elegir modelo" ref={dialogRef}>
+      <div
+        className={`picker${conEsfuerzo ? " picker-con-esfuerzo" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Elegir modelo"
+        ref={dialogRef}
+      >
         <div className="picker-head">
           <input
             className="picker-search"
@@ -120,8 +137,9 @@ export function ModelPicker({
             <button
               type="button"
               className="picker-item"
-              aria-current={currentId === null || undefined}
-              onClick={() => elegir(null)}
+              aria-current={seleccionadoId === null || undefined}
+              aria-pressed={conEsfuerzo ? draftId === null : undefined}
+              onClick={() => seleccionar(null)}
             >
               <span className="picker-main">
                 <span className="picker-name">Predeterminado</span>
@@ -154,41 +172,43 @@ export function ModelPicker({
             groups.map(([group, items]) => (
               <section key={group}>
                 <h3 className="group-title">{group}</h3>
-                {items.map((m) =>
-                  conEsfuerzo && m.variants.length > 0 ? (
-                    <div key={m.id} className="picker-modelo">
-                      {fila(m, conservado(m))}
-                      <div className="picker-niveles" role="group" aria-label={`Esfuerzo de ${m.name}`}>
-                        <button
-                          type="button"
-                          className="picker-nivel"
-                          aria-pressed={esActual(m) && !currentEffort}
-                          onClick={() => elegir(m, null)}
-                        >
-                          Auto
-                        </button>
-                        {m.variants.map((v) => (
-                          <button
-                            key={v}
-                            type="button"
-                            className="picker-nivel"
-                            aria-pressed={esActual(m) && currentEffort === v}
-                            onClick={() => elegir(m, v)}
-                          >
-                            {effortLabel(v)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div key={m.id} className="picker-modelo">
-                      {fila(m, null)}
-                    </div>
-                  ),
-                )}
+                {items.map((m) => (
+                  <div key={m.id} className="picker-modelo">
+                    {fila(m)}
+                  </div>
+                ))}
               </section>
             ))}
         </div>
+        {conEsfuerzo && (
+          <div className="picker-configuracion">
+            <div className="picker-eleccion">
+              <strong title={draftModel?.name}>
+                {draftModel?.name ?? (draftId ? "Modelo no disponible" : "Predeterminado")}
+              </strong>
+              <span>Esfuerzo</span>
+            </div>
+            <EffortControl
+              variants={draftModel?.variants ?? []}
+              value={esfuerzoValido}
+              disabled={!draftModel}
+              onChange={setDraftEffort}
+            />
+            <div className="picker-confirmacion">
+              <button type="button" className="ghost" onClick={cerrar}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={draftId !== null && !draftModel}
+                onClick={() => elegir(draftModel, esfuerzoValido)}
+              >
+                Usar modelo
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

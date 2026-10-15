@@ -1,0 +1,140 @@
+.approval-panel {
+  margin-block: 16px;
+  overflow-wrap: anywhere;
+}
+.approval-panel h2 {
+  margin-bottom: 12px;
+}
+.approval-panel li {
+  margin-block: 8px;
+}
+.approval-files {
+  display: block;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.approval-feedback {
+  display: grid;
+  gap: 8px;
+  margin-block: 16px;
+}
+.approval-feedback textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: inherit;
+}
+.approval-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 12px;
+}
+.approval-buttons button {
+  min-height: 40px;
+}
+.approval-diff {
+  max-height: 320px;
+  overflow: auto;
+  max-width: 100%;
+  white-space: pre;
+  font: 12px/1.6 var(--font-mono);
+  background: var(--surface-lowest);
+  padding: 12px;
+}
+.project-config-form {
+  display: grid;
+  gap: 12px;
+  margin-block: 16px;
+}
+.project-config-form label {
+  display: grid;
+  gap: 8px;
+}
+.project-config-form input,
+.project-config-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 40px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: inherit;
+}
+.project-config-form .checkbox-label {
+  display: flex;
+  align-items: center;
+}
+.project-config-form input[type="checkbox"] {
+  width: 20px;
+  min-height: 20px;
+}
+.skill-entry {
+  padding-block: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.skill-entry pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 260px;
+  overflow-y: auto;
+  font: inherit;
+}
+.composer-suggestion {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--ink-2);
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  min-height: 40px;
+}
+.composer-suggestion span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-suggestion kbd {
+  flex-shrink: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  padding: 2px 4px;
+  color: var(--ink);
+}
+.composer-controls .controls-left {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.composer-controls .model-chip {
+  min-width: 0;
+  max-width: 100%;
+}
+.composer-controls .model-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-controls .cost-meter {
+  flex-shrink: 0;
+}
+@media (max-width: 760px) {
+  .composer-controls {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  .composer-controls .controls-right {
+    flex-shrink: 0;
+  }
+}

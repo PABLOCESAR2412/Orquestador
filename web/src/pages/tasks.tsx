@@ -17,6 +17,9 @@ import { useShell } from "../components/shell-context";
 import { BotonTema } from "../components/tema-boton";
 import { AppNav } from "../components/nav";
 import "../styles-trabajo.css";
+import "../styles-flujo.css";
+import { PlanRevision } from '../components/plan-revision';
+import { ReporteTarea } from '../components/reporte-tarea';
 
 const isActive = (t: Task) => t.status === "queued" || t.status === "running";
 const MAX_PROMPT_CHARS = 10_000;
@@ -472,7 +475,8 @@ function ListaTareas() {
           const isFailed = t.status === "failed";
 
           let statusText = "En cola";
-          if (isRunning) statusText = `Corriendo (${formatElapsed(t.started_at)})`;
+          if (t.phase === "waiting_approval" && isQueued) statusText = "Espera tu aprobación";
+          else if (isRunning) statusText = `${t.phase === "analyzing" ? "Analizando" : "Ejecutando"} (${formatElapsed(t.started_at)})`;
           else if (isDone) statusText = `Lista (${hora(t.finished_at)})`;
           else if (isFailed) statusText = `Falló (${hora(t.finished_at)})`;
           else if (t.status === "cancelled") statusText = "Cancelada";
@@ -709,6 +713,8 @@ function DetalleTarea({ id }: { id: string }) {
 
       {t && (
         <>
+          <PlanRevision key={t.plan_hash ?? t.id} tarea={t} />
+          <ReporteTarea reporte={t.report} />
           <section className="panel tarea-seccion" aria-labelledby="estado-titulo">
             <div className="card-top">
               <h2 id="estado-titulo">Estado</h2>

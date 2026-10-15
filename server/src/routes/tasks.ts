@@ -41,13 +41,23 @@ type TaskRow = {
 // reanudable: la tarea tiene la sesión del agente, así que puede continuar donde quedó.
 // rama y base_commit: solo tareas de un proyecto con Git.
 const COLUMNS =
-  "t.id, t.title, t.prompt, t.model, t.effort, t.status, t.result, t.error, t.project_id, t.retry_of, (t.provider_session_id IS NOT NULL) AS reanudable, t.rama, t.base_commit, p.name AS project_name, t.created_at, t.started_at, t.finished_at";
+  "t.id, t.title, t.prompt, t.model, t.effort, t.status, t.phase, t.plan, t.plan_hash, t.approved_hash, t.report, t.conversation_id, t.result, t.error, t.project_id, t.retry_of, (t.provider_session_id IS NOT NULL) AS reanudable, t.rama, t.base_commit, p.name AS project_name, t.created_at, t.started_at, t.finished_at";
 const DESDE = "FROM tasks t LEFT JOIN projects p ON p.id = t.project_id";
 
 const ESTADOS_REANUDABLES = ["interrupted", "failed"];
 const ESTADOS_REINTENTABLES = ["interrupted", "failed", "cancelled"];
 
 export const tasks = new Hono();
+
+tasks.get("/conversations/:id/tareas", (c) => {
+  const rows = db
+    .query<
+      TaskRow,
+      [string]
+    >(`SELECT ${COLUMNS} ${DESDE} WHERE t.conversation_id=? ORDER BY t.created_at DESC,t.rowid DESC`)
+    .all(c.req.param("id"));
+  return c.json(rows.map(aTarea));
+});
 
 // SQLite devuelve los booleanos como 0 o 1.
 function aTarea(row: TaskRow) {
@@ -62,7 +72,10 @@ function leerTarea(id: string) {
 // Traduce los errores de tareas y de Git a la forma { error, detail? } de la API.
 function respuestaDeError(c: Context, err: unknown) {
   if (err instanceof ErrorTarea) {
-    return c.json(err.detail ? { error: err.code, detail: err.detail } : { error: err.code }, err.status);
+    return c.json(
+      err.detail ? { error: err.code, detail: err.detail } : { error: err.code },
+      err.status,
+    );
   }
   return c.json({ error: "tarea_error", detail: mensajeSeguro(err) }, 500);
 }
@@ -71,7 +84,10 @@ function respuestaDeError(c: Context, err: unknown) {
 tasks.get("/tasks", (c) => {
   const limit = Math.min(Number(c.req.query("limit")) || 50, 200);
   const rows = db
-    .query<TaskRow, [number]>(`SELECT ${COLUMNS} ${DESDE} ORDER BY t.created_at DESC, t.rowid DESC LIMIT ?`)
+    .query<
+      TaskRow,
+      [number]
+    >(`SELECT ${COLUMNS} ${DESDE} ORDER BY t.created_at DESC, t.rowid DESC LIMIT ?`)
     .all(limit);
   return c.json(rows.map(aTarea));
 });
@@ -80,6 +96,53 @@ tasks.get("/tasks/:id", (c) => {
   const row = leerTarea(c.req.param("id"));
   if (!row) return c.json({ error: "task_not_found" }, 404);
   return c.json(row);
+});
+
+tasks.post("/tasks/:id/plan", async (c) => {
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body.hash !== "string" || !["approve", "revise"].includes(body.decision))
+    return c.json({ error: "invalid_body" }, 400);
+  const row = db
+    .query<
+      { plan_hash: string; phase: string; status: string; plan: string; error: string | null },
+      [string]
+    >("SELECT plan_hash, phase, status, plan, error FROM tasks WHERE id=?")
+    .get(id);
+  if (!row) return c.json({ error: "task_not_found" }, 404);
+  if (
+    row.phase !== "waiting_approval" ||
+    row.plan_hash !== body.hash ||
+    !["queued", "interrupted"].includes(row.status)
+  )
+    return c.json({ error: "cambios_cambiaron" }, 409);
+  if (body.decision === "approve" && JSON.parse(row.plan).preguntas.length)
+    return c.json({ error: "plan_con_preguntas" }, 409);
+  if (body.decision === "approve" && row.error)
+    return c.json({ error: "plan_needs_revision" }, 409);
+  if (
+    body.decision === "revise" &&
+    (typeof body.feedback !== "string" || !body.feedback.trim() || body.feedback.length > 8000)
+  )
+    return c.json({ error: "invalid_content" }, 400);
+  db.transaction(() => {
+    if (body.decision === "approve") {
+      db.query(
+        "UPDATE tasks SET phase='executing', status='queued', approved_hash=?, error=NULL WHERE id=?",
+      ).run(body.hash, id);
+      db.query(
+        "UPDATE task_plans SET approved_at=datetime('now') WHERE id=(SELECT id FROM task_plans WHERE task_id=? AND hash=? ORDER BY id DESC LIMIT 1)",
+      ).run(id, body.hash);
+    } else {
+      db.query(
+        "UPDATE tasks SET phase='analyzing', status='queued', approved_hash=NULL, error=NULL, prompt=prompt || ? WHERE id=?",
+      ).run("\nAclaración del usuario: " + body.feedback.trim(), id);
+    }
+    registrarEvento(id, body.decision === "approve" ? "plan_aprobado" : "plan_revision");
+  })();
+  publicarEstado(id);
+  notifyWorker();
+  return c.json(leerTarea(id));
 });
 
 // GET /api/tasks/:id/eventos  -> historial en orden cronológico
@@ -118,7 +181,8 @@ tasks.post("/tasks/:id/aprobar", async (c) => {
     .json<{ accion?: unknown; hash?: unknown; mensaje?: unknown }>()
     .catch(() => ({}) as { accion?: unknown; hash?: unknown; mensaje?: unknown });
 
-  if (body.accion !== "commit" && body.accion !== "push") return c.json({ error: "invalid_accion" }, 400);
+  if (body.accion !== "commit" && body.accion !== "push")
+    return c.json({ error: "invalid_accion" }, 400);
   if (typeof body.hash !== "string" || !/^[0-9a-f]{64}$/i.test(body.hash)) {
     return c.json({ error: "invalid_hash" }, 400);
   }
@@ -140,8 +204,21 @@ tasks.post("/tasks/:id/aprobar", async (c) => {
 // Con projectId, la tarea trabaja dentro de la carpeta de ese proyecto.
 tasks.post("/tasks", async (c) => {
   const body = await c.req
-    .json<{ prompt?: string; model?: string | null; effort?: string | null; projectId?: string | null }>()
-    .catch(() => ({}) as { prompt?: string; model?: string | null; effort?: string | null; projectId?: string | null });
+    .json<{
+      prompt?: string;
+      model?: string | null;
+      effort?: string | null;
+      projectId?: string | null;
+    }>()
+    .catch(
+      () =>
+        ({}) as {
+          prompt?: string;
+          model?: string | null;
+          effort?: string | null;
+          projectId?: string | null;
+        },
+    );
 
   const prompt = body.prompt?.trim() ?? "";
   if (!prompt || prompt.length > MAX_PROMPT) return c.json({ error: "invalid_prompt" }, 400);
@@ -180,14 +257,21 @@ tasks.post("/tasks/:id/reanudar", (c) => {
   const id = c.req.param("id");
   const row = leerTarea(id);
   if (!row) return c.json({ error: "task_not_found" }, 404);
-  if (!ESTADOS_REANUDABLES.includes(row.status)) return c.json({ error: "task_not_resumable" }, 409);
+  if ((row as unknown as { phase: string }).phase === "waiting_approval")
+    return c.json({ error: "plan_needs_revision" }, 409);
+  if (!ESTADOS_REANUDABLES.includes(row.status))
+    return c.json({ error: "task_not_resumable" }, 409);
   if (!row.reanudable) return c.json({ error: "task_without_session" }, 409);
 
   db.transaction(() => {
     db.query(
       "UPDATE tasks SET status = 'queued', result = NULL, error = NULL, finished_at = NULL WHERE id = ?",
     ).run(id);
-    registrarEvento(id, "reanudada", `Estaba ${row.status === "interrupted" ? "interrumpida" : "fallida"}`);
+    registrarEvento(
+      id,
+      "reanudada",
+      `Estaba ${row.status === "interrupted" ? "interrumpida" : "fallida"}`,
+    );
   })();
 
   publicarEstado(id);
@@ -200,7 +284,8 @@ tasks.post("/tasks/:id/reanudar", (c) => {
 tasks.post("/tasks/:id/reintentar", (c) => {
   const original = leerTarea(c.req.param("id"));
   if (!original) return c.json({ error: "task_not_found" }, 404);
-  if (!ESTADOS_REINTENTABLES.includes(original.status)) return c.json({ error: "task_not_retryable" }, 409);
+  if (!ESTADOS_REINTENTABLES.includes(original.status))
+    return c.json({ error: "task_not_retryable" }, 409);
 
   const nueva = crearTarea({
     prompt: original.prompt,

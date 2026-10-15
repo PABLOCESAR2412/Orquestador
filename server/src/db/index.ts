@@ -279,6 +279,45 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    name: "016_planes_skills_contexto",
+    sql: `
+      ALTER TABLE tasks ADD COLUMN phase TEXT NOT NULL DEFAULT 'executing';
+      ALTER TABLE tasks ADD COLUMN plan TEXT;
+      ALTER TABLE tasks ADD COLUMN plan_hash TEXT;
+      ALTER TABLE tasks ADD COLUMN approved_hash TEXT;
+      ALTER TABLE tasks ADD COLUMN conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL;
+      ALTER TABLE tasks ADD COLUMN report TEXT;
+      ALTER TABLE projects ADD COLUMN compartir_contexto INTEGER NOT NULL DEFAULT 0;
+      CREATE TABLE task_plans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        plan TEXT NOT NULL, hash TEXT NOT NULL, approved_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE project_skills (
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name TEXT NOT NULL, content TEXT NOT NULL, source TEXT,
+        PRIMARY KEY (project_id, name)
+      );
+      CREATE TABLE project_git (
+        project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        remote TEXT, author_name TEXT NOT NULL DEFAULT 'Telo',
+        author_email TEXT NOT NULL DEFAULT 'telo@localhost',
+        base_branch TEXT NOT NULL DEFAULT 'main'
+      );
+      CREATE TABLE repository_actions (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
+        task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+        action TEXT NOT NULL, payload TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'pending', result TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX tasks_conversation ON tasks(conversation_id);
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -287,7 +326,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 );`);
 
 const applied = new Set(
-  db.query<{ name: string }, []>("SELECT name FROM schema_migrations").all().map((r) => r.name),
+  db
+    .query<{ name: string }, []>("SELECT name FROM schema_migrations")
+    .all()
+    .map((r) => r.name),
 );
 
 // Antes de cambiar una base que ya tiene datos, guarda una copia consistente (VACUUM INTO)

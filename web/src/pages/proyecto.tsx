@@ -12,6 +12,7 @@ import { ProyectoArchivos } from "../components/proyecto-archivos";
 import { ProyectoSecretos } from "../components/proyecto-secretos";
 import { ProyectoSiguientePaso } from "../components/proyecto-siguiente";
 import { ProyectoClave } from "../components/proyecto-clave";
+import { ProyectoConfiguracion } from "../components/proyecto-configuracion";
 
 // Vista general de un proyecto: resumen, instrucciones, memoria, archivos y secretos exactos Stitch.
 export function ProjectDetailPage() {
@@ -29,7 +30,9 @@ export function ProjectDetailPage() {
 
   // Un proyecto recién creado abre con su paso siguiente: tarea opcional y chat del proyecto.
   const recienCreado = useRouterState({
-    select: (s) => (s.location.state as unknown as { proyectoNuevo?: boolean } | undefined)?.proyectoNuevo === true,
+    select: (s) =>
+      (s.location.state as unknown as { proyectoNuevo?: boolean } | undefined)?.proyectoNuevo ===
+      true,
   });
   const [siguienteAbierto, setSiguienteAbierto] = useState(recienCreado);
 
@@ -39,7 +42,17 @@ export function ProjectDetailPage() {
 
       <main className="container">
         <Link to="/proyectos" className="back-link">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
             <line x1="19" y1="12" x2="5" y2="12" />
             <polyline points="12 19 5 12 12 5" />
           </svg>
@@ -75,7 +88,10 @@ export function ProjectDetailPage() {
         </header>
 
         {siguienteAbierto && proyecto && (
-          <ProyectoSiguientePaso proyectoId={proyecto.id} onCerrar={() => setSiguienteAbierto(false)} />
+          <ProyectoSiguientePaso
+            proyectoId={proyecto.id}
+            onCerrar={() => setSiguienteAbierto(false)}
+          />
         )}
 
         {detalle.isPending && <p className="help-note">Cargando el proyecto…</p>}
@@ -99,6 +115,7 @@ export function ProjectDetailPage() {
             <ProyectoResumen detalle={datos} />
             <ProyectoInstrucciones proyecto={proyecto} />
             <ProyectoMemoria id={proyecto.id} memoria={datos.memoria} />
+            <ProyectoConfiguracion key={proyecto.id} id={proyecto.id} />
             <ProyectoArchivos id={proyecto.id} />
             <ProyectoSecretos id={proyecto.id} />
             <ProyectoClave id={proyecto.id} />

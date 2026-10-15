@@ -9,7 +9,13 @@ export function sesionValida(id: unknown): id is string {
   return typeof id === "string" && PATRON_SESION.test(id);
 }
 
-export type Usage = { input: number; output: number; reasoning: number; cacheRead: number; cost: number };
+export type Usage = {
+  input: number;
+  output: number;
+  reasoning: number;
+  cacheRead: number;
+  cost: number;
+};
 export type RunResult = { text: string; sessionId: string | null; usage: Usage | null };
 
 type OpenCodeEvent = {
@@ -46,9 +52,23 @@ function failureDetail(stdout: string, stderr: string, events: OpenCodeEvent[]):
 // El agente solo hereda estas variables. Todo lo demás del servidor se omite: claves de otros
 // servicios, tokens y cualquier variable que se agregue al entorno del VM en el futuro.
 const VARIABLES_PERMITIDAS = new Set([
-  "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "TERM", "TZ", "TMPDIR",
-  "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS",
-  "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+  "PATH",
+  "HOME",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "LANG",
+  "TERM",
+  "TZ",
+  "TMPDIR",
+  "SSL_CERT_FILE",
+  "NODE_EXTRA_CA_CERTS",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "NO_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "no_proxy",
 ]);
 const PREFIJOS_PERMITIDOS = ["LC_", "XDG_", "OPENCODE_"];
 
@@ -81,7 +101,8 @@ function entornoDelAgente(propias?: Record<string, string>): Record<string, stri
   for (const [clave, valor] of Object.entries(propias ?? {})) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(clave)) continue;
     if (esVariableReservada(clave) || clave === "GITHUB_TOKEN") continue;
-    if (VARIABLES_PERMITIDAS.has(clave) || PREFIJOS_PERMITIDOS.some((p) => clave.startsWith(p))) continue;
+    if (VARIABLES_PERMITIDAS.has(clave) || PREFIJOS_PERMITIDOS.some((p) => clave.startsWith(p)))
+      continue;
     env[clave] = valor;
   }
   return env;
@@ -115,7 +136,8 @@ async function leerLineas(
     const { done, value } = await lector.read();
     if (done) break;
     const texto = decodificador.decode(value, { stream: true });
-    todo += texto;
+    // El historial completo vive en disco; la memoria solo conserva la cola de salida.
+    todo = (todo + texto).slice(-2 * 1024 * 1024);
     pendiente += texto;
     let corte = pendiente.indexOf("\n");
     while (corte !== -1) {
@@ -143,9 +165,11 @@ export async function runOpenCode(opts: {
   onLinea?: (linea: string) => void;
   // Variables extra solo para esta ejecución. Nunca se aceptan nombres TELO_*.
   extraEnv?: Record<string, string>;
+  soloLectura?: boolean;
+  onUso?: (uso: Usage) => void;
 }): Promise<RunResult> {
   // Lanza AislamientoError si la carpeta no es permitida o falta bubblewrap.
-  const aislamiento = prefijoAislamiento(opts.cwd);
+  const aislamiento = prefijoAislamiento(opts.cwd, opts.soloLectura);
 
   // Un id de sesión que no cumple el patrón se ignora: ni se pasa a -s ni se reutiliza.
   const sesionPedida = sesionValida(opts.sessionId) ? opts.sessionId : null;
@@ -181,6 +205,25 @@ export async function runOpenCode(opts: {
 
   let sesionAvisada: string | null = null;
   const alLeerLinea = (linea: string) => {
+    let ev: OpenCodeEvent | null = null;
+    try {
+      ev = JSON.parse(linea) as OpenCodeEvent;
+    } catch {
+      /* Salida no estructurada. */
+    }
+    if (ev?.type === "step_finish" && ev.part?.tokens) {
+      const t = ev.part.tokens;
+      const numero = (n: unknown) =>
+        typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : 0;
+      // Un fallo de persistencia debe verse; no se oculta como si fuera JSON inválido.
+      opts.onUso?.({
+        input: numero(t.input),
+        output: numero(t.output),
+        reasoning: numero(t.reasoning),
+        cacheRead: numero(t.cache?.read),
+        cost: numero(ev.part.cost),
+      });
+    }
     // Un fallo del llamador (p. ej. al escribir el registro) no debe cortar al agente.
     if (opts.onLinea) {
       try {
@@ -206,11 +249,14 @@ export async function runOpenCode(opts: {
     [stdout, stderr, code] = await Promise.race([
       Promise.all([
         leerLineas(proc.stdout, alLeerLinea),
-        new Response(proc.stderr).text(),
+        leerLineas(proc.stderr, () => {}),
         proc.exited,
       ]),
       aborted,
     ]);
+  } catch (err) {
+    terminarGrupo(proc.pid);
+    throw err;
   } finally {
     clearTimeout(timer);
   }

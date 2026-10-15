@@ -1,76 +1,41 @@
-# TODO.md: pendientes inmediatos
+# TODO.md: estado y pendientes
 
-Ordenado por prioridad. Marca `[x]` solo cuando esté verificado.
+Actualizado el 15 de octubre de 2026. Lo probado en local no implica despliegue en el VM.
 
-## Login y proyectos (`feat/proyectos-proveedores`, ya mergeado)
+## Implementado en esta revisión
 
-- [x] Recuperar el acceso SSH al VM. El bloqueo era la regla de entrada del puerto 22, que no permitía la IP actual de la PC.
-- [x] Merge del PR `feat/proyectos-proveedores` (PR #10).
-- [x] `TELO_CLAVE` en `/etc/orquestador/orquestador.env` (root, permisos 600), cargado con un override de systemd (`EnvironmentFile=`). Sin clave, el servicio no arranca.
-- [ ] Confirmar `TELO_PROYECTOS_DIR` en el mismo archivo de entorno y que la carpeta `/home/orquestador/proyectos` existe.
-- [x] Quick Tunnel abierto solo después del merge y con el login activo.
-- [x] Verificado en el VM: `GET /api/health` responde 200 y `GET /api/conversations` responde 401 sin sesión.
-- [ ] Decidir si el servidor escucha solo en `127.0.0.1` (`hostname` en `server/src/index.ts`). Pospuesto. Hoy escucha en todas las interfaces; Azure solo deja SSH abierto.
-- [ ] Incluir en `tests/` las pruebas de acceso (20 comprobaciones) y de proyectos y proveedores (30 comprobaciones).
+- [x] Conservar clones con cambios, archivos ignorados o commits sin subida aprobada; conservar los espacios de trabajo de chats.
+- [x] Chats en la cola del worker, con clon propio y continuidad entre mensajes.
+- [x] Separar análisis de solo lectura y ejecución; validar y versionar planes y exigir aprobación por hash (migración 016).
+- [x] Guardar reportes del obrero y detener cambios fuera del alcance Git del plan para revisión, conservando los archivos.
+- [x] Solicitudes de init, commit, push y PR con autorización visible en el chat.
+- [x] Configuración Git por proyecto: autor, remoto, rama destino, token cifrado y comprobación de acceso. Se reutiliza la clave SSH existente.
+- [x] Skills por proyecto: pegar instrucciones, importar SKILL.md o buscar en catálogos oficiales. No instala recursos auxiliares.
+- [x] Contexto del propio chat e intercambio opcional de contexto reciente dentro del proyecto.
+- [x] Uso incremental por paso del agente, incluidos fallos y cancelaciones; distinguir falta de datos de consumo cero.
+- [x] Modelo y esfuerzo en un mismo selector; sugerencias del historial con Tab y progreso del agente.
+- [x] Compilación web y revisión con Playwright a 390 y 1440 px para chat y configuración del proyecto.
+- [x] Suite del servidor ejecutada en Linux/WSL. Ver el reporte de la revisión para el resultado final.
 
-## Después del merge (acceso)
+## Antes de desplegar
 
-- [x] Inicio de sesión desde el navegador a través del túnel SSH, en `http://127.0.0.1:3000`.
-- [x] Cookie `telo_sesion` por Quick Tunnel: `HttpOnly`, `Secure` y `SameSite=Strict`.
-- [x] Quick Tunnel de prueba con el login activo. Su URL cambia al abrirlo de nuevo, no tiene garantía de disponibilidad y no vuelve sola después de reiniciar el VM.
+- [ ] Revisar el diff de feat/flujo-seguro-proyectos. Commit, push y PR de esta rama solo cuando Pablo los pida.
+- [ ] Probar la migración 016 sobre una copia de la base del VM y conservar el respaldo previo.
+- [ ] Instalar/comprobar OpenCode y bubblewrap en el entorno de ejecución real.
+- [ ] Configurar TELO_PROYECTOS_DIR y TELO_CLAVE_CIFRADO en el archivo de entorno del servicio; respaldar la clave de cifrado fuera del VM.
+- [ ] Probar un proveedor real dentro de bubblewrap, análisis/aprobación/ejecución y recuperación tras reinicio.
+- [ ] Probar token de GitHub o deploy key con permiso de escritura en un repositorio de prueba. Para PR, el token necesita Pull requests de escritura.
+- [ ] Probar push y PR reales desde sus autorizaciones. La identidad Git del autor no concede acceso remoto.
+- [ ] Comprobar restauración de base y workspace, timer de respaldo y copia fuera del VM.
+- [ ] Verificar acceso desde el teléfono por Tailscale, persistencia de serve tras reinicio y expiración de la clave del VM.
+- [ ] Confirmar presupuesto de Azure y alertas al 50, 80 y 100 %.
 
-## En el VM
+## Producto pendiente
 
-- [ ] Confirmar que `git log --oneline -1` muestra `597c560` y que `GET /api/preferences` responde 200.
-- [ ] Confirmar en `journalctl -u orquestador` la línea `Migración aplicada: 004_settings`.
-- [x] Reiniciar el VM por la actualización de kernel. `orquestador` arrancó solo y `GET /api/health` responde 200.
-
-## Diseño (fase 4)
-
-- [ ] Instalar impeccable en el repo: `npx impeccable install --providers=claude --scope=project`.
-- [ ] Ejecutar `/impeccable init` y revisar el `PRODUCT.md` que genera.
-- [x] Generar las pantallas en Stitch con `docs/design/STITCH_PROMPT.md` e importar `DESIGN.md`.
-- [x] Exportar a HTML/CSS y adaptar el resultado a las variables de `styles.css`. No usar Tailwind.
-- [ ] Revisar las cinco pantallas a 390 px y 1440 px con Playwright.
-
-## Herramientas
-
-- [ ] Instalar Playwright MCP: `claude mcp add playwright -- npx @playwright/mcp@latest --headless`.
-- [ ] Opcional: instalar caveman desde su README, para tareas internas de los agentes.
-
-## Código
-
-- [ ] Mover las pruebas actuales (`test-analytics`, `test-tasks`, `shot-*`) a `tests/`, sin rutas locales ni datos fijos.
-- [ ] Agregar un script `test` en `server/package.json`.
-- [x] Migraciones 010 (Git y aprobaciones), 011 (secretos) y 012 (instrucciones y programadas) implementadas en `feat/revision-agentes`.
-- [x] Migración 013 (`013_oauth_google`): estados de inicio de sesión y conexión de Google, con pruebas en `server/tests/google.test.ts`.
-- [ ] Migración 014: estados del analizador (`planning`, `waiting_approval`, `executing`, `waiting_user`), columnas `plan` y `resultado`.
-- [ ] Implementar el analizador (prompt y validación del JSON) y el obrero (ejecuta solo el plan aprobado).
-
-## Acceso
-
-- [x] Probar el túnel SSH con la URL de la app desde la PC.
-- [ ] Fase 9: probar el acceso por Tailscale desde el teléfono y desactivar la expiración de la clave del VM.
-
-## Limpieza
-
-- [ ] Eliminar la rama `vm-local` si todavía existe.
-- [ ] Eliminar la clave RSA antigua de la PC (`~/.ssh/id_rsa`).
-- [ ] Azure: confirmar el presupuesto de 100 USD con alertas al 50, 80 y 100 %.
-
-## Pendiente de Pablo (antes de aprobar y hacer merge)
-
-Lo que no se puede probar desde aquí o requiere una decisión tuya:
-
-- [ ] En el VM, agregar a `/etc/orquestador/orquestador.env`: `TELO_CLAVE_CIFRADO=$(openssl rand -base64 32)`. Guárdala fuera del repo. Sin ella los secretos no se guardan.
-- [ ] Instalar `opencode` en el VM y probar un agente real dentro de bubblewrap. Aquí no está instalado, así que solo se probó con un agente falso.
-- [ ] Probar un push real a GitHub con `GITHUB_TOKEN` como secreto del proyecto (token fine-grained, solo el repo, permiso de contenido). Aquí solo se probó contra un repo local y con un token falso.
-- [ ] Después del deploy, confirmar que `tailscale serve` sigue activo y que la app abre desde el teléfono (el servidor ahora escucha solo en 127.0.0.1).
-- [ ] Reiniciar el VM y comprobar que las migraciones 010–013 aplican y que la copia previa queda en `DATA_DIR/respaldos-migracion`.
-- [ ] Desactivar la expiración de la clave de `vm-1` en Tailscale.
-- [ ] Borrar la rama remota `feat/acceso-workers-vpc` y la carpeta `edge/` (pendiente de la sesión anterior).
-- [ ] Google: crear el cliente OAuth web en Google Cloud con la URI `<TELO_PUBLIC_URL>/api/google/callback`, poner `TELO_PUBLIC_URL`, `TELO_GOOGLE_CLIENT_ID` y `TELO_GOOGLE_CLIENT_SECRET` en el archivo de entorno del VM, y probar la conexión desde Ajustes. Después confirmar el permiso y la API para leer la cuota.
-- [ ] Decidir Codex (solo estado de claves, sin inicio de sesión por ahora).
-- [ ] Decidir si la cookie de sesión pasa de `SameSite=Strict` a `Lax`. Con Strict, al volver de Google hay que volver a escribir la clave (la cookie no viaja desde Google). Con Lax, no.
-- [ ] Revisar la regla del push: solo `github.com` por HTTPS. Si usas otro host, hay que ampliarla.
-- [ ] Revisar el desvío de cancelación: un clon con cambios se conserva para revisión, no se borra.
+- [ ] Notificaciones por finalización, fallo y aprobación, sin duplicarlas.
+- [ ] Runners adicionales de Codex y Google/agy, después de validar el flujo central en el VM.
+- [ ] Login de GitHub mediante OAuth/device flow si se decide configurar una aplicación GitHub. Hoy se usa token cifrado por proyecto o deploy key.
+- [ ] Cuotas/saldo consultados al proveedor cuando exista API; las cifras actuales son consumo informado por el runner y saldos manuales estimados.
+- [ ] Completar skills que dependan de scripts/referencias: la importación actual incluye solo SKILL.md y lo advierte.
+- [ ] Decidir la política de aprobación de memoria aprendida, terminal web y sustitución o enlace a Cockpit.
+- [ ] Verificar las demás vistas en móvil/escritorio y contraste del sistema visual completo.

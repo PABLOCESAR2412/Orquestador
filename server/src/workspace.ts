@@ -51,14 +51,22 @@ const TIEMPO_PUSH_MS = 5 * 60_000;
 const MAX_MENSAJE = 200;
 const DIAS_CONSERVAR = 14;
 const CADA_LIMPIEZA_MS = 6 * 3600_000;
-const AVISO_LLENO = "[Telo] Registro lleno: a partir de aquí no se guarda más salida (tope de 5 MB).";
+const AVISO_LLENO =
+  "[Telo] Registro lleno: a partir de aquí no se guarda más salida (tope de 5 MB).";
 // Archivo con la URL de subida de la tarea, junto al clon y fuera de su alcance.
 const NOMBRE_REMOTO = "remoto.txt";
 // Único remoto admitido: GitHub por https, sin credenciales, puerto ni otra ruta. Acepta el .git final.
-const URL_GITHUB = /^https:\/\/github\.com\/([A-Za-z0-9][A-Za-z0-9-]*)\/([A-Za-z0-9_][A-Za-z0-9_.-]*?)(?:\.git)?$/i;
+const URL_GITHUB =
+  /^https:\/\/github\.com\/([A-Za-z0-9][A-Za-z0-9-]*)\/([A-Za-z0-9_][A-Za-z0-9_.-]*?)(?:\.git)?$/i;
 
 // Patrones de nombre que parecen secretos. Se comparan con el nombre del archivo, en minúsculas.
-const PATRONES_SENSIBLES = [/^\.env(\..*)?$/, /\.(pem|key|p12|pfx)$/, /^id_(rsa|ed25519)/, /^credentials/, /secret/];
+const PATRONES_SENSIBLES = [
+  /^\.env(\..*)?$/,
+  /\.(pem|key|p12|pfx)$/,
+  /^id_(rsa|ed25519)/,
+  /^credentials/,
+  /secret/,
+];
 
 // Error con código para la interfaz. Los códigos se traducen en web/src/lib/model.ts.
 export class ErrorTarea extends Error {
@@ -80,7 +88,12 @@ export type ArchivoDiff = {
   sensible: boolean;
 };
 
-export type Preparada = { cwd: string; rama: string | null; base_commit: string | null; copia: boolean };
+export type Preparada = {
+  cwd: string;
+  rama: string | null;
+  base_commit: string | null;
+  copia: boolean;
+};
 
 type FilaTarea = {
   id: string;
@@ -232,7 +245,10 @@ function escribirRemoto(taskId: string, url: string): void {
 
 function filaTarea(taskId: string): FilaTarea {
   const fila = db
-    .query<FilaTarea, [string]>("SELECT id, status, rama, base_commit, project_id FROM tasks WHERE id = ?")
+    .query<
+      FilaTarea,
+      [string]
+    >("SELECT id, status, rama, base_commit, project_id FROM tasks WHERE id = ?")
     .get(taskId);
   if (!fila) throw new ErrorTarea("task_not_found", 404);
   return fila;
@@ -243,7 +259,8 @@ async function contextoGit(taskId: string): Promise<Contexto> {
   const fila = filaTarea(taskId);
   // En cola también cuenta: el worker la marca "running" justo después de preparar el clon, y no
   // debe haber git del servidor sobre el clon mientras el agente arranca.
-  if (fila.status === "running" || fila.status === "queued") throw new ErrorTarea("task_running", 409);
+  if (fila.status === "running" || fila.status === "queued")
+    throw new ErrorTarea("task_running", 409);
   if (!fila.rama || !fila.base_commit) throw new ErrorTarea("task_without_repo", 409);
 
   const clon = rutaClon(taskId);
@@ -258,10 +275,14 @@ async function existeCommit(clon: string, sha: string): Promise<boolean> {
 }
 
 // Prepara la carpeta de trabajo de una tarea. Sin repo Git, la tarea usa la carpeta del proyecto.
-export function prepararCopia(taskId: string, repoPath: string, _projectId: string | null): Promise<Preparada> {
+export function prepararCopia(
+  taskId: string,
+  repoPath: string,
+  _projectId: string | null,
+): Promise<Preparada> {
   return conTarea(taskId, async () => {
     if (!(await esRaizGit(repoPath))) {
-      return { cwd: repoPath, rama: null, base_commit: null, copia: false };
+      throw new ErrorTarea("proyecto_sin_git", 409);
     }
 
     const carpeta = carpetaTarea(taskId);
@@ -289,19 +310,37 @@ export function prepararCopia(taskId: string, repoPath: string, _projectId: stri
     // El clon no conserva remoto: la subida usa solo remoto.txt, nunca el origen del clon.
     await gitSeguro(["remote", "remove", "origin"], { cwd: clon });
     // La URL se fija al crear el clon. En un reanudado solo se escribe si el archivo falta.
-    if (nuevo || leerRemoto(taskId) === null) escribirRemoto(taskId, await origenDelProyecto(repoPath));
+    if (nuevo || leerRemoto(taskId) === null) {
+      const configurado = _projectId
+        ? db
+            .query<
+              { remote: string | null },
+              [string]
+            >("SELECT remote FROM project_git WHERE project_id=?")
+            .get(_projectId)?.remote
+        : null;
+      escribirRemoto(taskId, configurado ?? (await origenDelProyecto(repoPath)));
+    }
 
     let base: string;
     if (nuevo) {
       const head = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: clon })).trim();
-      base = fila.base_commit && (await existeCommit(clon, fila.base_commit)) ? fila.base_commit : head;
+      base =
+        fila.base_commit && (await existeCommit(clon, fila.base_commit)) ? fila.base_commit : head;
       await gitOkSeguro(["checkout", "-B", rama, base], { cwd: clon });
       registrarEvento(taskId, "clon_creado", `Rama ${rama}`);
     } else {
       // Reanudar: se queda en la rama de la tarea sin reiniciarla, así los commits del agente se conservan.
-      const actual = (await gitOkSeguro(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: clon })).trim();
+      const actual = (
+        await gitOkSeguro(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: clon })
+      ).trim();
       if (actual !== rama) {
-        const existe = (await gitSeguro(["show-ref", "--verify", "--quiet", `refs/heads/${rama}`], { cwd: clon })).code === 0;
+        const existe =
+          (
+            await gitSeguro(["show-ref", "--verify", "--quiet", `refs/heads/${rama}`], {
+              cwd: clon,
+            })
+          ).code === 0;
         await gitOkSeguro(["checkout", ...(existe ? [] : ["-B"]), rama], { cwd: clon });
       }
       base = fila.base_commit ?? (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: clon })).trim();
@@ -322,17 +361,25 @@ async function estadoDelClon(ctx: Contexto): Promise<{
   hash: string | null;
 }> {
   await gitOkSeguro(["add", "-A"], { cwd: ctx.clon, timeoutMs: TIEMPO_ESTADO_MS });
-  const nombres = await gitOkSeguro(["diff", "--cached", "-M", "--name-status", "-z", ctx.base], { cwd: ctx.clon });
-  const numeros = await gitOkSeguro(["diff", "--cached", "-M", "--numstat", "-z", ctx.base], { cwd: ctx.clon });
+  const nombres = await gitOkSeguro(["diff", "--cached", "-M", "--name-status", "-z", ctx.base], {
+    cwd: ctx.clon,
+  });
+  const numeros = await gitOkSeguro(["diff", "--cached", "-M", "--numstat", "-z", ctx.base], {
+    cwd: ctx.clon,
+  });
   const archivos = combinar(nombres, numeros);
-  if (archivos.length === 0) return { archivos, diff: "", completo: "", truncado: false, hash: null };
+  if (archivos.length === 0)
+    return { archivos, diff: "", completo: "", truncado: false, hash: null };
 
   const texto = await gitOkSeguro(
     ["diff", "--cached", "-M", "--no-color", "--no-ext-diff", "--no-textconv", ctx.base],
     { cwd: ctx.clon },
   );
   // El texto de un binario no muestra su contenido; el hash de los blobs (--raw) sí lo cubre.
-  const raw = await gitOkSeguro(["diff", "--cached", "-M", "--raw", "--no-abbrev", "-z", ctx.base], { cwd: ctx.clon });
+  const raw = await gitOkSeguro(
+    ["diff", "--cached", "-M", "--raw", "--no-abbrev", "-z", ctx.base],
+    { cwd: ctx.clon },
+  );
   const hash = createHash("sha256").update(texto).update("\0").update(raw).digest("hex");
 
   const bytes = new TextEncoder().encode(texto);
@@ -410,9 +457,10 @@ function combinar(nombres: string, numeros: string): ArchivoDiff[] {
 function aprobacionDe(taskId: string, accion: "commit" | "push"): FilaAprobacion | null {
   return (
     db
-      .query<FilaAprobacion, [string, string]>(
-        "SELECT commit_sha, diff_hash, detalle, rama, remoto, created_at FROM task_approvals WHERE task_id = ? AND accion = ? ORDER BY rowid DESC LIMIT 1",
-      )
+      .query<
+        FilaAprobacion,
+        [string, string]
+      >("SELECT commit_sha, diff_hash, detalle, rama, remoto, created_at FROM task_approvals WHERE task_id = ? AND accion = ? ORDER BY rowid DESC LIMIT 1")
       .get(taskId, accion) ?? null
   );
 }
@@ -454,7 +502,11 @@ export function diffDeTarea(taskId: string) {
             : null,
         push:
           apPush && apPush.commit_sha
-            ? { sha: apPush.commit_sha, remoto: apPush.remoto ?? "", decidida_en: apPush.created_at }
+            ? {
+                sha: apPush.commit_sha,
+                remoto: apPush.remoto ?? "",
+                decidida_en: apPush.created_at,
+              }
             : null,
       },
     };
@@ -467,11 +519,17 @@ function mensajeDeCommit(taskId: string, valor: unknown): string {
   if (typeof valor !== "string") throw new ErrorTarea("invalid_mensaje", 400);
   const limpio = valor.trim();
   if (!limpio) return porDefecto;
-  if ([...limpio].length > MAX_MENSAJE || limpio.includes("\0")) throw new ErrorTarea("invalid_mensaje", 400);
+  if ([...limpio].length > MAX_MENSAJE || limpio.includes("\0"))
+    throw new ErrorTarea("invalid_mensaje", 400);
   return limpio;
 }
 
-export type ResultadoAprobacion = { accion: "commit" | "push"; sha: string; rama: string; remoto?: string };
+export type ResultadoAprobacion = {
+  accion: "commit" | "push";
+  sha: string;
+  rama: string;
+  remoto?: string;
+};
 
 // Aprueba un commit o una subida. Siempre contra el hash del diff que vio el usuario.
 export async function aprobarTarea(
@@ -497,12 +555,25 @@ export async function aprobarTarea(
     const hayNuevo = await gitSeguro(["diff", "--cached", "--quiet", "HEAD"], { cwd: ctx.clon });
     if (hayNuevo.code === 0) throw new ErrorTarea("sin_cambios", 409);
 
+    const autor = ctx.projectId
+      ? db
+          .query<
+            { author_name: string; author_email: string },
+            [string]
+          >("SELECT author_name,author_email FROM project_git WHERE project_id=?")
+          .get(ctx.projectId)
+      : null;
     await gitOkSeguro(
       [
-        "-c", "user.name=Telo",
-        "-c", "user.email=telo@localhost",
-        "-c", "commit.gpgsign=false",
-        "commit", "-m", mensaje,
+        "-c",
+        `user.name=${autor?.author_name ?? "Telo"}`,
+        "-c",
+        `user.email=${autor?.author_email ?? "telo@localhost"}`,
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-m",
+        mensaje,
       ],
       { cwd: ctx.clon },
     );
@@ -518,7 +589,10 @@ export async function aprobarTarea(
 // Credenciales de la subida. Se anula cualquier helper global (de la máquina o del repo) y solo
 // github.com recibe el token, por un helper con alcance por URL. El token viaja como variable de
 // entorno del proceso de Git, nunca en la línea de comandos.
-export function opcionesDeCredenciales(token: string | null): { args: string[]; env: Record<string, string> } {
+export function opcionesDeCredenciales(token: string | null): {
+  args: string[];
+  env: Record<string, string>;
+} {
   const args = ["-c", "credential.helper="];
   const env: Record<string, string> = {};
   if (token) {
@@ -531,7 +605,11 @@ export function opcionesDeCredenciales(token: string | null): { args: string[]; 
   return { args, env };
 }
 
-async function subirAprobado(taskId: string, ctx: Contexto, hash: string): Promise<ResultadoAprobacion> {
+async function subirAprobado(
+  taskId: string,
+  ctx: Contexto,
+  hash: string,
+): Promise<ResultadoAprobacion> {
   // El destino sale de remoto.txt, no del clon: el agente puede cambiar el origen del clon, pero no esa URL.
   const guardado = leerRemoto(taskId);
   if (!guardado) throw new ErrorTarea("sin_remoto", 409);
@@ -544,13 +622,16 @@ async function subirAprobado(taskId: string, ctx: Contexto, hash: string): Promi
 
   const estado = await estadoDelClon(ctx);
   if (estado.hash !== hash) throw new ErrorTarea("cambios_cambiaron", 409);
+  if (aprobacion.diff_hash !== estado.hash) throw new ErrorTarea("commit_requerido", 409);
 
   // Sin force: un push rechazado por no ser fast-forward no pisa nada.
   // Con clave SSH del proyecto, la subida va por SSH con esa clave. Sin ella, va por HTTPS con el
   // GITHUB_TOKEN del proyecto, si existe. La clave tiene prioridad: el token no se usa si hay clave.
   const refspec = `${head}:refs/heads/${ctx.rama}`;
-  const destinoSsh = ctx.projectId && clavePublicaDe(ctx.projectId) ? urlSshDeGithub(remoto) : null;
-  const token = ctx.projectId && !destinoSsh ? valorSecreto(ctx.projectId, "GITHUB_TOKEN") || null : null;
+  const token = ctx.projectId ? valorSecreto(ctx.projectId, "GITHUB_TOKEN") || null : null;
+  const destinoSsh =
+    !token && ctx.projectId && clavePublicaDe(ctx.projectId) ? urlSshDeGithub(remoto) : null;
+  if (!token && !destinoSsh) throw new ErrorTarea("credenciales_git_faltantes", 409);
   const credenciales = opcionesDeCredenciales(token);
   try {
     if (destinoSsh && ctx.projectId) {
@@ -589,7 +670,9 @@ export function limpiarCopiaCancelada(taskId: string): Promise<void> {
     let limpio = false;
     try {
       const ctx = await contextoGit(taskId);
-      const pendientes = (await gitOkSeguro(["status", "--porcelain", "--untracked-files=all"], { cwd: ctx.clon })).trim();
+      const pendientes = (
+        await gitOkSeguro(["status", "--porcelain", "--untracked-files=all"], { cwd: ctx.clon })
+      ).trim();
       const head = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: ctx.clon })).trim();
       limpio = pendientes === "" && head === ctx.base;
     } catch {
@@ -599,11 +682,11 @@ export function limpiarCopiaCancelada(taskId: string): Promise<void> {
   });
 }
 
-// Borra la copia de tareas terminadas hace más de 14 días. Nunca toca tareas en cola, en curso o interrumpidas.
+// La antigüedad no descarta trabajo: solo borra copias limpias sin commits pendientes de subir.
 export async function limpiarCopias(): Promise<void> {
   const filas = db
     .query<{ id: string }, []>(
-      `SELECT id FROM tasks WHERE status IN ('done', 'failed', 'cancelled') AND finished_at IS NOT NULL
+      `SELECT id FROM tasks WHERE conversation_id IS NULL AND status IN ('done', 'failed', 'cancelled') AND finished_at IS NOT NULL
        AND finished_at < datetime('now', '-${DIAS_CONSERVAR} days')`,
     )
     .all();
@@ -616,7 +699,23 @@ export async function limpiarCopias(): Promise<void> {
            AND finished_at < datetime('now', '-${DIAS_CONSERVAR} days')`,
         )
         .get(id);
-      if (vieja) rmSync(rutaClon(id), { recursive: true, force: true });
+      if (!vieja || !existsSync(rutaClon(id))) return;
+      try {
+        const ctx = await contextoGit(id);
+        const pendientes = (
+          await gitOkSeguro(["status", "--porcelain", "--untracked-files=all", "--ignored"], {
+            cwd: ctx.clon,
+          })
+        ).trim();
+        if (pendientes !== "") return;
+        const head = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: ctx.clon })).trim();
+        const subida = aprobacionDe(id, "push");
+        if (head !== ctx.base && head !== subida?.commit_sha) return;
+      } catch {
+        // Ante metadatos o Git dañados, conservar para revisión manual.
+        return;
+      }
+      rmSync(rutaClon(id), { recursive: true, force: true });
     });
   }
 }

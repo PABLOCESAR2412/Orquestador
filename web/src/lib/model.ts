@@ -1,4 +1,10 @@
-import { ApiError, type CostTier, type ModelInfo, type TaskEventKind, type TaskStatus } from "../api";
+import {
+  ApiError,
+  type CostTier,
+  type ModelInfo,
+  type TaskEventKind,
+  type TaskStatus,
+} from "../api";
 
 export const EFFORT_LABELS: Record<string, string> = {
   minimal: "Mínimo",
@@ -46,6 +52,9 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
 
 // Historial de una tarea (tabla task_events del servidor).
 export const EVENT_LABEL: Record<TaskEventKind, string> = {
+  plan_listo: "Plan listo para revisar",
+  plan_aprobado: "Plan aprobado",
+  plan_revision: "El plan necesita revisión",
   creada: "Creada",
   iniciada: "Iniciada",
   sesion_asignada: "Sesión del agente asignada",
@@ -70,7 +79,9 @@ export function formatUsd(n: number): string {
 export function formatWhen(sqlDate: string): string {
   if (!sqlDate) return "";
   const iso = sqlDate.includes("T")
-    ? (sqlDate.endsWith("Z") ? sqlDate : sqlDate + "Z")
+    ? sqlDate.endsWith("Z")
+      ? sqlDate
+      : sqlDate + "Z"
     : sqlDate.replace(" ", "T") + "Z";
   const date = new Date(iso);
   if (isNaN(date.getTime())) return sqlDate;
@@ -89,7 +100,10 @@ export function sanearDetalle(texto: string, maximo = 160): string {
   return texto
     .replace(/^Error:\s*/, "")
     .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, "$1")
-    .replace(/\b([\w-]*(?:token|secret|password|passwd|clave|api[_-]?key|credential)[\w-]*)(\s*[=:]\s*)\S+/gi, "$1$2[oculto]")
+    .replace(
+      /\b([\w-]*(?:token|secret|password|passwd|clave|api[_-]?key|credential)[\w-]*)(\s*[=:]\s*)\S+/gi,
+      "$1$2[oculto]",
+    )
     .replace(/\b(?:gh[pousr]_|github_pat_|sk-|xox[abp]-|AKIA)[A-Za-z0-9_-]{8,}/g, "[oculto]")
     .replace(/\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{24,}\b/g, "[oculto]")
     .replace(/[A-Za-z]:\\[^\s'"]+/g, "[ruta]")
@@ -100,6 +114,37 @@ export function sanearDetalle(texto: string, maximo = 160): string {
 export function errorText(err: unknown): string {
   if (err instanceof ApiError) {
     switch (err.code) {
+      case "credenciales_git_faltantes":
+        return "Configura un token de GitHub o una clave SSH en este proyecto antes de subir cambios.";
+      case "invalid_git_config":
+        return "Revisa el repositorio de GitHub, el nombre, el correo y la rama destino.";
+      case "github_access":
+      case "git_action":
+        return err.detail
+          ? sanearDetalle(err.detail, 600)
+          : "No se pudo completar la acción. Revisa la configuración de Git del proyecto.";
+      case "action_already_decided":
+        return "Esta autorización ya fue atendida. Actualiza el chat.";
+      case "action_not_found":
+        return "Esta autorización ya no está disponible.";
+      case "plan_con_preguntas":
+        return "Responde las preguntas y solicita revisar el plan antes de aprobarlo.";
+      case "plan_needs_revision":
+        return "El obrero pidió revisar el plan. Indica las aclaraciones y solicita una nueva versión antes de ejecutar.";
+      case "invalid_skill_name":
+        return "Usa un nombre en minúsculas, números y guiones, de hasta 64 caracteres.";
+      case "invalid_skill_content":
+        return "Pega las instrucciones de la skill, hasta 16 000 caracteres.";
+      case "invalid_skill_url":
+        return "Usa una URL HTTPS de un archivo SKILL.md en GitHub.";
+      case "invalid_skill_query":
+        return "Escribe el nombre de la skill que quieres buscar.";
+      case "skill_too_large":
+        return "El SKILL.md supera el tamaño permitido. Pega solo las instrucciones que necesitas.";
+      case "skill_catalog_failed":
+        return "No se pudieron consultar los catálogos. Reintenta o importa el SKILL.md por URL.";
+      case "skill_download_failed":
+        return "No se pudo descargar el SKILL.md. Revisa que la URL sea pública.";
       case "insufficient_funds":
         return "Saldo insuficiente en el proveedor. Usa un modelo gratuito o recarga saldo.";
       case "runner_failed":
@@ -210,7 +255,7 @@ export function errorText(err: unknown): string {
       case "sin_remoto":
         return "El proyecto no tiene un remoto al que subir los cambios.";
       case "invalid_accion":
-        return "La acción debe ser commit o push.";
+        return "Elige inicializar Git, crear commit, subir rama o crear PR.";
       case "invalid_mensaje":
         return "El mensaje del commit debe tener entre 1 y 200 caracteres.";
       case "push_fallido":

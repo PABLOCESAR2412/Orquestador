@@ -13,19 +13,21 @@ Es de uso personal, con un solo usuario y sin cuentas. Tiene login con `TELO_CLA
 - **Runtime:** Bun.
 - **Servidor:** Hono y `bun:sqlite` (WAL, claves foráneas). Migraciones numeradas en `server/src/db/index.ts`, registradas en `schema_migrations`.
 - **Web:** Vite, React 19, TanStack Router y TanStack Query. CSS plano con tokens en `:root`. Sin Tailwind.
-- **PWA:** vite-plugin-pwa con `autoUpdate`.
+- **PWA:** vite-plugin-pwa con actualización bajo confirmación (`prompt`).
 - **Gráficas:** SVG a mano en `web/src/components/charts.tsx`. Sin librerías de gráficas.
 - **Producción:** servicio systemd `orquestador.service` en el VM, usuario `orquestador`, repo en `/home/orquestador/orquestador`.
 
 ## Estructura
 
 - `server/src/index.ts`: entrada. Monta las rutas bajo `/api`, sirve `web/dist` y arranca el worker.
-- `server/src/worker.ts`: cola de tareas. Corre una a la vez, cancela con AbortController y, al arrancar, marca como interrumpidas (`interrupted`) las tareas que quedaron en ejecución. Registra cada transición en `task_events` (`server/src/eventos.ts`) y guarda el id de sesión del agente para poder reanudar.
+- `server/src/worker.ts`: cola única para tareas y chats. Analiza con workspace de solo lectura, guarda versiones del plan y espera su aprobación por hash antes de ejecutar. Cancela con AbortController y al arrancar marca como interrumpidas las ejecuciones anteriores. Registra transiciones y sesiones para reanudar. `planificacion.ts` valida el JSON; `alcance-plan.ts` compara los cambios Git con los archivos del plan y detiene los desvíos para revisión, sin borrarlos.
 - `server/src/runners/opencode.ts`: ejecuta `opencode run --format json` en su propio grupo de procesos (`setsid`), dentro del aislamiento de `runners/aislamiento.ts`, y solo con las variables de una lista permitida (no hereda `TELO_*` ni otras claves del servidor). Al cancelar o agotar el tiempo, termina el grupo completo (agente, herramientas y nietos).
 - `server/src/runners/aislamiento.ts`: envuelve al agente en bubblewrap (`bwrap`). Solo ve su carpeta de trabajo (proyecto, o carpeta temporal de chat o tarea) y el estado de OpenCode. No ve el repo, `DATA_DIR`, otros proyectos, el resto del HOME ni los procesos del servidor.
 - `server/src/routes/`: `chat`, `tasks`, `preferences`, `analytics`, `models`, `settings` (también el `PATCH` de conversaciones: modelo, esfuerzo, título y anclar), `projects`, `cuotas`, `runner` (estado del agente: CLI y bubblewrap).
 - `server/scripts/respaldo.ts`: copia de la base (`VACUUM INTO`) y del espacio de trabajo. Ver la sección "Respaldos".
-- `server/src/workspace.ts`: cada tarea de un proyecto Git trabaja en un clon propio (`DATA_DIR/tasks/<id>/repo`, rama `telo/<id8>`). Calcula el diff contra `base_commit`, aplica las aprobaciones de commit y push (ligadas al hash del diff) . Al cancelar, el clon se borra solo si no tiene cambios; si los tiene, se conserva para revisión. Los clones de tareas terminadas hace más de 14 días se borran. Las aprobaciones se guardan en `task_approvals`.
+- `server/src/workspace.ts`: cada tarea de un proyecto Git trabaja en un clon propio (`DATA_DIR/tasks/<id>/repo`, rama `telo/<id8>`). Calcula el diff contra `base_commit` y aplica las aprobaciones de commit y push ligadas al hash del diff. La limpieza de clones antiguos conserva cambios, archivos ignorados y commits sin subida aprobada; los clones ligados a chats se conservan. Las aprobaciones están en `task_approvals`. Un proyecto sin Git debe inicializarse desde su configuración antes de ejecutar tareas.
+- `server/src/routes/proyecto-config.ts`: configuración de remoto, autor y rama destino; comprobación de acceso a GitHub; contexto compartido y skills del proyecto. `skills-proyecto.ts` importa solo el documento `SKILL.md` de GitHub o guarda instrucciones pegadas; no descarga ni ejecuta scripts. La búsqueda usa los catálogos oficiales de Anthropic y OpenAI.
+- `server/src/routes/repository-actions.ts`: solicitudes persistentes de init, commit, push y PR. Se muestran en el chat y solo se ejecutan al autorizar. La identidad de commits no concede acceso a GitHub: se usa `GITHUB_TOKEN` cifrado del proyecto, o su clave SSH para push si no hay token. Inicializar crea un primer commit vacío sin añadir archivos. Crear PR necesita un token con permiso de Pull requests y una subida aprobada del mismo commit.
 - `server/src/ejecutar.ts`: punto único para correr un agente (chats y tareas). Aplica el modelo de respaldo ante 429 o 5xx, inyecta los secretos del proyecto, añade las instrucciones del proyecto y redacta la salida.
 - `server/src/bus.ts`: canal interno de cambios (tareas, eventos y líneas de salida) que alimenta `GET /api/eventos-vivos` (SSE).
 - `server/src/redaccion.ts`: quita de cualquier texto que sale del servidor (salida, errores, diffs, chats) los valores de los secretos, `TELO_CLAVE`, `TELO_CLAVE_CIFRADO` y patrones de credenciales.
@@ -60,6 +62,7 @@ cd web && bun run build         # tsc --noEmit + vite build. Debe pasar antes de
 
 ```
 cd server && bun test           # pruebas del servidor (server/tests), con DATA_DIR temporal
+cd server && bun run test:worker # integración aislada; requiere Linux, bubblewrap y python3
 ```
 
 Pruebas fuera del repo (en `scratchpad/`): la suite de gestión (`pruebas/gestion/prueba.ts`, 63 comprobaciones con un `opencode` falso y aislamiento real) y la revisión visual (`ui-final/revision.mjs`, 8 pantallas a 390 y 1440 px en oscuro y claro, sin errores de consola ni desborde de página).

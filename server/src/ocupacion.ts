@@ -6,6 +6,15 @@ import { db } from "./db";
 
 const conversacionesEnCurso = new Set<string>();
 const proyectosRevisados = new Set<string>();
+const proyectosReservados = new Set<string>();
+export function reservarProyecto(id: string): boolean {
+  if (proyectosRevisados.has(id) || proyectosReservados.has(id)) return false;
+  proyectosReservados.add(id);
+  return true;
+}
+export function soltarProyecto(id: string): void {
+  proyectosReservados.delete(id);
+}
 
 export function ocuparConversacion(id: string): void {
   conversacionesEnCurso.add(id);
@@ -16,7 +25,14 @@ export function liberarConversacion(id: string): void {
 }
 
 export function conversacionEnCurso(id: string): boolean {
-  return conversacionesEnCurso.has(id);
+  return (
+    conversacionesEnCurso.has(id) ||
+    db
+      .query(
+        "SELECT 1 FROM tasks WHERE conversation_id=? AND status IN ('queued','running') LIMIT 1",
+      )
+      .get(id) !== null
+  );
 }
 
 // El servidor está leyendo Git de este proyecto ahora mismo: no debe arrancar un chat en él.
@@ -26,16 +42,23 @@ export function proyectoRevisandose(projectId: string): boolean {
 
 // Hay un chat o una tarea en curso que trabaja en la carpeta del proyecto.
 export function proyectoOcupado(projectId: string): boolean {
-  if (proyectosRevisados.has(projectId)) return true;
+  if (proyectosRevisados.has(projectId) || proyectosReservados.has(projectId)) return true;
   const chats = db
     .query<{ id: string }, [string]>("SELECT id FROM conversations WHERE project_id = ?")
     .all(projectId);
   if (chats.some((c) => conversacionesEnCurso.has(c.id))) return true;
-  return db.query("SELECT 1 FROM tasks WHERE project_id = ? AND status = 'running' LIMIT 1").get(projectId) !== null;
+  return (
+    db
+      .query("SELECT 1 FROM tasks WHERE project_id = ? AND status = 'running' LIMIT 1")
+      .get(projectId) !== null
+  );
 }
 
 // Ejecuta `fn` sobre la carpeta del proyecto si nadie más la usa. Devuelve null si está ocupada.
-export async function conProyectoRevisado<T>(projectId: string, fn: () => Promise<T>): Promise<T | null> {
+export async function conProyectoRevisado<T>(
+  projectId: string,
+  fn: () => Promise<T>,
+): Promise<T | null> {
   if (proyectoOcupado(projectId)) return null;
   proyectosRevisados.add(projectId);
   try {

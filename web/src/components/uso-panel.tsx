@@ -17,7 +17,8 @@ type Props = {
 type Ventana = { costoUsd: number; tokens: number; llamadas: number };
 
 // Lo que va antes de "/" en el id del modelo es el proveedor.
-const proveedorDe = (modelo: string | null) => (modelo && modelo.includes("/") ? modelo.split("/")[0] : null);
+const proveedorDe = (modelo: string | null) =>
+  modelo && modelo.includes("/") ? modelo.split("/")[0] : null;
 
 export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
   const ref = useRef<HTMLDivElement>(null);
@@ -38,7 +39,8 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
     enabled: proveedorId !== null,
     refetchInterval: 30_000,
   });
-  const proveedor: UsoProveedor | null = uso.data?.proveedores.find((p) => p.id === proveedorId) ?? null;
+  const proveedor: UsoProveedor | null =
+    uso.data?.proveedores.find((p) => p.id === proveedorId) ?? null;
   const medido = proveedor?.precision === "medida_telo";
 
   let cuerpo: ReactNode;
@@ -69,19 +71,19 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
         <div className="usage-window">
           <span className="window-label">Últimas 5 horas</span>
           <div className="window-data">
-            <span>0 tokens</span>
-            <span>$0.00</span>
+            <span>Sin uso registrado</span>
           </div>
         </div>
         <div className="usage-window">
           <span className="window-label">Últimos 7 días</span>
           <div className="window-data">
-            <span>0 tokens</span>
-            <span>$0.00</span>
+            <span>Sin uso registrado</span>
           </div>
         </div>
         <p className="usage-note">
-          Los límites de 5 horas y semanales del proveedor no se leen de su API. Estas cifras son lo que Telo registró.
+          Telo registra los tokens que informa el agente. La conexión de Google no importa el
+          historial de otras aplicaciones. Los límites y el saldo del proveedor no se consultan en
+          vivo.
         </p>
       </>
     );
@@ -111,7 +113,8 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
           </div>
         )}
         <p className="usage-note">
-          Los límites de 5 horas y semanales del proveedor no se leen de su API. Estas cifras son lo que Telo registró.
+          Los límites de 5 horas y semanales del proveedor no se leen de su API. Estas cifras son lo
+          que Telo registró.
         </p>
       </>
     );
@@ -122,7 +125,9 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
       <div className="scrim" onClick={cerrar} />
       <div className="usage-popover" role="dialog" aria-label="Uso del proveedor" ref={ref}>
         <div className="usage-title-row">
-          <span className="usage-title">{proveedor?.nombre ?? proveedorId ?? "Uso de proveedor"}</span>
+          <span className="usage-title">
+            {proveedor?.nombre ?? proveedorId ?? "Uso de proveedor"}
+          </span>
           <button type="button" className="ghost task-mini-btn" onClick={cerrar}>
             ✕
           </button>
@@ -130,7 +135,12 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
 
         {cuerpo}
 
-        <button type="button" className="ghost usage-toggle-saldos" aria-expanded={anotando} onClick={() => setAnotando((v) => !v)}>
+        <button
+          type="button"
+          className="ghost usage-toggle-saldos"
+          aria-expanded={anotando}
+          onClick={() => setAnotando((v) => !v)}
+        >
           {anotando ? "Ocultar saldos" : "Anotar saldo"}
         </button>
         {anotando && <CuotasPanel onCerrar={() => setAnotando(false)} />}

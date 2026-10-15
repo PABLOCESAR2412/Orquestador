@@ -10,13 +10,14 @@ Este archivo describe cómo trabajan los agentes que Orquestador lanza para cada
 4. **Obrero.** Ejecuta el plan aprobado dentro de su workspace, prueba lo que cambió y escribe un reporte.
 5. **Cierre.** La tarea queda `done`, `failed` o `cancelled`. Se guardan el reporte, el costo y el uso. Se notifica al usuario (fase 8 de `PLAN.md`).
 
-Estados previstos (requieren la migración 010, ver `PLAN.md` fase 5):
+La migración 016 conserva `status` para la cola y añade `phase` para el flujo del agente:
 
 ```
-queued → analyzing → planned → waiting_approval → running → done | failed | cancelled
+queued/analyzing → running/analyzing → queued/waiting_approval
+  → queued/executing → running/executing → done/completed
 ```
 
-Si el plan no requiere aprobación, `planned` pasa directo a `running`.
+Todos los planes nuevos esperan aprobación, también los de chat. Se guardan versiones en `task_plans`; la aprobación queda ligada al hash del plan. Los estados `failed`, `interrupted` y `cancelled` se mantienen. Si el obrero solicita desviarse o modifica archivos fuera del alcance aprobado, queda `interrupted/waiting_approval` y debe analizarse otra versión; sus cambios se conservan para revisión.
 
 ## Contexto que recibe cada agente
 
@@ -48,7 +49,7 @@ Si el plan no requiere aprobación, `planned` pasa directo a `running`.
 
 - No edita archivos ni ejecuta comandos que cambien estado.
 - Si falta información crítica, la lista en `preguntas`. No la inventa.
-- Mantén el plan corto: de 3 a 8 pasos.
+- Mantén el plan corto: de 1 a 8 pasos. Lista rutas relativas; no se admite `.git` ni salir del workspace. Para directorios nuevos lista cada archivo que se creará.
 
 ## Obrero
 
@@ -82,4 +83,4 @@ Si el plan no requiere aprobación, `planned` pasa directo a `running`.
 
 ## Estado del código
 
-Ya existen la cola, el runner de OpenCode y el registro de costo. Falta separar analizador y obrero, guardar `plan` y `resultado` por tarea, y guardar el estado de aprobación. Ver `PLAN.md` fase 5 y `TODO.md`.
+La cola usa un analizador de solo lectura y un obrero con plan aprobado. `tasks.plan`, `report`, `plan_hash` y `approved_hash` guardan el contrato, y `task_plans` conserva sus versiones. El uso se registra por cada evento `step_finish`, también antes de fallos, cancelaciones y cambios de modelo. Los chats usan la misma cola y conservan su tarea y clon entre turnos. Git y PR se solicitan como autorizaciones independientes dentro del chat; el backend es quien los ejecuta.

@@ -19,6 +19,8 @@ import { programadasRoute } from "./routes/programadas";
 import { servidor } from "./routes/servidor";
 import { googleRoute } from "./routes/google";
 import { uso } from "./routes/uso";
+import { proyectoConfig } from "./routes/proyecto-config";
+import { repositoryActions } from "./routes/repository-actions";
 import { startScheduler } from "./programadas";
 import { startWorker } from "./worker";
 import { auth } from "./routes/auth";
@@ -29,7 +31,9 @@ import { secureHeaders } from "hono/secure-headers";
 
 // Sin clave, la API quedaría abierta a quien tenga la URL. Por eso el servidor no arranca sin ella.
 if (!config.clave && !config.sinClave) {
-  console.error(`Falta TELO_CLAVE en el entorno del servidor (mínimo ${MIN_CARACTERES_CLAVE} caracteres).`);
+  console.error(
+    `Falta TELO_CLAVE en el entorno del servidor (mínimo ${MIN_CARACTERES_CLAVE} caracteres).`,
+  );
   process.exit(1);
 }
 if (config.clave && config.clave.length < MIN_CARACTERES_CLAVE) {
@@ -119,6 +123,8 @@ app.route("/api", programadasRoute);
 app.route("/api", servidor);
 app.route("/api", uso);
 app.route("/api", googleRoute);
+app.route("/api", proyectoConfig);
+app.route("/api", repositoryActions);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
 startWorker();
@@ -134,7 +140,9 @@ app.get("*", async (c) => {
   const sinCache = { "Cache-Control": "no-cache" };
 
   if (extname(file) && (await Bun.file(file).exists())) {
-    return new Response(Bun.file(file), { headers: path === "/version.json" ? sinCache : undefined });
+    return new Response(Bun.file(file), {
+      headers: path === "/version.json" ? sinCache : undefined,
+    });
   }
 
   return new Response(Bun.file(indexFile), {

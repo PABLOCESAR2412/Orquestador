@@ -79,8 +79,24 @@ export type Programada = {
 };
 
 export type ProgramadaInput =
-  | { titulo?: string; prompt: string; model?: string | null; effort?: string | null; projectId?: string | null; frecuencia: "cada_horas"; cada_horas: number }
-  | { titulo?: string; prompt: string; model?: string | null; effort?: string | null; projectId?: string | null; frecuencia: "diaria"; hora: string };
+  | {
+      titulo?: string;
+      prompt: string;
+      model?: string | null;
+      effort?: string | null;
+      projectId?: string | null;
+      frecuencia: "cada_horas";
+      cada_horas: number;
+    }
+  | {
+      titulo?: string;
+      prompt: string;
+      model?: string | null;
+      effort?: string | null;
+      projectId?: string | null;
+      frecuencia: "diaria";
+      hora: string;
+    };
 
 export type TaskDiffArchivo = {
   ruta: string;
@@ -103,7 +119,13 @@ export type TaskDiff = {
   hash: string | null;
   remoto: boolean;
   aprobaciones: {
-    commit: { estado: "pendiente" | "aprobada"; sha: string; hash: string; decidida_en: string; mensaje: string } | null;
+    commit: {
+      estado: "pendiente" | "aprobada";
+      sha: string;
+      hash: string;
+      decidida_en: string;
+      mensaje: string;
+    } | null;
     push: { sha: string; remoto: string; decidida_en: string } | null;
   };
 };
@@ -119,8 +141,19 @@ export type UsoProveedor = {
 
 export type ServidorEstado = {
   generado: string;
-  proceso: { arrancado: string; segundosActivo: number; bun: string; rssMb: number; plataforma: string };
-  disco: { etiqueta: "datos" | "proyectos"; totalBytes: number; usadoBytes: number; libreBytes: number }[];
+  proceso: {
+    arrancado: string;
+    segundosActivo: number;
+    bun: string;
+    rssMb: number;
+    plataforma: string;
+  };
+  disco: {
+    etiqueta: "datos" | "proyectos";
+    totalBytes: number;
+    usadoBytes: number;
+    libreBytes: number;
+  }[];
   carpetas: { nombre: string; bytes: number; archivos: number }[];
   herramientas: { nombre: string; version: string | null; disponible: boolean }[];
   costos: { mesUsd: number; ultimos30dUsd: number; llamadas30d: number; tokens30d: number };
@@ -166,6 +199,12 @@ export type ModelInfo = {
 export type TaskStatus = "queued" | "running" | "interrupted" | "done" | "failed" | "cancelled";
 
 export type Task = {
+  phase: "analyzing" | "waiting_approval" | "executing" | "completed";
+  plan: string | null;
+  plan_hash: string | null;
+  approved_hash: string | null;
+  report: string | null;
+  conversation_id: string | null;
   id: string;
   title: string;
   prompt: string;
@@ -189,6 +228,9 @@ export type Task = {
 };
 
 export type TaskEventKind =
+  | "plan_listo"
+  | "plan_aprobado"
+  | "plan_revision"
   | "creada"
   | "iniciada"
   | "sesion_asignada"
@@ -206,7 +248,13 @@ export type TaskEventKind =
 // Evento en vivo del canal /api/eventos-vivos (SSE).
 export type EventoVivo =
   | { tipo: "tarea"; id: string; status: TaskStatus; finished_at: string | null }
-  | { tipo: "evento"; task_id: string; kind: TaskEventKind; detail: string | null; created_at: string }
+  | {
+      tipo: "evento";
+      task_id: string;
+      kind: TaskEventKind;
+      detail: string | null;
+      created_at: string;
+    }
   | { tipo: "salida"; task_id: string; linea: string };
 
 export type TaskEvent = {
@@ -264,6 +312,68 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  projectGit: (id: string) => request<GitConfig>(`/api/projects/${id}/git`),
+  saveProjectGit: (
+    id: string,
+    body: Pick<GitConfig, "remote" | "author_name" | "author_email" | "base_branch">,
+  ) =>
+    request<{ ok: boolean }>(`/api/projects/${id}/git`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  checkProjectGit: (id: string) =>
+    request<{ ok: boolean; repo: string; push: boolean }>(`/api/projects/${id}/git/comprobar`, {
+      method: "POST",
+      body: "{}",
+    }),
+  projectContext: (id: string) =>
+    request<{ compartir: boolean; chats: { id: string; title: string; mensajes: number }[] }>(
+      `/api/projects/${id}/contexto`,
+    ),
+  saveProjectContext: (id: string, compartir: boolean) =>
+    request<{ ok: boolean }>(`/api/projects/${id}/contexto`, {
+      method: "PUT",
+      body: JSON.stringify({ compartir }),
+    }),
+  projectSkills: (id: string) => request<ProjectSkill[]>(`/api/projects/${id}/skills`),
+  searchSkills: (q: string) =>
+    request<{ name: string; url: string }[]>(`/api/skills/buscar?q=${encodeURIComponent(q)}`),
+  saveProjectSkill: (id: string, body: { name?: string; content?: string; url?: string }) =>
+    request<ProjectSkill>(`/api/projects/${id}/skills`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteProjectSkill: (id: string, name: string) =>
+    request<{ ok: boolean }>(`/api/projects/${id}/skills/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    }),
+  conversationTasks: (id: string) => request<Task[]>(`/api/conversations/${id}/tareas`),
+  decidePlan: (id: string, hash: string, decision: "approve" | "revise", feedback?: string) =>
+    request<Task>(`/api/tasks/${id}/plan`, {
+      method: "POST",
+      body: JSON.stringify({ hash, decision, feedback }),
+    }),
+  repositoryActions: (id: string) =>
+    request<RepositoryAction[]>(`/api/conversations/${id}/acciones`),
+  requestRepositoryAction: (
+    id: string,
+    body: {
+      action: string;
+      conversationId?: string;
+      taskId?: string;
+      message?: string;
+      title?: string;
+    },
+  ) =>
+    request<RepositoryAction>(`/api/projects/${id}/acciones`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  decideRepositoryAction: (id: string, approve: boolean) =>
+    request<{ ok: boolean; result?: unknown }>(`/api/acciones/${id}/decidir`, {
+      method: "POST",
+      body: JSON.stringify({ approve }),
+    }),
   health: () => request<{ ok: boolean; time: string }>("/api/health"),
   runnerStatus: () =>
     request<{ opencode: boolean; bwrap: boolean; aislamiento: boolean }>("/api/runner"),
@@ -302,7 +412,8 @@ export const api = {
   updateProject: (id: string, patch: { name?: string; pinned?: boolean; instrucciones?: string }) =>
     request<Project>(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   listTaskEvents: (id: string) => request<TaskEvent[]>(`/api/tasks/${id}/eventos`),
-  taskOutput: (id: string) => request<{ texto: string; truncado: boolean }>(`/api/tasks/${id}/salida`),
+  taskOutput: (id: string) =>
+    request<{ texto: string; truncado: boolean }>(`/api/tasks/${id}/salida`),
   taskDiff: (id: string) => request<TaskDiff>(`/api/tasks/${id}/diff`),
   approveTask: (id: string, body: { accion: "commit" | "push"; hash: string; mensaje?: string }) =>
     request<{ accion: "commit" | "push"; sha: string; rama: string; remoto?: string }>(
@@ -313,7 +424,8 @@ export const api = {
   // Solo sugiere: el texto se revisa en el campo de instrucciones y se guarda desde ahí.
   suggestProjectInstructions: (id: string) =>
     request<{ texto: string; fuentes: string[] }>(`/api/projects/${id}/instrucciones/sugeridas`),
-  clearProjectMemory: (id: string) => request<{ ok: boolean }>(`/api/projects/${id}/memoria`, { method: "DELETE" }),
+  clearProjectMemory: (id: string) =>
+    request<{ ok: boolean }>(`/api/projects/${id}/memoria`, { method: "DELETE" }),
   listProjectFiles: (id: string, ruta = "") =>
     request<{ ruta: string; entradas: ProjectFileEntry[] }>(
       `/api/projects/${id}/archivos?ruta=${encodeURIComponent(ruta)}`,
@@ -329,9 +441,12 @@ export const api = {
       { method: "PUT", body: JSON.stringify({ valor }) },
     ),
   deleteProjectSecret: (id: string, nombre: string) =>
-    request<{ ok: boolean }>(`/api/projects/${id}/secretos/${encodeURIComponent(nombre)}`, { method: "DELETE" }),
+    request<{ ok: boolean }>(`/api/projects/${id}/secretos/${encodeURIComponent(nombre)}`, {
+      method: "DELETE",
+    }),
   getProjectSshKey: (id: string) => request<ProjectSshKey>(`/api/projects/${id}/clave-ssh`),
-  createProjectSshKey: (id: string) => request<ProjectSshKey>(`/api/projects/${id}/clave-ssh`, { method: "POST" }),
+  createProjectSshKey: (id: string) =>
+    request<ProjectSshKey>(`/api/projects/${id}/clave-ssh`, { method: "POST" }),
   deleteProjectSshKey: (id: string) =>
     request<{ ok: boolean }>(`/api/projects/${id}/clave-ssh`, { method: "DELETE" }),
   listProgramadas: () => request<Programada[]>("/api/programadas"),
@@ -345,12 +460,17 @@ export const api = {
     request<Task>(`/api/programadas/${id}/ejecutar`, { method: "POST", body: "{}" }),
   usage: () => request<{ generado: string; proveedores: UsoProveedor[] }>("/api/uso"),
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
-  resumeTask: (id: string) => request<Task>(`/api/tasks/${id}/reanudar`, { method: "POST", body: "{}" }),
-  retryTask: (id: string) => request<Task>(`/api/tasks/${id}/reintentar`, { method: "POST", body: "{}" }),
-  listQuotas: () =>
-    request<{ generado: string; proveedores: QuotaProvider[] }>("/api/cuotas"),
-  createQuota: (body: { provider: string; label: string; remainingUsd: number; limitUsd?: number | null }) =>
-    request<{ id: string }>("/api/cuotas", { method: "POST", body: JSON.stringify(body) }),
+  resumeTask: (id: string) =>
+    request<Task>(`/api/tasks/${id}/reanudar`, { method: "POST", body: "{}" }),
+  retryTask: (id: string) =>
+    request<Task>(`/api/tasks/${id}/reintentar`, { method: "POST", body: "{}" }),
+  listQuotas: () => request<{ generado: string; proveedores: QuotaProvider[] }>("/api/cuotas"),
+  createQuota: (body: {
+    provider: string;
+    label: string;
+    remainingUsd: number;
+    limitUsd?: number | null;
+  }) => request<{ id: string }>("/api/cuotas", { method: "POST", body: JSON.stringify(body) }),
   updateQuota: (id: string, body: { remainingUsd: number; limitUsd?: number | null }) =>
     request<{ ok: boolean }>(`/api/cuotas/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteQuota: (id: string) => request<{ ok: boolean }>(`/api/cuotas/${id}`, { method: "DELETE" }),
@@ -361,8 +481,7 @@ export const api = {
     model?: string | null;
     effort?: string | null;
     projectId?: string | null;
-  }) =>
-    request<Task>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
+  }) => request<Task>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
   cancelTask: (id: string) =>
     request<{ outcome: string }>(`/api/tasks/${id}/cancel`, { method: "POST", body: "{}" }),
   listProjects: () => request<Project[]>("/api/projects"),
@@ -374,7 +493,10 @@ export const api = {
   getPreferences: () => request<Preferences>("/api/preferences"),
   savePreferences: (patch: Partial<Preferences>) =>
     request<Preferences>("/api/preferences", { method: "PUT", body: JSON.stringify(patch) }),
-  getAnalytics: (days: number, filtros: { proyecto?: string | null; modelo?: string | null } = {}) => {
+  getAnalytics: (
+    days: number,
+    filtros: { proyecto?: string | null; modelo?: string | null } = {},
+  ) => {
     const q = new URLSearchParams({ days: String(days) });
     if (filtros.proyecto) q.set("proyecto", filtros.proyecto);
     if (filtros.modelo) q.set("modelo", filtros.modelo);
@@ -382,8 +504,29 @@ export const api = {
   },
   googleEstado: () => request<GoogleEstado>("/api/google/estado"),
   // Devuelve la URL de Google; la interfaz la abre en la misma pestaña.
-  googleConectar: () => request<{ url: string }>("/api/google/conectar", { method: "POST", body: "{}" }),
+  googleConectar: () =>
+    request<{ url: string }>("/api/google/conectar", { method: "POST", body: "{}" }),
   googleDesconectar: () => request<{ ok: boolean }>("/api/google", { method: "DELETE" }),
+};
+
+export type ProjectSkill = { name: string; content: string; source: string | null };
+export type GitConfig = {
+  remote: string | null;
+  author_name: string;
+  author_email: string;
+  base_branch: string;
+  inicializado: boolean;
+  ocupado: boolean;
+  token: boolean;
+  ssh: boolean;
+};
+export type RepositoryAction = {
+  id: string;
+  action: string;
+  payload: string;
+  state: string;
+  result: string | null;
+  task_id: string | null;
 };
 
 // Estado de la conexión con Google. Nunca incluye tokens: solo el correo de la cuenta.

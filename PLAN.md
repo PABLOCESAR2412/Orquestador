@@ -1,6 +1,19 @@
 # PLAN.md: hoja de ruta de Orquestador
 
-Estado al 9 de octubre de 2026. Una fase no se marca como hecha hasta cumplir sus criterios de aceptación.
+Estado local al 15 de octubre de 2026. Una fase no se marca desplegada hasta comprobarla en el VM.
+
+## Implementación local pendiente de despliegue
+
+- Migración 016: versiones y aprobación del plan, reporte del obrero, skills, configuración Git, contexto compartido y autorizaciones de repositorio. Las migraciones 014 (memoria) y 015 (clave SSH) ya estaban ocupadas; no se modificaron.
+- Tareas y chats usan la misma cola: analizador con workspace de solo lectura, plan JSON validado, aprobación por hash y obrero con reporte JSON. Los desvíos detectados sobre archivos Git detienen la ejecución y requieren una nueva versión del plan, conservando los cambios. `status` conserva compatibilidad; `phase` distingue análisis, espera de aprobación, ejecución y finalización.
+- Cada conversación conserva su tarea y clon. Dos chats no escriben en la misma carpeta. Los proyectos se reservan durante las operaciones del worker y durante las revisiones del servidor.
+- Init, commit, push y PR requieren una autorización visible. El backend ejecuta Git; el agente tiene `.git` de solo lectura. La configuración del proyecto permite definir identidad, remoto HTTPS de GitHub, rama destino y token cifrado. El token tiene prioridad sobre SSH. PR exige subida aprobada del mismo commit.
+- La limpieza conserva los clones ligados a chats y el trabajo pendiente: archivos modificados, ignorados y commits sin subida aprobada. Solo elimina tareas antiguas cuyo contenido está limpio y respaldado por una subida aprobada o sigue en el commit base.
+- Se registra consumo por cada evento `step_finish`, incluidos intentos fallidos, cancelados y modelo de respaldo. Las cifras de uso son las informadas a Telo, no una consulta del saldo o historial de Google.
+- Skills por proyecto: pegar instrucciones, importar el documento `SKILL.md` de GitHub o buscarlo en los catálogos oficiales de Anthropic/OpenAI. No se ejecutan instaladores ni se descargan recursos adjuntos.
+- Chat: esfuerzo dentro del selector de modelo, progreso con tiempo transcurrido y sugerencias a partir del historial local que se completan con Tab. Compartir contexto entre chats del proyecto es opcional.
+
+La validación local no incluye credenciales reales de GitHub o Google ni un despliegue. La hoja de ruta histórica siguiente conserva las decisiones y pendientes de infraestructura; este bloque sustituye sus referencias antiguas a las migraciones del analizador.
 
 ## Visión
 

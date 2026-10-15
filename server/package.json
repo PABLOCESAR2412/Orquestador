@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "test:worker": "TELO_TEST_WORKER=1 bun test tests/worker-flujo.test.ts"
   },
   "dependencies": {
     "hono": "^4.13.13"
