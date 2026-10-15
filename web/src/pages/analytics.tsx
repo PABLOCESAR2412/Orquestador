@@ -35,6 +35,12 @@ const BUDGET_LABEL: Record<"ok" | "alerta" | "excedido", string> = {
   excedido: "Excedido",
 };
 
+const TIPO_USO: Record<"chat" | "tarea" | "otro", { nombre: string; detalle: string }> = {
+  chat: { nombre: "Chat", detalle: "Llamadas vinculadas directamente a una conversación." },
+  tarea: { nombre: "Tareas del agente", detalle: "Llamadas generadas durante tareas del agente." },
+  otro: { nombre: "Otras llamadas", detalle: "Llamadas sin una conversación o tarea asociada." },
+};
+
 // Tiempo de cómputo estimado: duración media de cada modelo (ponderada por sus tareas) × tareas hechas.
 // El servidor no suma la duración de cada tarea, así que es una estimación y se muestra como tal.
 export function tiempoComputoSeg(data: Analytics): number | null {
@@ -209,6 +215,64 @@ export function AnalyticsPage() {
                   </svg>
                 }
               />
+            </section>
+
+            <section className="an-panel" aria-labelledby="an-uso-funcion-titulo">
+              <div className="an-panel-cabeza">
+                <div className="an-panel-texto">
+                  <h2 id="an-uso-funcion-titulo" className="an-panel-titulo">Uso de IA por origen</h2>
+                  <p className="an-panel-sub">Consumo de modelos separado del chat directo</p>
+                </div>
+              </div>
+
+              <div className="an-tabla-caja">
+                <table className="an-tabla an-uso-tabla" aria-labelledby="an-uso-funcion-titulo">
+                  <thead>
+                    <tr>
+                      <th scope="col">Origen</th>
+                      <th scope="col" className="an-numero">Llamadas IA</th>
+                      <th scope="col" className="an-numero">Tokens</th>
+                      <th scope="col" className="an-numero">Coste IA</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.byType
+                      .filter((r) => r.tipo !== "otro" || r.calls > 0)
+                      .map((r) => (
+                        <tr key={r.tipo}>
+                          <th scope="row" data-etiqueta="Origen">
+                            <span className="an-uso-nombre">{TIPO_USO[r.tipo].nombre}</span>
+                            <span className="an-uso-detalle">{TIPO_USO[r.tipo].detalle}</span>
+                          </th>
+                          <td data-etiqueta="Llamadas IA" className="an-numero">{compact(r.calls)}</td>
+                          <td data-etiqueta="Tokens" className="an-numero">{compact(r.tokens)}</td>
+                          <td data-etiqueta="Coste IA" className="an-numero">{usd(r.cost)}</td>
+                        </tr>
+                      ))}
+                    <tr>
+                      <th scope="row" data-etiqueta="Origen">
+                        <span className="an-uso-nombre">Recomendaciones del chat</span>
+                        <span className="an-uso-detalle">Se calculan localmente; no llaman a un modelo.</span>
+                      </th>
+                      <td data-etiqueta="Llamadas IA" className="an-numero">0</td>
+                      <td data-etiqueta="Tokens" className="an-numero">0</td>
+                      <td data-etiqueta="Coste IA" className="an-numero">{usd(0)}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row" data-etiqueta="Origen">
+                        <span className="an-uso-nombre">Lectura por voz</span>
+                        <span className="an-uso-detalle">Usa la voz del navegador; no envía texto a un modelo.</span>
+                      </th>
+                      <td data-etiqueta="Llamadas IA" className="an-numero">0</td>
+                      <td data-etiqueta="Tokens" className="an-numero">0</td>
+                      <td data-etiqueta="Coste IA" className="an-numero">{usd(0)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="an-nota">
+                El contexto y la actualización de la memoria del proyecto se procesan dentro de las tareas del agente. Sus tokens y coste ya están incluidos y no se miden por separado.
+              </p>
             </section>
 
             <section className="an-panel" aria-labelledby="an-volumen-titulo">

@@ -725,6 +725,7 @@ export type Analytics = {
   proyectos: { id: string; name: string }[];
   modelos: string[];
   totals: { calls: number; inputTokens: number; outputTokens: number; cost: number };
+  byType: { tipo: "chat" | "tarea" | "otro"; calls: number; tokens: number; cost: number }[];
   byDay: { day: string; cost: number; tokens: number; calls: number }[];
   byModel: {
     model: string;
