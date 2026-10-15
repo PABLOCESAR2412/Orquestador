@@ -649,7 +649,7 @@ async function subirAprobado(
   const remoto = urlGithubPermitida(guardado);
   if (!remoto) throw new ErrorTarea("remoto_no_permitido", 409);
 
-  const token = (ctx.projectId ? valorSecreto(ctx.projectId, "GITHUB_TOKEN") || null : null) || tokenGithubGlobal();
+  const token = tokenGithubGlobal() || (ctx.projectId ? valorSecreto(ctx.projectId, "GITHUB_TOKEN") || null : null);
   const destinoSsh =
     !token && ctx.projectId && clavePublicaDe(ctx.projectId) ? urlSshDeGithub(remoto) : null;
   if (!token && !destinoSsh) throw new ErrorTarea("credenciales_git_faltantes", 409);

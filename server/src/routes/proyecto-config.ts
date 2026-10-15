@@ -159,7 +159,7 @@ proyectoConfig.put("/projects/:id/git", async (c) => {
 });
 
 export async function githubApi(projectId: string, path: string, body?: unknown) {
-  const token = valorSecreto(projectId, "GITHUB_TOKEN") || tokenGithubGlobal();
+  const token = tokenGithubGlobal() || valorSecreto(projectId, "GITHUB_TOKEN");
   if (!token)
     throw new Error(
       "Inicia sesión con GitHub en Ajustes o configura GITHUB_TOKEN en los secretos del proyecto. Para subir necesita Contents de escritura.",
@@ -169,7 +169,7 @@ export async function githubApi(projectId: string, path: string, body?: unknown)
 
 // Prioriza el token de PR; la cuenta global de GitHub también autoriza esta operación.
 export async function githubApiPr(projectId: string, path: string, body: unknown) {
-  const token = valorSecreto(projectId, "GITHUB_PR_TOKEN") || tokenGithubGlobal() || valorSecreto(projectId, "GITHUB_TOKEN");
+  const token = tokenGithubGlobal() || valorSecreto(projectId, "GITHUB_PR_TOKEN") || valorSecreto(projectId, "GITHUB_TOKEN");
   if (!token)
     throw new Error(
       "Inicia sesión con GitHub en Ajustes o configura un token con permiso de Pull requests.",

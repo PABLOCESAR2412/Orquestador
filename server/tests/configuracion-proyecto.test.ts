@@ -14,7 +14,7 @@ const { repositoryActions } = await import("../src/routes/repository-actions");
 const { guardarSecreto } = await import("../src/secretos");
 const { gitOk } = await import("../src/git");
 const { guardarCuentaGithubGlobal, borrarCuentaGithubGlobal } = await import("../src/github-auth");
-const { githubApiPr } = await import("../src/routes/proyecto-config");
+const { githubApi, githubApiPr } = await import("../src/routes/proyecto-config");
 const app = new Hono().route("/", proyectoConfig).route("/", repositoryActions);
 const proyectos: { id: string; cwd: string }[] = [];
 const claveOriginal = process.env.TELO_CLAVE_CIFRADO;
@@ -107,6 +107,8 @@ describe("configuración del proyecto", () => {
   test("la cuenta global se identifica sin exponer su token y autoriza la creación de PR", async () => {
     const p = proyecto();
     const secreto = "token-global-de-prueba";
+    process.env.TELO_CLAVE_CIFRADO = randomBytes(32).toString("base64");
+    expect(guardarSecreto(p.id, "GITHUB_TOKEN", "token-proyecto-antiguo")).not.toBeNull();
     guardarCuentaGithubGlobal({
       token: secreto,
       login: "pablo",
@@ -126,6 +128,8 @@ describe("configuración del proyecto", () => {
       autorizacion = new Headers(init?.headers).get("Authorization") ?? "";
       return Response.json({ html_url: "https://github.com/ejemplo/proyecto/pull/1" });
     }) as typeof fetch;
+    await githubApi(p.id, "/repos/ejemplo/proyecto");
+    expect(autorizacion).toBe(`Bearer ${secreto}`);
     await githubApiPr(p.id, "/repos/ejemplo/proyecto/pulls", { title: "PR" });
     expect(autorizacion).toBe(`Bearer ${secreto}`);
   });
