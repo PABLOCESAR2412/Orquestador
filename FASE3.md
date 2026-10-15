@@ -48,8 +48,13 @@ Lista de control. Se marca lo hecho en cada tarea y aquí a la vez.
 - [x] **Tarea 7.** Skills globales y por proyecto, editables desde la app. Verificada en navegador a 390 y 1440 px, y en `skills.test.ts`. **Pendiente en el VM:** confirmar que OpenCode las lista.
 - [x] **Tarea 8.** Memoria del proyecto editable desde la app (`PUT /api/projects/:id/memoria`, con redacción y límite de 4 000 caracteres; botones Editar, Escribir, Guardar, Cancelar y Borrar). Verificada en el navegador a 390 y 1440 px, y en `proyectos.test.ts`. Supuesto confirmado en el código: "memoria" = memoria aprendida por proyecto.
 - [x] **Tarea 9.** Botón "Instalar" de OpenCode con confirmación en dos pasos y comando fijo, verificado con npm falso (`instalacion.test.ts`) y en navegador. **Pendiente en el VM:** que `npm` exista para el servicio, y que `opencode models` liste los modelos de la clave guardada.
-- [~] **Tarea 10.** Codex: login por código de dispositivo, verificado con CLI falso (`login-codex.test.ts`) y en navegador; **pendiente en el VM:** el comando exacto y el archivo de sesión. Gemini: clave de AI Studio (tarea 3). Claude: **investigado, no implementado** (ver tarea 10, punto b).
+- [~] **Tarea 10.** Codex: login por código de dispositivo, verificado con CLI falso (`login-codex.test.ts`) y en navegador; **pendiente en el VM:** el comando exacto y el archivo de sesión. Instalar Codex desde Ajustes: hecho (misma tarjeta que el login, verificado en navegador a 390 y 1440 px). Gemini: clave de AI Studio (tarea 3). Claude: **investigado, no implementado** (ver tarea 10, punto b).
 - [ ] **Tarea 11.** Acciones git desde los chats (commit, subir y abrir PR, siempre con aprobación). Diseño decidido, sin implementar (ver Tarea 11). La protección de `main` en GitHub ya está hecha.
+- [ ] **Tarea 12.** Cola de mensajes del chat: si envías más mientras el agente responde, se ejecutan en orden. Hoy se rechazan con 409. Pendiente (ver Tarea 12).
+- [ ] **Tarea 13.** Wrangler (Cloudflare) instalable desde Ajustes, con inicio de sesión por código. Pendiente de dos decisiones (ver Tarea 13).
+- [x] **Corrección.** El error «opencode salió con código 143» ya no aparece: el chat explica el límite de 3 minutos. Causa en «Diagnóstico del 143».
+- [x] **Corrección.** `/tmp` propio dentro del sandbox: OpenCode ya no falla con «Read-only file system». Verificado con bwrap real.
+- [x] **Barra lateral.** Se quitó el nombre del proyecto debajo de cada chat. Verificada a 390 y 1440 px.
 
 Orden: tareas 1 a 5 primero (ya acordadas), luego 6 a 10 en el orden en que el usuario las pidió. Decisiones tomadas: skills globales y por proyecto (7), instalar OpenCode con confirmación (9), login de Codex en el VM (10a). Pendiente: Claude gratis (10b), el gasto de Azure (6, necesita la identidad del VM) y las acciones git desde los chats (11).
 
@@ -328,6 +333,58 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 - Un token mal acotado: por eso el de PR tiene permiso mínimo y su propio nombre de secreto.
 
 **Cambios.** `cambios.json`: grande, al implementarse.
+
+---
+
+## Diagnóstico del 143 («opencode salió con código 143»)
+
+**Causa.** `routes/chat.ts` limita cada turno del chat a 3 minutos (`TIEMPO_TURNO_MS`). Al llegar, `runners/opencode.ts` manda SIGTERM al grupo del agente, que sale con código 143 (128 + 15). `ejecutar.ts` lo trata como tiempo agotado, pero el chat mostraba el código tal cual.
+
+**Lo que se corrigió.** El chat dice: «El agente tardó más de 3 minutos y se detuvo. Divide la tarea en partes más pequeñas.» No se probó con un agente real de 3 minutos; el cambio comprueba el tiempo transcurrido, y la lógica es corta.
+
+**Causa secundaria (también corregida).** `/tmp` era de solo lectura dentro del sandbox de bubblewrap, así que OpenCode fallaba al escribir su `TMPDIR` (`/tmp/opencode`). El agente lo reportó como «Read-only file system». Se añadió `--tmpfs /tmp` en `runners/aislamiento.ts`. Verificado en esta máquina con bwrap real: sin el montaje falla con «Read-only file system»; con el montaje escribe, y el host no ve el archivo.
+
+**Pendiente.** Decidir si el límite de 3 minutos se queda o se sube. Ver Tarea 12, donde la cola de mensajes depende de esa decisión.
+
+---
+
+## Tarea 12. Cola de mensajes del chat (pendiente)
+
+**Hoy.** Si el chat está respondiendo, `POST /api/conversations/:id/messages` responde 409 `conversation_busy` (`motivoDeBloqueo` en `routes/chat.ts`). No hay cola.
+
+**Lo que pidió el usuario.** Si envía más mensajes mientras el agente trabaja, se ejecutan en el orden en que se enviaron.
+
+**Diseño propuesto.**
+1. Guardar el mensaje como pendiente en la conversación. Sigue habiendo un turno a la vez por chat (`ocuparConversacion`).
+2. Al terminar un turno, arrancar el siguiente pendiente, en orden de llegada.
+3. En el chat: «En cola (N)» y la opción de quitar un mensaje pendiente antes de que arranque.
+4. Si el servidor se reinicia con mensajes en cola, avisar como hoy (`avisarTurnosInterrumpidos`) y no ejecutarlos solos.
+5. Decisión del usuario: el límite de 3 minutos por turno se queda o sube.
+
+**Pruebas.** Dos mensajes seguidos: el segundo espera y se ejecuta después. Quitar un pendiente antes de que arranque. Reinicio con cola: no se ejecuta solo.
+
+**Cambio de tipo:** mediano.
+
+---
+
+## Tarea 13. Wrangler (Cloudflare) desde Ajustes (pendiente)
+
+**Qué se verificó.**
+- El paquete `wrangler` existe en npm (versión 4.151.0 en la revisión).
+- `wrangler login --device` existe en esa versión. No usa servidor de callback: muestra un enlace y un código, igual que el login de Codex. Lo dice la ayuda del CLI («útil en contenedores o sesiones SSH remotas») y la documentación de Cloudflare.
+- El login normal (`wrangler login`) redirige el navegador a `localhost:8976` de la PC del usuario. Si Wrangler corre en el servidor, ese callback nunca llega y el login se queda colgado. Por eso no se usa.
+
+**Diseño propuesto.**
+1. Instalar con el mismo mecanismo que Codex: una entrada nueva en `ACCIONES` (`instalacion.ts`), con el paquete `wrangler` y el binario `wrangler`.
+2. Iniciar sesión con `wrangler login --device` lanzado en el servidor, igual que `login-cli.ts`. Ajustes muestra el enlace y el código.
+3. Alternativa sin login: un token de API en `CLOUDFLARE_API_TOKEN`, guardado como secreto. Wrangler lo lee antes que cualquier login guardado.
+4. Las credenciales de Wrangler quedan en el HOME del servidor, que el agente no ve (aislamiento).
+
+**Decisiones pendientes del usuario.**
+- ¿Dónde vive la tarjeta? ¿Una tarjeta de Cloudflare entre los proveedores, o una sección de herramientas en Ajustes?
+- ¿Inicio de sesión con código (recomendado, no guarda nada tuyo fuera de Cloudflare) o token de API?
+
+**Cambio de tipo:** grande (integración nueva con credenciales).
 
 ---
 

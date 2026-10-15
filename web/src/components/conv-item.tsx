@@ -81,7 +81,6 @@ export function ConvItem({ conv, active, onSelect, onRename, onTogglePin, onDele
         >
           <span className="sidebar-conv-texto">
             <span className="sidebar-conv-title">{conv.title}</span>
-            {conv.project_name && <span className="sidebar-conv-proyecto">{conv.project_name}</span>}
           </span>
           {conv.ocupada && <span className="pill-dot is-live conv-busy" role="img" aria-label="Respondiendo" />}
         </button>

@@ -157,6 +157,9 @@ function guardarAviso(conversationId: string, texto: string): void {
   );
 }
 
+// Límite de un turno del chat. Al llegar a este tiempo, el agente se detiene (SIGTERM, código 143).
+const TIEMPO_TURNO_MS = 180_000;
+
 // Avisa a los clientes que un turno empezó o terminó. Los demás dispositivos piden de nuevo el chat.
 function publicarChat(conversationId: string, estado: "en_curso" | "terminado"): void {
   publicar({ tipo: "chat", conversacion_id: conversationId, estado });
@@ -166,6 +169,7 @@ function publicarChat(conversationId: string, estado: "en_curso" | "terminado"):
 // como aviso en el chat, porque nadie espera ya la respuesta HTTP.
 async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: string, model: string): Promise<void> {
   const conversationId = conv.id;
+  const inicio = Date.now();
   let result: ResultadoAgente;
   try {
     result = await ejecutarAgente({
@@ -174,7 +178,7 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       variant: conv.effort,
       sessionId: conv.runner_session_id,
       cwd: conv.repo_path ?? chatWorkspace,
-      timeoutMs: 180_000,
+      timeoutMs: TIEMPO_TURNO_MS,
       projectId: conv.project_id,
       estilo: "chat",
       // Cada paso del agente (texto intermedio o acción) se guarda y se publica mientras corre.
@@ -193,6 +197,14 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
     }
     if (err instanceof AislamientoError) {
       guardarAviso(conversationId, err.message);
+      return;
+    }
+    // Se explica el límite en vez de mostrar el código de salida (143 es la señal de parada).
+    if (Date.now() - inicio >= TIEMPO_TURNO_MS) {
+      guardarAviso(
+        conversationId,
+        `El agente tardó más de ${TIEMPO_TURNO_MS / 60_000} minutos y se detuvo. Divide la tarea en partes más pequeñas.`,
+      );
       return;
     }
     // Sin rutas del servidor ni fragmentos de secretos.

@@ -1,25 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { errorText, motivoTexto } from "../lib/model";
 
-// Instalación de OpenCode desde Ajustes. Primero se muestra el comando; después se pide confirmar.
+type Props = {
+  // Herramienta que el servidor sabe instalar (ACCIONES en server/src/instalacion.ts).
+  id: string;
+  // Nombre que ve la persona, por ejemplo "OpenCode" o "Codex".
+  nombre: string;
+  // Se muestra solo cuando el CLI ya está instalado, por ejemplo el inicio de sesión.
+  children?: ReactNode;
+};
+
+// Instalación de un CLI desde Ajustes. Primero se muestra el comando; después se pide confirmar.
 // El servidor vuelve a exigir la confirmación y ejecuta solo su comando fijo.
-export function InstalarOpenCode() {
+export function InstalarHerramienta({ id, nombre, children }: Props) {
   const qc = useQueryClient();
   const [confirmando, setConfirmando] = useState(false);
+  const clave = ["instalacion", id];
 
   const estado = useQuery({
-    queryKey: ["instalacion", "opencode"],
-    queryFn: () => api.herramientaInstalacion("opencode"),
+    queryKey: clave,
+    queryFn: () => api.herramientaInstalacion(id),
     refetchInterval: (consulta) => (consulta.state.data?.estado === "instalando" ? 2_000 : false),
   });
 
   const instalar = useMutation({
-    mutationFn: () => api.instalarHerramienta("opencode"),
+    mutationFn: () => api.instalarHerramienta(id),
     onSuccess: () => {
       setConfirmando(false);
-      void qc.invalidateQueries({ queryKey: ["instalacion", "opencode"] });
+      void qc.invalidateQueries({ queryKey: clave });
     },
   });
 
@@ -37,11 +47,14 @@ export function InstalarOpenCode() {
   if (estado.isPending) return <p className="aj-nota">Consultando la instalación…</p>;
   if (estado.isError) return <p className="aj-error" role="alert">{errorText(estado.error)}</p>;
 
+  // Ya instalado y sin instalación en curso: solo queda lo que depende del CLI.
+  if (datos?.instalada && !instalando) return children ? <>{children}</> : null;
+
   return (
     <div className="instalar">
       {instalando && (
         <p className="aj-nota" role="status">
-          Instalando OpenCode. Puede tardar un par de minutos; esta página se actualiza sola.
+          Instalando {nombre}. Puede tardar un par de minutos; esta página se actualiza sola.
         </p>
       )}
       {datos?.estado === "error" && (
@@ -65,10 +78,10 @@ export function InstalarOpenCode() {
           disabled={instalando}
           onClick={() => setConfirmando(true)}
         >
-          Instalar OpenCode
+          Instalar {nombre}
         </button>
       ) : (
-        <div className="instalar-confirmar" role="group" aria-label="Confirmar instalación">
+        <div className="instalar-confirmar" role="group" aria-label={`Confirmar instalación de ${nombre}`}>
           <p className="aj-nota">
             Se ejecutará en el servidor el comando <code className="aj-mono">{datos?.comando}</code>. Tarda uno o dos
             minutos y necesita npm instalado en el VM.
