@@ -37,8 +37,8 @@ const BUDGET_LABEL: Record<"ok" | "alerta" | "excedido", string> = {
 
 const TIPO_USO: Record<"chat" | "tarea" | "otro", { nombre: string; detalle: string }> = {
   chat: { nombre: "Chat", detalle: "Llamadas vinculadas directamente a una conversación." },
-  tarea: { nombre: "Tareas del agente", detalle: "Ejecuciones iniciadas desde el chat o un proyecto." },
-  otro: { nombre: "Otras llamadas", detalle: "Uso sin una conversación ni tarea asociada." },
+  tarea: { nombre: "Tareas del agente", detalle: "Llamadas generadas durante tareas del agente." },
+  otro: { nombre: "Otras llamadas", detalle: "Llamadas sin una conversación o tarea asociada." },
 };
 
 // Tiempo de cómputo estimado: duración media de cada modelo (ponderada por sus tareas) × tareas hechas.
@@ -271,7 +271,7 @@ export function AnalyticsPage() {
                 </table>
               </div>
               <p className="an-nota">
-                La memoria del proyecto se incorpora a las tareas del agente. Sus llamadas, tokens y coste ya se incluyen en «Tareas del agente» y no se miden por separado.
+                El contexto y la actualización de la memoria del proyecto se procesan dentro de las tareas del agente. Sus tokens y coste ya están incluidos y no se miden por separado.
               </p>
             </section>
 
