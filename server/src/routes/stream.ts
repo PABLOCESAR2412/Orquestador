@@ -55,6 +55,7 @@ stream.get("/eventos-vivos", (c) => {
   let ping: ReturnType<typeof setInterval> | undefined;
   let baja: (() => void) | undefined;
   let terminado = false;
+  let ctrl: ReadableStreamDefaultController<Uint8Array> | undefined;
 
   const limpiar = () => {
     if (terminado) return;
@@ -67,12 +68,23 @@ stream.get("/eventos-vivos", (c) => {
       baja();
       baja = undefined;
     }
+    try {
+      ctrl?.close();
+    } catch {
+      // Si el stream ya fue cerrado o abortado, ignorar el error.
+    }
   };
 
-  const cuerpo = new ReadableStream({
+  const cuerpo = new ReadableStream<Uint8Array>({
     start(controller) {
+      ctrl = controller;
       // Abre el canal de inmediato con un comentario SSE para que el proxy envíe cabeceras
-      controller.enqueue(encoder.encode(": ok\n\n"));
+      try {
+        controller.enqueue(encoder.encode(": ok\n\n"));
+      } catch {
+        limpiar();
+        return;
+      }
 
       baja = suscribir((evento) => {
         if (terminado) return;
@@ -81,9 +93,6 @@ stream.get("/eventos-vivos", (c) => {
           controller.enqueue(encoder.encode(`event: ${mensaje.event}\ndata: ${mensaje.data}\n\n`));
         } catch {
           limpiar();
-          try {
-            controller.close();
-          } catch {}
         }
       });
 
@@ -93,9 +102,6 @@ stream.get("/eventos-vivos", (c) => {
           controller.enqueue(encoder.encode("event: ping\ndata: {}\n\n"));
         } catch {
           limpiar();
-          try {
-            controller.close();
-          } catch {}
         }
       }, PING_MS);
     },
