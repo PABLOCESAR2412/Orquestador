@@ -117,7 +117,7 @@ chat.get("/conversations/:id/tasks", (c) => {
   const id = c.req.param("id");
   if (!leerConversacion(id)) return c.json({ error: "conversation_not_found" }, 404);
   const filas = db.query<{ plan: string | null; reporte: string | null; [key: string]: unknown }, [string]>(
-    "SELECT id,title,status,model,effort,plan,reporte,plan_aprobado_en,plan_hash,approved_hash,error,conversation_id,created_at FROM tasks WHERE conversation_id=? ORDER BY created_at,rowid",
+    "SELECT id,title,status,model,effort,plan,reporte,plan_aprobado_en,plan_hash,approved_hash,error,conversation_id,created_at,started_at,finished_at FROM tasks WHERE conversation_id=? ORDER BY created_at,rowid",
   ).all(id);
   const json = (valor: string | null): unknown => {
     try { return valor ? JSON.parse(valor) : null; } catch { return null; }

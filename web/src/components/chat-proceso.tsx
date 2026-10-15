@@ -6,7 +6,7 @@ import { errorText } from "../lib/model";
 // Proceso del agente en un chat: lo que dijo mientras trabajaba y cada acción con su vista previa.
 // Se ve en vivo mientras el agente corre, y después desde "Ver proceso" debajo de la respuesta.
 
-type Familia = "archivo" | "busqueda" | "terminal" | "web" | "otro";
+type Familia = "archivo" | "busqueda" | "terminal" | "web" | "github" | "contexto" | "otro";
 
 const TRAZO = { fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round", strokeLinejoin: "round" } as const;
 
@@ -36,6 +36,20 @@ const ICONOS: Record<Familia, ReactNode> = {
       <path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z" />
     </svg>
   ),
+  github: (
+    <svg width="14" height="14" viewBox="0 0 24 24" {...TRAZO} aria-hidden="true">
+      <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+    </svg>
+  ),
+  contexto: (
+    <svg width="14" height="14" viewBox="0 0 24 24" {...TRAZO} aria-hidden="true">
+      <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+      <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+      <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+      <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+      <path d="M8 9h8M8 12h8M8 15h5" />
+    </svg>
+  ),
   otro: (
     <svg width="14" height="14" viewBox="0 0 24 24" {...TRAZO} aria-hidden="true">
       <circle cx="12" cy="12" r="3" />
@@ -53,10 +67,15 @@ const FAMILIA: Record<string, Familia> = {
   grep: "busqueda",
   bash: "terminal",
   webfetch: "web",
+  websearch: "busqueda",
+  apply_patch: "archivo",
+  compaction: "contexto",
 };
 
 function familiaDe(herramienta: string | null): Familia {
-  return (herramienta && FAMILIA[herramienta]) || "otro";
+  if (!herramienta) return "otro";
+  if (/^(github|gh)(?:[._-]|$)/i.test(herramienta)) return "github";
+  return FAMILIA[herramienta] || "otro";
 }
 
 // Texto que dijo el agente y que ya aparece como respuesta: no se repite en el proceso.

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type RepositoryAction } from "../api";
 import { errorText } from "../lib/model";
@@ -170,6 +171,8 @@ export function AccionesRepositorioChat({
   terminada: boolean;
 }) {
   const qc = useQueryClient();
+  const [mostrarTodos, setMostrarTodos] = useState(false);
+  const [verCambios, setVerCambios] = useState(false);
   const acciones = useQuery({
     queryKey: ["repository-actions", conversationId],
     queryFn: () => api.repositoryActions(conversationId),
@@ -205,6 +208,9 @@ export function AccionesRepositorioChat({
   const fallida =
     ultima?.state === "failed" && ultima.task_id === taskId ? ultima : null;
   const diff = diffQuery.data;
+  const archivos = diff?.archivos ?? [];
+  const adiciones = archivos.reduce((total, archivo) => total + archivo.adiciones, 0);
+  const eliminaciones = archivos.reduce((total, archivo) => total + archivo.eliminaciones, 0);
   const commitVigente = Boolean(
     diff?.aprobaciones.commit?.estado === "aprobada" &&
     diff.aprobaciones.commit.hash === diff.hash &&
@@ -228,6 +234,66 @@ export function AccionesRepositorioChat({
   const ocupado = Boolean(pendiente) || pedir.isPending || diffQuery.isPending;
   return (
     <>
+      {terminada && diff && tieneCambios && (
+        <section className="tl-resumen-cambios" aria-label="Cambios realizados por la tarea">
+          <header className="tl-resumen-cambios-cabecera">
+            <span className="tl-resumen-cambios-icono" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <path d="M8 15h8M12 11v8" />
+              </svg>
+            </span>
+            <span className="tl-resumen-cambios-totales">
+              <strong>{archivos.length} {archivos.length === 1 ? "archivo modificado" : "archivos modificados"}</strong>
+              <span><b className="tl-cambio-adicion">+{adiciones}</b><b className="tl-cambio-eliminacion">−{eliminaciones}</b></span>
+            </span>
+            <button
+              type="button"
+              className="tl-resumen-cambios-ver"
+              aria-expanded={verCambios}
+              aria-controls={`tl-resumen-diff-${taskId}`}
+              onClick={() => setVerCambios((visible) => !visible)}
+            >
+              {verCambios ? "Ocultar cambios" : "Ver cambios"}
+            </button>
+          </header>
+          <ul className="tl-resumen-cambios-archivos">
+            {(mostrarTodos ? archivos : archivos.slice(0, 3)).map((archivo) => (
+              <li key={archivo.ruta}>
+                <span className="tl-resumen-cambios-ruta" title={archivo.ruta}>{archivo.ruta}</span>
+                <span className="tl-resumen-cambios-lineas">
+                  <b className="tl-cambio-adicion">+{archivo.adiciones}</b>
+                  <b className="tl-cambio-eliminacion">−{archivo.eliminaciones}</b>
+                </span>
+              </li>
+            ))}
+          </ul>
+          {archivos.length > 3 && (
+            <button
+              type="button"
+              className="tl-resumen-cambios-mas"
+              aria-expanded={mostrarTodos}
+              onClick={() => setMostrarTodos((mostrar) => !mostrar)}
+            >
+              {mostrarTodos ? "Mostrar menos" : `Mostrar ${archivos.length - 3} archivos más`}
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+          )}
+          {verCambios && (
+            <div className="tl-resumen-diff" id={`tl-resumen-diff-${taskId}`}>
+              {diff.truncado && <p className="tl-resumen-diff-vacio">El diff está recortado; la lista de archivos sí está completa.</p>}
+              {diff.diff ? (
+                <pre className="approval-diff">{diff.diff}</pre>
+              ) : (
+                <p className="tl-resumen-diff-vacio">No hay un diff de texto disponible para estos archivos.</p>
+              )}
+            </div>
+          )}
+        </section>
+      )}
       {pendiente && (
         <RepositoryApproval
           key={pendiente.id}

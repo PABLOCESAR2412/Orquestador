@@ -90,9 +90,7 @@
   gap: 2px;
   min-width: 0;
   overflow-x: auto;
-  scrollbar-width: none;
 }
-.aj-pestanas::-webkit-scrollbar { display: none; }
 .aj-pestana {
   flex-shrink: 0;
   min-height: 36px;
