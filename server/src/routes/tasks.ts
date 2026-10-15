@@ -210,9 +210,12 @@ tasks.post("/tasks/:id/plan", async (c) => {
     return c.json({ error: "invalid_content" }, 400);
   }
   if (body.decision === "approve") {
-    if (row.plan?.preguntas.length) return c.json({ error: "plan_con_preguntas" }, 409);
     if (row.error) return c.json({ error: "plan_needs_revision" }, 409);
-    const resultado = aprobarPlan(id, null, hash);
+    const feedbackTexto = typeof body.feedback === "string" && body.feedback.trim() ? body.feedback.trim() : null;
+    if (feedbackTexto) {
+      db.query("UPDATE tasks SET prompt=prompt || ? WHERE id=?").run("\nAclaraciones de aprobación del usuario: " + feedbackTexto, id);
+    }
+    const resultado = aprobarPlan(id, feedbackTexto, hash);
     if (resultado !== "ok") return c.json({ error: "cambios_cambiaron" }, 409);
   } else if (body.decision === "reject") {
     const feedbackTexto = typeof body.feedback === "string" && body.feedback.trim() ? body.feedback.trim() : null;

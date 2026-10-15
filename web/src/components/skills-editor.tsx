@@ -104,7 +104,9 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
 
   function empezarNueva() {
     if (urlNueva.trim()) {
-      importarUrl.mutate(urlNueva.trim());
+      let u = urlNueva.trim();
+      u = u.replace(/[?#].*$/, "").replace(/\/+$/, "");
+      importarUrl.mutate(u);
       return;
     }
 
@@ -257,7 +259,7 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
             type="url"
             value={urlNueva}
             onChange={(e) => setUrlNueva(e.target.value)}
-            placeholder="https://github.com/…/blob/main/…/SKILL.md"
+            placeholder="https://github.com/… (enlace a archivo SKILL.md o a la carpeta del skill)"
           />
 
           {errorNombre && (
@@ -284,7 +286,7 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
                 disabled={importarUrl.isPending}
                 onClick={empezarNueva}
               >
-                {importarUrl.isPending ? "Importando…" : "Importar SKILL.md"}
+                {importarUrl.isPending ? "Importando…" : "Importar skill desde GitHub"}
               </button>
             ) : (
               <button

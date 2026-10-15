@@ -115,10 +115,11 @@ function ProyectoGit({ id }: { id: string }) {
             <button
               type="button"
               className="ghost"
-              disabled={comprobar.isPending || !!edicion}
+              disabled={comprobar.isPending || !!edicion || !data?.remote?.trim()}
               onClick={() => comprobar.mutate()}
+              title={!data?.remote?.trim() ? "Configura y guarda primero la URL del repositorio remoto de GitHub" : undefined}
             >
-              Comprobar acceso con token
+              {comprobar.isPending ? "Comprobando…" : "Comprobar acceso con token"}
             </button>
             <button
               type="button"

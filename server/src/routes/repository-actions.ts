@@ -8,10 +8,11 @@ import {
   diffDeTarea,
   ErrorTarea,
   mensajeSeguro,
+  rutaClon,
   urlGithubPermitida,
 } from "../workspace";
 import { conProyectoRevisado } from "../ocupacion";
-import { gitOk, gitOkSeguro, prepararRepoSeguro, tieneGitReal } from "../git";
+import { gitOk, gitOkSeguro, gitSeguro, prepararRepoSeguro, tieneGitReal } from "../git";
 import { configGit, githubApi } from "./proyecto-config";
 import { redactar } from "../redaccion";
 
@@ -36,7 +37,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
     message?: string;
     title?: string;
   }>(c);
-  if (!b || !["init", "commit", "push", "pr"].includes(b.action))
+  if (!b || !["init", "commit", "push", "pr", "merge"].includes(b.action))
     return c.json({ error: "invalid_accion" }, 400);
   if (
     (b.conversationId !== undefined &&
@@ -69,6 +70,12 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
     return c.json({ error: "invalid_body" }, 400);
   try {
     const diff = b.action === "init" ? null : await diffDeTarea(tarea!.id);
+    if (b.action === "commit" && diff && diff.archivos.length === 0 && !diff.commit) {
+      return c.json({ error: "sin_cambios", detail: "No hay archivos modificados para crear un commit." }, 409);
+    }
+    if (b.action === "merge" && (!diff?.commit && !diff?.aprobaciones.commit)) {
+      return c.json({ error: "commit_requerido", detail: "Primero debes crear el commit de la tarea antes de hacer merge." }, 409);
+    }
     const cfg = configGit(projectId);
     const payload = {
       hash: diff?.hash ?? null,
@@ -84,7 +91,9 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
       descripcion:
         b.action === "init"
           ? "Inicializar Git y crear un primer commit vacío para habilitar los espacios de trabajo. No añade tus archivos."
-          : null,
+          : b.action === "merge"
+            ? `Fusionar la rama ${diff?.rama ?? ""} directamente en la rama principal (${cfg.base_branch}).`
+            : null,
     };
     const id = crypto.randomUUID();
     const existente = db
@@ -104,6 +113,14 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
         },
         200,
       );
+
+    // Marca como superseded cualquier acción previa pendiente de la misma tarea o conversación
+    if (tarea?.id || b.conversationId) {
+      db.query(
+        "UPDATE repository_actions SET state='superseded' WHERE (task_id=? OR (conversation_id=? AND conversation_id IS NOT NULL)) AND state='pending'",
+      ).run(tarea?.id ?? "", b.conversationId ?? "");
+    }
+
     db.query(
       "INSERT INTO repository_actions(id,project_id,conversation_id,task_id,action,payload) VALUES (?,?,?,?,?,?)",
     ).run(
@@ -219,6 +236,31 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         accion: row.action,
         hash: p.hash,
         mensaje: p.message,
+      });
+    } else if (row.action === "merge") {
+      const cwd = projectRepoPath(row.project_id);
+      if (!cwd) throw new Error("El proyecto ya no está disponible.");
+      const clonPath = rutaClon(row.task_id!);
+      result = await conProyectoRevisado(row.project_id, async () => {
+        if (!tieneGitReal(cwd)) throw new Error("El proyecto no tiene un repositorio Git válido.");
+        await prepararRepoSeguro(cwd);
+        const status = await gitSeguro(["status", "--porcelain"], { cwd });
+        if (status.stdout.trim() !== "") {
+          throw new Error("El repositorio del proyecto tiene cambios locales sin guardar. Guarda o descarta esos cambios antes de hacer merge.");
+        }
+        const cfg = configGit(row.project_id);
+        const diff = await diffDeTarea(row.task_id!);
+        if (!diff.rama) throw new Error("La tarea no tiene una rama asociada.");
+        const ramaActual = (await gitOkSeguro(["rev-parse", "--abbrev-ref", "HEAD"], { cwd })).trim();
+        if (ramaActual !== cfg.base_branch) {
+          await gitOkSeguro(["checkout", cfg.base_branch], { cwd });
+        }
+        await gitOkSeguro(["fetch", clonPath, diff.rama], { cwd });
+        const commitMsg = p.message || `Fusionar cambios de tarea ${row.task_id!.slice(0, 8)} en ${cfg.base_branch}`;
+        await gitOkSeguro(["merge", "FETCH_HEAD", "-m", commitMsg], { cwd });
+        return {
+          mensaje: `Cambios fusionados exitosamente en la rama principal (${cfg.base_branch}).`,
+        };
       });
     } else {
       const diff = await diffDeTarea(row.task_id!);
