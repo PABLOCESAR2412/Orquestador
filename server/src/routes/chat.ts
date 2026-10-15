@@ -1,8 +1,9 @@
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../config";
 import { db } from "../db";
+import { publicar } from "../bus";
 import { AislamientoError } from "../runners/aislamiento";
 import { ejecutarAgente, ErrorCuota, promptContinuacion, type ResultadoAgente } from "../ejecutar";
 import { getPreferences } from "../preferences";
@@ -19,6 +20,8 @@ import {
 const DEFAULT_MODEL = "opencode/big-pickle";
 // Texto de un mensaje: incluye los adjuntos de texto. El cuerpo HTTP sigue limitado a 64 KB.
 const MAX_CONTENIDO = 30_000;
+// Lo que se muestra en el chat si el agente falla: se corta para que no llene la conversación.
+const MAX_DETALLE_ERROR = 300;
 const chatWorkspace = join(config.dataDir, "chat-workspace");
 mkdirSync(chatWorkspace, { recursive: true });
 
@@ -50,6 +53,7 @@ type Message = {
   content: string;
   created_at: string;
 };
+type TurnoUsuario = { id: string; role: "user"; content: string };
 
 export const chat = new Hono();
 
@@ -127,8 +131,8 @@ function motivoDeBloqueo(conv: ConversationRow): "conversation_busy" | "proyecto
 
 // El mensaje del usuario se guarda antes de ejecutar: así aparece en los demás dispositivos
 // y no se pierde si el agente falla.
-function guardarMensajeUsuario(conversationId: string, content: string): { id: string; role: "user"; content: string } {
-  const msg = { id: crypto.randomUUID(), role: "user" as const, content };
+function guardarMensajeUsuario(conversationId: string, content: string): TurnoUsuario {
+  const msg: TurnoUsuario = { id: crypto.randomUUID(), role: "user", content };
   db.transaction(() => {
     db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)").run(
       msg.id,
@@ -144,18 +148,25 @@ function guardarMensajeUsuario(conversationId: string, content: string): { id: s
   return msg;
 }
 
-// Corre el agente para un turno del chat y guarda su respuesta. Si el modelo se quedó sin cuota, el chat
-// queda marcado con ese modelo (aviso y botón Seguir); el mensaje del usuario ya está guardado.
-async function ejecutarTurno(
-  c: Context,
-  conv: ConversationRow,
-  turno: { id: string; role: "user"; content: string },
-  prompt: string,
-  model: string,
-) {
+// Un aviso del sistema en el chat (un fallo, una interrupción). Queda guardado: se ve en cualquier dispositivo.
+function guardarAviso(conversationId: string, texto: string): void {
+  db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'system', ?)").run(
+    crypto.randomUUID(),
+    conversationId,
+    texto,
+  );
+}
+
+// Avisa a los clientes que un turno empezó o terminó. Los demás dispositivos piden de nuevo el chat.
+function publicarChat(conversationId: string, estado: "en_curso" | "terminado"): void {
+  publicar({ tipo: "chat", conversacion_id: conversationId, estado });
+}
+
+// Corre el agente para un turno del chat y guarda su respuesta. Nunca lanza: cualquier fallo queda
+// como aviso en el chat, porque nadie espera ya la respuesta HTTP.
+async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: string, model: string): Promise<void> {
   const conversationId = conv.id;
   let result: ResultadoAgente;
-  ocuparConversacion(conversationId);
   try {
     result = await ejecutarAgente({
       prompt,
@@ -173,20 +184,23 @@ async function ejecutarTurno(
       },
     });
   } catch (err) {
-    if (err instanceof AislamientoError) {
-      return c.json({ error: err.code, message: err.message }, 503);
-    }
     if (err instanceof ErrorCuota) {
-      // La sesión que sí llegó a abrirse se guarda, para seguirla con otro modelo.
+      // La sesión que sí llegó a abrirse se guarda, para seguirla con otro modelo. El aviso de cuota lo muestra el chat.
       db.query(
         "UPDATE conversations SET cuota_modelo = ?, runner_session_id = COALESCE(?, runner_session_id) WHERE id = ?",
       ).run(err.modelo, err.sessionId, conversationId);
-      return c.json({ error: "cuota_agotada", modelo: err.modelo, message: err.message }, 402);
+      return;
+    }
+    if (err instanceof AislamientoError) {
+      guardarAviso(conversationId, err.message);
+      return;
     }
     // Sin rutas del servidor ni fragmentos de secretos.
-    return c.json({ error: "runner_failed", detail: mensajeSeguro(err) }, 502);
-  } finally {
-    liberarConversacion(conversationId);
+    guardarAviso(
+      conversationId,
+      `No se pudo responder. ${mensajeSeguro(err).slice(0, MAX_DETALLE_ERROR)}`,
+    );
+    return;
   }
 
   // La respuesta del chat es lo dicho tras la última herramienta; lo anterior queda en el proceso.
@@ -232,10 +246,41 @@ async function ejecutarTurno(
       );
     }
   })();
-
-  return c.json({ messages: [turno, assistantMsg] }, 201);
 }
 
+// El turno corre en segundo plano, no dentro de la petición HTTP. Así, si el móvil se duerme, cambia
+// de app o pierde la red, el agente termina igual, la respuesta queda guardada y se ve al volver.
+function iniciarTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: string, model: string): void {
+  ocuparConversacion(conv.id);
+  publicarChat(conv.id, "en_curso");
+  void correrTurno(conv, turno, prompt, model)
+    .catch((err) => {
+      // correrTurno no lanza; esto solo cubre un fallo al guardar la respuesta.
+      console.error("Turno del chat:", mensajeSeguro(err));
+      guardarAviso(conv.id, "No se pudo guardar la respuesta. Intenta de nuevo.");
+    })
+    .finally(() => {
+      liberarConversacion(conv.id);
+      publicarChat(conv.id, "terminado");
+    });
+}
+
+// Al arrancar el servidor no hay turnos en curso. Si el último mensaje de un chat es del usuario, la
+// respuesta se perdió al reiniciarse: se avisa en el chat para que el usuario lo envíe de nuevo.
+export function avisarTurnosInterrumpidos(): number {
+  const chats = db
+    .query<{ id: string }, []>(
+      `SELECT c.id FROM conversations c
+       WHERE (SELECT m.role FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) = 'user'`,
+    )
+    .all();
+  for (const { id } of chats) {
+    guardarAviso(id, "La respuesta se interrumpió porque el servidor se reinició. Envía el mensaje de nuevo para intentarlo.");
+  }
+  return chats.length;
+}
+
+// 202: el mensaje ya está guardado y el agente trabaja. La respuesta llega al chat por la lista de mensajes.
 chat.post("/conversations/:id/messages", async (c) => {
   const conversationId = c.req.param("id");
   const conv = leerConversacion(conversationId);
@@ -251,7 +296,8 @@ chat.post("/conversations/:id/messages", async (c) => {
 
   const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
   const turno = guardarMensajeUsuario(conversationId, content);
-  return ejecutarTurno(c, conv, turno, content, model);
+  iniciarTurno(conv, turno, content, model);
+  return c.json({ messages: [turno] }, 202);
 });
 
 // POST /api/conversations/:id/seguir
@@ -279,5 +325,6 @@ chat.post("/conversations/:id/seguir", async (c) => {
   const prompt = conv.runner_session_id !== null
     ? promptContinuacion(SEGUIR_INSTRUCCION)
     : (ultimoMensaje ?? SEGUIR_INSTRUCCION);
-  return ejecutarTurno(c, conv, turno, prompt, model);
+  iniciarTurno(conv, turno, prompt, model);
+  return c.json({ messages: [turno] }, 202);
 });

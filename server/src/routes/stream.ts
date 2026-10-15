@@ -36,6 +36,12 @@ function aMensaje(evento: EventoVivo): { event: string; data: string } {
       data: JSON.stringify({ conversacion_id: evento.conversacion_id, turno_id: evento.turno_id, paso: evento.paso }),
     };
   }
+  if (evento.tipo === "chat") {
+    return {
+      event: "chat",
+      data: JSON.stringify({ conversacion_id: evento.conversacion_id, estado: evento.estado }),
+    };
+  }
   return { event: "salida", data: JSON.stringify({ task_id: evento.task_id, linea: evento.linea }) };
 }
 

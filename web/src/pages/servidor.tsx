@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type ServidorEstado } from "../api";
+import { api, type ServicioEstado, type ServidorEstado } from "../api";
 import { duracion, formatBytes, porcentaje } from "../components/tarea-formato";
 import { errorText, formatUsd } from "../lib/model";
 import { medirLatencia } from "../lib/latencia";
@@ -120,9 +120,56 @@ function Fila({ etiqueta, valor }: { etiqueta: string; valor: ReactNode }) {
 }
 
 // Tarjetas de estado: proceso, latencia, discos, carpetas, herramientas, costos, tareas y agente.
+// Registros del servicio: se piden solo cuando el panel está abierto, y se vuelven a pedir con el botón.
+function RegistrosServicio() {
+  const registros = useQuery({ queryKey: ["servidor-logs"], queryFn: () => api.serverLogs(100) });
+  return (
+    <section id="aj-registros" className="aj-tarjeta" aria-labelledby="aj-registros-titulo">
+      <div className="aj-seccion-cabecera">
+        <h3 id="aj-registros-titulo" className="aj-tarjeta-titulo-simple">
+          Registros del servicio
+        </h3>
+        <button
+          type="button"
+          className="aj-btn"
+          disabled={registros.isFetching}
+          onClick={() => void registros.refetch()}
+        >
+          {registros.isFetching ? "Actualizando…" : "Actualizar"}
+        </button>
+      </div>
+      {registros.isPending && <p className="aj-nota">Leyendo registros…</p>}
+      {registros.isError && (
+        <p className="aj-error" role="alert">
+          {errorText(registros.error)}
+        </p>
+      )}
+      {registros.data && (
+        <>
+          <pre className="aj-registros-texto" tabIndex={0} aria-label="Últimas líneas del registro del servicio">
+            {registros.data.texto.trim() || "Todavía no hay líneas en el registro."}
+          </pre>
+          <p className="aj-nota">Últimas {registros.data.lineas} líneas. Los valores secretos aparecen como ***.</p>
+        </>
+      )}
+    </section>
+  );
+}
+
+// Texto corto del estado de la unidad: "Activo", "Detenido" o el motivo de no tenerlo.
+function textoServicio(datos: ServicioEstado | undefined, error: boolean): string {
+  if (error) return "Sin datos";
+  if (!datos) return "—";
+  if (!datos.disponible) return "Sin systemd";
+  if (datos.activo === "active") return "Activo";
+  return datos.activo ? `Detenido (${datos.activo})` : "Desconocido";
+}
+
 export function EstadoServidor({ latencia }: { latencia: MuestrasLatencia }) {
   const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000 });
   const runner = useQuery({ queryKey: ["runner"], queryFn: api.runnerStatus, refetchInterval: 60_000 });
+  const servicio = useQuery({ queryKey: ["servidor-servicio"], queryFn: api.serverService, refetchInterval: 30_000 });
+  const [verRegistros, setVerRegistros] = useState(false);
 
   const datos: ServidorEstado | undefined = servidor.data;
   const discoDatos = datos?.disco.find((d) => d.etiqueta === "datos");
@@ -139,16 +186,28 @@ export function EstadoServidor({ latencia }: { latencia: MuestrasLatencia }) {
         <button
           type="button"
           className="aj-btn"
-          disabled
-          title="La app todavía no puede leer los registros del servidor."
+          aria-expanded={verRegistros}
+          aria-controls="aj-registros"
+          onClick={() => setVerRegistros((abierto) => !abierto)}
         >
-          Ver logs
+          {verRegistros ? "Ocultar logs" : "Ver logs"}
         </button>
       </div>
 
       {servidor.isError && <ErrorConReintento error={servidor.error} onReintentar={() => void servidor.refetch()} />}
+      {verRegistros && <RegistrosServicio />}
 
       <div className="aj-rejilla-servidor">
+        <TarjetaServidor
+          id="aj-servicio"
+          titulo="Servicio"
+          principal={textoServicio(servicio.data, servicio.isError)}
+        >
+          <Fila etiqueta="Estado interno" valor={servicio.data?.subestado ?? "—"} />
+          <Fila etiqueta="Desde" valor={servicio.data?.desde ?? "—"} />
+          <Fila etiqueta="PID" valor={servicio.data?.pid ?? "—"} />
+        </TarjetaServidor>
+
         <TarjetaServidor
           id="aj-proceso"
           titulo="Proceso"

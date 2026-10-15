@@ -36,7 +36,17 @@
     { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Aviso de nueva versión: el velo cubre también la barra lateral, con desenfoque", "pr": 27 },
     { "fecha": "2026-10-13", "tipo": "grande", "titulo": "Analizador y obrero por tarea: plan revisable, aprobación y reporte guardado", "pr": 28 },
     { "fecha": "2026-10-14", "tipo": "minimo", "titulo": "Documentación al día: fases 5 y 6 mergeadas y pendientes del VM", "pr": null },
-    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Proyectos en tarjetas, alta con revisión de GitHub y clonado en el chat del proyecto", "pr": null }
-    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Seguir tras agotarse la cuota: aviso con el modelo y continuación desde el último punto", "pr": null }
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Proyectos en tarjetas, alta con revisión de GitHub y clonado en el chat del proyecto", "pr": null },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Seguir tras agotarse la cuota: aviso con el modelo y continuación desde el último punto", "pr": null },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Claves de Groq, NVIDIA y Gemini guardadas cifradas desde Ajustes, con uso en los agentes", "pr": null },
+    { "fecha": "2026-10-14", "tipo": "minimo", "titulo": "Chat en segundo plano: la respuesta no se pierde si el móvil se duerme o cae la red, y el envío no se duplica", "pr": null },
+    { "fecha": "2026-10-14", "tipo": "minimo", "titulo": "Barra lateral: sin enlace Chat y con todos los chats, también los de proyecto", "pr": null },
+    { "fecha": "2026-10-14", "tipo": "minimo", "titulo": "Modelos de Groq, NVIDIA y Gemini visibles en el selector cuando su clave está guardada; Gemini envía las dos variables que usa OpenCode; Ajustes avisa si OpenCode no reconoce el proveedor", "pr": null },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Vista de proyectos con actividad (chats, tareas y última actividad) y acciones en iconos de 40 px", "pr": null },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Memoria del proyecto editable a mano, con la misma redacción y límite que la de los agentes", "pr": null },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Ajustes del servidor: estado del servicio y registros recientes, con secretos ocultos", "pr": null },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Instalación de OpenCode desde Ajustes: se muestra el comando fijo, se confirma y la salida sale redactada", "pr": null },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Skills globales en Ajustes y por proyecto, editables desde la app; OpenCode las lee en su carpeta", "pr": null },
+    { "fecha": "2026-10-14", "tipo": "grande", "titulo": "Inicio de sesión de Codex por código de dispositivo, ejecutado en el servidor sin exponer el token", "pr": null }
   ]
 }

@@ -37,6 +37,10 @@ export type Project = {
   // Repo de GitHub de origen (si el proyecto se creó clonándolo) y cuándo se clonó. Sin clonado, la carpeta espera.
   origen_url?: string | null;
   clonado_en?: string | null;
+  // Actividad del proyecto (GET /api/projects): chats, tareas y el último mensaje o tarea. Null si no hay.
+  chats?: number;
+  tareas?: number;
+  ultima_actividad?: string | null;
 };
 
 // Revisión de un repo de GitHub sin clave: público o privado (un nombre mal escrito también parece privado).
@@ -140,6 +144,18 @@ export type UsoProveedor = {
   precision: "medida_telo" | "sin_datos";
 };
 
+// Estado de la unidad orquestador en systemd. Fuera de systemd (desarrollo), disponible es false.
+export type ServicioEstado = {
+  disponible: boolean;
+  activo: string | null;
+  subestado: string | null;
+  desde: string | null;
+  pid: number | null;
+};
+
+// Últimas líneas del diario del servicio, ya redactadas por el servidor.
+export type RegistrosServidor = { lineas: number; texto: string; generado: string };
+
 export type ServidorEstado = {
   generado: string;
   proceso: { arrancado: string; segundosActivo: number; bun: string; rssMb: number; plataforma: string };
@@ -159,6 +175,9 @@ export type ProviderStatus = {
   // Nombre de la variable de entorno (nunca su valor) y si llega a los agentes.
   variable: string | null;
   enAgente: boolean;
+  // La clave se puede guardar desde Ajustes, y `guardada` dice si ya está guardada ahí.
+  guardable: boolean;
+  guardada: boolean;
 };
 
 export type Message = {
@@ -292,7 +311,9 @@ export type EventoVivo =
   | { tipo: "tarea"; id: string; status: TaskStatus; finished_at: string | null }
   | { tipo: "evento"; task_id: string; kind: TaskEventKind; detail: string | null; created_at: string }
   | { tipo: "salida"; task_id: string; linea: string }
-  | { tipo: "actividad"; conversacion_id: string; turno_id: string; paso: PasoActividad };
+  | { tipo: "actividad"; conversacion_id: string; turno_id: string; paso: PasoActividad }
+  // Un turno del chat empezó o terminó: los demás dispositivos vuelven a pedir sus mensajes.
+  | { tipo: "chat"; conversacion_id: string; estado: "en_curso" | "terminado" };
 
 export type TaskEvent = {
   id: number;
@@ -346,6 +367,45 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(res.status, body.error ?? `http_${res.status}`, body.detail);
   }
   return res.json() as Promise<T>;
+}
+
+// Instalación de una herramienta del servidor (hoy OpenCode). El servidor solo ejecuta su comando fijo.
+export type InstalacionHerramienta = {
+  herramienta: string;
+  nombre: string;
+  comando: string;
+  estado: "inactiva" | "instalando" | "lista" | "error";
+  instalada: boolean;
+  iniciada: string | null;
+  terminada: string | null;
+  motivo: string | null;
+  salida: string;
+};
+
+// Inicio de sesión de Codex por código de dispositivo. El token nunca llega a la app.
+export type LoginCodex = {
+  estado: "inactivo" | "esperando" | "conectado" | "fallido";
+  conectada: boolean;
+  url: string | null;
+  codigo: string | null;
+  salida: string;
+  motivo: string | null;
+  iniciada: string | null;
+};
+
+export type SkillResumen = {
+  nombre: string;
+  descripcion: string | null;
+  valida: boolean;
+  bytes: number;
+  modificada: string;
+};
+
+export type SkillDetalle = SkillResumen & { contenido: string };
+
+// Skills globales (sin proyecto) o las del proyecto indicado.
+function skillsRuta(projectId?: string): string {
+  return projectId ? `/api/projects/${projectId}/skills` : "/api/skills";
 }
 
 export const api = {
@@ -413,6 +473,12 @@ export const api = {
   suggestProjectInstructions: (id: string) =>
     request<{ texto: string; fuentes: string[] }>(`/api/projects/${id}/instrucciones/sugeridas`),
   clearProjectMemory: (id: string) => request<{ ok: boolean }>(`/api/projects/${id}/memoria`, { method: "DELETE" }),
+  // Corrige la memoria a mano. Texto vacío la borra. El servidor la redacta y la limita a 4 000 caracteres.
+  saveProjectMemory: (id: string, texto: string) =>
+    request<{ texto: string | null; actualizada_en: string | null }>(`/api/projects/${id}/memoria`, {
+      method: "PUT",
+      body: JSON.stringify({ texto }),
+    }),
   listProjectFiles: (id: string, ruta = "") =>
     request<{ ruta: string; entradas: ProjectFileEntry[] }>(
       `/api/projects/${id}/archivos?ruta=${encodeURIComponent(ruta)}`,
@@ -444,6 +510,30 @@ export const api = {
     request<Task>(`/api/programadas/${id}/ejecutar`, { method: "POST", body: "{}" }),
   usage: () => request<{ generado: string; proveedores: UsoProveedor[] }>("/api/uso"),
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
+  serverService: () => request<ServicioEstado>("/api/servidor/servicio"),
+  serverLogs: (lineas = 100) => request<RegistrosServidor>(`/api/servidor/logs?lineas=${lineas}`),
+  // Instalación de OpenCode: el servidor exige `confirmar: true` y ejecuta solo su comando fijo.
+  herramientaInstalacion: (id: string) => request<InstalacionHerramienta>(`/api/herramientas/${id}/instalacion`),
+  instalarHerramienta: (id: string) =>
+    request<InstalacionHerramienta>(`/api/herramientas/${id}/instalacion`, {
+      method: "POST",
+      body: JSON.stringify({ confirmar: true }),
+    }),
+  // Inicio de sesión de Codex: la app solo ve la URL, el código y si existe la sesión.
+  codexLogin: () => request<LoginCodex>("/api/providers/codex/login"),
+  iniciarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "POST", body: "{}" }),
+  cancelarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "DELETE" }),
+  // Skills: sin projectId, las globales de Ajustes; con projectId, las de la carpeta del proyecto.
+  listSkills: (projectId?: string) => request<{ skills: SkillResumen[] }>(skillsRuta(projectId)),
+  getSkill: (nombre: string, projectId?: string) =>
+    request<SkillDetalle>(`${skillsRuta(projectId)}/${encodeURIComponent(nombre)}`),
+  saveSkill: (nombre: string, contenido: string, projectId?: string) =>
+    request<{ creada: boolean }>(`${skillsRuta(projectId)}/${encodeURIComponent(nombre)}`, {
+      method: "PUT",
+      body: JSON.stringify({ contenido }),
+    }),
+  deleteSkill: (nombre: string, projectId?: string) =>
+    request<{ ok: boolean }>(`${skillsRuta(projectId)}/${encodeURIComponent(nombre)}`, { method: "DELETE" }),
   resumeTask: (id: string) => request<Task>(`/api/tasks/${id}/reanudar`, { method: "POST", body: "{}" }),
   // Tras una cuota agotada: vuelve a la cola con otro modelo y retoma la sesión.
   continueTask: (id: string, body: { model?: string; effort?: string | null } = {}) =>
@@ -480,6 +570,14 @@ export const api = {
   deleteProject: (id: string) =>
     request<{ ok: boolean }>(`/api/projects/${id}`, { method: "DELETE" }),
   listProviders: () => request<ProviderStatus[]>("/api/providers"),
+  // La clave se escribe una vez y nunca vuelve por la API. Guardar otra vez la reemplaza.
+  setProviderKey: (id: string, valor: string) =>
+    request<{ id: string; configurada: boolean; actualizada_en: string }>(
+      `/api/claves-proveedor/${encodeURIComponent(id)}`,
+      { method: "PUT", body: JSON.stringify({ valor }) },
+    ),
+  deleteProviderKey: (id: string) =>
+    request<{ ok: boolean }>(`/api/claves-proveedor/${encodeURIComponent(id)}`, { method: "DELETE" }),
   getPreferences: () => request<Preferences>("/api/preferences"),
   savePreferences: (patch: Partial<Preferences>) =>
     request<Preferences>("/api/preferences", { method: "PUT", body: JSON.stringify(patch) }),

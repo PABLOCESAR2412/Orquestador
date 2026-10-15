@@ -368,6 +368,22 @@ button:disabled { opacity: 0.4; cursor: default; }
   white-space: nowrap;
 }
 
+/* Chat de un proyecto: el nombre del proyecto va debajo del título, en metadatos. */
+.sidebar-conv-texto {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+.sidebar-conv-proyecto {
+  overflow: hidden;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sidebar-empty {
   padding: 8px 10px;
   font-size: 12px;
@@ -3410,13 +3426,63 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .proyecto-tarjeta-enlace:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; border-radius: var(--radius-sm); }
 .proyecto-tarjeta-cabecera { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
-.proyecto-tarjeta-nombre { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
-.proyecto-tarjeta-ruta { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
+.proyecto-tarjeta-nombre { font-size: 18px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+/* La carpeta cabe en una línea: si no, se recorta con elipsis en vez de partirse en varias. */
+.proyecto-tarjeta-ruta {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.proyecto-tarjeta-metricas { font-size: 13px; color: var(--ink-2); }
 .proyecto-tarjeta-estado { font-size: 12px; color: var(--ink-3); }
 .proyecto-tarjeta-acciones { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; align-items: center; }
-.proyecto-tarjeta-peligro { color: var(--danger); }
+/* Pie de la tarjeta: solo iconos, de 40 px para el dedo. */
+.proyecto-tarjeta-pie { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: auto; }
+.proyecto-icono {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.proyecto-icono:hover:not(:disabled) { color: var(--ink); background: var(--surface-hover); }
+.proyecto-icono:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.proyecto-icono:disabled { opacity: 0.5; cursor: default; }
+.proyecto-icono.is-activo { color: var(--ink); }
+.proyecto-icono.is-peligro:hover:not(:disabled) { color: var(--danger); }
 .proyecto-tarjeta-confirmar { background: var(--danger); color: var(--bg); }
 .proyecto-tarjeta-form { display: flex; flex-direction: column; gap: 12px; }
+
+/* Memoria del proyecto: edición a mano. El texto va a 16 px para que iOS no amplíe el campo al escribir. */
+.proyecto-memoria-acciones { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.proyecto-memoria-form { display: flex; flex-direction: column; gap: 12px; }
+.proyecto-memoria-texto {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 200px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.proyecto-memoria-texto:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.proyecto-memoria-texto:disabled { opacity: 0.6; }
 .clonar-acciones { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
 .proyecto-nuevo {
@@ -3477,3 +3543,173 @@ button:disabled { opacity: 0.4; cursor: default; }
 /* El selector de modelo abre hacia abajo desde el aviso (fuera del compositor, no hay nada encima). */
 .cuota-selector { position: relative; height: 0; }
 .cuota-selector .picker { top: 10px; bottom: auto; }
+
+/* Instalación de OpenCode, inicio de sesión de Codex y skills (Ajustes y pestaña del proyecto). */
+.instalar,
+.login-codex,
+.skills {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  min-width: 0;
+}
+.instalar-confirmar,
+.login-codex-paso {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-lowest);
+}
+.instalar-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.login-codex-enlace {
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.login-codex-codigo {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+.skills-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+.skills-cabecera .aj-nota {
+  flex: 1 1 260px;
+  margin: 0;
+}
+.skills-nueva {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-lowest);
+}
+.skills-etiqueta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.skills-entrada {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 16px;
+}
+.skills-lista {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.skills-fila {
+  box-sizing: border-box;
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+}
+.skills-fila:hover {
+  border-color: var(--line-strong);
+}
+.skills-fila.is-activa {
+  border-color: var(--primary);
+  background: var(--surface-2);
+}
+.skills-fila-nombre {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.skills-fila-texto {
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.skills-fila-texto.is-aviso {
+  color: var(--signal);
+}
+.skills-editor {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-lowest);
+  min-width: 0;
+}
+.skills-editor-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.skills-editor-titulo {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.skills-peso {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.skills-peso.is-aviso {
+  color: var(--signal);
+}
+.skills-texto {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 280px;
+  max-height: 60vh;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.skills-peligro {
+  color: var(--danger);
+}
+.skills-peligro:hover:not(:disabled) {
+  border-color: var(--danger-line);
+}

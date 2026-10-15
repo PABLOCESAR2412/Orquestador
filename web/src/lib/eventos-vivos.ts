@@ -32,7 +32,7 @@ export function useEventosVivos(
     let intentos = 0;
     let espera: number | undefined;
 
-    const entregar = (tipo: "tarea" | "evento" | "salida" | "actividad", crudo: string) => {
+    const entregar = (tipo: "tarea" | "evento" | "salida" | "actividad" | "chat", crudo: string) => {
       let dato: unknown;
       try {
         dato = JSON.parse(crudo);
@@ -42,7 +42,8 @@ export function useEventosVivos(
       if (typeof dato !== "object" || dato === null) return;
       const evento = { tipo, ...dato } as EventoVivo;
       // Los pasos de un chat no son de una tarea: el filtro por tarea no los deja pasar.
-      const tareaId = evento.tipo === "tarea" ? evento.id : evento.tipo === "actividad" ? null : evento.task_id;
+      const tareaId =
+        evento.tipo === "tarea" ? evento.id : evento.tipo === "actividad" || evento.tipo === "chat" ? null : evento.task_id;
       const filtrarA = filtroRef.current.tareaId;
       if (filtrarA && tareaId !== filtrarA) return;
       onEventoRef.current(evento);
@@ -61,6 +62,7 @@ export function useEventosVivos(
       nueva.addEventListener("evento", (ev) => entregar("evento", (ev as MessageEvent<string>).data));
       nueva.addEventListener("salida", (ev) => entregar("salida", (ev as MessageEvent<string>).data));
       nueva.addEventListener("actividad", (ev) => entregar("actividad", (ev as MessageEvent<string>).data));
+      nueva.addEventListener("chat", (ev) => entregar("chat", (ev as MessageEvent<string>).data));
 
       nueva.onerror = () => {
         if (!vivo) return;

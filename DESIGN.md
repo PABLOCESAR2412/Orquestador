@@ -49,7 +49,7 @@ Español neutro y directo. Frases cortas, sin signos de exclamación ni jerga t�
 
 Reutilizar estos componentes. No crear equivalentes nuevos.
 
-- **AppNav:** navegación entre Chat, Tareas, Analíticas, Ajustes y Estado. El enlace activo lleva subrayado en `--signal` y `aria-current="page"`.
+- **AppNav:** navegación entre Tareas, Analíticas, Ajustes y Estado. Los chats no tienen enlace propio: se listan en la barra lateral, por fecha, y los de un proyecto muestran su nombre debajo del título. El enlace activo lleva subrayado en `--signal` y `aria-current="page"`.
 - **Panel:** contenedor con borde `--line`, radio 10 px y título h2.
 - **KPI:** etiqueta, valor grande y pista opcional.
 - **Periodo (pills):** selector de periodos. El activo usa `--surface-2`.

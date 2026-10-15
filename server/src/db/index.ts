@@ -406,6 +406,20 @@ const migrations: Migration[] = [
       ALTER TABLE conversations ADD COLUMN cuota_modelo TEXT;
     `,
   },
+  {
+    // Claves de proveedor (Groq, NVIDIA, Gemini) guardadas desde Ajustes, cifradas con la clave maestra.
+    // Una fila por proveedor; el valor nunca sale por la API.
+    name: "021_claves_proveedor",
+    sql: `
+      CREATE TABLE provider_keys (
+        proveedor TEXT PRIMARY KEY,
+        iv TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        value_enc TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

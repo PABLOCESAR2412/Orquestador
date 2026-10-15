@@ -782,8 +782,8 @@ function DetalleTarea({ id }: { id: string }) {
       void qc.invalidateQueries({ queryKey: ["task", id] });
       return;
     }
-    // Los pasos de los chats no son de esta tarea.
-    if (evento.tipo === "actividad") return;
+    // Los pasos y los turnos de los chats no son de esta tarea.
+    if (evento.tipo === "actividad" || evento.tipo === "chat") return;
     void qc.invalidateQueries({ queryKey: ["task", id] });
     void qc.invalidateQueries({ queryKey: ["tasks"] });
     // Solo cuando la tarea ya no puede cambiar: el diff y la salida quedan listos.

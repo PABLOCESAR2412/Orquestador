@@ -122,6 +122,25 @@ export function sanearDetalle(texto: string, maximo = 160): string {
     .slice(0, maximo);
 }
 
+// Motivos que el servidor devuelve dentro de una respuesta correcta (instalación y login), no como error HTTP.
+export function motivoTexto(motivo: string | null): string | null {
+  if (!motivo) return null;
+  switch (motivo) {
+    case "npm_fallo":
+      return "npm no pudo instalar OpenCode. Revisa la salida de abajo.";
+    case "no_visible_tras_instalar":
+      return "La instalación terminó, pero el CLI no aparece en el servidor. Revisa la salida de abajo.";
+    case "tiempo_agotado":
+      return "La operación tardó demasiado y se detuvo.";
+    case "login_no_completado":
+      return "El inicio de sesión no se completó. Vuelve a intentarlo.";
+    case "cancelado":
+      return "Inicio de sesión cancelado.";
+    default:
+      return "No se pudo completar la operación.";
+  }
+}
+
 export function errorText(err: unknown): string {
   if (err instanceof ApiError) {
     switch (err.code) {
@@ -220,6 +239,50 @@ export function errorText(err: unknown): string {
         return "Ese proyecto ya no existe.";
       case "invalid_project_name":
         return "El nombre del proyecto debe tener entre 1 y 60 caracteres.";
+      case "confirmacion_requerida":
+        return "Confirma la instalación para continuar.";
+      case "instalacion_en_curso":
+        return "Ya hay una instalación en marcha. Espera a que termine.";
+      case "npm_no_disponible":
+        return "No encuentro npm en el servidor. Hace falta Node.js (que trae npm) instalado en el VM.";
+      case "ya_instalada":
+        return "OpenCode ya está instalado en el servidor.";
+      case "herramienta_desconocida":
+        return "Esa herramienta no se puede instalar desde Telo.";
+      case "codex_no_instalado":
+        return "Codex no está instalado en el servidor, así que no se puede iniciar sesión desde aquí.";
+      case "login_en_curso":
+        return "Ya hay un inicio de sesión en curso. Termínalo o cancélalo antes de empezar otro.";
+      case "skill_nombre_invalido":
+        return "El nombre usa solo minúsculas, números y guiones, sin guiones seguidos ni al principio o al final, y hasta 64 caracteres.";
+      case "skill_sin_frontmatter":
+        return "La skill necesita una cabecera entre tres guiones con name y description.";
+      case "skill_nombre_no_coincide":
+        return "El name de la cabecera debe ser igual al nombre de la skill.";
+      case "skill_sin_descripcion":
+        return "La cabecera necesita una description con lo que hace la skill y cuándo usarla.";
+      case "skill_descripcion_larga":
+        return "La description puede tener hasta 1 024 caracteres.";
+      case "skill_demasiado_grande":
+        return "La skill puede pesar hasta 64 KB.";
+      case "skill_contiene_secreto":
+        return "La skill contiene un secreto del servidor o una credencial. Quítalo y vuelve a guardar.";
+      case "skill_ruta_no_permitida":
+        return "La carpeta de la skill es un enlace o no es una carpeta normal, así que Telo no la toca.";
+      case "skill_no_encontrada":
+        return "Esa skill ya no existe.";
+      case "skill_no_guardada":
+        return "No se pudo guardar la skill. El archivo anterior sigue igual.";
+      case "skill_con_archivos":
+        return "La carpeta tiene otros archivos además de SKILL.md. Bórralos en tu equipo y vuelve a intentarlo.";
+      case "skill_contenido_invalido":
+        return "Falta el contenido de la skill.";
+      case "memoria_demasiado_larga":
+        return "La memoria puede tener hasta 4 000 caracteres. Acórtala y vuelve a guardar.";
+      case "registros_no_disponibles":
+        return "Los registros solo se leen en el servidor, con systemd (el VM). Aquí no hay un servicio que leer.";
+      case "sin_permiso_diario":
+        return "El usuario del servidor no puede leer el diario del sistema. En el VM hay que añadirlo al grupo systemd-journal.";
       case "invalid_instrucciones":
         return "Las instrucciones pueden tener hasta 8 000 caracteres.";
       case "archivo_binario":
@@ -232,6 +295,12 @@ export function errorText(err: unknown): string {
         return "El valor debe tener entre 1 y 8 192 caracteres.";
       case "secret_not_found":
         return "Ese secreto ya no existe.";
+      case "proveedor_desconocido":
+        return "Ese proveedor no existe en Telo.";
+      case "clave_proveedor_invalida":
+        return "La clave no tiene el formato esperado. Pégala completa, sin espacios ni saltos de línea.";
+      case "proveedor_sin_clave":
+        return "Este proveedor no tiene una clave guardada en Telo.";
       case "clave_existente":
         return "Este proyecto ya tiene una clave de GitHub. Bórrala antes de crear otra.";
       case "clave_sin_cifrado":

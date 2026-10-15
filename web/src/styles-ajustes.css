@@ -489,6 +489,18 @@
 }
 .aj-entrada-vacia > span { color: var(--ink-2); letter-spacing: 0; }
 
+/* Clave de proveedor guardable: campo y botones en una fila; en móvil se parten en líneas */
+.aj-clave-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* El campo ocupa su propia fila; Guardar y Quitar van juntos debajo. 16 px: iOS no amplía la página al escribir. */
+.aj-clave-fila .aj-input { flex: 1 1 100%; font-size: 16px; }
+.aj-clave-fila .aj-btn { flex: 0 0 auto; }
+
 /* Gasto del proveedor frente al presupuesto global */
 .aj-presupuesto {
   display: flex;
@@ -700,4 +712,22 @@
   display: flex;
   gap: 8px;
   margin-left: auto;
+}
+
+/* Registros del servicio: texto de ancho fijo que se desliza dentro de su caja, sin mover la página. */
+.aj-registros-texto {
+  box-sizing: border-box;
+  max-width: 100%;
+  max-height: 360px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
 }
