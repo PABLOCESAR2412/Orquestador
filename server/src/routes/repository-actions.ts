@@ -179,8 +179,14 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
           const head = await gitOkSeguro(["rev-parse", "--verify", "HEAD"], { cwd }).catch(
             () => null,
           );
-          if (head) throw new Error("El proyecto ya tiene Git y un commit inicial.");
-        } else await gitOk(["init", "-b", "main"], { cwd });
+          if (head) {
+            return {
+              mensaje: "El repositorio ya está inicializado y cuenta con commits previos. Está listo para usarse.",
+            };
+          }
+        } else {
+          await gitOk(["init", "-b", "main"], { cwd });
+        }
         const cfg = configGit(row.project_id);
         await gitOkSeguro(
           [

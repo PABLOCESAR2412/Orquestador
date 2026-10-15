@@ -47,18 +47,24 @@ type Sesion = {
   url: string | null;
   codigo: string | null;
   salida: string;
-  proc: Bun.Subprocess<"ignore", "pipe", "pipe"> | null;
+  proc: Bun.Subprocess<"ignore" | "pipe", "pipe", "pipe"> | null;
   cancelada: boolean;
 };
 
 let sesion: Sesion | null = null;
 
-function archivoDeSesion(): string {
-  return join(carpetaHome(), ".codex", "auth.json");
-}
+const POSIBLES_ARCHIVOS_AUTH = [
+  join(carpetaHome(), ".codex", "auth.json"),
+  join(carpetaHome(), ".config", "codex", "auth.json"),
+  join(carpetaHome(), ".codex", "config.json"),
+  join(carpetaHome(), ".config", "codex", "config.json"),
+  join(carpetaHome(), ".codex", "session.json"),
+  join(carpetaHome(), ".local", "share", "opencode", "auth.json"),
+  join(carpetaHome(), ".config", "opencode", "auth.json"),
+];
 
 export function sesionCodexConectada(): boolean {
-  return existsSync(archivoDeSesion());
+  return POSIBLES_ARCHIVOS_AUTH.some((ruta) => existsSync(ruta));
 }
 
 function entornoMinimo(): Record<string, string> {
@@ -97,9 +103,9 @@ export function iniciarLoginCodex(): LoginCodex {
   if (sesion?.estado === "esperando") throw new LoginError("login_en_curso", 409);
   if (hallarEjecutable(PROGRAMA) === null) throw new LoginError("codex_no_instalado", 503);
 
-  let proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
+  let proc: Bun.Subprocess<"ignore" | "pipe", "pipe", "pipe">;
   try {
-    proc = lanzarEnGrupo([PROGRAMA, ...ARGUMENTOS], entornoMinimo());
+    proc = lanzarEnGrupo([PROGRAMA, ...ARGUMENTOS], entornoMinimo(), "pipe");
   } catch {
     throw new LoginError("codex_no_instalado", 503);
   }
@@ -116,6 +122,31 @@ export function iniciarLoginCodex(): LoginCodex {
   };
   sesion = actual;
   void seguir(actual, proc);
+  return estadoLoginCodex();
+}
+
+export async function confirmarLoginCodex(): Promise<LoginCodex> {
+  if (sesionCodexConectada()) {
+    if (sesion) sesion.estado = "conectado";
+    return estadoLoginCodex();
+  }
+  // Si el CLI está en ejecución, enviar Enter en caso de que esté esperando confirmación interactiva
+  if (sesion?.estado === "esperando" && sesion.proc) {
+    try {
+      const stdin = sesion.proc.stdin;
+      if (stdin && typeof stdin === "object" && "write" in stdin) {
+        // Enviar salto de línea
+        (stdin as { write: (d: Uint8Array) => void; flush?: () => void }).write(new TextEncoder().encode("\n"));
+        (stdin as { flush?: () => void }).flush?.();
+      }
+    } catch {
+      // Ignorar si el stdin no admite escritura
+    }
+    await Bun.sleep(1200);
+    if (sesionCodexConectada()) {
+      sesion.estado = "conectado";
+    }
+  }
   return estadoLoginCodex();
 }
 

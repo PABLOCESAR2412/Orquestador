@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { proveedorConClave, tieneClaveProveedor } from "../claves-proveedor";
-import { cancelarLoginCodex, estadoLoginCodex, iniciarLoginCodex, LoginError, sesionCodexConectada } from "../login-cli";
+import { cancelarLoginCodex, confirmarLoginCodex, estadoLoginCodex, iniciarLoginCodex, LoginError, sesionCodexConectada } from "../login-cli";
 import { hallarEjecutable } from "../ejecutable";
 
 
@@ -113,3 +113,4 @@ providers.post("/providers/codex/login", (c) => {
   }
 });
 providers.delete("/providers/codex/login", (c) => c.json(cancelarLoginCodex()));
+providers.post("/providers/codex/confirmar", async (c) => c.json(await confirmarLoginCodex()));

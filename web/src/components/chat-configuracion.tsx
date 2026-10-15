@@ -1,4 +1,5 @@
 import { useRef, useState, type KeyboardEvent } from "react";
+import { Link } from "@tanstack/react-router";
 import type { Conversation, Documento, ModelInfo } from "../api";
 import { effortLabel, nombreProveedor } from "../lib/model";
 import { useDialogo } from "./controls";
@@ -123,9 +124,25 @@ export function ChatConfiguracion({
               <span className="tl-campo-valor">
                 {conversacion.project_name ?? "Sin proyecto: el chat trabaja en su carpeta temporal"}
               </span>
-              <span className="tl-etiqueta-solo-lectura">Solo lectura</span>
+              {conversacion.project_id ? (
+                <Link
+                  to="/proyectos/$id"
+                  params={{ id: conversacion.project_id }}
+                  className="tl-boton tl-boton-compacto"
+                  style={{ textDecoration: "none" }}
+                  onClick={onCerrar}
+                >
+                  Ir al proyecto
+                </Link>
+              ) : (
+                <span className="tl-etiqueta-solo-lectura">Solo lectura</span>
+              )}
             </span>
-            <span className="tl-campo-ayuda">El proyecto se elige al crear el chat.</span>
+            <span className="tl-campo-ayuda">
+              {conversacion.project_id
+                ? "Abre la carpeta, el resumen y las instrucciones completas del proyecto."
+                : "El proyecto se elige al crear el chat."}
+            </span>
           </div>
 
           <ListaDocumentos conversacionId={conversacion.id} onVer={onVerDocumento} />

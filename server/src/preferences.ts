@@ -8,6 +8,7 @@ export type Preferences = {
   fallbackModel: string | null;
   monthlyBudgetUsd: number | null;
   budgetAlertPercent: number;
+  compartirContextoChats: boolean;
 };
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -16,6 +17,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   fallbackModel: null,
   monthlyBudgetUsd: null,
   budgetAlertPercent: 80,
+  compartirContextoChats: false,
 };
 
 const KEY = "preferences";

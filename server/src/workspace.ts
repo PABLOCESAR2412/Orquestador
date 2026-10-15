@@ -29,6 +29,7 @@ import {
 } from "./git";
 import { archivosConSecretos, redactar } from "./redaccion";
 import { valorSecreto, valoresDeProyecto } from "./secretos";
+import { tokenGithubGlobal } from "./github-auth";
 
 // Copias de trabajo de las tareas de proyecto con Git. Cada tarea trabaja en su clon
 // (DATA_DIR/tasks/<id>/repo, rama telo/<id8>). Nada sale a GitHub sin aprobación del usuario:
@@ -628,7 +629,7 @@ async function subirAprobado(
   // Con clave SSH del proyecto, la subida va por SSH con esa clave. Sin ella, va por HTTPS con el
   // GITHUB_TOKEN del proyecto, si existe. La clave tiene prioridad: el token no se usa si hay clave.
   const refspec = `${head}:refs/heads/${ctx.rama}`;
-  const token = ctx.projectId ? valorSecreto(ctx.projectId, "GITHUB_TOKEN") || null : null;
+  const token = (ctx.projectId ? valorSecreto(ctx.projectId, "GITHUB_TOKEN") || null : null) || tokenGithubGlobal();
   const destinoSsh =
     !token && ctx.projectId && clavePublicaDe(ctx.projectId) ? urlSshDeGithub(remoto) : null;
   if (!token && !destinoSsh) throw new ErrorTarea("credenciales_git_faltantes", 409);

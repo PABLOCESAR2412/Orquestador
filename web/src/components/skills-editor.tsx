@@ -13,13 +13,15 @@ function plantilla(nombre: string): string {
 
 // Lista y editor de skills. Sin projectId trabaja con las globales; con projectId, con las del proyecto.
 // El nombre de la carpeta es la clave: no hay renombrado, se crea de nuevo y se quita la anterior.
-export function SkillsEditor({ projectId, ayuda }: { projectId?: string; ayuda: string }) {
+export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string; ayuda: string; titulo?: string }) {
   const qc = useQueryClient();
   const ambito = projectId ?? "global";
   const [seleccion, setSeleccion] = useState<string | null>(null);
   const [nueva, setNueva] = useState(false);
   const [creando, setCreando] = useState(false);
   const [nombreNuevo, setNombreNuevo] = useState("");
+  const [contenidoNuevo, setContenidoNuevo] = useState("");
+  const [urlNueva, setUrlNueva] = useState("");
   const [errorNombre, setErrorNombre] = useState<string | null>(null);
   const [borrador, setBorrador] = useState("");
   const [confirmandoQuitar, setConfirmandoQuitar] = useState(false);
@@ -29,6 +31,24 @@ export function SkillsEditor({ projectId, ayuda }: { projectId?: string; ayuda: 
     queryKey: ["skill", ambito, seleccion],
     queryFn: () => api.getSkill(seleccion ?? "", projectId),
     enabled: seleccion !== null && !nueva,
+  });
+
+  const buscarCatalogo = useMutation({
+    mutationFn: () => api.searchSkills(nombreNuevo.trim()),
+  });
+
+  const importarUrl = useMutation({
+    mutationFn: (url: string) => {
+      if (!projectId) throw new Error("Importar por URL solo está disponible para proyectos");
+      return api.saveProjectSkill(projectId, { url });
+    },
+    onSuccess: () => {
+      setCreando(false);
+      setNombreNuevo("");
+      setContenidoNuevo("");
+      setUrlNueva("");
+      refrescar();
+    },
   });
 
   // Al llegar el contenido guardado, el borrador empieza igual que el archivo.
@@ -46,6 +66,19 @@ export function SkillsEditor({ projectId, ayuda }: { projectId?: string; ayuda: 
     onSuccess: () => {
       setNueva(false);
       refrescar();
+    },
+  });
+
+  const guardarCreada = useMutation({
+    mutationFn: (datos: { nombre: string; contenido: string }) =>
+      api.saveSkill(datos.nombre, datos.contenido, projectId),
+    onSuccess: (_, variables) => {
+      setCreando(false);
+      setNombreNuevo("");
+      setContenidoNuevo("");
+      setUrlNueva("");
+      refrescar();
+      abrir(variables.nombre);
     },
   });
 
@@ -70,6 +103,11 @@ export function SkillsEditor({ projectId, ayuda }: { projectId?: string; ayuda: 
   }
 
   function empezarNueva() {
+    if (urlNueva.trim()) {
+      importarUrl.mutate(urlNueva.trim());
+      return;
+    }
+
     const nombre = nombreNuevo.trim();
     if (!NOMBRE.test(nombre) || nombre.length > 64) {
       setErrorNombre(errorText(new ApiError(400, "skill_nombre_invalido")));
@@ -80,8 +118,19 @@ export function SkillsEditor({ projectId, ayuda }: { projectId?: string; ayuda: 
       return;
     }
     setErrorNombre(null);
+
+    if (contenidoNuevo.trim()) {
+      const contenidoFinal = contenidoNuevo.startsWith("---")
+        ? contenidoNuevo
+        : `---\nname: ${nombre}\ndescription: ${nombre}\n---\n\n${contenidoNuevo}`;
+      guardarCreada.mutate({ nombre, contenido: contenidoFinal });
+      return;
+    }
+
     setCreando(false);
     setNombreNuevo("");
+    setContenidoNuevo("");
+    setUrlNueva("");
     setSeleccion(nombre);
     setNueva(true);
     setBorrador(plantilla(nombre));
@@ -100,50 +149,162 @@ export function SkillsEditor({ projectId, ayuda }: { projectId?: string; ayuda: 
 
   return (
     <div className="skills">
-      <div className="skills-cabecera">
-        <p className="aj-nota">{ayuda}</p>
+      <div className="skills-cabecera" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+        <div>
+          {titulo && <h2 className="panel-title" style={{ margin: "0 0 6px 0" }}>{titulo}</h2>}
+          <p className="aj-nota" style={{ margin: 0 }}>{ayuda}</p>
+        </div>
         {!creando && (
-          <button type="button" className="aj-btn" onClick={() => setCreando(true)}>
+          <button
+            type="button"
+            className="aj-btn aj-btn-primario"
+            style={{ whiteSpace: "nowrap" }}
+            onClick={() => {
+              setCreando(true);
+              setNombreNuevo("");
+              setContenidoNuevo("");
+              setUrlNueva("");
+              setErrorNombre(null);
+              buscarCatalogo.reset();
+            }}
+          >
             Nueva skill
           </button>
         )}
       </div>
 
       {creando && (
-        // Sin <form>: la página de Ajustes ya es un formulario, y un formulario anidado no es válido.
-        <div className="skills-nueva">
+        <div className="skills-nueva" style={{ marginTop: 16, border: "1px solid var(--line)", borderRadius: 8, padding: 16 }}>
           <label className="skills-etiqueta" htmlFor="skills-nombre">
             Nombre de la skill
           </label>
-          <input
-            id="skills-nombre"
-            className="skills-entrada"
-            value={nombreNuevo}
-            onChange={(e) => setNombreNuevo(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                empezarNueva();
-              }
-            }}
-            autoComplete="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            aria-describedby="skills-nombre-ayuda"
-          />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              id="skills-nombre"
+              className="skills-entrada"
+              style={{ flex: "1 1 200px" }}
+              value={nombreNuevo}
+              placeholder="por-ejemplo-ssh"
+              onChange={(e) => setNombreNuevo(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  empezarNueva();
+                }
+              }}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              aria-describedby="skills-nombre-ayuda"
+            />
+            <button
+              type="button"
+              className="aj-btn"
+              disabled={!nombreNuevo.trim() || buscarCatalogo.isPending}
+              onClick={() => buscarCatalogo.mutate()}
+            >
+              {buscarCatalogo.isPending ? "Buscando…" : "Buscar en catálogos oficiales"}
+            </button>
+          </div>
           <p id="skills-nombre-ayuda" className="aj-nota">
-            Minúsculas, números y guiones. Será el nombre de la carpeta.
+            Minúsculas, números y guiones. Será el nombre de la carpeta de la skill.
           </p>
+
+          {buscarCatalogo.isSuccess && buscarCatalogo.data.length === 0 && (
+            <p className="aj-nota" style={{ color: "var(--text-muted)" }}>
+              Sin coincidencias en los catálogos oficiales. Puedes escribir tus instrucciones o importar desde una URL.
+            </p>
+          )}
+
+          {buscarCatalogo.data && buscarCatalogo.data.length > 0 && (
+            <div style={{ margin: "12px 0", maxHeight: 180, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 6, padding: "4px 8px" }}>
+              {buscarCatalogo.data.map((s) => (
+                <div key={s.url} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>{s.name}</span>
+                  <button
+                    type="button"
+                    className="aj-btn"
+                    style={{ fontSize: 12, padding: "2px 8px" }}
+                    disabled={importarUrl.isPending}
+                    onClick={() => importarUrl.mutate(s.url)}
+                  >
+                    Instalar {s.name}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <label className="skills-etiqueta" htmlFor="skills-contenido-nuevo" style={{ marginTop: 12 }}>
+            Instrucciones o prompt (opcional si usas plantilla)
+          </label>
+          <textarea
+            id="skills-contenido-nuevo"
+            className="skills-texto"
+            rows={4}
+            value={contenidoNuevo}
+            onChange={(e) => setContenidoNuevo(e.target.value)}
+            placeholder="Pega aquí el contenido o las instrucciones paso a paso de la skill..."
+            spellCheck={false}
+          />
+
+          <label className="skills-etiqueta" htmlFor="skills-url-nueva" style={{ marginTop: 12 }}>
+            URL del SKILL.md en GitHub (opcional)
+          </label>
+          <input
+            id="skills-url-nueva"
+            className="skills-entrada"
+            type="url"
+            value={urlNueva}
+            onChange={(e) => setUrlNueva(e.target.value)}
+            placeholder="https://github.com/…/blob/main/…/SKILL.md"
+          />
+
           {errorNombre && (
-            <p className="aj-error" role="alert">
+            <p className="aj-error" role="alert" style={{ marginTop: 8 }}>
               {errorNombre}
             </p>
           )}
-          <div className="instalar-acciones">
-            <button type="button" className="aj-btn aj-btn-primario" onClick={empezarNueva}>
-              Crear
-            </button>
-            <button type="button" className="aj-btn" onClick={() => setCreando(false)}>
+          {importarUrl.isError && (
+            <p className="aj-error" role="alert" style={{ marginTop: 8 }}>
+              {errorText(importarUrl.error)}
+            </p>
+          )}
+          {guardarCreada.isError && (
+            <p className="aj-error" role="alert" style={{ marginTop: 8 }}>
+              {errorText(guardarCreada.error)}
+            </p>
+          )}
+
+          <div className="instalar-acciones" style={{ marginTop: 16 }}>
+            {urlNueva.trim() ? (
+              <button
+                type="button"
+                className="aj-btn aj-btn-primario"
+                disabled={importarUrl.isPending}
+                onClick={empezarNueva}
+              >
+                {importarUrl.isPending ? "Importando…" : "Importar SKILL.md"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="aj-btn aj-btn-primario"
+                disabled={!nombreNuevo.trim() || guardarCreada.isPending}
+                onClick={empezarNueva}
+              >
+                {guardarCreada.isPending ? "Guardando…" : "Crear skill"}
+              </button>
+            )}
+            <button
+              type="button"
+              className="aj-btn"
+              onClick={() => {
+                setCreando(false);
+                setErrorNombre(null);
+                buscarCatalogo.reset();
+              }}
+            >
               Cancelar
             </button>
           </div>

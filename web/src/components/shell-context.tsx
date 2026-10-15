@@ -29,6 +29,11 @@ interface ShellContextType {
   nuevoProyectoAbierto: boolean;
   setNuevoProyectoAbierto: (open: boolean) => void;
   abrirNuevoProyecto: () => void;
+  // Proyecto del chat actualmente visible
+  activeProjectId: string | null;
+  setActiveProjectId: (id: string | null) => void;
+  activeProjectName: string | null;
+  setActiveProjectName: (name: string | null) => void;
 }
 
 const ShellContext = createContext<ShellContextType | null>(null);
@@ -40,6 +45,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [configAbierta, setConfigAbierta] = useState(false);
   const [nuevoProyectoAbierto, setNuevoProyectoAbierto] = useState(false);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [activeProjectName, setActiveProjectName] = useState<string | null>(null);
   const navigate = useNavigate();
   const routerState = useRouterState();
 
@@ -92,6 +99,10 @@ export function ShellProvider({ children }: { children: ReactNode }) {
         nuevoProyectoAbierto,
         setNuevoProyectoAbierto,
         abrirNuevoProyecto,
+        activeProjectId,
+        setActiveProjectId,
+        activeProjectName,
+        setActiveProjectName,
       }}
     >
       {children}
