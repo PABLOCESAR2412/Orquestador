@@ -16,7 +16,7 @@ import {
 } from "../lib/notificaciones";
 import { AlmacenamientoServidor, ErrorConReintento, EstadoServidor, useMuestrasLatencia } from "./servidor";
 import "../styles-ajustes.css";
-import { InstalarOpenCode } from "../components/instalar-opencode";
+import { InstalarHerramienta } from "../components/instalar-herramienta";
 import { LoginCodexPanel } from "../components/login-codex";
 import { SkillsEditor } from "../components/skills-editor";
 
@@ -699,8 +699,12 @@ function TarjetaProveedor({
         </p>
       )}
       {nota && <p className="aj-nota aj-nota-aviso">{nota}</p>}
-      {p.id === "opencode" && !p.configured && <InstalarOpenCode />}
-      {p.id === "codex" && <LoginCodexPanel />}
+      {p.id === "opencode" && !p.configured && <InstalarHerramienta id="opencode" nombre="OpenCode" />}
+      {p.id === "codex" && (
+        <InstalarHerramienta id="codex" nombre="Codex">
+          <LoginCodexPanel />
+        </InstalarHerramienta>
+      )}
     </article>
   );
 }

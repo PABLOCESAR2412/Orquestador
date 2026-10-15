@@ -31,6 +31,14 @@ const ACCIONES = {
     ejecutable: (prefijo) => join(prefijo, "bin", "opencode"),
     binario: "opencode",
   },
+  codex: {
+    nombre: "Codex",
+    comando: "npm install -g --prefix ~/.opencode @openai/codex",
+    programa: "npm",
+    argv: (prefijo) => ["install", "-g", "--prefix", prefijo, "@openai/codex"],
+    ejecutable: (prefijo) => join(prefijo, "bin", "codex"),
+    binario: "codex",
+  },
 } satisfies Record<string, Accion>;
 
 export type HerramientaInstalable = keyof typeof ACCIONES;

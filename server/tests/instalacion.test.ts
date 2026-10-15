@@ -117,6 +117,13 @@ describe("instalación de OpenCode", () => {
     expect(((await res.json()) as { error: string }).error).toBe("ya_instalada");
   });
 
+  test("Codex se consulta por la misma ruta y con su comando fijo", async () => {
+    const res = await herramientas.request("/herramientas/codex/instalacion");
+    expect(res.status).toBe(200);
+    const cuerpo = (await res.json()) as { comando: string };
+    expect(cuerpo.comando).toBe("npm install -g --prefix ~/.opencode @openai/codex");
+  });
+
   test("el ejecutable instalado queda dentro de ~/.opencode, que el agente ve en solo lectura", () => {
     expect(readFileSync(join(HOME_PRUEBA, ".opencode", "bin", "opencode"), "utf8")).toContain("opencode-falso");
   });

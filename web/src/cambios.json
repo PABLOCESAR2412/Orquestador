@@ -47,6 +47,12 @@
     { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Ajustes del servidor: estado del servicio y registros recientes, con secretos ocultos", "pr": null },
     { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Instalación de OpenCode desde Ajustes: se muestra el comando fijo, se confirma y la salida sale redactada", "pr": null },
     { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Skills globales en Ajustes y por proyecto, editables desde la app; OpenCode las lee en su carpeta", "pr": null },
-    { "fecha": "2026-10-14", "tipo": "grande", "titulo": "Inicio de sesión de Codex por código de dispositivo, ejecutado en el servidor sin exponer el token", "pr": null }
+    { "fecha": "2026-10-14", "tipo": "grande", "titulo": "Inicio de sesión de Codex por código de dispositivo, ejecutado en el servidor sin exponer el token", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Documentación de la fase 3 al día: estado de Codex y Claude según la documentación oficial de Anthropic", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Documentación del plan de acciones git desde los chats (commit, subir y PR con aprobación) y decisiones de token y ramas", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Codex se instala desde Ajustes con confirmación, y su inicio de sesión aparece cuando ya está instalado", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Un chat que supera los 3 minutos se detiene con un aviso claro, en vez de mostrar el código de salida 143", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "El agente tiene /tmp propio dentro de su sandbox: OpenCode ya no falla con sistema de solo lectura", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Se quita el nombre del proyecto debajo de cada chat en la barra lateral", "pr": null }
   ]
 }

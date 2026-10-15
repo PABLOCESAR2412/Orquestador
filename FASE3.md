@@ -2,7 +2,7 @@
 
 Documento de traspaso. Quien lo continúe debe leer también `CLAUDE.md`, `DESIGN.md` y `FASE2.md`.
 
-Rama: `feat/seguir-tras-cuota`. Último commit subido: `67a1c1d` (fase 3, correcciones tras probar en el VM). Las tareas 7, 9 y 10 están **sin commit**, pendientes de aprobación del usuario. No hay PR.
+Rama: `feat/seguir-tras-cuota`. Último commit subido: `79b126e` (merge con el remoto). Las tareas 7, 9 y Codex están en `502b781`. No hay PR.
 
 Leyenda: [x] hecho y verificado · [~] escrito, sin probar · [ ] pendiente
 
@@ -43,14 +43,20 @@ Lista de control. Se marca lo hecho en cada tarea y aquí a la vez.
 - [x] **Tarea 2.** Barra lateral: sin enlace Chat; chats de proyecto visibles con su nombre debajo. Verificada a 390 y 1440 px, sin desborde. `DESIGN.md` y `cambios.json` actualizados.
 - [x] **Tarea 3.** Modelos de Groq, NVIDIA y Gemini visibles cuando su clave llega al CLI; Gemini con dos variables; diagnóstico en Ajustes ("N modelos en el selector" o aviso si OpenCode no tiene modelos del proveedor). Verificado: `bun test` completo en verde (209), `tsc` limpio, y Playwright en Ajustes a 390 y 1440 px. **Pendiente en el VM:** confirmar el id `google` y el nombre de variable de NVIDIA con `opencode models`.
 - [x] **Tarea 4.** Vista de proyectos con métricas (chats, tareas, última actividad desde `GET /api/projects`) y acciones en iconos de 40 px. Verificada a 390 y 1440 px, claro y oscuro: métricas, 40 px, anclar desde el icono, confirmación al eliminar, sin desborde. Pruebas de servidor en `proyectos.test.ts`.
-- [~] **Tarea 5.** Cierre de la fase 3. Hecho: documentación, `cambios.json`, pruebas (servidor 246 en verde, `tsc` limpio, `bun run build`, navegador 29 de 29 en la tarea 7, 9 y 10). Falta: aprobación del commit y del push por el usuario.
+- [x] **Tarea 5.** Cierre de la fase 3. Hecho: documentación, `cambios.json`, pruebas (servidor 246 en verde, `tsc` limpio, `bun run build`, navegador 29 de 29 en las tareas 7, 9 y Codex). Subido con aprobación del usuario: `502b781` y merge `79b126e`.
 - [~] **Tarea 6.** Estado, logs y gasto de Azure en Ajustes. **Hecho:** estado de la unidad y registros (`GET /api/servidor/servicio` y `/logs`, con redacción y sin shell; botón Ver logs activo). Verificado en el navegador y en `servidor-logs.test.ts`. **Pendiente:** gasto de Azure, que espera la decisión del usuario sobre la identidad del VM (ver tarea 6, punto 3).
 - [x] **Tarea 7.** Skills globales y por proyecto, editables desde la app. Verificada en navegador a 390 y 1440 px, y en `skills.test.ts`. **Pendiente en el VM:** confirmar que OpenCode las lista.
 - [x] **Tarea 8.** Memoria del proyecto editable desde la app (`PUT /api/projects/:id/memoria`, con redacción y límite de 4 000 caracteres; botones Editar, Escribir, Guardar, Cancelar y Borrar). Verificada en el navegador a 390 y 1440 px, y en `proyectos.test.ts`. Supuesto confirmado en el código: "memoria" = memoria aprendida por proyecto.
 - [x] **Tarea 9.** Botón "Instalar" de OpenCode con confirmación en dos pasos y comando fijo, verificado con npm falso (`instalacion.test.ts`) y en navegador. **Pendiente en el VM:** que `npm` exista para el servicio, y que `opencode models` liste los modelos de la clave guardada.
-- [~] **Tarea 10.** Codex: login por código de dispositivo, verificado con CLI falso (`login-codex.test.ts`) y en navegador; **pendiente en el VM:** el comando exacto y el archivo de sesión. Gemini: clave de AI Studio (tarea 3). Claude gratis: **sin decisión del usuario, no implementado**.
+- [~] **Tarea 10.** Codex: login por código de dispositivo, verificado con CLI falso (`login-codex.test.ts`) y en navegador; **pendiente en el VM:** el comando exacto y el archivo de sesión. Instalar Codex desde Ajustes: hecho (misma tarjeta que el login, verificado en navegador a 390 y 1440 px). Gemini: clave de AI Studio (tarea 3). Claude: **investigado, no implementado** (ver tarea 10, punto b).
+- [ ] **Tarea 11.** Acciones git desde los chats (commit, subir y abrir PR, siempre con aprobación). Diseño decidido, sin implementar (ver Tarea 11). La protección de `main` en GitHub ya está hecha.
+- [ ] **Tarea 12.** Cola de mensajes del chat: si envías más mientras el agente responde, se ejecutan en orden. Hoy se rechazan con 409. Pendiente (ver Tarea 12).
+- [ ] **Tarea 13.** Wrangler (Cloudflare) instalable desde Ajustes, con inicio de sesión por código. Pendiente de dos decisiones (ver Tarea 13).
+- [x] **Corrección.** El error «opencode salió con código 143» ya no aparece: el chat explica el límite de 3 minutos. Causa en «Diagnóstico del 143».
+- [x] **Corrección.** `/tmp` propio dentro del sandbox: OpenCode ya no falla con «Read-only file system». Verificado con bwrap real.
+- [x] **Barra lateral.** Se quitó el nombre del proyecto debajo de cada chat. Verificada a 390 y 1440 px.
 
-Orden: tareas 1 a 5 primero (ya acordadas), luego 6 a 10 en el orden en que el usuario las pidió. Decisiones tomadas: skills globales y por proyecto (7), instalar OpenCode con confirmación (9), login de Codex en el VM (10a). Pendiente: Claude gratis (10b) y el gasto de Azure (6, necesita la identidad del VM).
+Orden: tareas 1 a 5 primero (ya acordadas), luego 6 a 10 en el orden en que el usuario las pidió. Decisiones tomadas: skills globales y por proyecto (7), instalar OpenCode con confirmación (9), login de Codex en el VM (10a). Pendiente: Claude gratis (10b), el gasto de Azure (6, necesita la identidad del VM) y las acciones git desde los chats (11).
 
 Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir el servidor antes de tocar la web. Si una prueba depende de tiempos, subir la espera de `esperar()`, no quitar la comprobación.
 
@@ -248,24 +254,137 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 **Decisiones.**
 - **(a) Codex:** aprobado el login de dispositivo, ejecutado en el VM.
-- **(b) Claude gratis:** **sin decisión del usuario; no se implementa.** La recomendación sigue siendo no copiar tokens. La vía que queda es una clave de API de pago por uso, con el mismo flujo que Groq (tarea 9).
+- **(b) Claude gratis:** investigado en octubre de 2026. **Decisión del usuario: no añadir Claude por ahora.** Solo tiene el plan gratis; la única vía compatible (clave de API) es de pago. No se implementa ningún acceso con cuenta de Claude.
 - **Gemini:** se usa la clave de AI Studio (tarea 3). El inicio de sesión con Google de Telo (`oauth-google.ts`) no sirve para OpenCode.
+
+**Qué dice la documentación oficial (Claude Code, «Legal and compliance»).**
+- El OAuth de cuenta de consumo está pensado «exclusivamente» para quien compra Free, Pro, Max, Team o Enterprise y para las aplicaciones nativas de Anthropic.
+- Los desarrolladores que construyen productos deben usar **clave de API** (Claude Console) o un proveedor de nube. Anthropic **no permite** a terceros «enrutar solicitudes con credenciales de los planes Free, Pro o Max en nombre de sus usuarios», ni «recoger, almacenar o intermediar credenciales o tokens de sesión de Claude.ai».
+- Sí está permitido que una persona inicie sesión con su propia suscripción en el **binario oficial de Claude Code, sin modificar**.
+
+**Qué significa para Telo.**
+- Telo no usa Claude Code para los agentes: usa OpenCode. Usar el OAuth de una cuenta de consumo desde OpenCode, o guardar o reenviar un token de Claude, cae en lo que la documentación prohíbe. **Descartado.**
+- Copiar tokens de claude.ai o de la app de escritorio: **descartado** (mismo motivo).
+- Un runner nuevo que ejecute el binario oficial de Claude Code con la sesión de la persona sería la única vía con cuenta de consumo. Tendría que confirmarse que el plan gratis incluye Claude Code, y eso no se ha podido comprobar: la página de soporte de Anthropic no se pudo leer y las fuentes secundarias no coinciden. **No se recomienda con plan gratis.**
+- **Ruta compatible:** clave de API de Claude Console, con el mismo flujo de tarjeta que Groq y NVIDIA. Es de pago por uso. Hay que confirmar el nombre de la variable que lee OpenCode (`ANTHROPIC_API_KEY`) con `opencode models`.
+
+**Qué hacer (solo si el usuario tiene plan de pago y lo pide).**
+1. `server/src/claves-proveedor.ts`: añadir Anthropic con `ANTHROPIC_API_KEY`, igual que Groq.
+2. `server/src/routes/providers.ts`: tarjeta guardable.
+3. Pruebas: `claves-proveedor.test.ts` y `entorno-proveedores.test.ts`, con el modelo `anthropic/...` en el CLI falso.
 
 **Cómo quedó (Codex).**
 - `server/src/login-cli.ts` lanza `codex login --device-auth` en su propio grupo de procesos, con entorno mínimo. Lee la salida mientras el CLI espera y extrae la URL y el código.
 - Rutas: `GET`, `POST` y `DELETE /api/providers/codex/login`. Una sesión a la vez (409 si ya hay una). Tiempo máximo de 15 minutos. Cancelar termina el grupo.
 - **El token no se lee ni se muestra.** La salida se redacta. El éxito se decide por salida 0 y porque exista el archivo de sesión; ese archivo solo se comprueba, nunca se abre.
 - `~/.codex` no está en la lista de bubblewrap: los agentes no lo ven.
-- En la tarjeta de Codex: "Iniciar sesión" → enlace y código → "Sesión iniciada en el servidor."
+- En la tarjeta de Codex: «Iniciar sesión» → enlace y código → «Sesión iniciada en el servidor». «Ya lo hice» comprueba el estado y mantiene el enlace mientras el CLI espera.
 - Codex **no** es todavía proveedor de los agentes. La tarjeta lo dice.
 
-**Verificado.** `server/tests/login-codex.test.ts` (4 pruebas) con un CLI falso que imprime un token de prueba: el token no aparece en ninguna respuesta, cancelar no deja procesos y sin CLI responde `codex_no_instalado`. En navegador: enlace, código y sesión iniciada, a 390 y 1440 px.
+**Verificado.** `server/tests/login-codex.test.ts` (4 pruebas) con un CLI falso que imprime un token de prueba: el token no aparece en ninguna respuesta, cancelar no deja procesos y sin CLI responde `codex_no_instalado`. En navegador: enlace, código, «Ya lo hice» y sesión iniciada, a 390 y 1440 px.
 
 **No verificado (importante).**
-- La documentación oficial de Codex (`developers.openai.com/codex/auth`) no se pudo leer en esta sesión: el permiso de lectura caducó y la página redirige a `learn.chatgpt.com/docs/auth`. El comando `codex login --device-auth` y la ruta `~/.codex/auth.json` vienen de fuentes de terceros. Antes de darlo por bueno en el VM: `codex login --help` y comprobar qué archivo crea.
+- La documentación oficial de Codex (`developers.openai.com/codex/auth`) no se pudo leer en esta sesión. El comando `codex login --device-auth` y la ruta `~/.codex/auth.json` vienen de fuentes de terceros. Antes de darlo por bueno en el VM: `codex login --help` y comprobar qué archivo crea.
+- **Términos de OpenAI:** no revisados. Antes de usar la sesión de ChatGPT para agentes (con un runner de Codex), hay que comprobar que el caso está permitido.
 - No se sabe si el CLI de Codex está instalado en el VM. Si no lo está, la app lo dice.
 
 **Cambios.** `cambios.json`: grande (entrada añadida, según el plan).
+
+---
+
+## Tarea 11. Acciones git desde los chats (pendiente)
+
+**Objetivo.** Que un chat con proyecto pueda crear commits, subir una rama y abrir PR sin que el usuario copie comandos. Ninguna acción se ejecuta sin aprobación explícita en Telo. El agente nunca recibe la clave SSH ni el token de GitHub.
+
+**Decisiones (confirmadas por el usuario).**
+- Permiso por defecto de un chat: **sin git**. Quien quiera git lo activa en la configuración del chat. Los niveles intermedios quedan por definir.
+- Ramas: solo `telo/<id>`. Nunca `main`, nunca force push, nunca borrar ramas y nunca merge. El merge lo hace el usuario.
+- **Subir** (push) sigue con la deploy key y con aprobación previa. Un PR necesita que la rama exista en GitHub, así que "solo PR" no quita el push: es el paso anterior.
+- **PR**: el token de la API tiene solo el permiso *Pull requests: Read and write* (*Metadata: Read* se añade solo), un solo repo y vencimiento de 90 días. Se guarda como secreto `GITHUB_PR_TOKEN`, separado de `GITHUB_TOKEN`, que hoy es el respaldo del push por HTTPS. Si la API responde 403 al crear el PR, se añade *Contents: Read* y se documenta.
+- **Protección de `main`** en GitHub: hecha por el usuario (*Require a pull request* con 0 aprobaciones, *Do not allow bypassing*, sin force push ni borrado). **Pendiente:** comprobar con un `git push` directo a `main` que GitHub lo rechaza.
+
+**Cómo debe funcionar.**
+1. El chat trabaja en un clon propio, como las tareas (`workspace.ts`). Hoy un chat con proyecto trabaja en la carpeta del proyecto, así que esto hay que cambiarlo antes.
+2. El agente pide una acción escribiendo `.telo/solicitudes/*.json` en su clon. El servidor lee la solicitud al terminar cada turno y valida todo contra su propio estado. La carpeta `.telo` no entra en los commits.
+3. Tarjetas en el chat, una por acción: **Commit** (diff resumido, mensaje y rama), **Subir** (rama `telo/<id>`) y **Abrir PR** (título y cuerpo redactados por el agente y editables por el usuario). Cada una con Aprobar y Rechazar.
+4. Cada aprobación queda ligada a lo que se aprobó: hash del diff en el commit, SHA del commit en el push y hash de título y cuerpo en el PR. Si algo cambia, la aprobación caduca. Se reutilizan `task_approvals` y la interfaz de `tarea-plan.tsx`.
+5. El resultado (SHA, rama o URL del PR) se escribe en el chat y se pasa al agente en el siguiente turno.
+
+**Qué debe saber cada chat.** Una skill global `telo-git` (sistema de skills de la tarea 7): cómo pedir una acción, que solo puede pedir, las reglas de rama y de mensaje, y que nunca use `git push` ni `gh`. Las instrucciones del proyecto añaden la convención de commits y la plantilla de PR. El chat no recibe claves, tokens ni URLs con credenciales.
+
+**Lo que ya existe y se reutiliza.**
+- `git.ts` desactiva los hooks del repo (`core.hooksPath=/dev/null`) y quita filtros, credenciales y `url.*` en los comandos del servidor.
+- `subirAprobado` (`workspace.ts`) empuja solo `HEAD:refs/heads/telo/<id>`, sin force, y exige un commit aprobado con el hash coincidente.
+- El escaneo de secretos y de archivos sensibles se aplica antes de cada commit.
+
+**Implementación pendiente, en orden.**
+1. Clon propio para chats con proyecto (extender `workspace.ts`) y una migración nueva para el permiso por chat (la siguiente numerada).
+2. Permiso por chat en la configuración del chat, por `PATCH /api/conversations/:id`. Sin git por defecto.
+3. Lectura de `.telo/solicitudes/*.json` al terminar cada turno, con validación en el servidor.
+4. Tarjetas Commit y Subir, con la aprobación generalizada a chats.
+5. Acción Abrir PR con `GITHUB_PR_TOKEN`. Esto también resuelve la aprobación `pr`: hoy `plan.ts` y `tarea-plan.tsx` la muestran, pero `routes/tasks.ts` la rechaza con `invalid_accion`. Si se retrasa, hay que decidir si se quita.
+6. Skill `telo-git` y texto en las instrucciones del proyecto.
+7. Pruebas: sin git se rechaza la solicitud; las ramas fuera de `telo/*` se rechazan; `main` nunca; una aprobación caduca si cambia el diff, el SHA o el título; PR con API falsa; el token no aparece en ninguna respuesta ni en la salida del agente.
+8. Verificación: navegador a 390 y 1440 px, y una prueba real en un repo de prueba (commit, push a `telo/` y PR), con el push directo a `main` rechazado.
+
+**Riesgos.**
+- Instrucciones maliciosas en el código o en un issue: la aprobación es sobre el diff real, no sobre lo que diga el agente.
+- El agente no debe recibir `gh`, `git push` directo ni credenciales, porque necesitaría secretos dentro del aislamiento.
+- Un token mal acotado: por eso el de PR tiene permiso mínimo y su propio nombre de secreto.
+
+**Cambios.** `cambios.json`: grande, al implementarse.
+
+---
+
+## Diagnóstico del 143 («opencode salió con código 143»)
+
+**Causa.** `routes/chat.ts` limita cada turno del chat a 3 minutos (`TIEMPO_TURNO_MS`). Al llegar, `runners/opencode.ts` manda SIGTERM al grupo del agente, que sale con código 143 (128 + 15). `ejecutar.ts` lo trata como tiempo agotado, pero el chat mostraba el código tal cual.
+
+**Lo que se corrigió.** El chat dice: «El agente tardó más de 3 minutos y se detuvo. Divide la tarea en partes más pequeñas.» No se probó con un agente real de 3 minutos; el cambio comprueba el tiempo transcurrido, y la lógica es corta.
+
+**Causa secundaria (también corregida).** `/tmp` era de solo lectura dentro del sandbox de bubblewrap, así que OpenCode fallaba al escribir su `TMPDIR` (`/tmp/opencode`). El agente lo reportó como «Read-only file system». Se añadió `--tmpfs /tmp` en `runners/aislamiento.ts`. Verificado en esta máquina con bwrap real: sin el montaje falla con «Read-only file system»; con el montaje escribe, y el host no ve el archivo.
+
+**Pendiente.** Decidir si el límite de 3 minutos se queda o se sube. Ver Tarea 12, donde la cola de mensajes depende de esa decisión.
+
+---
+
+## Tarea 12. Cola de mensajes del chat (pendiente)
+
+**Hoy.** Si el chat está respondiendo, `POST /api/conversations/:id/messages` responde 409 `conversation_busy` (`motivoDeBloqueo` en `routes/chat.ts`). No hay cola.
+
+**Lo que pidió el usuario.** Si envía más mensajes mientras el agente trabaja, se ejecutan en el orden en que se enviaron.
+
+**Diseño propuesto.**
+1. Guardar el mensaje como pendiente en la conversación. Sigue habiendo un turno a la vez por chat (`ocuparConversacion`).
+2. Al terminar un turno, arrancar el siguiente pendiente, en orden de llegada.
+3. En el chat: «En cola (N)» y la opción de quitar un mensaje pendiente antes de que arranque.
+4. Si el servidor se reinicia con mensajes en cola, avisar como hoy (`avisarTurnosInterrumpidos`) y no ejecutarlos solos.
+5. Decisión del usuario: el límite de 3 minutos por turno se queda o sube.
+
+**Pruebas.** Dos mensajes seguidos: el segundo espera y se ejecuta después. Quitar un pendiente antes de que arranque. Reinicio con cola: no se ejecuta solo.
+
+**Cambio de tipo:** mediano.
+
+---
+
+## Tarea 13. Wrangler (Cloudflare) desde Ajustes (pendiente)
+
+**Qué se verificó.**
+- El paquete `wrangler` existe en npm (versión 4.151.0 en la revisión).
+- `wrangler login --device` existe en esa versión. No usa servidor de callback: muestra un enlace y un código, igual que el login de Codex. Lo dice la ayuda del CLI («útil en contenedores o sesiones SSH remotas») y la documentación de Cloudflare.
+- El login normal (`wrangler login`) redirige el navegador a `localhost:8976` de la PC del usuario. Si Wrangler corre en el servidor, ese callback nunca llega y el login se queda colgado. Por eso no se usa.
+
+**Diseño propuesto.**
+1. Instalar con el mismo mecanismo que Codex: una entrada nueva en `ACCIONES` (`instalacion.ts`), con el paquete `wrangler` y el binario `wrangler`.
+2. Iniciar sesión con `wrangler login --device` lanzado en el servidor, igual que `login-cli.ts`. Ajustes muestra el enlace y el código.
+3. Alternativa sin login: un token de API en `CLOUDFLARE_API_TOKEN`, guardado como secreto. Wrangler lo lee antes que cualquier login guardado.
+4. Las credenciales de Wrangler quedan en el HOME del servidor, que el agente no ve (aislamiento).
+
+**Decisiones pendientes del usuario.**
+- ¿Dónde vive la tarjeta? ¿Una tarjeta de Cloudflare entre los proveedores, o una sección de herramientas en Ajustes?
+- ¿Inicio de sesión con código (recomendado, no guarda nada tuyo fuera de Cloudflare) o token de API?
+
+**Cambio de tipo:** grande (integración nueva con credenciales).
 
 ---
 

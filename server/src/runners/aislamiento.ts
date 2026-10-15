@@ -115,6 +115,9 @@ export function prefijoAislamiento(cwd: string): string[] {
     "--unshare-ipc",
     "--die-with-parent",
   ];
+  // /tmp propio y vacío para cada ejecución. Sin esto, /tmp es de solo lectura dentro del sandbox y OpenCode
+  // falla al escribir su TMPDIR. Va después de "--ro-bind / /" y antes de lo que se monta encima.
+  args.push("--tmpfs", "/tmp");
   for (const ruta of [...new Set(ocultar)]) args.push("--tmpfs", ruta);
 
   if (home) {
