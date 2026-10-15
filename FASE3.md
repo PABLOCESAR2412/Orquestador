@@ -49,8 +49,9 @@ Lista de control. Se marca lo hecho en cada tarea y aquí a la vez.
 - [x] **Tarea 8.** Memoria del proyecto editable desde la app (`PUT /api/projects/:id/memoria`, con redacción y límite de 4 000 caracteres; botones Editar, Escribir, Guardar, Cancelar y Borrar). Verificada en el navegador a 390 y 1440 px, y en `proyectos.test.ts`. Supuesto confirmado en el código: "memoria" = memoria aprendida por proyecto.
 - [x] **Tarea 9.** Botón "Instalar" de OpenCode con confirmación en dos pasos y comando fijo, verificado con npm falso (`instalacion.test.ts`) y en navegador. **Pendiente en el VM:** que `npm` exista para el servicio, y que `opencode models` liste los modelos de la clave guardada.
 - [~] **Tarea 10.** Codex: login por código de dispositivo, verificado con CLI falso (`login-codex.test.ts`) y en navegador; **pendiente en el VM:** el comando exacto y el archivo de sesión. Gemini: clave de AI Studio (tarea 3). Claude: **investigado, no implementado** (ver tarea 10, punto b).
+- [ ] **Tarea 11.** Acciones git desde los chats (commit, subir y abrir PR, siempre con aprobación). Diseño decidido, sin implementar (ver Tarea 11). La protección de `main` en GitHub ya está hecha.
 
-Orden: tareas 1 a 5 primero (ya acordadas), luego 6 a 10 en el orden en que el usuario las pidió. Decisiones tomadas: skills globales y por proyecto (7), instalar OpenCode con confirmación (9), login de Codex en el VM (10a). Pendiente: Claude gratis (10b) y el gasto de Azure (6, necesita la identidad del VM).
+Orden: tareas 1 a 5 primero (ya acordadas), luego 6 a 10 en el orden en que el usuario las pidió. Decisiones tomadas: skills globales y por proyecto (7), instalar OpenCode con confirmación (9), login de Codex en el VM (10a). Pendiente: Claude gratis (10b), el gasto de Azure (6, necesita la identidad del VM) y las acciones git desde los chats (11).
 
 Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir el servidor antes de tocar la web. Si una prueba depende de tiempos, subir la espera de `esperar()`, no quitar la comprobación.
 
@@ -283,6 +284,50 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 - No se sabe si el CLI de Codex está instalado en el VM. Si no lo está, la app lo dice.
 
 **Cambios.** `cambios.json`: grande (entrada añadida, según el plan).
+
+---
+
+## Tarea 11. Acciones git desde los chats (pendiente)
+
+**Objetivo.** Que un chat con proyecto pueda crear commits, subir una rama y abrir PR sin que el usuario copie comandos. Ninguna acción se ejecuta sin aprobación explícita en Telo. El agente nunca recibe la clave SSH ni el token de GitHub.
+
+**Decisiones (confirmadas por el usuario).**
+- Permiso por defecto de un chat: **sin git**. Quien quiera git lo activa en la configuración del chat. Los niveles intermedios quedan por definir.
+- Ramas: solo `telo/<id>`. Nunca `main`, nunca force push, nunca borrar ramas y nunca merge. El merge lo hace el usuario.
+- **Subir** (push) sigue con la deploy key y con aprobación previa. Un PR necesita que la rama exista en GitHub, así que "solo PR" no quita el push: es el paso anterior.
+- **PR**: el token de la API tiene solo el permiso *Pull requests: Read and write* (*Metadata: Read* se añade solo), un solo repo y vencimiento de 90 días. Se guarda como secreto `GITHUB_PR_TOKEN`, separado de `GITHUB_TOKEN`, que hoy es el respaldo del push por HTTPS. Si la API responde 403 al crear el PR, se añade *Contents: Read* y se documenta.
+- **Protección de `main`** en GitHub: hecha por el usuario (*Require a pull request* con 0 aprobaciones, *Do not allow bypassing*, sin force push ni borrado). **Pendiente:** comprobar con un `git push` directo a `main` que GitHub lo rechaza.
+
+**Cómo debe funcionar.**
+1. El chat trabaja en un clon propio, como las tareas (`workspace.ts`). Hoy un chat con proyecto trabaja en la carpeta del proyecto, así que esto hay que cambiarlo antes.
+2. El agente pide una acción escribiendo `.telo/solicitudes/*.json` en su clon. El servidor lee la solicitud al terminar cada turno y valida todo contra su propio estado. La carpeta `.telo` no entra en los commits.
+3. Tarjetas en el chat, una por acción: **Commit** (diff resumido, mensaje y rama), **Subir** (rama `telo/<id>`) y **Abrir PR** (título y cuerpo redactados por el agente y editables por el usuario). Cada una con Aprobar y Rechazar.
+4. Cada aprobación queda ligada a lo que se aprobó: hash del diff en el commit, SHA del commit en el push y hash de título y cuerpo en el PR. Si algo cambia, la aprobación caduca. Se reutilizan `task_approvals` y la interfaz de `tarea-plan.tsx`.
+5. El resultado (SHA, rama o URL del PR) se escribe en el chat y se pasa al agente en el siguiente turno.
+
+**Qué debe saber cada chat.** Una skill global `telo-git` (sistema de skills de la tarea 7): cómo pedir una acción, que solo puede pedir, las reglas de rama y de mensaje, y que nunca use `git push` ni `gh`. Las instrucciones del proyecto añaden la convención de commits y la plantilla de PR. El chat no recibe claves, tokens ni URLs con credenciales.
+
+**Lo que ya existe y se reutiliza.**
+- `git.ts` desactiva los hooks del repo (`core.hooksPath=/dev/null`) y quita filtros, credenciales y `url.*` en los comandos del servidor.
+- `subirAprobado` (`workspace.ts`) empuja solo `HEAD:refs/heads/telo/<id>`, sin force, y exige un commit aprobado con el hash coincidente.
+- El escaneo de secretos y de archivos sensibles se aplica antes de cada commit.
+
+**Implementación pendiente, en orden.**
+1. Clon propio para chats con proyecto (extender `workspace.ts`) y una migración nueva para el permiso por chat (la siguiente numerada).
+2. Permiso por chat en la configuración del chat, por `PATCH /api/conversations/:id`. Sin git por defecto.
+3. Lectura de `.telo/solicitudes/*.json` al terminar cada turno, con validación en el servidor.
+4. Tarjetas Commit y Subir, con la aprobación generalizada a chats.
+5. Acción Abrir PR con `GITHUB_PR_TOKEN`. Esto también resuelve la aprobación `pr`: hoy `plan.ts` y `tarea-plan.tsx` la muestran, pero `routes/tasks.ts` la rechaza con `invalid_accion`. Si se retrasa, hay que decidir si se quita.
+6. Skill `telo-git` y texto en las instrucciones del proyecto.
+7. Pruebas: sin git se rechaza la solicitud; las ramas fuera de `telo/*` se rechazan; `main` nunca; una aprobación caduca si cambia el diff, el SHA o el título; PR con API falsa; el token no aparece en ninguna respuesta ni en la salida del agente.
+8. Verificación: navegador a 390 y 1440 px, y una prueba real en un repo de prueba (commit, push a `telo/` y PR), con el push directo a `main` rechazado.
+
+**Riesgos.**
+- Instrucciones maliciosas en el código o en un issue: la aprobación es sobre el diff real, no sobre lo que diga el agente.
+- El agente no debe recibir `gh`, `git push` directo ni credenciales, porque necesitaría secretos dentro del aislamiento.
+- Un token mal acotado: por eso el de PR tiene permiso mínimo y su propio nombre de secreto.
+
+**Cambios.** `cambios.json`: grande, al implementarse.
 
 ---
 
