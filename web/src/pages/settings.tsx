@@ -147,6 +147,13 @@ export function SettingsPage() {
 
   const gastoDe = (id: string): number | null => cuotas.data?.proveedores.find((q) => q.id === id)?.gastoMesUsd ?? null;
 
+  // Diagnóstico por proveedor: cuántos modelos ve OpenCode y cuántos llegan al selector del chat.
+  const modelosDe = (id: string): { total: number; enSelector: number } | null => {
+    if (!models.isSuccess) return null;
+    const del = models.data.models.filter((m) => proveedorDeModelo(m.id) === id);
+    return { total: del.length, enSelector: del.filter((m) => m.recommended).length };
+  };
+
   const elegirPestana = (p: Pestana) => {
     void navigate({ to: "/ajustes", search: { pestana: p }, replace: true });
   };
@@ -276,6 +283,7 @@ export function SettingsPage() {
                     etiqueta={etiquetaDe(p)}
                     gasto={gastoDe(p.id)}
                     presupuesto={presupuesto}
+                    modelos={modelosDe(p.id)}
                   />
                 ))}
               </section>
@@ -560,17 +568,20 @@ function TarjetaProveedor({
   etiqueta,
   gasto,
   presupuesto,
+  modelos,
 }: {
   p: ProviderStatus;
   etiqueta: string | null;
   gasto: number | null;
   presupuesto: number | null;
+  // Modelos del proveedor en el catálogo de OpenCode (total) y los que salen en el selector del chat.
+  modelos: { total: number; enSelector: number } | null;
 }) {
   // Listo: la clave está en el servidor y llega a los agentes. El servidor no tiene interruptor por proveedor.
   const listo = p.configured && p.enAgente;
   const sinClave = p.variable === null;
   const pct = presupuesto && gasto !== null ? Math.min(100, Math.round((gasto / presupuesto) * 100)) : 0;
-  const nota = notaEstado(p);
+  const nota = notaEstado(p, modelos);
   const tituloSinControl = "La clave vive en el servidor y la app no la recibe.";
 
   return (
@@ -670,6 +681,11 @@ function TarjetaProveedor({
         </p>
       </div>
 
+      {p.enAgente && modelos && modelos.total > 0 && (
+        <p className="aj-nota">
+          {modelos.enSelector === 1 ? "1 modelo" : `${modelos.enSelector} modelos`} en el selector del chat.
+        </p>
+      )}
       {nota && <p className="aj-nota aj-nota-aviso">{nota}</p>}
     </article>
   );
@@ -781,11 +797,16 @@ function CampoClave({ p }: { p: ProviderStatus }) {
 
 // Lo que impide que un proveedor llegue a los agentes, con el nombre real de la variable.
 // Un proveedor sin clave que se puede guardar ya lo dice su propio campo, así que no se repite aquí.
-function notaEstado(p: ProviderStatus): string | null {
+function notaEstado(p: ProviderStatus, modelos: { total: number } | null): string | null {
   if (p.id === "opencode") return p.configured ? null : "El CLI de OpenCode no se encontró en el servidor.";
   if (!p.configured) return p.guardable ? null : `Falta ${p.variable ?? "la clave"} en el archivo de entorno del servidor.`;
   if (!p.enAgente) {
     return `La clave está configurada, pero no llega a los agentes: agrégala a TELO_AGENTE_VARIABLES en el archivo de entorno del servidor.`;
+  }
+  // La clave llega al servidor, pero OpenCode no tiene ningún modelo de este proveedor: casi siempre el nombre
+  // de la variable no es el que espera esta versión de OpenCode. Se dice así, sin adivinar cuál es.
+  if (modelos && modelos.total === 0) {
+    return `La clave está guardada, pero OpenCode no muestra modelos de ${p.name}. En el servidor, revisa con "opencode models" que el nombre de la variable (${p.variable}) sea el que usa esta versión.`;
   }
   return null;
 }

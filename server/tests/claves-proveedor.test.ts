@@ -50,6 +50,16 @@ describe("guardar y leer la clave", () => {
     expect(entornoProveedores()).toEqual({ GROQ_API_KEY: VALOR });
   });
 
+  test("la clave de Gemini llega con las dos variables (versión actual y antigua de OpenCode)", () => {
+    const valorGemini = "AIza-valor-de-prueba-gemini-1";
+    expect(guardarClaveProveedor("google", valorGemini)).not.toBeNull();
+    expect(entornoProveedores()).toEqual({
+      GOOGLE_GENERATIVE_AI_API_KEY: valorGemini,
+      GEMINI_API_KEY: valorGemini,
+    });
+    expect(estadoClaves().find((e) => e.id === "google")).toMatchObject({ configurada: true, variable: "GOOGLE_GENERATIVE_AI_API_KEY" });
+  });
+
   test("en la base no aparece el valor en claro", () => {
     guardarClaveProveedor("groq", VALOR);
     const fila = db.query("SELECT * FROM provider_keys WHERE proveedor = 'groq'").get();

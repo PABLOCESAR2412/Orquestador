@@ -7,7 +7,7 @@ import { gitOk, gitSeguro, esRepositorio, GitError, prepararRepoSeguro, tieneGit
 import { ArchivoError, leerArchivo, listarCarpeta, medirCarpeta, normalizarRuta } from "../archivos-proyecto";
 import { redactar } from "../redaccion";
 import { conProyectoRevisado } from "../ocupacion";
-import { ARCHIVOS_GUIA, componerInstrucciones, guardarMemoria } from "../memoria";
+import { ARCHIVOS_GUIA, MAX_MEMORIA, componerInstrucciones, guardarMemoria, memoriaDelProyecto } from "../memoria";
 import { ErrorClonado, urlGithubNormalizada } from "../clonado";
 import { iniciarClonadoEnChat } from "../clonado-chat";
 
@@ -187,14 +187,32 @@ async function leerDatosGit(carpeta: string) {
 
 export const projects = new Hono();
 
+// Métricas de la tarjeta: chats, tareas y la última actividad (mensaje o tarea). Sin actividad, cadena vacía.
+const METRICAS = `
+  (SELECT COUNT(*) FROM conversations c WHERE c.project_id = projects.id) AS chats,
+  (SELECT COUNT(*) FROM tasks t WHERE t.project_id = projects.id) AS tareas,
+  MAX(
+    COALESCE((SELECT MAX(m.created_at) FROM messages m JOIN conversations c ON c.id = m.conversation_id WHERE c.project_id = projects.id), ''),
+    COALESCE((SELECT MAX(t.created_at) FROM tasks t WHERE t.project_id = projects.id), '')
+  ) AS ultima_actividad`;
+
+type ProjectConMetricas = ProjectRow & { chats: number; tareas: number; ultima_actividad: string };
+
 // GET /api/projects -> anclados primero; luego los más recientes
 projects.get("/projects", (c) => {
   const rows = db
-    .query<ProjectRow, []>(
-      `SELECT ${COLUMNS} FROM projects ORDER BY (pinned_at IS NULL), pinned_at DESC, created_at DESC, rowid DESC`,
+    .query<ProjectConMetricas, []>(
+      `SELECT ${COLUMNS}, ${METRICAS} FROM projects ORDER BY (pinned_at IS NULL), pinned_at DESC, created_at DESC, rowid DESC`,
     )
     .all();
-  return c.json(rows.map(aProyecto));
+  return c.json(
+    rows.map((row) => ({
+      ...aProyecto(row),
+      chats: row.chats,
+      tareas: row.tareas,
+      ultima_actividad: row.ultima_actividad || null,
+    })),
+  );
 });
 
 // POST /api/projects  body: { name } crea una carpeta nueva con Git y un README.
@@ -480,4 +498,17 @@ projects.delete("/projects/:id/memoria", (c) => {
   if (!leerProyecto(id)) return c.json({ error: "project_not_found" }, 404);
   guardarMemoria(id, null);
   return c.json({ ok: true });
+});
+
+// PUT /api/projects/:id/memoria  body: { texto } -> la persona corrige la memoria a mano. Texto vacío la borra.
+// Pasa por la misma redacción de credenciales que la salida de los agentes y tiene el mismo límite (MAX_MEMORIA).
+projects.put("/projects/:id/memoria", async (c) => {
+  const id = c.req.param("id");
+  if (!leerProyecto(id)) return c.json({ error: "project_not_found" }, 404);
+  const body = await leerCuerpoJson<{ texto?: unknown }>(c);
+  if (!body || typeof body.texto !== "string") return c.json({ error: "invalid_body" }, 400);
+  const limpio = redactar(body.texto).trim();
+  if (limpio.length > MAX_MEMORIA) return c.json({ error: "memoria_demasiado_larga" }, 400);
+  guardarMemoria(id, limpio === "" ? null : limpio);
+  return c.json(memoriaDelProyecto(id));
 });

@@ -103,8 +103,6 @@ export function Shell({ children }: { children: ReactNode }) {
       { title: "ANTERIORES", items: [] },
     ];
     for (const c of conversations.data) {
-      // Los chats de un proyecto se abren desde su proyecto; aquí quedan los que no tienen.
-      if (c.project_id) continue;
       const groupTitle = c.pinned_at ? "ANCLADOS" : getGroupForDate(c.created_at);
       const target = groups.find((g) => g.title === groupTitle);
       if (target) target.items.push(c);

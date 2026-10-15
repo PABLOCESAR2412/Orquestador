@@ -58,7 +58,7 @@ Leyenda: [x] hecho y verificado · [~] hecho, pendiente de confirmar en el VM ·
 ### Nombres de variable
 
 - Groq: `GROQ_API_KEY`. Confirmado en la documentación de OpenCode.
-- Gemini: `GEMINI_API_KEY`. Confirmado en la documentación de OpenCode. Corrige la candidata anterior `GOOGLE_GENERATIVE_AI_API_KEY`, que era incorrecta.
+- Gemini: se envían **dos** variables, `GOOGLE_GENERATIVE_AI_API_KEY` y `GEMINI_API_KEY`. La nota anterior que daba solo `GEMINI_API_KEY` venía de un mirror de la versión antigua en Go de OpenCode; la versión actual probablemente usa `GOOGLE_GENERATIVE_AI_API_KEY` (no verificado). Enviar las dos evita depender de la versión. Confirmar en el VM con `opencode models` (id de proveedor `google`).
 - NVIDIA: `NVIDIA_API_KEY`. Solo aparece en un artículo de terceros: **no confirmado**. Ver B-VM.
 
 ### Servidor
@@ -131,3 +131,19 @@ No se codifica hasta decidirlo.
 2. C: "Generar análisis".
 3. D: esperar tu decisión.
 4. Commit y PR solo cuando lo pidas.
+
+## E. Correcciones tras probar en el VM  🟡 en curso (rama `feat/seguir-tras-cuota`)
+
+Estado detallado en `FASE3.md`. Resumen:
+
+- [x] **Chat en segundo plano** (`6dddd05`). El turno ya no depende de la petición HTTP. La web comprueba si un envío llegó antes de devolver el texto al compositor. Verificado en navegador.
+- [x] **Barra lateral.** Sin enlace Chat; los chats de proyecto aparecen con su nombre.
+- [x] **Modelos de Groq, NVIDIA y Gemini** visibles cuando su clave llega al CLI. Gemini envía dos variables. Ajustes muestra cuántos modelos ve OpenCode y avisa si no ve ninguno. Pendiente en el VM: confirmar `google` y `NVIDIA_API_KEY` con `opencode models`.
+- [x] **Vista de proyectos.** Métricas desde `GET /api/projects` y acciones en iconos de 40 px.
+- [x] **Memoria del proyecto editable** a mano, con redacción y límite.
+- [~] **Estado y registros del servidor** en Ajustes. Hecho: estado de la unidad y registros con redacción. Requiere en el VM: `usermod -aG systemd-journal orquestador` (ver `deploy/README.md`). Pendiente: gasto de Azure (decisión del usuario).
+- [ ] **Skills configurables** (tarea 7). Bloqueada: hay que confirmar en el VM dónde lee OpenCode las skills, y decidir si son globales o por proyecto.
+- [ ] **Claves y botón "Instalar"** (tarea 9). Bloqueada: instalar software en el VM necesita aprobación explícita.
+- [ ] **Codex, Gemini y Claude gratis** (tarea 10). Bloqueada: decidir si se acepta el login de dispositivo de Codex en el VM y si Claude se conecta solo con clave de API.
+
+Corrección de la nota de Gemini: ver sección B.

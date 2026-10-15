@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { tieneClaveProveedor } from "../claves-proveedor";
+import { proveedorConClave, tieneClaveProveedor } from "../claves-proveedor";
 
 type ProviderStatus = {
   id: string;
@@ -28,29 +28,20 @@ function variablesDeAgente(): Set<string> {
   );
 }
 
-// La primera variable que exista; si ninguna existe, la primera de la lista.
-function variableGoogle(): string {
-  return process.env.GEMINI_API_KEY ? "GEMINI_API_KEY" : process.env.GOOGLE_API_KEY ? "GOOGLE_API_KEY" : "GEMINI_API_KEY";
-}
-
 // Proveedor con clave que se puede guardar: configurado si la clave está en la base o en el entorno del servidor.
-function proveedorGuardable(
-  id: string,
-  name: string,
-  variable: string,
-  hint: string,
-  enAgente: Set<string>,
-): ProviderStatus {
+// Las variables salen de claves-proveedor.ts; la primera es la que se muestra.
+function proveedorGuardable(id: string, name: string, hint: string, enAgente: Set<string>): ProviderStatus {
+  const variables = proveedorConClave(id)?.variables ?? [];
   const guardada = tieneClaveProveedor(id);
   return {
     id,
     name,
-    configured: guardada || Boolean(process.env[variable]),
+    configured: guardada || variables.some((v) => Boolean(process.env[v])),
     // Las claves guardadas llegan a los agentes y a `opencode models` (ver claves-proveedor.ts).
     implemented: true,
     hint,
-    variable,
-    enAgente: guardada || enAgente.has(variable),
+    variable: variables[0] ?? null,
+    enAgente: guardada || variables.some((v) => enAgente.has(v)),
     guardable: true,
     guardada,
   };
@@ -85,21 +76,18 @@ function estadoProveedores(): ProviderStatus[] {
     proveedorGuardable(
       "google",
       "Google (Gemini)",
-      variableGoogle(),
       "Clave de Gemini. Se guarda aquí, cifrada, o viene del archivo de entorno del servidor.",
       enAgente,
     ),
     proveedorGuardable(
       "groq",
       "Groq",
-      "GROQ_API_KEY",
       "Clave de Groq. Se guarda aquí, cifrada, o viene del archivo de entorno del servidor.",
       enAgente,
     ),
     proveedorGuardable(
       "nvidia",
       "NVIDIA",
-      "NVIDIA_API_KEY",
       "Clave de NVIDIA. Se guarda aquí, cifrada, o viene del archivo de entorno del servidor.",
       enAgente,
     ),

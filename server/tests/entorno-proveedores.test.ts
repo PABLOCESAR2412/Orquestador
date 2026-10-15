@@ -52,6 +52,10 @@ if [ "$1" = "models" ]; then
   env > '${volcadoCli}'
   echo "opencode/big-pickle"
   echo '{"name":"Big Pickle","cost":{"input":0,"output":0},"limit":{"context":200000},"variants":{}}'
+  echo "groq/llama-prueba"
+  echo '{"name":"Llama prueba","cost":{"input":0.5,"output":0.8},"limit":{"context":131072},"variants":{}}'
+  echo "nvidia/nemo-prueba"
+  echo '{"name":"Nemo prueba","cost":{"input":1,"output":2},"limit":{"context":128000},"variants":{}}'
   exit 0
 fi
 env > '${volcadoAgente}'
@@ -110,17 +114,29 @@ describe("entorno de los proveedores en el agente y en el CLI", () => {
 
   test("`opencode models` recibe la clave y ninguna variable TELO_*", async () => {
     const modelos = await getModels(true);
-    expect(modelos.map((m) => m.id)).toEqual(["opencode/big-pickle"]);
+    expect(modelos.map((m) => m.id)).toEqual(["opencode/big-pickle", "groq/llama-prueba", "nvidia/nemo-prueba"]);
 
     const env = variables(volcadoCli);
     expect(env.get("GROQ_API_KEY")).toBe(VALOR_GROQ);
     expect([...env.keys()].filter((k) => k.startsWith("TELO_"))).toEqual([]);
   });
 
-  test("sin clave guardada, el agente no recibe GROQ_API_KEY", async () => {
+  test("con clave guardada, los modelos de ese proveedor se recomiendan y van en su grupo", async () => {
+    const modelos = await getModels(true);
+    const groq = modelos.find((m) => m.id === "groq/llama-prueba");
+    expect(groq).toMatchObject({ recommended: true, group: "Groq" });
+    // NVIDIA no tiene clave guardada: su modelo de pago no se recomienda.
+    expect(modelos.find((m) => m.id === "nvidia/nemo-prueba")).toMatchObject({ recommended: false, group: "Otros" });
+  });
+
+  test("sin clave guardada, el agente no recibe GROQ_API_KEY y el modelo de Groq no se recomienda", async () => {
     db.query("DELETE FROM provider_keys").run();
     await ejecutarAgente({ prompt: "Hola", model: "opencode/big-pickle", cwd: carpeta, timeoutMs: 20_000 });
     expect(variables(volcadoAgente).has("GROQ_API_KEY")).toBe(false);
+
+    const modelos = await getModels(true);
+    expect(modelos.find((m) => m.id === "groq/llama-prueba")?.recommended).toBe(false);
     guardarClaveProveedor("groq", VALOR_GROQ);
+    await getModels(true);
   });
 });

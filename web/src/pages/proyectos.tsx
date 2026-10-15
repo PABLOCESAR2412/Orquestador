@@ -5,8 +5,9 @@ import { api, type Project } from "../api";
 import { useShell } from "../components/shell-context";
 import { errorText } from "../lib/model";
 import { MAX_NOMBRE_PROYECTO, rutaCarpeta } from "../lib/proyecto";
+import { haceTexto } from "../lib/tiempo";
 
-// Vista de proyectos: una tarjeta por proyecto del servidor, con su nombre y su carpeta.
+// Vista de proyectos: una tarjeta por proyecto del servidor, con su carpeta, su actividad y sus acciones.
 // El alta vive en la ventana «Nuevo proyecto», que se abre desde el botón de arriba.
 export function ProjectsPage() {
   const qc = useQueryClient();
@@ -22,7 +23,12 @@ export function ProjectsPage() {
     <div className="page-wrap">
       <main className="container">
         <header className="header-row">
-          <h1 className="page-title">Proyectos</h1>
+          <div>
+            <h1 className="page-title">Proyectos</h1>
+            {proyectos.data && proyectos.data.length > 0 && (
+              <p className="help-note">{resumenProyectos(proyectos.data)}</p>
+            )}
+          </div>
           <button type="button" className="btn-primary" onClick={abrirNuevoProyecto}>
             Nuevo proyecto
           </button>
@@ -63,6 +69,41 @@ function estadoOrigen(p: Project): string | null {
   if (!p.origen_url) return null;
   return p.clonado_en ? "Clonado desde GitHub" : "Falta clonar desde GitHub";
 }
+
+const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
+
+function resumenProyectos(lista: Project[]): string {
+  const ancladas = lista.filter((p) => p.pinned_at).length;
+  return ancladas > 0
+    ? `${plural(lista.length, "proyecto", "proyectos")} · ${ancladas} anclado${ancladas === 1 ? "" : "s"}`
+    : plural(lista.length, "proyecto", "proyectos");
+}
+
+// "Activo ahora", "Última actividad hace 3 min" o "Sin actividad".
+function actividadTexto(sql: string | null | undefined): string {
+  if (!sql) return "Sin actividad";
+  const texto = haceTexto(sql);
+  return texto === "ahora" ? "Activo ahora" : `Última actividad ${texto}`;
+}
+
+function metricasTexto(p: Project): string {
+  return [plural(p.chats ?? 0, "chat", "chats"), plural(p.tareas ?? 0, "tarea", "tareas"), actividadTexto(p.ultima_actividad)].join(
+    " · ",
+  );
+}
+
+// Iconos de 18 px dentro de botones de 40 px (mismo trazo que conv-item.tsx).
+const ICONO = {
+  width: 18,
+  height: 18,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.8,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+  "aria-hidden": true,
+};
 
 function TarjetaProyecto({ proyecto: p, alCambiar }: { proyecto: Project; alCambiar: () => void }) {
   const [renombrando, setRenombrando] = useState(false);
@@ -133,6 +174,8 @@ function TarjetaProyecto({ proyecto: p, alCambiar }: { proyecto: Project; alCamb
     );
   }
 
+  const ruta = rutaCarpeta(p.carpeta);
+
   return (
     <article className="proyecto-tarjeta">
       <Link to="/proyectos/$id" params={{ id: p.id }} className="proyecto-tarjeta-enlace">
@@ -140,36 +183,56 @@ function TarjetaProyecto({ proyecto: p, alCambiar }: { proyecto: Project; alCamb
           <span className="proyecto-tarjeta-nombre">{p.name}</span>
           {p.pinned_at && <span className="tag-pinned">Anclado</span>}
         </span>
-        <span className="proyecto-tarjeta-ruta">{rutaCarpeta(p.carpeta)}</span>
+        <span className="proyecto-tarjeta-ruta" title={ruta}>
+          {ruta}
+        </span>
+        <span className="proyecto-tarjeta-metricas">{metricasTexto(p)}</span>
         {estado && <span className="proyecto-tarjeta-estado">{estado}</span>}
       </Link>
 
-      <div className="proyecto-tarjeta-acciones">
+      <div className="proyecto-tarjeta-pie" role="group" aria-label={`Acciones de ${p.name}`}>
         <button
           type="button"
-          className="btn-ghost"
+          className="proyecto-icono"
+          aria-label={`Renombrar ${p.name}`}
+          title="Renombrar"
           onClick={() => {
             setNuevoNombre(p.name);
             setRenombrando(true);
           }}
         >
-          Renombrar
+          <svg {...ICONO}>
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+          </svg>
         </button>
         <button
           type="button"
-          className="btn-ghost"
+          className={`proyecto-icono${p.pinned_at ? " is-activo" : ""}`}
+          aria-label={p.pinned_at ? `Quitar ${p.name} del ancla` : `Anclar ${p.name} arriba`}
+          aria-pressed={!!p.pinned_at}
+          title={p.pinned_at ? "Quitar del ancla" : "Anclar arriba"}
           onClick={() => editar.mutate({ pinned: !p.pinned_at })}
           disabled={editar.isPending}
         >
-          {p.pinned_at ? "Quitar ancla" : "Anclar"}
+          <svg {...ICONO}>
+            <path d="M12 17v5" />
+            <path d="M9 10.76V6a3 3 0 0 1 6 0v4.76l2.5 2.5V15h-11v-1.74z" />
+          </svg>
         </button>
         <button
           type="button"
-          className="btn-ghost proyecto-tarjeta-peligro"
+          className="proyecto-icono is-peligro"
+          aria-label={`Eliminar ${p.name}`}
+          title="Eliminar"
           onClick={() => setConfirmarBorrar(true)}
           disabled={quitar.isPending || confirmarBorrar}
         >
-          Eliminar
+          <svg {...ICONO}>
+            <path d="M3 6h18" />
+            <path d="M8 6V4h8v2" />
+            <path d="M19 6l-1 14H6L5 6" />
+          </svg>
         </button>
       </div>
 

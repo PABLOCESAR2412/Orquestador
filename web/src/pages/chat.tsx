@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type ModelInfo, type PasoActividad } from "../api";
+import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad } from "../api";
 import { useEventosVivos } from "../lib/eventos-vivos";
 import { ModelPicker } from "../components/model-picker";
 import { UsoPanel } from "../components/uso-panel";
@@ -31,9 +31,6 @@ type Pendiente = { key: string; lectura: ArchivoLeido };
 
 // Lo que había en el compositor al enviar: vuelve si el envío no se guarda en el servidor.
 type Restaurar = { texto: string; pendientes: Pendiente[] };
-
-// Errores en los que el servidor ya guardó el mensaje del usuario (no hay que reenviarlo).
-const GUARDADO_EN_ERROR = ["runner_failed", "insufficient_funds", "cuota_agotada", "aislamiento_no_disponible"];
 
 // Borrador por chat, guardado en este navegador: sobrevive a cambiar de pantalla o a una señal caída.
 // Si el navegador no deja guardar, el borrador solo vive en la pantalla.
@@ -219,6 +216,12 @@ export function ChatPage() {
   // Pasos del agente en vivo, por chat. Llegan por el canal (evento "actividad") mientras el agente corre.
   const [vivos, setVivos] = useState<Record<string, { turnoId: string; pasos: PasoActividad[] }>>({});
   useEventosVivos({}, (evento) => {
+    // Un turno empezó o terminó, aquí o en otro dispositivo: la lista y los mensajes se piden de nuevo.
+    if (evento.tipo === "chat") {
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      void qc.invalidateQueries({ queryKey: ["messages", evento.conversacion_id] });
+      return;
+    }
     if (evento.tipo !== "actividad") return;
     setVivos((prev) => {
       const previo = prev[evento.conversacion_id];
@@ -229,14 +232,28 @@ export function ChatPage() {
     });
   });
 
+  // Cuántos mensajes del usuario con este texto hay en la lista: sirve para saber si un envío llegó al servidor.
+  const contarEnvios = (lista: Message[] | undefined, texto: string) =>
+    (lista ?? []).filter((m) => m.role === "user" && m.content.trim() === texto.trim()).length;
+
   // El compositor se vacía al enviar: el agente puede tardar, y el texto no debe quedarse esperando.
-  // Si el servidor no llega a guardar el mensaje, lo escrito vuelve al compositor.
+  // Un ApiError es una respuesta del servidor: el mensaje no se guardó y lo escrito vuelve al compositor.
+  // Sin respuesta (red caída, móvil dormido) el servidor puede haberlo guardado igual: se mira la lista
+  // y, si el mensaje ya está, el envío se da por bueno. Así no se duplica ni se pierde.
   const send = useMutation({
-    mutationFn: ({ id, content }: { id: string; content: string; restaurar?: Restaurar }) =>
-      api.sendMessage(id, content),
-    onError: (err, { id, restaurar }) => {
-      const guardado = err instanceof ApiError && GUARDADO_EN_ERROR.includes(err.code);
-      if (guardado || !restaurar) return;
+    mutationFn: async ({ id, content }: { id: string; content: string; restaurar?: Restaurar }) => {
+      const previos = contarEnvios(qc.getQueryData<Message[]>(["messages", id]), content);
+      try {
+        return await api.sendMessage(id, content);
+      } catch (err) {
+        if (err instanceof ApiError) throw err;
+        const ahora = await api.listMessages(id).catch(() => null);
+        if (ahora && contarEnvios(ahora, content) > previos) return { messages: [] };
+        throw err;
+      }
+    },
+    onError: (_err, { id, restaurar }) => {
+      if (!restaurar) return;
       if (id === selectedId) {
         const nuevo = restaurar.texto && draft.trim() ? `${restaurar.texto}\n${draft}` : restaurar.texto || draft;
         cambiarBorrador(nuevo);
@@ -408,9 +425,8 @@ export function ChatPage() {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [messages.data?.length, send.isPending, selectedId]);
 
-  // La cuota agotada ya se explica en su aviso debajo de la conversación: no se repite aquí.
-  const cuotaAgotada = send.error instanceof ApiError && send.error.code === "cuota_agotada";
-  const sendError = send.isError && !cuotaAgotada ? errorText(send.error) : null;
+  // Solo llega aquí un fallo que no se guardó (409 si el chat ya responde, 4xx o 5xx del servidor).
+  const sendError = send.isError ? errorText(send.error) : null;
   const settingsError = configure.isError ? errorText(configure.error) : null;
   const docError = crearDoc.isError ? errorText(crearDoc.error) : null;
   const anclarError = anclar.isError ? errorText(anclar.error) : null;
@@ -745,7 +761,11 @@ export function ChatPage() {
                 <p className="tl-nota">Aún no hay mensajes. Escribe una instrucción para el agente o pulsa Ctrl+K para comandos.</p>
               )}
               {lista.map((m, i) =>
-                m.role === "user" ? (
+                m.role === "system" ? (
+                  <p key={m.id} className="tl-alerta" role="status">
+                    {m.content}
+                  </p>
+                ) : m.role === "user" ? (
                   <MensajeUsuario
                     key={m.id}
                     id={`mensaje-${m.id}`}

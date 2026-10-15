@@ -220,6 +220,12 @@ export function errorText(err: unknown): string {
         return "Ese proyecto ya no existe.";
       case "invalid_project_name":
         return "El nombre del proyecto debe tener entre 1 y 60 caracteres.";
+      case "memoria_demasiado_larga":
+        return "La memoria puede tener hasta 4 000 caracteres. Acórtala y vuelve a guardar.";
+      case "registros_no_disponibles":
+        return "Los registros solo se leen en el servidor, con systemd (el VM). Aquí no hay un servicio que leer.";
+      case "sin_permiso_diario":
+        return "El usuario del servidor no puede leer el diario del sistema. En el VM hay que añadirlo al grupo systemd-journal.";
       case "invalid_instrucciones":
         return "Las instrucciones pueden tener hasta 8 000 caracteres.";
       case "archivo_binario":

@@ -37,6 +37,10 @@ export type Project = {
   // Repo de GitHub de origen (si el proyecto se creó clonándolo) y cuándo se clonó. Sin clonado, la carpeta espera.
   origen_url?: string | null;
   clonado_en?: string | null;
+  // Actividad del proyecto (GET /api/projects): chats, tareas y el último mensaje o tarea. Null si no hay.
+  chats?: number;
+  tareas?: number;
+  ultima_actividad?: string | null;
 };
 
 // Revisión de un repo de GitHub sin clave: público o privado (un nombre mal escrito también parece privado).
@@ -139,6 +143,18 @@ export type UsoProveedor = {
   cuotaRestanteUsd: number | null;
   precision: "medida_telo" | "sin_datos";
 };
+
+// Estado de la unidad orquestador en systemd. Fuera de systemd (desarrollo), disponible es false.
+export type ServicioEstado = {
+  disponible: boolean;
+  activo: string | null;
+  subestado: string | null;
+  desde: string | null;
+  pid: number | null;
+};
+
+// Últimas líneas del diario del servicio, ya redactadas por el servidor.
+export type RegistrosServidor = { lineas: number; texto: string; generado: string };
 
 export type ServidorEstado = {
   generado: string;
@@ -418,6 +434,12 @@ export const api = {
   suggestProjectInstructions: (id: string) =>
     request<{ texto: string; fuentes: string[] }>(`/api/projects/${id}/instrucciones/sugeridas`),
   clearProjectMemory: (id: string) => request<{ ok: boolean }>(`/api/projects/${id}/memoria`, { method: "DELETE" }),
+  // Corrige la memoria a mano. Texto vacío la borra. El servidor la redacta y la limita a 4 000 caracteres.
+  saveProjectMemory: (id: string, texto: string) =>
+    request<{ texto: string | null; actualizada_en: string | null }>(`/api/projects/${id}/memoria`, {
+      method: "PUT",
+      body: JSON.stringify({ texto }),
+    }),
   listProjectFiles: (id: string, ruta = "") =>
     request<{ ruta: string; entradas: ProjectFileEntry[] }>(
       `/api/projects/${id}/archivos?ruta=${encodeURIComponent(ruta)}`,
@@ -449,6 +471,8 @@ export const api = {
     request<Task>(`/api/programadas/${id}/ejecutar`, { method: "POST", body: "{}" }),
   usage: () => request<{ generado: string; proveedores: UsoProveedor[] }>("/api/uso"),
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
+  serverService: () => request<ServicioEstado>("/api/servidor/servicio"),
+  serverLogs: (lineas = 100) => request<RegistrosServidor>(`/api/servidor/logs?lineas=${lineas}`),
   resumeTask: (id: string) => request<Task>(`/api/tasks/${id}/reanudar`, { method: "POST", body: "{}" }),
   // Tras una cuota agotada: vuelve a la cola con otro modelo y retoma la sesión.
   continueTask: (id: string, body: { model?: string; effort?: string | null } = {}) =>

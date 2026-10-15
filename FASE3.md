@@ -2,7 +2,7 @@
 
 Documento de traspaso. Quien lo continúe debe leer también `CLAUDE.md`, `DESIGN.md` y `FASE2.md`.
 
-Rama: `feat/seguir-tras-cuota`. Último commit subido: `c66be88`. Hay cambios **sin commit** en el árbol de trabajo (ver "Estado actual"). No hay PR.
+Rama: `feat/seguir-tras-cuota`. Último commit subido: `6dddd05` (turnos del chat en segundo plano). Al empezar la etapa de las tareas 6 a 10, el árbol de trabajo estaba limpio. No hay PR.
 
 Leyenda: [x] hecho y verificado · [~] escrito, sin probar · [ ] pendiente
 
@@ -34,13 +34,23 @@ Revisión visual: `scratchpad/claves-ui/visual.mjs` levanta un servidor propio e
 
 ## Estado actual
 
-- [~] **Servidor del chat en segundo plano** (`server/src/routes/chat.ts`, reescrito). Cambio de contrato: `POST /api/conversations/:id/messages` y `POST /api/conversations/:id/seguir` guardan el mensaje, lanzan el turno en segundo plano y responden **202** `{ messages: [turno] }`. Los fallos ya no son respuestas HTTP: quedan como mensaje `role: "system"` guardado en el chat. Nuevas funciones: `iniciarTurno`, `correrTurno`, `guardarAviso`, `publicarChat`, `avisarTurnosInterrumpidos` (exportada).
-- [~] `server/src/bus.ts` y `server/src/routes/stream.ts`: evento `chat` con `{ conversacion_id, estado: "en_curso" | "terminado" }`, emitido como evento SSE `chat`.
-- [~] `web/src/api.ts` (tipo `EventoVivo` con `chat`) y `web/src/lib/eventos-vivos.ts` (escucha `chat`; no se filtra por tarea).
-- [~] `server/src/index.ts`: llama a `avisarTurnosInterrumpidos()` antes de `startWorker()`.
-- [~] `server/tests/chat-turnos.test.ts`: escrito, **no ejecutado todavía**. Pruebas: 202 rápido con agente lento; `ocupada` durante el turno; 409 con segundo mensaje; fallo como aviso `system`; aviso de reinicio solo a chats cuyo último mensaje es del usuario.
-- [ ] Web del chat (tarea 1). Nada hecho aún en `chat.tsx`: sigue esperando la respuesta HTTP y todavía usa `GUARDADO_EN_ERROR` con códigos que ya no llegan.
-- [ ] Tareas 2 a 5.
+Lista de control. Se marca lo hecho en cada tarea y aquí a la vez.
+
+- [x] **Servidor del chat en segundo plano** (commit `6dddd05`). `POST /api/conversations/:id/messages` y `/seguir` guardan el mensaje, lanzan el turno en segundo plano y responden **202** `{ messages: [turno] }`. Los fallos quedan como mensaje `role: "system"` en el chat. Verificado: `bun test tests/chat-turnos.test.ts` pasa (4 de 4) y `tsc --noEmit` del servidor está limpio.
+- [x] Evento SSE `chat` (`bus.ts`, `routes/stream.ts`, `api.ts`, `lib/eventos-vivos.ts`).
+- [x] `avisarTurnosInterrumpidos()` en el arranque (`index.ts`).
+- [x] **Tarea 1.** Web del chat (`chat.tsx`). Hecha: envío sin respuesta del servidor comprobado contra la lista (sin duplicar ni perder el texto), `GUARDADO_EN_ERROR` quitado, evento `chat` escuchado, aviso `system` como alerta de estado. Verificada con Playwright (corte de respuesta, 409 simulado, fallo del agente, mensaje de otro dispositivo). Captura a 390 y 1440 px. Entrada en `cambios.json`.
+- [x] **Tarea 2.** Barra lateral: sin enlace Chat; chats de proyecto visibles con su nombre debajo. Verificada a 390 y 1440 px, sin desborde. `DESIGN.md` y `cambios.json` actualizados.
+- [x] **Tarea 3.** Modelos de Groq, NVIDIA y Gemini visibles cuando su clave llega al CLI; Gemini con dos variables; diagnóstico en Ajustes ("N modelos en el selector" o aviso si OpenCode no tiene modelos del proveedor). Verificado: `bun test` completo en verde (209), `tsc` limpio, y Playwright en Ajustes a 390 y 1440 px. **Pendiente en el VM:** confirmar el id `google` y el nombre de variable de NVIDIA con `opencode models`.
+- [x] **Tarea 4.** Vista de proyectos con métricas (chats, tareas, última actividad desde `GET /api/projects`) y acciones en iconos de 40 px. Verificada a 390 y 1440 px, claro y oscuro: métricas, 40 px, anclar desde el icono, confirmación al eliminar, sin desborde. Pruebas de servidor en `proyectos.test.ts`.
+- [ ] **Tarea 5.** Cierre de la fase 3 (documentación, `cambios.json`, verificación visual, aprobación de commit).
+- [~] **Tarea 6.** Estado, logs y gasto de Azure en Ajustes. **Hecho:** estado de la unidad y registros (`GET /api/servidor/servicio` y `/logs`, con redacción y sin shell; botón Ver logs activo). Verificado en el navegador y en `servidor-logs.test.ts`. **Pendiente:** gasto de Azure, que espera la decisión del usuario sobre la identidad del VM (ver tarea 6, punto 3).
+- [ ] **Tarea 7.** Skills configurables desde la app.
+- [x] **Tarea 8.** Memoria del proyecto editable desde la app (`PUT /api/projects/:id/memoria`, con redacción y límite de 4 000 caracteres; botones Editar, Escribir, Guardar, Cancelar y Borrar). Verificada en el navegador a 390 y 1440 px, y en `proyectos.test.ts`. Supuesto confirmado en el código: "memoria" = memoria aprendida por proyecto.
+- [ ] **Tarea 9.** Claves de proveedores que funcionan desde la app, con botón "Instalar" para OpenCode.
+- [ ] **Tarea 10.** Conectar Codex, Gemini y Claude gratis (requiere decisión del usuario antes de programar).
+
+Orden: tareas 1 a 5 primero (ya acordadas), luego 6 a 10 en el orden en que el usuario las pidió. Las tareas 6 a 10 no se programan hasta que sus decisiones pendientes estén resueltas, salvo las partes que no dependen de ellas.
 
 Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir el servidor antes de tocar la web. Si una prueba depende de tiempos, subir la espera de `esperar()`, no quitar la comprobación.
 
@@ -138,6 +148,107 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 2. `cambios.json`: una entrada por tarea (ya indicadas arriba).
 3. Ejecutar todos los comandos de verificación. Revisión visual 390 y 1440, claro y oscuro, sin errores de consola.
 4. Preguntar al usuario si aprueba el commit y el push. Solo tras su aprobación, ejecutar git tú mismo (`git add` de archivos concretos, `git commit`, `git push`). El commit lleva los trailers `Co-Authored-By` y `Claude-Session` indicados en el sistema.
+
+---
+
+## Tarea 6. Estado, logs y gasto de Azure en Ajustes
+
+**Qué ya existe.** `server/src/routes/servidor.ts` (`GET /api/servidor`, caché de 30 s) da disco, herramientas y carpetas, sin rutas ni IPs. Ajustes lo muestra en "Estado del servidor" y "Almacenamiento" (`web/src/pages/servidor.tsx`). Faltan los logs, el estado del servicio y el gasto.
+
+**Por qué así.** Ver los errores sin entrar al VM por SSH, y ver el gasto real que da Azure, no una estimación de la app.
+
+**Qué hacer.**
+1. **Estado del servicio.** Añadir a `GET /api/servidor` el resultado de `systemctl show orquestador -p ActiveState,SubState,ActiveEnterTimestamp` con lista fija de argumentos, entorno mínimo (`entornoMinimo()`) y tiempo límite, como ya hace `df`.
+2. **Logs.** Nueva ruta `GET /api/servidor/logs?lineas=100` (máximo 300). Ejecuta `journalctl -u orquestador -n <N> --no-pager -o short-iso` con `Bun.spawn`, sin shell. La salida pasa por `redaccion.ts` antes de responder. Si el usuario del servidor no puede leer el diario, responde un error legible, no un 500. Requisito en el VM (lo hace el usuario): añadir `orquestador` al grupo `systemd-journal`. Documentarlo en `deploy/README.md`. No dar sudo.
+3. **Gasto de Azure.** Nueva ruta `GET /api/servidor/coste`, con caché de 1 h. Consulta la API de Cost Management de Azure con la **identidad administrada** del VM, así no hay claves en el repo ni en el archivo de entorno. Devuelve gasto del mes en curso, moneda y gasto diario de los últimos 30 días. Si falta la identidad o el rol, responde `coste_no_disponible` con un texto que dice qué permiso falta.
+   - **Decisión pendiente del usuario:** asignar al VM una identidad administrada con el rol de lector de costes sobre la suscripción. Sin eso, la tarjeta muestra el aviso y no inventa cifras.
+   - Comprobar en el VM el comando exacto de consulta (`az rest` contra Cost Management o `az consumption`). No verificado desde aquí.
+4. **Presentación** en Ajustes, sin tablas: tarjeta "Estado" (icono y texto; ámbar solo si el servicio no está activo), tarjeta "Gasto del mes" (cifra grande, moneda y fecha de corte), y bloque "Registros" (texto monoespaciado, últimas 100 líneas, botón "Actualizar" con icono). Tokens de `styles.css`.
+5. **Pruebas** (`server/tests/servidor-logs.test.ts`): `journalctl` ausente da error legible; un token de prueba en la salida queda oculto; el límite de líneas se respeta. Para el gasto, un `az` falso en el PATH (igual que el `opencode` falso).
+
+**Verificación.** Captura de la pestaña a 390 y 1440 px, claro y oscuro, con datos y sin datos. Sin errores de consola.
+
+**Cambios.** `mediano`.
+
+---
+
+## Tarea 7. Skills configurables desde la app
+
+**Qué ya existe.** `web/src/components/proyecto-skills.tsx` es un marcador sin backend.
+
+**Por qué es delicado.** OpenCode lee las skills como archivos en disco. El agente corre en bubblewrap y solo ve su carpeta de trabajo, así que las skills globales no están a su alcance. Editarlas desde la app obliga al servidor a escribir fuera del aislamiento, por eso la carpeta y los nombres aceptados deben estar acotados.
+
+**Qué hacer.**
+1. **Antes de programar:** confirmar en el VM dónde busca OpenCode las skills (ruta global y, si existe, por proyecto) y su formato (carpeta con `SKILL.md`). Anotar aquí la ruta confirmada. No verificado desde aquí.
+2. **Servidor** (`server/src/skills.ts`): listar, leer y guardar skills dentro de una sola carpeta raíz, configurable con `TELO_SKILLS_DIR`. Reglas: nombre de carpeta `^[a-z0-9-]{1,64}$`; tamaño máximo 64 KB por archivo; escritura atómica (archivo temporal y renombrado); no seguir enlaces (`O_NOFOLLOW`, como en `archivos-proyecto.ts`); rechazar `..` y rutas absolutas.
+3. **Rutas:** `GET /api/skills`, `GET|PUT|DELETE /api/skills/:nombre`. Para proyecto, lo mismo bajo `/api/projects/:id/skills` si el paso 1 confirma que OpenCode las lee desde el proyecto.
+4. **Web:** `proyecto-skills.tsx` lista las skills (nombre y la línea `description:` del frontmatter), abre un editor de texto simple para `SKILL.md`, permite guardar y quitar (con confirmación). Ajustes muestra las globales.
+5. **Pruebas** (`server/tests/skills.test.ts`): nombre inválido rechazado; `..` y enlace simbólico rechazados; tamaño excedido; escritura atómica (sin archivo a medias si falla).
+
+**Decisión pendiente del usuario:** ¿las skills son globales (todos los proyectos) o por proyecto? Por defecto: globales en Ajustes y por proyecto en la pestaña del proyecto.
+
+**Verificación.** Captura a 390 y 1440 px. Sin errores de consola.
+
+**Cambios.** `mediano`.
+
+---
+
+## Tarea 8. Memoria del proyecto editable desde la app
+
+**Qué ya existe.** La memoria del proyecto está en `projects.memoria` (migración 014). El agente la escribe al terminar tareas (`server/src/memoria.ts`, `guardarMemoria`, límite `MAX_MEMORIA` de 4 000 caracteres). `DELETE /api/projects/:id/memoria` la borra. `web/src/components/proyecto-memoria.tsx` solo muestra el texto y el botón "Borrar memoria". **No se puede editar.**
+
+**Supuesto.** "Memoria" = la memoria aprendida de cada proyecto. Si el usuario se refería a su memoria personal, es otra tarea. Confirmar antes de cerrarla.
+
+**Qué hacer.**
+1. **Servidor:** `PUT /api/projects/:id/memoria` con `{ texto }`. Límite `MAX_MEMORIA`. El texto pasa por `redaccion.ts` antes de guardar. Reutilizar `guardarMemoria`; no duplicar.
+2. **Web:** en `proyecto-memoria.tsx`, un área de texto con el contenido actual, la fecha de actualización, "Guardar" (solo activo si cambió) y "Borrar memoria" como hoy.
+3. **Pruebas:** un token de prueba no queda guardado en claro; más de `MAX_MEMORIA` caracteres se rechaza con mensaje claro; proyecto inexistente da 404.
+
+**Verificación.** Captura a 390 y 1440 px, claro y oscuro, con memoria vacía y con texto.
+
+**Cambios.** `mediano`.
+
+---
+
+## Tarea 9. Claves de proveedores que funcionan desde la app, con botón "Instalar"
+
+**Qué ya existe.** Claves cifradas de Groq, NVIDIA y Gemini (commit `c66be88`). OpenCode aparece en Ajustes como "Se activa al instalar el CLI", sin acción.
+
+**Cómo.**
+1. **Que los modelos aparezcan** depende de la tarea 3. Esta tarea no está completa sin ella.
+2. **Gemini con dos variables** (tarea 3, punto 2).
+3. **Botón "Instalar" en OpenCode**, visible solo si `configured` es falso. Ejecuta **un comando fijo** en lista blanca (por ejemplo `npm install -g opencode-ai`; confirmar en el VM cuál es el instalador oficial). Pide confirmación en dos pasos: "¿Instalar OpenCode en el servidor?". Muestra estado (instalando, listo, error) y la salida redactada. Por qué: el usuario no tiene terminal desde el móvil, y un comando fijo evita ejecutar nada arbitrario.
+   - **Decisión pendiente del usuario:** aprobar que la app instale software en el VM. Sin eso, no se implementa.
+   - Tras instalar, el CLI global debe ser legible por el agente. Si está fuera de `~/.opencode`, `~/.local/bin` o `~/.bun`, añadir su carpeta raíz a `TELO_LECTURA_EXTRA` (ver `CLAUDE.md`).
+4. **Proveedores con clave** (Groq, NVIDIA, Gemini): no tienen "Instalar". La clave ya se guarda desde la app.
+5. **Diagnóstico:** "Probar" por proveedor ejecuta `opencode models` con su entorno y cuenta modelos. Es la misma cuenta de la tarea 3.
+
+**Pruebas:** `entorno-proveedores.test.ts` (ya existe) cubre la clave llegando al agente y al CLI. Añadir: el botón "Instalar" rechaza cualquier comando que no esté en la lista blanca.
+
+**Verificación.** Captura a 390 y 1440 px. En el VM, el usuario confirma que `opencode models` lista los modelos de la clave guardada.
+
+**Cambios.** `mediano`.
+
+---
+
+## Tarea 10. Conectar Codex, Gemini y Claude gratis
+
+**Investigación (lo que se sabe, sin verificar en el VM).**
+- **Gemini.** La vía limpia es una clave de Google AI Studio, ya cubierta por la clave de Gemini (tarea 3). El inicio de sesión con Google de Telo (`oauth-google.ts`) **no sirve** para OpenCode: sus tokens son de Telo, no del agente.
+- **Codex.** El CLI de Codex puede iniciar sesión con la cuenta de ChatGPT mediante un flujo de dispositivo (código y URL). Lo correcto es ejecutar ese login **en el VM**: la app muestra la URL y el código, y el token queda en el VM (en `~/.codex/`), no en la base de datos ni en el repo. Comprobar el comando exacto en el VM.
+- **Claude gratis.** La API de Anthropic se paga por uso; el plan gratis no incluye acceso por API. Copiar tokens de una sesión de claude.ai o de la app de escritorio a otra herramienta no es recomendable: las condiciones de uso de Anthropic deben confirmarse antes de hacerlo, y los tokens dan acceso a la cuenta. **Recomendación:** no copiar tokens. La alternativa es una clave de API de pago por uso, con el mismo flujo de la tarea 9.
+
+**Decisión pendiente del usuario (antes de programar).**
+- (a) ¿Se acepta el login de dispositivo de Codex, ejecutado en el VM?
+- (b) ¿Claude se conecta solo con clave de API, o se deja fuera?
+
+**Qué hacer (si se aprueba).**
+1. **Servidor** (`server/src/login-cli.ts`): iniciar el login del CLI con lista fija de argumentos, capturar URL y código de la salida, y exponerlos en `GET /api/proveedores/:id/login`. El estado de sesión se comprueba solo por la existencia del archivo de credenciales, nunca leyendo su contenido.
+2. **Nunca** guardar ni mostrar un token. La salida pasa por `redaccion.ts`.
+3. **Web:** en la tarjeta del proveedor, "Iniciar sesión" muestra URL y código, "Ya lo hice" vuelve a comprobar, y el estado se actualiza.
+4. **Pruebas:** un CLI falso que imprime un token de prueba; el token no aparece en ninguna respuesta ni en los logs.
+
+**Cambios.** `grande` (capacidad nueva de infraestructura).
 
 ---
 

@@ -5,14 +5,16 @@ import { claveMaestra, cifrar, descifrar } from "./secretos";
 // que los secretos (AES-256-GCM, AAD "proveedor:<id>") y llegan a los agentes con el nombre de variable que
 // OpenCode espera. La API nunca devuelve el valor: solo dice si la clave está configurada.
 
-export type ProveedorConClave = { id: string; etiqueta: string; variable: string };
+// `variables`: la primera es la que se muestra en Ajustes; las demás son alias que OpenCode también puede leer.
+export type ProveedorConClave = { id: string; etiqueta: string; variables: string[] };
 
-// Nombres de variable: GROQ_API_KEY y GEMINI_API_KEY están en la documentación de OpenCode.
+// Nombres de variable: GROQ_API_KEY está en la documentación de OpenCode. Para Gemini la versión actual
+// usa GOOGLE_GENERATIVE_AI_API_KEY y la antigua GEMINI_API_KEY: se envían las dos.
 // NVIDIA_API_KEY viene de un artículo de terceros y debe confirmarse con `opencode models` en el VM.
 export const PROVEEDORES_CON_CLAVE: ProveedorConClave[] = [
-  { id: "groq", etiqueta: "Groq", variable: "GROQ_API_KEY" },
-  { id: "nvidia", etiqueta: "NVIDIA", variable: "NVIDIA_API_KEY" },
-  { id: "google", etiqueta: "Google (Gemini)", variable: "GEMINI_API_KEY" },
+  { id: "groq", etiqueta: "Groq", variables: ["GROQ_API_KEY"] },
+  { id: "nvidia", etiqueta: "NVIDIA", variables: ["NVIDIA_API_KEY"] },
+  { id: "google", etiqueta: "Google (Gemini)", variables: ["GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY"] },
 ];
 
 const MIN_CLAVE = 8;
@@ -73,10 +75,19 @@ export function estadoClaves(): {
   return PROVEEDORES_CON_CLAVE.map((p) => ({
     id: p.id,
     etiqueta: p.etiqueta,
-    variable: p.variable,
+    variable: p.variables[0],
     configurada: fechas.has(p.id),
     actualizada_en: fechas.get(p.id) ?? null,
   }));
+}
+
+// Proveedores cuya clave llega de verdad al CLI y a los agentes (guardada y descifrable).
+// Devuelve id -> etiqueta. Lo usa la lista de modelos para mostrar los del proveedor.
+export function proveedoresConClave(): Map<string, string> {
+  const entorno = entornoProveedores();
+  return new Map(
+    PROVEEDORES_CON_CLAVE.filter((p) => p.variables.some((v) => Object.hasOwn(entorno, v))).map((p) => [p.id, p.etiqueta]),
+  );
 }
 
 // Variables de las claves guardadas, listas para el entorno de un agente o de `opencode models`.
@@ -93,7 +104,8 @@ export function entornoProveedores(): Record<string, string> {
       const proveedor = proveedorConClave(fila.proveedor);
       if (!proveedor) continue;
       try {
-        entorno[proveedor.variable] = descifrar(clave, fila, textoAsociado(proveedor.id));
+        const valor = descifrar(clave, fila, textoAsociado(proveedor.id));
+        for (const variable of proveedor.variables) entorno[variable] = valor;
       } catch {
         // Una clave que no descifra se omite: no se registra su contenido ni su nombre.
       }

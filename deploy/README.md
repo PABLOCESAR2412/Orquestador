@@ -52,6 +52,17 @@ sudo systemctl start orquestador-deploy.service    # forzar un ciclo ahora
 
 Para pausar el despliegue automático: `sudo systemctl disable --now orquestador-deploy.timer`.
 
+## Registros y estado en Ajustes (una vez)
+
+Ajustes > Estado del servidor muestra el estado de `orquestador` y sus últimos registros. La app los lee con `journalctl`, sin sudo. Para que el usuario `orquestador` pueda leer el diario, hay que añadirlo al grupo de lectura del diario:
+
+```
+sudo usermod -aG systemd-journal orquestador
+sudo systemctl restart orquestador
+```
+
+Sin ese permiso, la pestaña muestra un aviso en lugar de los registros. El gasto de Azure necesita aparte una identidad administrada del VM con permiso de lectura de costes (pendiente de decisión; ver `FASE3.md`, tarea 6).
+
 ## Qué no cubre
 
 - No corre migraciones a mano: las aplica el servidor al arrancar.

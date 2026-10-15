@@ -1,4 +1,4 @@
-import { entornoProveedores } from "./claves-proveedor";
+import { entornoProveedores, proveedoresConClave } from "./claves-proveedor";
 
 export type CostTier = "gratis" | "economico" | "medio" | "alto" | "premium";
 
@@ -59,7 +59,9 @@ function tierFor(free: boolean, outputUsd: number): CostTier {
   return "premium";
 }
 
-function parseModels(txt: string): ModelInfo[] {
+// `conClave`: proveedor -> etiqueta, de los que tienen clave activa. Sus modelos se recomiendan aunque no sean
+// gratis o no estén en un grupo curado: si el usuario guardó la clave, quiere usarlos.
+function parseModels(txt: string, conClave: ReadonlyMap<string, string> = new Map()): ModelInfo[] {
   // Cada modelo aparece como una línea "proveedor/modelo" seguida de su JSON
   const parts = txt.split(/^(\S+\/\S+)$/m).slice(1);
   const models: ModelInfo[] = [];
@@ -81,10 +83,12 @@ function parseModels(txt: string): ModelInfo[] {
 
     const matched = GROUPS.find((g) => g.pattern.test(id));
     const costTier = tierFor(free, outputUsd);
+    const provider = id.split("/")[0];
+    const etiquetaProveedor = conClave.get(provider);
 
     models.push({
       id,
-      provider: id.split("/")[0],
+      provider,
       name: raw.name ?? id,
       inputUsd,
       outputUsd,
@@ -93,8 +97,8 @@ function parseModels(txt: string): ModelInfo[] {
       free,
       costTier,
       costWarning: WARNINGS[costTier],
-      group: matched?.label ?? (free ? "Gratis" : "Otros"),
-      recommended: free || matched !== undefined,
+      group: matched?.label ?? etiquetaProveedor ?? (free ? "Gratis" : "Otros"),
+      recommended: free || matched !== undefined || etiquetaProveedor !== undefined,
     });
   }
   return models;
@@ -136,7 +140,7 @@ export async function getModels(force = false): Promise<ModelInfo[]> {
     throw new Error(`opencode models salió con código ${code}`);
   }
 
-  const models = parseModels(out);
+  const models = parseModels(out, proveedoresConClave());
   cache = { at: Date.now(), models };
   return models;
 }
