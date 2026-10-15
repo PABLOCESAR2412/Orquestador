@@ -68,14 +68,12 @@ export function UpdatePrompt() {
     // Cerramos el canal en vivo antes de recargar para no dejar conexiones HTTP/2 colgadas
     // que provoquen net::ERR_HTTP2_PROTOCOL_ERROR en el navegador.
     cerrarEventosVivos();
-    // Con service worker en espera, se activa y la página recarga sola.
+    // Con service worker en espera, se pide que se active: su cambio de control recarga la página.
+    // Si no hay worker en espera, esa señal nunca llega y el botón no hacía nada. Por eso se espera un
+    // momento y, si la página sigue aquí, se continúa con la limpieza y la recarga de abajo.
     if (esperaActivacion) {
-      try {
-        await updateServiceWorker(true);
-        return;
-      } catch {
-        // Si falla, se sigue con la limpieza de abajo.
-      }
+      void updateServiceWorker(true).catch(() => undefined);
+      await new Promise((resolver) => window.setTimeout(resolver, 1500));
     }
     // Si el service worker nuevo aún no está listo, se limpia la caché para que
     // la recarga no vuelva a mostrar la versión anterior. Sin acceso a service

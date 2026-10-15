@@ -66,7 +66,9 @@ const PATRONES_SENSIBLES = [
   /\.(pem|key|p12|pfx)$/,
   /^id_(rsa|ed25519)/,
   /^credentials/,
-  /secret/,
+  // «secret» o «secrets» como palabra del nombre (client_secret.json, secrets.yaml), no dentro de otra
+  // palabra: así secretos.ts o proyecto-secretos.tsx son código normal y no bloquean el commit.
+  /(^|[._-])secrets?([._-]|$)/,
 ];
 
 // Error con código para la interfaz. Los códigos se traducen en web/src/lib/model.ts.
