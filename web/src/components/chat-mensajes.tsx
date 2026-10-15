@@ -60,6 +60,19 @@ function textoParaVoz(texto: string): string {
     .trim();
 }
 
+function vozEspanola(): SpeechSynthesisVoice | undefined {
+  const idioma = navigator.language.toLowerCase();
+  const voces = window.speechSynthesis
+    .getVoices()
+    .filter((voz) => /^es(?:-|$)/i.test(voz.lang));
+  return (
+    voces.find((voz) => voz.lang.toLowerCase() === idioma) ??
+    voces.find((voz) => voz.lang.toLowerCase() === "es-mx") ??
+    voces.find((voz) => voz.lang.toLowerCase() === "es-es") ??
+    voces[0]
+  );
+}
+
 let utteranceActiva: SpeechSynthesisUtterance | null = null;
 let limpiarLecturaActiva: (() => void) | null = null;
 
@@ -164,7 +177,9 @@ export function MensajeAgente({
       limpiarLecturaActiva?.();
     }
     const utterance = new SpeechSynthesisUtterance(contenido);
-    utterance.lang = navigator.language || "es";
+    const voz = vozEspanola();
+    utterance.lang = voz?.lang || "es-ES";
+    if (voz) utterance.voice = voz;
     const limpiar = () => {
       if (!montadoRef.current) return;
       if (utteranceActiva === utterance) {
