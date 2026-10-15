@@ -60,7 +60,7 @@ function tierFor(free: boolean, outputUsd: number): CostTier {
 
 // `conClave`: proveedor -> etiqueta, de los que tienen clave activa. Sus modelos se recomiendan aunque no sean
 // gratis o no estén en un grupo curado: si el usuario guardó la clave, quiere usarlos.
-function parseModels(txt: string, conClave: ReadonlyMap<string, string> = new Map()): ModelInfo[] {
+export function parseModels(txt: string, conClave: ReadonlyMap<string, string> = new Map()): ModelInfo[] {
   // Cada modelo aparece como una línea "proveedor/modelo" seguida de su JSON
   const parts = txt.split(/^(\S+\/\S+)$/m).slice(1);
   const models: ModelInfo[] = [];
@@ -100,7 +100,19 @@ function parseModels(txt: string, conClave: ReadonlyMap<string, string> = new Ma
       recommended: free || matched !== undefined || etiquetaProveedor !== undefined,
     });
   }
-  return models;
+  // OpenCode Zen también publica algunos modelos de Google. Si el proveedor oficial está
+  // configurado, conserva esa entrada y evita que el selector muestre el mismo Gemini dos veces.
+  const ids = new Set<string>();
+  const googleGemini = new Set(
+    models
+      .filter((m) => m.provider === "google" && m.id.startsWith("google/gemini-"))
+      .map((m) => m.id.slice("google/".length)),
+  );
+  return models.filter((model) => {
+    if (ids.has(model.id)) return false;
+    ids.add(model.id);
+    return !(model.provider === "opencode" && googleGemini.has(model.id.slice("opencode/".length)));
+  });
 }
 
 // Tras cambiar una clave de proveedor, la lista de modelos se vuelve a pedir.

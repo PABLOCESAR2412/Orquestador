@@ -37,7 +37,9 @@ preferences.put("/preferences", async (c) => {
   if (next.defaultEffort && !next.defaultModel) {
     return c.json({ error: "effort_requires_model" }, 400);
   }
-  if (next.defaultModel) {
+  // Un modelo antiguo puede haber desaparecido del catálogo. No debe impedir guardar otros
+  // ajustes; se valida cuando se cambia el modelo o su esfuerzo.
+  if (next.defaultModel && (body.defaultModel !== undefined || body.defaultEffort !== undefined)) {
     try {
       const check = await validateSelection(next.defaultModel, next.defaultEffort);
       if (!check.ok) return c.json({ error: check.error }, 400);

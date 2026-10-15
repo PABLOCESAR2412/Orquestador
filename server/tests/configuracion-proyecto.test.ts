@@ -1,15 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 
-const raiz = join(tmpdir(), "telo-pruebas-servicio");
-if (!process.env.TELO_PRUEBAS_INICIADAS) {
-  rmSync(raiz, { recursive: true, force: true });
-  process.env.TELO_PRUEBAS_INICIADAS = "1";
-}
+const raiz = join(import.meta.dir, ".test-data-config-" + randomUUID().slice(0, 8));
 process.env.DATA_DIR = join(raiz, "data");
 process.env.TELO_PROYECTOS_DIR = join(raiz, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
@@ -18,22 +13,25 @@ const { proyectoConfig } = await import("../src/routes/proyecto-config");
 const { repositoryActions } = await import("../src/routes/repository-actions");
 const { guardarSecreto } = await import("../src/secretos");
 const { gitOk } = await import("../src/git");
+const { guardarCuentaGithubGlobal, borrarCuentaGithubGlobal } = await import("../src/github-auth");
+const { githubApiPr } = await import("../src/routes/proyecto-config");
 const app = new Hono().route("/", proyectoConfig).route("/", repositoryActions);
 const proyectos: { id: string; cwd: string }[] = [];
 const claveOriginal = process.env.TELO_CLAVE_CIFRADO;
 const fetchOriginal = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = fetchOriginal;
+  borrarCuentaGithubGlobal();
   if (claveOriginal === undefined) delete process.env.TELO_CLAVE_CIFRADO;
   else process.env.TELO_CLAVE_CIFRADO = claveOriginal;
   for (const proyecto of proyectos.splice(0)) {
     db.query("DELETE FROM repository_actions WHERE project_id=?").run(proyecto.id);
     db.query("DELETE FROM projects WHERE id=?").run(proyecto.id);
-    rmSync(proyecto.cwd, { recursive: true, force: true });
+    try { rmSync(proyecto.cwd, { recursive: true, force: true }); } catch { /* Windows puede retener archivos dentro de .git hasta salir de Bun. */ }
   }
 });
 function proyecto() {
-  const id = "config-test-" + randomUUID();
+  const id = "p-" + randomUUID().slice(0, 8);
   const cwd = join(process.env.TELO_PROYECTOS_DIR!, id);
   mkdirSync(cwd, { recursive: true });
   db.query("INSERT INTO projects(id,name,repo_path) VALUES (?,?,?)").run(id, id, cwd);
@@ -51,7 +49,6 @@ function pedir(path: string, body: unknown, method = "POST") {
 const cfg = {
   remote: "https://github.com/ejemplo/proyecto",
   author_name: "Usuario",
-  author_email: "usuario@example.test",
   base_branch: "main",
 };
 
@@ -61,7 +58,6 @@ describe("configuración del proyecto", () => {
     const p = proyecto();
     for (const cambio of [
       { author_name: "" },
-      { author_email: "sin-correo" },
       { base_branch: "../main" },
       { remote: "https://otro.example/repo" },
       { remote: "https://token@github.com/ejemplo/proyecto" },
@@ -69,6 +65,11 @@ describe("configuración del proyecto", () => {
       expect((await pedir(`/projects/${p.id}/git`, { ...cfg, ...cambio }, "PUT")).status).toBe(400);
     expect(db.query("SELECT 1 FROM project_git WHERE project_id=?").get(p.id)).toBeNull();
     expect((await pedir(`/projects/${p.id}/git`, cfg, "PUT")).status).toBe(200);
+    expect((await pedir(`/projects/${p.id}/git`, { ...cfg, remote: "https://github.com/otro/repo" }, "PUT")).status).toBe(409);
+    const estado = await app.request(`/projects/${p.id}/git`);
+    const json = await estado.json() as Record<string, unknown>;
+    expect(json.remote).toBe(cfg.remote);
+    expect(json.author_email).toBeUndefined();
     expect(existsSync(join(p.cwd, ".git"))).toBe(false);
   });
 
@@ -101,6 +102,42 @@ describe("configuración del proyecto", () => {
     const comprobacion = await pedir(`/projects/${p.id}/git/comprobar`, {});
     expect(comprobacion.status).toBe(409);
     expect(await comprobacion.text()).not.toContain(secreto);
+  });
+
+  test("la cuenta global se identifica sin exponer su token y autoriza la creación de PR", async () => {
+    const p = proyecto();
+    const secreto = "token-global-de-prueba";
+    guardarCuentaGithubGlobal({
+      token: secreto,
+      login: "pablo",
+      name: "Pablo",
+      avatar_url: "https://example.test/avatar.png",
+      scopes: ["repo"],
+      actualizado_en: new Date().toISOString(),
+    });
+    await pedir(`/projects/${p.id}/git`, cfg, "PUT");
+    const estado = await app.request(`/projects/${p.id}/git`);
+    const texto = await estado.text();
+    expect(JSON.parse(texto).github).toMatchObject({ conectado: true, login: "pablo", name: "Pablo" });
+    expect(texto).not.toContain(secreto);
+
+    let autorizacion = "";
+    globalThis.fetch = (async (_url, init) => {
+      autorizacion = new Headers(init?.headers).get("Authorization") ?? "";
+      return Response.json({ html_url: "https://github.com/ejemplo/proyecto/pull/1" });
+    }) as typeof fetch;
+    await githubApiPr(p.id, "/repos/ejemplo/proyecto/pulls", { title: "PR" });
+    expect(autorizacion).toBe(`Bearer ${secreto}`);
+  });
+
+  test("un remoto de origin se detecta y queda bloqueado aunque aún no esté guardado en Telo", async () => {
+    const p = proyecto();
+    await gitOk(["init", "-b", "main"], { cwd: p.cwd });
+    await gitOk(["remote", "add", "origin", cfg.remote], { cwd: p.cwd });
+    const estado = await (await app.request(`/projects/${p.id}/git`)).json() as Record<string, unknown>;
+    expect(estado.remote).toBe(cfg.remote);
+    expect(estado.repository).toBe("ejemplo/proyecto");
+    expect((await pedir(`/projects/${p.id}/git`, { ...cfg, remote: "https://github.com/otro/repo" }, "PUT")).status).toBe(409);
   });
 });
 

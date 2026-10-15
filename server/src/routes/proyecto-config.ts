@@ -14,7 +14,7 @@ import { gitOk, prepararRepoSeguro, tieneGitReal } from "../git";
 import { urlGithubPermitida, mensajeSeguro } from "../workspace";
 import { valorSecreto } from "../secretos";
 import { clavePublicaDe } from "../clave-ssh";
-import { tokenGithubGlobal } from "../github-auth";
+import { cuentaGithubGlobal, tokenGithubGlobal } from "../github-auth";
 
 export const proyectoConfig = new Hono();
 proyectoConfig.use("/projects/:id/*", async (c, next) => {
@@ -80,32 +80,43 @@ proyectoConfig.put("/projects/:id/contexto", async (c) => {
   return c.json({ ok: true });
 });
 export function configGit(id: string) {
-  return (
-    db
+  const guardada = db
       .query<
         { remote: string | null; author_name: string; author_email: string; base_branch: string },
         [string]
       >("SELECT remote,author_name,author_email,base_branch FROM project_git WHERE project_id=?")
-      .get(id) ?? {
+      .get(id);
+  if (guardada) return guardada;
+  const cuenta = cuentaGithubGlobal();
+  return {
       remote: null,
-      author_name: "Telo",
-      author_email: "telo@localhost",
+      author_name: cuenta.name || cuenta.login || "Telo",
+      author_email: cuenta.login ? `${cuenta.login}@users.noreply.github.com` : "telo@localhost",
       base_branch: "main",
-    }
-  );
+  };
 }
-proyectoConfig.get("/projects/:id/git", async (c) => {
-  const id = c.req.param("id");
-  const cfg = configGit(id);
+
+async function datosRepositorio(id: string) {
   const cwd = projectRepoPath(id)!;
-  const repo = await conProyectoRevisado(id, async () => {
+  return conProyectoRevisado(id, async () => {
     if (!(await prepararRepoSeguro(cwd))) return { inicializado: false, remote: null };
     const remoto = await gitOk(["config", "--get", "remote.origin.url"], { cwd }).catch(() => "");
     return { inicializado: true, remote: urlGithubPermitida(remoto) ?? null };
   });
+}
+
+proyectoConfig.get("/projects/:id/git", async (c) => {
+  const id = c.req.param("id");
+  const cfg = configGit(id);
+  const cwd = projectRepoPath(id)!;
+  const repo = await datosRepositorio(id);
+  const remote = cfg.remote ?? repo?.remote ?? null;
   return c.json({
-    ...cfg,
-    remote: cfg.remote ?? repo?.remote ?? null,
+    remote,
+    repository: remote?.replace(/^https:\/\/github\.com\//, "") ?? null,
+    author_name: cfg.author_name,
+    base_branch: cfg.base_branch,
+    github: cuentaGithubGlobal(),
     inicializado: repo?.inicializado ?? tieneGitReal(cwd),
     ocupado: repo === null,
     token: !!valorSecreto(id, "GITHUB_TOKEN") || !!tokenGithubGlobal(),
@@ -117,7 +128,6 @@ proyectoConfig.put("/projects/:id/git", async (c) => {
   const b = await leerCuerpoJson<{
     remote: string;
     author_name: string;
-    author_email: string;
     base_branch: string;
   }>(c);
   if (
@@ -126,9 +136,6 @@ proyectoConfig.put("/projects/:id/git", async (c) => {
     typeof b.author_name !== "string" ||
     !b.author_name.trim() ||
     b.author_name.length > 100 ||
-    typeof b.author_email !== "string" ||
-    !/^[^\s@]+@[^\s@]+$/.test(b.author_email) ||
-    b.author_email.length > 200 ||
     typeof b.base_branch !== "string" ||
     !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,100}$/.test(b.base_branch) ||
     b.base_branch.includes("..")
@@ -136,9 +143,18 @@ proyectoConfig.put("/projects/:id/git", async (c) => {
     return c.json({ error: "invalid_git_config" }, 400);
   const remoto = b.remote.trim() ? urlGithubPermitida(b.remote) : null;
   if (b.remote.trim() && !remoto) return c.json({ error: "remoto_no_permitido" }, 400);
+  const repo = await datosRepositorio(c.req.param("id"));
+  if (!repo) return c.json({ error: "proyecto_ocupado" }, 409);
+  const remotoFijado = configGit(c.req.param("id")).remote ?? repo.remote;
+  if (remotoFijado && remoto !== remotoFijado) return c.json({ error: "repositorio_inmutable" }, 409);
+  const actual = configGit(c.req.param("id"));
+  const cuenta = cuentaGithubGlobal();
+  const email = actual.author_email === "telo@localhost" && cuenta.login
+    ? `${cuenta.login}@users.noreply.github.com`
+    : actual.author_email;
   db.query(
     "INSERT INTO project_git(project_id,remote,author_name,author_email,base_branch) VALUES (?,?,?,?,?) ON CONFLICT(project_id) DO UPDATE SET remote=excluded.remote,author_name=excluded.author_name,author_email=excluded.author_email,base_branch=excluded.base_branch",
-  ).run(c.req.param("id"), remoto, b.author_name.trim(), b.author_email, b.base_branch);
+  ).run(c.req.param("id"), remoto, b.author_name.trim(), email, b.base_branch);
   return c.json({ ok: true });
 });
 
@@ -151,13 +167,12 @@ export async function githubApi(projectId: string, path: string, body?: unknown)
   return githubLlamar(token, path, body);
 }
 
-// Crear un pull request usa solo GITHUB_PR_TOKEN, con permiso de Pull requests. No hay respaldo a la
-// cuenta de GitHub ni a GITHUB_TOKEN, que puede subir código.
+// Prioriza el token de PR; la cuenta global de GitHub también autoriza esta operación.
 export async function githubApiPr(projectId: string, path: string, body: unknown) {
-  const token = valorSecreto(projectId, "GITHUB_PR_TOKEN");
+  const token = valorSecreto(projectId, "GITHUB_PR_TOKEN") || tokenGithubGlobal() || valorSecreto(projectId, "GITHUB_TOKEN");
   if (!token)
     throw new Error(
-      "Configura GITHUB_PR_TOKEN en los secretos del proyecto. Debe tener solo permiso de Pull requests (lectura y escritura).",
+      "Inicia sesión con GitHub en Ajustes o configura un token con permiso de Pull requests.",
     );
   return githubLlamar(token, path, body);
 }
@@ -186,8 +201,10 @@ async function githubLlamar(token: string, path: string, body?: unknown) {
   return res.json();
 }
 proyectoConfig.post("/projects/:id/git/comprobar", async (c) => {
-  const id = c.req.param("id"),
-    remoto = configGit(id).remote;
+  const id = c.req.param("id");
+  const repoLocal = await datosRepositorio(id);
+  if (!repoLocal) return c.json({ error: "proyecto_ocupado" }, 409);
+  const remoto = configGit(id).remote ?? repoLocal.remote;
   if (!remoto) return c.json({ error: "sin_remoto" }, 409);
   try {
     const repo = (await githubApi(id, "/repos/" + remoto.replace("https://github.com/", ""))) as {

@@ -8,18 +8,23 @@ export function fechaUtc(valor: string): Date {
   return new Date(conZona ? valor : `${valor.replace(" ", "T")}Z`);
 }
 
-// Agentes que pueden ejecutar una tarea. Hoy el servidor solo tiene el runner de OpenCode,
-// así que toda tarea corre con él. Codex y Google aparecen en 0 hasta que existan sus runners.
+// Proveedor real del modelo elegido en la tarea. El runner de OpenCode no determina
+// quién sirve la inferencia: por ejemplo, google/gemini-* usa la API oficial de Google.
 export const AGENTES = [
   { id: "opencode", nombre: "OpenCode" },
-  { id: "codex", nombre: "Codex" },
   { id: "google", nombre: "Google" },
+  { id: "openai", nombre: "OpenAI" },
+  { id: "anthropic", nombre: "Anthropic" },
+  { id: "groq", nombre: "Groq" },
+  { id: "nvidia", nombre: "NVIDIA" },
+  { id: "openrouter", nombre: "OpenRouter" },
 ] as const;
 
 export type AgenteId = (typeof AGENTES)[number]["id"];
 
-export function agenteDeTarea(_tarea: Task): AgenteId {
-  return "opencode";
+export function agenteDeTarea(tarea: Task): AgenteId {
+  const proveedor = tarea.model?.split("/")[0];
+  return AGENTES.some((a) => a.id === proveedor) ? (proveedor as AgenteId) : "opencode";
 }
 
 export function nombreAgente(id: AgenteId): string {

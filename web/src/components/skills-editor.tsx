@@ -1,15 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "../api";
+import { api } from "../api";
 import { errorText } from "../lib/model";
 
-// Mismo patrón que exige OpenCode y que valida el servidor (src/skills.ts). Aquí solo sirve para avisar antes.
-const NOMBRE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const LIMITE_BYTES = 64 * 1024;
-
-function plantilla(nombre: string): string {
-  return `---\nname: ${nombre}\ndescription: Di qué hace esta skill y cuándo debe usarla el agente.\n---\n\n# ${nombre}\n\nInstrucciones paso a paso.\n`;
-}
 
 // Lista y editor de skills. Sin projectId trabaja con las globales; con projectId, con las del proyecto.
 // El nombre de la carpeta es la clave: no hay renombrado, se crea de nuevo y se quita la anterior.
@@ -17,12 +11,8 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
   const qc = useQueryClient();
   const ambito = projectId ?? "global";
   const [seleccion, setSeleccion] = useState<string | null>(null);
-  const [nueva, setNueva] = useState(false);
   const [creando, setCreando] = useState(false);
-  const [nombreNuevo, setNombreNuevo] = useState("");
-  const [contenidoNuevo, setContenidoNuevo] = useState("");
-  const [urlNueva, setUrlNueva] = useState("");
-  const [errorNombre, setErrorNombre] = useState<string | null>(null);
+  const [comandoNuevo, setComandoNuevo] = useState("");
   const [borrador, setBorrador] = useState("");
   const [confirmandoQuitar, setConfirmandoQuitar] = useState(false);
 
@@ -30,23 +20,14 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
   const detalle = useQuery({
     queryKey: ["skill", ambito, seleccion],
     queryFn: () => api.getSkill(seleccion ?? "", projectId),
-    enabled: seleccion !== null && !nueva,
+    enabled: seleccion !== null,
   });
 
-  const buscarCatalogo = useMutation({
-    mutationFn: () => api.searchSkills(nombreNuevo.trim()),
-  });
-
-  const importarUrl = useMutation({
-    mutationFn: (url: string) => {
-      if (!projectId) throw new Error("Importar por URL solo está disponible para proyectos");
-      return api.saveProjectSkill(projectId, { url });
-    },
+  const instalar = useMutation({
+    mutationFn: () => api.installSkill(comandoNuevo.trim(), projectId),
     onSuccess: () => {
       setCreando(false);
-      setNombreNuevo("");
-      setContenidoNuevo("");
-      setUrlNueva("");
+      setComandoNuevo("");
       refrescar();
     },
   });
@@ -63,23 +44,7 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
 
   const guardar = useMutation({
     mutationFn: () => api.saveSkill(seleccion ?? "", borrador, projectId),
-    onSuccess: () => {
-      setNueva(false);
-      refrescar();
-    },
-  });
-
-  const guardarCreada = useMutation({
-    mutationFn: (datos: { nombre: string; contenido: string }) =>
-      api.saveSkill(datos.nombre, datos.contenido, projectId),
-    onSuccess: (_, variables) => {
-      setCreando(false);
-      setNombreNuevo("");
-      setContenidoNuevo("");
-      setUrlNueva("");
-      refrescar();
-      abrir(variables.nombre);
-    },
+    onSuccess: refrescar,
   });
 
   const quitar = useMutation({
@@ -92,82 +57,40 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
   });
 
   const bytes = new TextEncoder().encode(borrador).length;
-  const cambiado = nueva || (detalle.data ? borrador !== detalle.data.contenido : false);
+  const cambiado = detalle.data ? borrador !== detalle.data.contenido : false;
 
   function abrir(nombre: string) {
     setSeleccion(nombre);
-    setNueva(false);
     setConfirmandoQuitar(false);
     guardar.reset();
     quitar.reset();
   }
 
   function empezarNueva() {
-    if (urlNueva.trim()) {
-      let u = urlNueva.trim();
-      u = u.replace(/[?#].*$/, "").replace(/\/+$/, "");
-      importarUrl.mutate(u);
-      return;
-    }
-
-    const nombre = nombreNuevo.trim();
-    if (!NOMBRE.test(nombre) || nombre.length > 64) {
-      setErrorNombre(errorText(new ApiError(400, "skill_nombre_invalido")));
-      return;
-    }
-    if (lista.data?.skills.some((s) => s.nombre === nombre)) {
-      setErrorNombre("Ya hay una skill con ese nombre. Ábrela desde la lista.");
-      return;
-    }
-    setErrorNombre(null);
-
-    if (contenidoNuevo.trim()) {
-      const contenidoFinal = contenidoNuevo.startsWith("---")
-        ? contenidoNuevo
-        : `---\nname: ${nombre}\ndescription: ${nombre}\n---\n\n${contenidoNuevo}`;
-      guardarCreada.mutate({ nombre, contenido: contenidoFinal });
-      return;
-    }
-
-    setCreando(false);
-    setNombreNuevo("");
-    setContenidoNuevo("");
-    setUrlNueva("");
-    setSeleccion(nombre);
-    setNueva(true);
-    setBorrador(plantilla(nombre));
+    if (comandoNuevo.trim()) instalar.mutate();
   }
 
   function descartar() {
-    if (nueva) {
-      setSeleccion(null);
-      setNueva(false);
-      return;
-    }
     if (detalle.data) setBorrador(detalle.data.contenido);
   }
 
-  const editorVisible = seleccion !== null && (nueva || detalle.data !== undefined);
+  const editorVisible = seleccion !== null && detalle.data !== undefined;
 
   return (
     <div className="skills">
-      <div className="skills-cabecera" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+      <div className="skills-cabecera">
         <div>
-          {titulo && <h2 className="panel-title" style={{ margin: "0 0 6px 0" }}>{titulo}</h2>}
-          <p className="aj-nota" style={{ margin: 0 }}>{ayuda}</p>
+          {titulo && <h2 className="panel-title">{titulo}</h2>}
+          <p className="aj-nota">{ayuda}</p>
         </div>
         {!creando && (
           <button
             type="button"
             className="aj-btn aj-btn-primario"
-            style={{ whiteSpace: "nowrap" }}
             onClick={() => {
               setCreando(true);
-              setNombreNuevo("");
-              setContenidoNuevo("");
-              setUrlNueva("");
-              setErrorNombre(null);
-              buscarCatalogo.reset();
+              setComandoNuevo("");
+              instalar.reset();
             }}
           >
             Nueva skill
@@ -176,18 +99,16 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
       </div>
 
       {creando && (
-        <div className="skills-nueva" style={{ marginTop: 16, border: "1px solid var(--line)", borderRadius: 8, padding: 16 }}>
-          <label className="skills-etiqueta" htmlFor="skills-nombre">
-            Nombre de la skill
+        <div className="skills-nueva" style={{ marginTop: 16 }}>
+          <label className="skills-etiqueta" htmlFor={`skills-comando-${ambito}`}>
+            Comando de instalación
           </label>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <input
-              id="skills-nombre"
+              id={`skills-comando-${ambito}`}
               className="skills-entrada"
-              style={{ flex: "1 1 200px" }}
-              value={nombreNuevo}
-              placeholder="por-ejemplo-ssh"
-              onChange={(e) => setNombreNuevo(e.target.value)}
+              value={comandoNuevo}
+              placeholder="npx skills add openai/skills --skill playwright"
+              onChange={(e) => setComandoNuevo(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -197,114 +118,27 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
               autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}
-              aria-describedby="skills-nombre-ayuda"
+              aria-describedby={`skills-comando-ayuda-${ambito}`}
             />
-            <button
-              type="button"
-              className="aj-btn"
-              disabled={!nombreNuevo.trim() || buscarCatalogo.isPending}
-              onClick={() => buscarCatalogo.mutate()}
-            >
-              {buscarCatalogo.isPending ? "Buscando…" : "Buscar en catálogos oficiales"}
-            </button>
-          </div>
-          <p id="skills-nombre-ayuda" className="aj-nota">
-            Minúsculas, números y guiones. Será el nombre de la carpeta de la skill.
+          <p id={`skills-comando-ayuda-${ambito}`} className="aj-nota">
+            Pega el comando de skills.sh. Telo descarga solo el archivo SKILL.md y no ejecuta el comando ni scripts.
           </p>
-
-          {buscarCatalogo.isSuccess && buscarCatalogo.data.length === 0 && (
-            <p className="aj-nota" style={{ color: "var(--text-muted)" }}>
-              Sin coincidencias en los catálogos oficiales. Puedes escribir tus instrucciones o importar desde una URL.
-            </p>
-          )}
-
-          {buscarCatalogo.data && buscarCatalogo.data.length > 0 && (
-            <div style={{ margin: "12px 0", maxHeight: 180, overflowY: "auto", border: "1px solid var(--line)", borderRadius: 6, padding: "4px 8px" }}>
-              {buscarCatalogo.data.map((s) => (
-                <div key={s.url} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
-                  <span style={{ fontSize: 13, fontWeight: 500 }}>{s.name}</span>
-                  <button
-                    type="button"
-                    className="aj-btn"
-                    style={{ fontSize: 12, padding: "2px 8px" }}
-                    disabled={importarUrl.isPending}
-                    onClick={() => importarUrl.mutate(s.url)}
-                  >
-                    Instalar {s.name}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <label className="skills-etiqueta" htmlFor="skills-contenido-nuevo" style={{ marginTop: 12 }}>
-            Instrucciones o prompt (opcional si usas plantilla)
-          </label>
-          <textarea
-            id="skills-contenido-nuevo"
-            className="skills-texto"
-            rows={4}
-            value={contenidoNuevo}
-            onChange={(e) => setContenidoNuevo(e.target.value)}
-            placeholder="Pega aquí el contenido o las instrucciones paso a paso de la skill..."
-            spellCheck={false}
-          />
-
-          <label className="skills-etiqueta" htmlFor="skills-url-nueva" style={{ marginTop: 12 }}>
-            URL del SKILL.md en GitHub (opcional)
-          </label>
-          <input
-            id="skills-url-nueva"
-            className="skills-entrada"
-            type="url"
-            value={urlNueva}
-            onChange={(e) => setUrlNueva(e.target.value)}
-            placeholder="https://github.com/… (enlace a archivo SKILL.md o a la carpeta del skill)"
-          />
-
-          {errorNombre && (
+          {instalar.isError && (
             <p className="aj-error" role="alert" style={{ marginTop: 8 }}>
-              {errorNombre}
-            </p>
-          )}
-          {importarUrl.isError && (
-            <p className="aj-error" role="alert" style={{ marginTop: 8 }}>
-              {errorText(importarUrl.error)}
-            </p>
-          )}
-          {guardarCreada.isError && (
-            <p className="aj-error" role="alert" style={{ marginTop: 8 }}>
-              {errorText(guardarCreada.error)}
+              {errorText(instalar.error)}
             </p>
           )}
 
           <div className="instalar-acciones" style={{ marginTop: 16 }}>
-            {urlNueva.trim() ? (
-              <button
-                type="button"
-                className="aj-btn aj-btn-primario"
-                disabled={importarUrl.isPending}
-                onClick={empezarNueva}
-              >
-                {importarUrl.isPending ? "Importando…" : "Importar skill desde GitHub"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="aj-btn aj-btn-primario"
-                disabled={!nombreNuevo.trim() || guardarCreada.isPending}
-                onClick={empezarNueva}
-              >
-                {guardarCreada.isPending ? "Guardando…" : "Crear skill"}
-              </button>
-            )}
+            <button type="button" className="aj-btn aj-btn-primario" disabled={!comandoNuevo.trim() || instalar.isPending} onClick={empezarNueva}>
+              {instalar.isPending ? "Instalando…" : "Instalar skill"}
+            </button>
             <button
               type="button"
               className="aj-btn"
               onClick={() => {
                 setCreando(false);
-                setErrorNombre(null);
-                buscarCatalogo.reset();
+                instalar.reset();
               }}
             >
               Cancelar
@@ -350,7 +184,6 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
         <div className="skills-editor">
           <div className="skills-editor-cabecera">
             <h3 className="skills-editor-titulo">{seleccion}</h3>
-            {nueva && <span className="aj-etiqueta">Sin guardar</span>}
           </div>
           <label className="skills-etiqueta" htmlFor="skills-contenido">
             <span>Contenido de SKILL.md</span>
@@ -408,11 +241,9 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
               <button type="button" className="aj-btn" disabled={!cambiado || guardar.isPending} onClick={descartar}>
                 Descartar
               </button>
-              {!nueva && (
-                <button type="button" className="aj-texto-btn skills-peligro" onClick={() => setConfirmandoQuitar(true)}>
-                  Quitar
-                </button>
-              )}
+              <button type="button" className="aj-texto-btn skills-peligro" onClick={() => setConfirmandoQuitar(true)}>
+                Quitar
+              </button>
             </div>
           )}
         </div>

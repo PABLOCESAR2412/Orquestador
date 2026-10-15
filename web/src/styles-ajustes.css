@@ -294,6 +294,40 @@
 }
 .aj-icono-btn:hover:not(:disabled) { color: var(--ink); }
 .aj-icono-btn:disabled { cursor: not-allowed; }
+.login-codex-modelos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.login-codex-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 280px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-width: thin;
+}
+.login-codex-lista li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.login-codex-lista li:last-child { border-bottom: 0; }
+.login-codex-lista li > span:first-child { display: flex; flex-direction: column; min-width: 0; }
+.login-codex-lista small { color: var(--ink-2); font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; }
+.login-codex-lista li > span:last-child { flex: 0 0 auto; color: var(--ink-2); }
 .aj-acciones {
   display: flex;
   flex-wrap: wrap;

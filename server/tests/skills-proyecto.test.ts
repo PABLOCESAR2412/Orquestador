@@ -1,20 +1,19 @@
 import { afterEach, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Hono } from "hono";
 
-const raiz = join(tmpdir(), "telo-pruebas-servicio");
-if (!process.env.TELO_PRUEBAS_INICIADAS) {
-  rmSync(raiz, { recursive: true, force: true });
-  process.env.TELO_PRUEBAS_INICIADAS = "1";
-}
+const raiz = join(import.meta.dir, ".test-data-skills");
+rmSync(raiz, { recursive: true, force: true });
 process.env.DATA_DIR = join(raiz, "data");
 process.env.TELO_PROYECTOS_DIR = join(raiz, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 const { db } = await import("../src/db");
-const { guardarSkill, listarSkills, borrarSkill, importarSkill, buscarSkills } = await import(
+const { guardarSkill, listarSkills, borrarSkill, importarSkill, buscarSkills, parsearComandoSkill } = await import(
   "../src/skills-proyecto"
 );
+const { skillsRoute } = await import("../src/routes/skills");
+const app = new Hono().route("/", skillsRoute);
 const fetchOriginal = globalThis.fetch;
 const carpetaProyecto = join(raiz, "proyectos", "skills-importador");
 afterEach(() => {
@@ -135,4 +134,50 @@ test("busca solo SKILL.md de los catálogos oficiales y reutiliza caché", async
   expect((await buscarSkills("pdf")).map((s) => s.name)).toEqual(["pdf", "pdf"]);
   expect(await buscarSkills("ninguna")).toEqual([]);
   expect(llamadas).toBe(2);
+});
+
+test("interpreta el comando oficial sin ejecutarlo y rechaza argumentos adicionales", () => {
+  expect(parsearComandoSkill("npx skills add openai/skills --skill playwright")).toEqual({
+    owner: "openai",
+    repo: "skills",
+    name: "playwright",
+  });
+  expect(parsearComandoSkill("$ bunx skills add https://github.com/vercel-labs/agent-skills.git --skill frontend-design"))
+    .toEqual({ owner: "vercel-labs", repo: "agent-skills", name: "frontend-design" });
+  expect(() => parsearComandoSkill("npx skills add openai/skills --skill playwright; rm -rf ."))
+    .toThrow("invalid_skill_command");
+  expect(() => parsearComandoSkill("npx skills add attacker.example/a --skill playwright"))
+    .toThrow("invalid_skill_command");
+});
+
+test("instala solo SKILL.md desde el repositorio indicado por el comando", async () => {
+  const id = proyecto();
+  const urls: string[] = [];
+  globalThis.fetch = (async (url) => {
+    const destino = String(url);
+    urls.push(destino);
+    if (destino.endsWith("/repos/vercel-labs/agent-skills")) {
+      return Response.json({ default_branch: "main" });
+    }
+    if (destino.includes("/git/trees/main?recursive=1")) {
+      return Response.json({ tree: [
+        { type: "blob", path: "skills/frontend-design/SKILL.md" },
+        { type: "blob", path: "skills/frontend-design/install.sh" },
+      ] });
+    }
+    expect(destino).toBe("https://raw.githubusercontent.com/vercel-labs/agent-skills/main/skills/frontend-design/SKILL.md");
+    return new Response("---\nname: frontend-design\ndescription: Diseña interfaces\n---\n\n# Diseño");
+  }) as typeof fetch;
+
+  const respuesta = await app.request("/projects/skills-test/skills/instalar", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ comando: "npx skills add vercel-labs/agent-skills --skill frontend-design" }),
+  });
+  expect(respuesta.status).toBe(201);
+  const skill = await respuesta.json() as { name: string; content: string; source: string };
+  expect(skill.name).toBe("frontend-design");
+  expect(skill.content).toContain("source: https://github.com/vercel-labs/agent-skills/blob/main/skills/frontend-design/SKILL.md");
+  expect(urls).toHaveLength(3);
+  expect(listarSkills(id)[0]?.name).toBe("frontend-design");
 });

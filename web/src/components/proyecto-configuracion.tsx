@@ -17,7 +17,7 @@ function ProyectoGit({ id }: { id: string }) {
   const cfg = useQuery({ queryKey: ["project-git", id], queryFn: () => api.projectGit(id) });
   const [edicion, setEdicion] = useState<Pick<
     GitConfig,
-    "remote" | "author_name" | "author_email" | "base_branch"
+    "remote" | "author_name" | "base_branch"
   > | null>(null);
   const [accion, setAccion] = useState<RepositoryAction | null>(null);
   const guardar = useMutation({
@@ -43,14 +43,13 @@ function ProyectoGit({ id }: { id: string }) {
   });
   const data = edicion ?? cfg.data;
   const cambiar = (
-    campo: "remote" | "author_name" | "author_email" | "base_branch",
+    campo: "remote" | "author_name" | "base_branch",
     valor: string,
   ) => {
     if (data)
       setEdicion({
         remote: data.remote ?? "",
         author_name: data.author_name,
-        author_email: data.author_email,
         base_branch: data.base_branch,
         [campo]: valor,
       });
@@ -59,9 +58,14 @@ function ProyectoGit({ id }: { id: string }) {
     <section className="panel approval-panel" aria-label="Git y GitHub">
       <h2>Git y GitHub</h2>
       <p className="hint">
-        La identidad firma tus commits. El token o la clave SSH autorizan el acceso al repositorio;
-        clonar un repositorio público no concede permiso para subir cambios.
+        La cuenta conectada se usa para revisar el repositorio y autorizar subidas y pull requests.
+        El nombre identifica tus commits; la rama indica el destino de los pull requests.
       </p>
+      {cfg.data?.github.conectado ? (
+        <p role="status">Sesión de GitHub iniciada como {cfg.data.github.name} (@{cfg.data.github.login}).</p>
+      ) : (
+        <p>Sin sesión de GitHub. Puedes conectar una cuenta en Ajustes.</p>
+      )}
       {cfg.isPending && <p>Cargando configuración…</p>}
       {cfg.isError && <p className="error">{errorText(cfg.error)}</p>}
       {data && (
@@ -78,25 +82,19 @@ function ProyectoGit({ id }: { id: string }) {
               type="url"
               placeholder="https://github.com/usuario/repositorio"
               value={data.remote ?? ""}
+              readOnly={Boolean(cfg.data?.remote)}
+              aria-readonly={Boolean(cfg.data?.remote)}
+              title={cfg.data?.remote ? "El repositorio queda fijado al configurarlo." : undefined}
               onChange={(e) => cambiar("remote", e.target.value)}
             />
           </label>
+          {cfg.data?.repository && <p className="hint">Repositorio detectado: {cfg.data.repository}</p>}
           <label>
             Nombre para commits
             <input
               value={data.author_name}
               maxLength={100}
               onChange={(e) => cambiar("author_name", e.target.value)}
-              required
-            />
-          </label>
-          <label>
-            Correo para commits
-            <input
-              type="email"
-              value={data.author_email}
-              maxLength={200}
-              onChange={(e) => cambiar("author_email", e.target.value)}
               required
             />
           </label>
@@ -119,7 +117,7 @@ function ProyectoGit({ id }: { id: string }) {
               onClick={() => comprobar.mutate()}
               title={!data?.remote?.trim() ? "Configura y guarda primero la URL del repositorio remoto de GitHub" : undefined}
             >
-              {comprobar.isPending ? "Comprobando…" : "Comprobar acceso con token"}
+              {comprobar.isPending ? "Comprobando…" : "Comprobar acceso a GitHub"}
             </button>
             <button
               type="button"
@@ -133,13 +131,15 @@ function ProyectoGit({ id }: { id: string }) {
         </form>
       )}
       <p>
-        {cfg.data?.token
-          ? "Acceso mediante token del proyecto o cuenta de GitHub en Ajustes."
+        {cfg.data?.github.conectado
+          ? `Usando la sesión global de GitHub${cfg.data.github.login ? ` (@${cfg.data.github.login})` : ""}.`
+          : cfg.data?.token
+            ? "Acceso mediante token guardado en este proyecto."
           : cfg.data?.ssh
             ? "Clave SSH del proyecto configurada."
             : "No hay credenciales para subir cambios."}
       </p>
-      <form
+      {!cfg.data?.github.conectado && <form
         className="project-config-form"
         onSubmit={(e) => {
           e.preventDefault();
@@ -157,9 +157,8 @@ function ProyectoGit({ id }: { id: string }) {
           />
         </label>
         <p className="hint">
-          Usa un token limitado a este repositorio con Contents de escritura para subir. Para crear
-          pull requests guarda aparte un token solo con Pull requests como GITHUB_PR_TOKEN en Secretos.
-          Puedes usar una clave SSH para subir en la sección siguiente.
+          Solo hace falta si no conectas una cuenta global en Ajustes. El token queda cifrado en este
+          proyecto y no se entrega al agente.
         </p>
         <div>
           <button
@@ -170,7 +169,7 @@ function ProyectoGit({ id }: { id: string }) {
             Guardar token cifrado
           </button>
         </div>
-      </form>
+      </form>}
       {guardar.isSuccess && <p role="status">Configuración guardada.</p>}
       {guardarToken.isSuccess && <p role="status">Token guardado.</p>}
       {comprobar.data && (

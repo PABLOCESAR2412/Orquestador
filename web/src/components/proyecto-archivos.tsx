@@ -80,7 +80,7 @@ export function ProyectoArchivos({ id }: { id: string }) {
           {listado.data && listado.data.entradas.length > 0 && (
             <div style={{ border: "1px solid var(--line)", borderRadius: 10, overflowX: "auto", overflowY: "auto", maxHeight: "420px" }}>
               <table className="files-table">
-                <thead style={{ position: "sticky", top: 0, zIndex: 1, backgroundColor: "var(--bg-panel, #18181b)" }}>
+                <thead>
                   <tr>
                     <th>Nombre</th>
                     <th>Tamaño</th>
