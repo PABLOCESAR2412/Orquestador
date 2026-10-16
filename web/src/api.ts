@@ -701,19 +701,6 @@ export const api = {
     if (filtros.modelo) q.set("modelo", filtros.modelo);
     return request<Analytics>(`/api/analytics?${q.toString()}`);
   },
-  googleEstado: () => request<GoogleEstado>("/api/google/estado"),
-  // Devuelve la URL de Google; la interfaz la abre en la misma pestaña.
-  googleConectar: () => request<{ url: string }>("/api/google/conectar", { method: "POST", body: "{}" }),
-  googleDesconectar: () => request<{ ok: boolean }>("/api/google", { method: "DELETE" }),
-};
-
-// Estado de la conexión con Google. Nunca incluye tokens: solo el correo de la cuenta.
-export type GoogleEstado = {
-  configurado: boolean;
-  faltantes: string[];
-  conectado: boolean;
-  cuenta: string | null;
-  conectado_en: string | null;
 };
 
 export type GithubCuenta = {

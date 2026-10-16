@@ -34,7 +34,6 @@ Es de uso personal, con un solo usuario y sin cuentas. Tiene login con `TELO_CLA
 - `server/src/git.ts`: única puerta a Git. Usa `gitSeguro` en cualquier repo que el agente pudo escribir (quita de `.git/config` filtros, `url.*`, `fsmonitor` y credenciales antes de operar).
 - `server/src/github-app.ts`: firma el JWT de la App con una clave privada del servidor, valida instalaciones y emite tokens de instalación limitados al repo y al permiso necesario.
 - `server/src/secretos.ts`: secretos por proyecto cifrados con AES-256-GCM (IV aleatorio, AAD = proyecto + nombre). Los valores nunca salen por la API. Los tokens de GitHub no llegan al agente; la ruta preferida es la credencial temporal de GitHub App.
-- `server/src/oauth-google.ts`: inicio de sesión con Google (OAuth con PKCE S256, estado de un solo uso que caduca en 10 minutos). Guarda solo el token de actualización, cifrado con la clave de secretos (AAD `oauth:google`). Las rutas están en `routes/google.ts`; el callback es la única ruta de este flujo que no exige sesión (Google lo llama desde otro sitio y la cookie `SameSite=Strict` no viaja).
 - `server/src/programadas.ts`: planificador en el mismo proceso (cada 30 s). Crea tareas vencidas con `crearTarea`, no solapa ejecuciones de una misma programada y no lanza ráfagas al arrancar.
 - `server/src/archivos-proyecto.ts`: lectura de archivos del proyecto. Resuelve enlaces, rechaza cualquier ruta que caiga en `.git`, abre con `O_NOFOLLOW` y limita el tamaño.
 - `server/src/ocupacion.ts`: marca los proyectos ocupados por un chat o una tarea, para no leer su Git mientras el agente escribe.
@@ -72,7 +71,6 @@ Variables del VM que se agregan con esta fase (en `/etc/orquestador/orquestador.
 - `TELO_CLAVE_CIFRADO`: 32 bytes en base64 (`openssl rand -base64 32`). Sin ella, los secretos de proyecto no se guardan. No la pierdas: sin ella no se descifra nada.
 - `TELO_PROYECTOS_DIR`: carpeta raíz de los proyectos (ya existía).
 - `TELO_ESCUCHAR`: opcional. Por defecto `127.0.0.1`.
-- `TELO_PUBLIC_URL`, `TELO_GOOGLE_CLIENT_ID`, `TELO_GOOGLE_CLIENT_SECRET`: solo si se usa el inicio de sesión con Google. `TELO_PUBLIC_URL` es la dirección https por la que entras a Telo y debe coincidir con la URI de redirección registrada en Google (`<dirección>/api/google/callback`). Las credenciales salen del cliente OAuth web de Google Cloud.
 - `TELO_AGENTE_VARIABLES`: solo las claves que un proveedor necesita como variable de entorno (sin cambios).
 - `TELO_GITHUB_APP_ID` y `TELO_GITHUB_APP_PRIVATE_KEY_PATH`: para GitHub App. La clave privada debe vivir fuera del repo, ser legible solo por `orquestador` y tener permisos `Contents` y `Pull requests` de escritura. Instala la App solo en los repositorios que Telo debe usar. Cada acción recibe un token de instalación limitado a un repo y al permiso requerido; no se guarda.
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as TeclaReact, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { api, ApiError, type ModelInfo, type Preferences, type ProviderStatus } from "../api";
+import { api, type ModelInfo, type Preferences, type ProviderStatus } from "../api";
 import { EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
 import { useEventosVivos } from "../lib/eventos-vivos";
@@ -424,7 +424,6 @@ export function SettingsPage() {
                 </>
               )}
 
-              <GooglePanel />
               <GithubPanel />
 
               <section className="aj-seccion" aria-labelledby="aj-aplicacion-titulo">
@@ -862,75 +861,6 @@ function notaEstado(p: ProviderStatus, modelos: { total: number } | null): strin
     return `La clave está guardada, pero OpenCode no muestra modelos de ${p.name}. En el servidor, revisa con "opencode models" que el nombre de la variable (${p.variable}) sea el que usa esta versión.`;
   }
   return null;
-}
-
-function GooglePanel() {
-  const qc = useQueryClient();
-  const [llegada] = useState(() => new URLSearchParams(location.search));
-  const [aviso, setAviso] = useState<string | null>(() =>
-    llegada.get("google") === "ok" ? "Cuenta de Google conectada." : null,
-  );
-  const [error, setError] = useState<string | null>(() =>
-    llegada.get("google") === "error" ? errorText(new ApiError(400, llegada.get("motivo") ?? "")) : null,
-  );
-
-  const estado = useQuery({ queryKey: ["google"], queryFn: api.googleEstado });
-
-  const conectar = useMutation({
-    mutationFn: api.googleConectar,
-    onSuccess: ({ url }) => location.assign(url),
-    onError: (e) => setError(errorText(e)),
-  });
-  const desconectar = useMutation({
-    mutationFn: api.googleDesconectar,
-    onSuccess: () => {
-      setError(null);
-      setAviso("Cuenta de Google desconectada.");
-      void qc.invalidateQueries({ queryKey: ["google"] });
-    },
-    onError: (e) => setError(errorText(e)),
-  });
-
-  const datos = estado.data;
-
-  return (
-    <article className="aj-tarjeta" aria-labelledby="ajustes-google">
-      <h3 id="ajustes-google" className="aj-tarjeta-titulo-simple">
-        Cuenta de Google
-      </h3>
-      <p className="aj-nota">
-        Inicia sesión con tu cuenta de Google para leer el uso de sus modelos. Por ahora solo se guarda tu correo y un permiso que puedes revocar.
-      </p>
-      {estado.isPending && <p className="aj-nota">Revisando la conexión…</p>}
-      {estado.isError && <p className="aj-error" role="alert">{errorText(estado.error)}</p>}
-      {datos && !datos.configurado && (
-        <p className="aj-nota">Faltan variables en el servidor: {datos.faltantes.join(", ")}.</p>
-      )}
-      {datos?.conectado && (
-        <p className="aj-texto">
-          Conectado como <strong>{datos.cuenta}</strong>
-        </p>
-      )}
-      {aviso && <p className="aj-nota" role="status">{aviso}</p>}
-      {error && <p className="aj-error" role="alert">{error}</p>}
-      <div className="aj-acciones">
-        {datos?.conectado ? (
-          <button type="button" className="aj-btn" onClick={() => desconectar.mutate()} disabled={desconectar.isPending}>
-            {desconectar.isPending ? "Desconectando…" : "Desconectar"}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="aj-btn aj-btn-primario"
-            onClick={() => conectar.mutate()}
-            disabled={!datos?.configurado || conectar.isPending}
-          >
-            {conectar.isPending ? "Abriendo Google…" : "Conectar con Google"}
-          </button>
-        )}
-      </div>
-    </article>
-  );
 }
 
 function GithubPanel() {

@@ -26,7 +26,6 @@ Revisión: 16 de octubre de 2026. Una casilla marcada indica la comprobación de
 - [ ] Probar el runner OpenCode real dentro de bubblewrap, incluida instalación de dependencias, cancelación y reanudación. Las pruebas automáticas usan un agente ficticio.
 - [ ] Confirmar acceso desde el teléfono por Tailscale y arranque de app, Serve y respaldos tras reiniciar el VM.
 - [ ] Confirmar `TELO_PROYECTOS_DIR`, escucha en loopback, clave de cifrado respaldada y desactivación de expiración de la clave Tailscale del VM.
-- [ ] Google: completar OAuth en el VM y comprobar el alcance real de la información disponible. No presentar estimaciones de Telo como cuota del proveedor.
 - [ ] Revisar contraste AA en todas las pantallas, además de las comprobaciones automáticas de desbordes.
 - [ ] Confirmar presupuesto y alertas de Azure. Revisar ramas remotas y claves SSH antiguas antes de eliminarlas.
 

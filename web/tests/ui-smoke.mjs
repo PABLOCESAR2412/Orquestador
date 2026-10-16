@@ -176,6 +176,8 @@ try {
       await confirmarEliminar.waitFor({ state: "detached" });
     }
     await page.goto(`${base}/ajustes`);
+    await page.getByRole("heading", { name: "Ajustes y Servidor", exact: true }).waitFor();
+    assert.equal(await page.getByRole("heading", { name: "Cuenta de Google", exact: true }).count(), 0);
     await page.getByRole("button", { name: "Copiar código", exact: true }).click();
     await page.getByText("Código copiado.", { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "ABCD-EFGH");

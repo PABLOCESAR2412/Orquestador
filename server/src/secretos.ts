@@ -87,7 +87,6 @@ export function valorSecretoValido(valor: unknown): valor is string {
 }
 
 // Lee la clave del entorno. Devuelve null si falta o no decodifica a exactamente 32 bytes.
-// Exportada para el inicio de sesión con Google, que cifra su token con la misma clave.
 export function claveMaestra(): Buffer | null {
   const texto = process.env.TELO_CLAVE_CIFRADO?.trim();
   if (!texto) return null;
