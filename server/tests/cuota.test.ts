@@ -13,6 +13,7 @@ if (!process.env.TELO_PRUEBAS_INICIADAS) {
 process.env.DATA_DIR = join(RAIZ_PRUEBAS, "data");
 process.env.TELO_PROYECTOS_DIR = join(RAIZ_PRUEBAS, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
+process.env.PATH = `${join(import.meta.dir, "fixtures", "bin")}:${process.env.PATH ?? ""}`;
 
 const { db } = await import("../src/db");
 const { ErrorCuota, esErrorDeCuota, esErrorDeProveedor } = await import("../src/ejecutar");
