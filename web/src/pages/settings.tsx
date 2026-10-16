@@ -7,18 +7,14 @@ import { ModelPicker } from "../components/model-picker";
 import { useEventosVivos } from "../lib/eventos-vivos";
 import { isIOS, isStandalone, useInstallPrompt } from "../lib/install";
 import { errorText, formatUsd } from "../lib/model";
-import { guardarTema, leerTema, type Tema } from "../lib/tema";
-import {
-  guardarNotificacionesActivas,
-  notificacionesActivas,
-  notificacionesSoportadas,
-  pedirPermisoNotificaciones,
-} from "../lib/notificaciones";
 import { AlmacenamientoServidor, ErrorConReintento, EstadoServidor, useMuestrasLatencia } from "./servidor";
 import "../styles-ajustes.css";
 import { InstalarHerramienta } from "../components/instalar-herramienta";
 import { LoginCodexPanel } from "../components/login-codex";
 import { SkillsEditor } from "../components/skills-editor";
+import { TemaPanel } from "../components/settings/panel-tema";
+import { NotificacionesPanel } from "../components/settings/panel-notificaciones";
+import { SesionPanel } from "../components/settings/panel-sesion";
 
 const ALERT_OPTIONS = [50, 60, 70, 80, 90, 100];
 
@@ -37,12 +33,6 @@ function proveedorDeModelo(modelo: string | null | undefined): string | null {
   const prefijo = modelo.split("/")[0];
   return PROVEEDOR_DE_PREFIJO[prefijo] ?? prefijo;
 }
-
-const OPCIONES_TEMA: { valor: Tema; texto: string }[] = [
-  { valor: "sistema", texto: "Sistema" },
-  { valor: "oscuro", texto: "Oscuro" },
-  { valor: "claro", texto: "Claro" },
-];
 
 export function SettingsPage() {
   const qc = useQueryClient();
@@ -1067,7 +1057,6 @@ function GithubPanel() {
               <div className="aj-github-cuenta-datos">
                 <strong>Cuenta conectada</strong>
                 <span className="aj-github-login">@{datos.login}</span>
-                <span className="aj-nota">Permisos de la App: Contents y Pull requests</span>
               </div>
               <span className="aj-github-conectada"><span aria-hidden="true" />Conectada</span>
             </div>
@@ -1085,6 +1074,14 @@ function GithubPanel() {
               <h4 className="aj-github-subtitulo">Instalaciones disponibles</h4>
               {app.data.instalaciones.map((instalacion) => {
                 const seleccionada = app.data?.seleccionada === instalacion.id;
+                const permisosEscritura = [
+                  { clave: "contents", nombre: "Contents" },
+                  { clave: "pull_requests", nombre: "Pull requests" },
+                ] as const;
+                const faltanPermisos = permisosEscritura.filter(
+                  ({ clave }) => instalacion.permissions?.[clave] !== "write",
+                );
+                const urlConfiguracion = instalacion.configuration_url ?? "https://github.com/settings/installations";
                 return (
                   <div key={instalacion.id} className="aj-github-instalacion">
                     <div className="aj-github-instalacion-datos">
@@ -1096,10 +1093,27 @@ function GithubPanel() {
                         <span>Acceso a repositorios</span>
                         <strong>{instalacion.repository_selection === "selected" ? "Solo los seleccionados" : "Todos los repositorios"}</strong>
                       </p>
+                      <p className="aj-github-alcance">
+                        <span>Permisos reportados por GitHub</span>
+                        <strong>
+                          {permisosEscritura.map(({ clave, nombre }) => `${nombre}: ${instalacion.permissions?.[clave] === "write" ? "lectura y escritura" : instalacion.permissions?.[clave] === "read" ? "solo lectura" : "no concedido"}`).join(" · ")}
+                        </strong>
+                      </p>
+                      {faltanPermisos.length > 0 && (
+                        <p className="aj-github-recomendacion aj-github-aviso" role="alert">
+                          Falta permiso de escritura para {faltanPermisos.map(({ nombre }) => nombre).join(" y ")}. Actualiza los permisos de esta instalación en{" "}
+                          <a href={urlConfiguracion} target="_blank" rel="noopener noreferrer">la configuración de la GitHub App</a>.
+                        </p>
+                      )}
                       {instalacion.repository_selection === "all" && (
                         <p className="aj-github-recomendacion" role="status">
                           Para limitar el acceso, cambia la instalación a repositorios seleccionados en{" "}
-                          <a href="https://github.com/settings/installations" target="_blank" rel="noopener noreferrer">GitHub</a>.
+                          <a href={urlConfiguracion} target="_blank" rel="noopener noreferrer">GitHub</a>.
+                        </p>
+                      )}
+                      {seleccionada && !faltanPermisos.length && (
+                        <p className="aj-github-recomendacion">
+                          <a href={urlConfiguracion} target="_blank" rel="noopener noreferrer">Abrir configuración de esta instalación en GitHub</a>
                         </p>
                       )}
                     </div>
@@ -1146,103 +1160,6 @@ function GithubPanel() {
           </button>
         </div>
       )}
-    </article>
-  );
-}
-
-function TemaPanel() {
-  const [tema, setTema] = useState<Tema>(() => leerTema());
-
-  return (
-    <article className="aj-tarjeta" aria-labelledby="ajustes-tema">
-      <h3 id="ajustes-tema" className="aj-tarjeta-titulo-simple">
-        Tema
-      </h3>
-      <p className="aj-nota">Se guarda en este dispositivo. Sistema sigue el modo de tu teléfono o PC.</p>
-      <div className="segmented" role="group" aria-label="Tema de la app">
-        {OPCIONES_TEMA.map((o) => (
-          <button
-            key={o.valor}
-            type="button"
-            aria-pressed={tema === o.valor}
-            onClick={() => {
-              setTema(o.valor);
-              guardarTema(o.valor);
-            }}
-          >
-            {o.texto}
-          </button>
-        ))}
-      </div>
-    </article>
-  );
-}
-
-function NotificacionesPanel() {
-  const [activas, setActivas] = useState(() => notificacionesActivas());
-  const [permiso, setPermiso] = useState<NotificationPermission | "no_soportado">(() =>
-    notificacionesSoportadas() ? Notification.permission : "no_soportado",
-  );
-
-  const alCambiar = async (valor: boolean) => {
-    setActivas(valor);
-    guardarNotificacionesActivas(valor);
-    if (valor) setPermiso(await pedirPermisoNotificaciones());
-  };
-
-  const nota =
-    permiso === "no_soportado"
-      ? "Este navegador no admite notificaciones del sistema."
-      : permiso === "denied"
-        ? "El navegador las tiene bloqueadas. Permítelas en la configuración del sitio y vuelve a activarlas aquí."
-        : "Avisan cuando una tarea termina, falla o necesita tu decisión. Llegan mientras Telo esté abierta.";
-
-  return (
-    <article className="aj-tarjeta" aria-labelledby="ajustes-notificaciones">
-      <div className="aj-interruptor">
-        <h3 id="ajustes-notificaciones" className="aj-tarjeta-titulo-simple">
-          Notificaciones del sistema
-        </h3>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={activas && permiso !== "no_soportado"}
-          aria-label="Notificaciones del sistema"
-          className="aj-switch"
-          disabled={permiso === "no_soportado"}
-          onClick={() => void alCambiar(!activas)}
-        />
-      </div>
-      <p className="aj-nota">{nota}</p>
-    </article>
-  );
-}
-
-function SesionPanel() {
-  const [saliendo, setSaliendo] = useState(false);
-
-  const salir = async () => {
-    setSaliendo(true);
-    try {
-      await api.logout();
-    } finally {
-      location.assign("/entrar");
-    }
-  };
-
-  return (
-    <article className="aj-tarjeta" aria-labelledby="ajustes-sesion">
-      <h3 id="ajustes-sesion" className="aj-tarjeta-titulo-simple">
-        Sesión
-      </h3>
-      <p className="aj-nota">
-        Cierra la sesión en este navegador. Para cerrar las sesiones de todos los dispositivos, cambia TELO_CLAVE en el servidor.
-      </p>
-      <div className="aj-acciones">
-        <button type="button" className="aj-btn sesion-salir" onClick={() => void salir()} disabled={saliendo}>
-          Cerrar sesión
-        </button>
-      </div>
     </article>
   );
 }

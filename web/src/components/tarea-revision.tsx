@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, type TaskDiff, type TaskDiffArchivo } from "../api";
+import { api, ApiError, type RepositoryAction, type TaskDiff, type TaskDiffArchivo } from "../api";
 import { errorText, sanearDetalle } from "../lib/model";
-import { cuando, sinCredenciales } from "./tarea-formato";
+import { cuando } from "./tarea-formato";
+import { RepositoryApproval } from "./repository-approval";
 
 const MAX_MENSAJE = 200;
 
@@ -15,6 +16,7 @@ const ESTADO_ARCHIVO: Record<TaskDiffArchivo["estado"], string> = {
 
 type Props = {
   id: string;
+  projectId: string | null;
   datos: TaskDiff | undefined;
   cargando: boolean;
   error: unknown;
@@ -22,21 +24,20 @@ type Props = {
 };
 
 // Revisión de los cambios de una tarea según spec exacto de Stitch.
-export function RevisionCambios({ id, datos, cargando, error, onRecargar }: Props) {
+export function RevisionCambios({ id, projectId, datos, cargando, error, onRecargar }: Props) {
   const qc = useQueryClient();
   const [mensaje, setMensaje] = useState("");
   const [aviso, setAviso] = useState<string | null>(null);
+  const [autorizacionPush, setAutorizacionPush] = useState<RepositoryAction | null>(null);
+  const [autorizacionPr, setAutorizacionPr] = useState<RepositoryAction | null>(null);
+  const [prUrl, setPrUrl] = useState<string | null>(null);
 
   const aprobar = useMutation({
-    mutationFn: (body: { accion: "commit" | "push"; hash: string; mensaje?: string }) =>
+    mutationFn: (body: { accion: "commit"; hash: string; mensaje?: string }) =>
       api.approveTask(id, body),
     onSuccess: (res) => {
-      if (res.accion === "commit") {
-        setAviso(`Commit guardado (${res.sha.slice(0, 7)}).`);
-        setMensaje("");
-      } else {
-        setAviso(`Rama «${res.rama}» subida${res.remoto ? ` a ${sinCredenciales(res.remoto)}` : ""}.`);
-      }
+      setAviso(`Commit guardado (${res.sha.slice(0, 7)}).`);
+      setMensaje("");
       void qc.invalidateQueries({ queryKey: ["task-diff", id] });
       void qc.invalidateQueries({ queryKey: ["task", id] });
       void qc.invalidateQueries({ queryKey: ["tasks"] });
@@ -44,6 +45,17 @@ export function RevisionCambios({ id, datos, cargando, error, onRecargar }: Prop
     onError: (err) => {
       setAviso(null);
       if (err instanceof ApiError && err.code === "cambios_cambiaron") onRecargar();
+    },
+  });
+  const pedirPush = useMutation({
+    mutationFn: () => api.requestRepositoryAction(projectId!, { action: "push", taskId: id }),
+    onSuccess: setAutorizacionPush,
+  });
+  const pedirPr = useMutation({
+    mutationFn: () => api.requestRepositoryAction(projectId!, { action: "pr", taskId: id }),
+    onSuccess: (accion) => {
+      setAutorizacionPr(accion);
+      setPrUrl(null);
     },
   });
 
@@ -56,6 +68,17 @@ export function RevisionCambios({ id, datos, cargando, error, onRecargar }: Prop
           Revisión de cambios
         </h2>
         <p className="help-note">Cargando los cambios…</p>
+      </section>
+    );
+  }
+
+  if (datos?.estado === "en_curso") {
+    return (
+      <section className="panel" aria-labelledby="revision-titulo">
+        <h2 id="revision-titulo" className="panel-title">
+          Revisión de cambios
+        </h2>
+        <p className="help-note">La tarea está ejecutándose. Los cambios estarán disponibles cuando termine.</p>
       </section>
     );
   }
@@ -123,6 +146,8 @@ export function RevisionCambios({ id, datos, cargando, error, onRecargar }: Prop
           {/* Diff unificado en contenedor Stitch */}
           <DiffUnificado texto={datos.diff} />
 
+          <p className="help-note">Identidad de Git para el commit: {datos.identidad_git ?? "la configurada en el proyecto"}.</p>
+
           {/* Formulario y acciones en orden estricto Stitch */}
           <form
             className="action-row"
@@ -152,7 +177,7 @@ export function RevisionCambios({ id, datos, cargando, error, onRecargar }: Prop
 
             <div className="action-item">
               <button type="submit" className="btn-primary" disabled={!puedeCommit}>
-                {enviando && aprobar.variables?.accion === "commit" ? "Guardando…" : "Aprobar commit"}
+                {enviando ? "Guardando…" : "Aprobar commit local"}
               </button>
               <span className="help-note">
                 Crea el commit localmente en el working tree con el mensaje generado por el agente.
@@ -163,15 +188,15 @@ export function RevisionCambios({ id, datos, cargando, error, onRecargar }: Prop
               <button
                 type="button"
                 className="btn-ghost"
-                disabled={!puedePush}
+                disabled={!puedePush || !projectId || pedirPush.isPending || !!autorizacionPush}
                 onClick={() => {
-                  if (hash) aprobar.mutate({ accion: "push", hash });
+                  pedirPush.mutate();
                 }}
               >
-                {enviando && aprobar.variables?.accion === "push" ? "Subiendo…" : "Subir rama al remoto"}
+                {pedirPush.isPending ? "Preparando autorización…" : "Preparar autorización de subida"}
               </button>
               <span className="help-note">
-                Ejecuta git push origin {datos.rama || "rama"} hacia el servidor remoto configurado.
+                La tarjeta siguiente muestra la credencial y comprueba el acceso antes de autorizar git push origin {datos.rama || "rama"}.
               </span>
             </div>
 
@@ -183,6 +208,81 @@ export function RevisionCambios({ id, datos, cargando, error, onRecargar }: Prop
               </div>
             )}
           </form>
+          {pedirPush.isError && <p className="error" role="alert">{errorText(pedirPush.error)}</p>}
+          {autorizacionPush && projectId && (
+            <RepositoryApproval
+              accion={autorizacionPush}
+              projectId={projectId}
+              onChange={(_resultado, aprobada, error) => {
+                setAutorizacionPush(null);
+                setAviso(error
+                  ? `No se completó la subida. ${error}`
+                  : aprobada === false ? "La autorización de subida fue rechazada." : null);
+                void qc.invalidateQueries({ queryKey: ["task-diff", id] });
+                void qc.invalidateQueries({ queryKey: ["task", id] });
+                void qc.invalidateQueries({ queryKey: ["tasks"] });
+              }}
+            />
+          )}
+          {pushHecho && (
+            <p className="approval-auth" role="status">
+              Rama subida con: {push?.autenticacion?.etiqueta ?? "método no registrado en esta acción anterior"}
+              {push?.autenticacion?.cuenta ? ` · @${push.autenticacion.cuenta}` : ""}.
+            </p>
+          )}
+          {pushHecho && !prUrl && !["pending", "executing"].includes(autorizacionPr?.state ?? "") && (
+            <div className="action-item">
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!projectId || pedirPr.isPending}
+                onClick={() => pedirPr.mutate()}
+              >
+                {pedirPr.isPending
+                  ? "Preparando autorización…"
+                  : autorizacionPr?.state === "failed" || autorizacionPr?.state === "rejected"
+                    ? "Preparar nueva autorización de PR"
+                    : "Preparar autorización de PR"}
+              </button>
+              <span className="help-note">
+                Abre un pull request desde la rama revisada {push?.rama ?? datos.rama} hacia la rama base del repositorio.
+              </span>
+            </div>
+          )}
+          {pedirPr.isError && <p className="error" role="alert">{errorText(pedirPr.error)}</p>}
+          {autorizacionPr && projectId && (
+            <RepositoryApproval
+              accion={autorizacionPr}
+              projectId={projectId}
+              onChange={(resultado, aprobada, error) => {
+                if (error) {
+                  setAutorizacionPr(null);
+                  setPrUrl(null);
+                  setAviso(`No se pudo crear el pull request. ${error}`);
+                  return;
+                }
+                const datosResultado = resultado && typeof resultado === "object"
+                  ? resultado as { url?: unknown }
+                  : null;
+                const url = typeof datosResultado?.url === "string" && /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/\d+$/.test(datosResultado.url)
+                  ? datosResultado.url
+                  : null;
+                setAutorizacionPr((actual) => actual
+                  ? { ...actual, state: aprobada ? "approved" : "rejected", result: url ? JSON.stringify({ url }) : actual.result }
+                  : actual);
+                setPrUrl(aprobada ? url : null);
+                setAviso(aprobada === false ? "La autorización del pull request fue rechazada." : null);
+                void qc.invalidateQueries({ queryKey: ["task-diff", id] });
+                void qc.invalidateQueries({ queryKey: ["task", id] });
+                void qc.invalidateQueries({ queryKey: ["tasks"] });
+              }}
+            />
+          )}
+          {prUrl && (
+            <p className="approval-auth" role="status">
+              Pull request creado: <a href={prUrl} target="_blank" rel="noreferrer">Ver pull request</a>
+            </p>
+          )}
         </>
       )}
     </section>

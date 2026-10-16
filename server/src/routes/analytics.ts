@@ -56,7 +56,7 @@ analytics.get("/analytics", (c) => {
   const byTask = db.query<{
     taskId: string; calls: number; tokens: number; cost: number; tokensMedidos: number; costesEstimados: number; sinTokens: number; sinCoste: number; historicos: number;
   }, string[]>(`SELECT task_id AS taskId, COUNT(*) AS calls,
-    SUM(input_tokens + output_tokens) AS tokens, SUM(cost) AS cost,
+    SUM(input_tokens + output_tokens + COALESCE(reasoning_tokens, 0)) AS tokens, SUM(cost) AS cost,
     SUM(tokens_precision='medida') AS tokensMedidos, SUM(cost_precision='estimado') AS costesEstimados,
     SUM(tokens_precision='no_disponible') AS sinTokens, SUM(cost_precision='no_disponible') AS sinCoste,
     SUM(tokens_precision='desconocida' OR cost_precision='desconocida') AS historicos
@@ -95,7 +95,7 @@ analytics.get("/analytics", (c) => {
                 ELSE 'otro'
               END AS tipo,
               COUNT(*) AS calls,
-              COALESCE(SUM(u.input_tokens + u.output_tokens), 0) AS tokens,
+              COALESCE(SUM(u.input_tokens + u.output_tokens + COALESCE(u.reasoning_tokens, 0)), 0) AS tokens,
               COALESCE(SUM(u.cost), 0) AS cost,
               COALESCE(SUM(u.tokens_precision='no_disponible'),0) AS sinTokens,
               COALESCE(SUM(u.cost_precision='no_disponible'),0) AS sinCoste
@@ -135,7 +135,7 @@ analytics.get("/analytics", (c) => {
     .query<DayRow, string[]>(
       `SELECT date(u.created_at) AS day,
               COALESCE(SUM(u.cost), 0) AS cost,
-              COALESCE(SUM(u.input_tokens + u.output_tokens), 0) AS tokens,
+              COALESCE(SUM(u.input_tokens + u.output_tokens + COALESCE(u.reasoning_tokens, 0)), 0) AS tokens,
               COUNT(*) AS calls
          FROM usage u ${usoWhere}
         GROUP BY day`,
@@ -153,7 +153,7 @@ analytics.get("/analytics", (c) => {
     .query<UsoModeloRow, string[]>(
       `SELECT u.model AS model,
               COALESCE(SUM(u.cost), 0) AS cost,
-              COALESCE(SUM(u.input_tokens + u.output_tokens), 0) AS tokens,
+              COALESCE(SUM(u.input_tokens + u.output_tokens + COALESCE(u.reasoning_tokens, 0)), 0) AS tokens,
               COUNT(*) AS calls
          FROM usage u ${usoWhere}
         GROUP BY u.model`,

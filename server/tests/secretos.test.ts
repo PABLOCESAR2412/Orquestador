@@ -18,6 +18,7 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 
 const { cifrar, descifrar, nombreSecretoValido, secretosDisponibles, guardarSecreto, entornoDeProyecto, valorSecreto } =
   await import("../src/secretos");
+const { redactar, archivosConSecretos } = await import("../src/redaccion");
 const { secretosRoute } = await import("../src/routes/secretos");
 const { db } = await import("../src/db");
 
@@ -204,3 +205,33 @@ describe("secretos por proyecto", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("detección y redacción de credenciales en diffs", () => {
+  test("no genera falsos positivos con identificadores o clases CSS que contienen sk-", () => {
+    const diffConClasesCss = `diff --git a/src/styles.css b/src/styles.css
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -1,3 +1,6 @@
++.sk-loading-skeleton-element-pulse-long-class-name { display: flex; }
++/* un-identificador-con-sk-skeleton-48-caracteres-random-x */
++const id = "component-sk-loader-active-now-preview";
+`;
+    const hallados = archivosConSecretos(diffConClasesCss, []);
+    expect(hallados).toEqual([]);
+  });
+
+  test("detecta y oculta credenciales reales de OpenAI aisladas", () => {
+    const diffConClaveReal = `diff --git a/src/api.ts b/src/api.ts
+--- a/src/api.ts
++++ b/src/api.ts
+@@ -1,3 +1,5 @@
++const key = "sk-1234567890abcdef1234567890abcdef";
+`;
+    const hallados = archivosConSecretos(diffConClaveReal, []);
+    expect(hallados).toEqual(["src/api.ts"]);
+
+    const textoRedactado = redactar('API_KEY="sk-1234567890abcdef1234567890abcdef"');
+    expect(textoRedactado).toBe('API_KEY="***"');
+  });
+});
+

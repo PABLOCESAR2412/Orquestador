@@ -77,6 +77,25 @@ function vozEspanola(): SpeechSynthesisVoice | undefined {
 let utteranceActiva: SpeechSynthesisUtterance | null = null;
 let limpiarLecturaActiva: (() => void) | null = null;
 
+function renderizarTextoConSkills(texto: string) {
+  const partes = texto.split(/(?:^|(?<=[\s([{"'`]))([$/][a-z][a-z0-9]*(?:-[a-z0-9]+)*)(?=$|[\s)\]}"'`,:;.!?])/gi);
+  if (partes.length === 1) return texto;
+
+  return partes.map((parte, index) => {
+    if (parte && (parte.startsWith("$") || parte.startsWith("/"))) {
+      const nombre = parte.slice(1);
+      if (/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/i.test(nombre)) {
+        return (
+          <span key={index} className="tl-skill-badge" title={`Skill: ${nombre}`}>
+            {parte}
+          </span>
+        );
+      }
+    }
+    return parte;
+  });
+}
+
 // id: ancla para ir a este mensaje desde el historial de prompts. resaltado: destaca el mensaje un momento.
 export function MensajeUsuario({
   texto,
@@ -98,7 +117,7 @@ export function MensajeUsuario({
           <BotonCopiar texto={texto} etiqueta="Copiar mensaje" />
         </div>
       </div>
-      {prosa && <div className="tl-msg-burbuja">{prosa}</div>}
+      {prosa && <div className="tl-msg-burbuja">{renderizarTextoConSkills(prosa)}</div>}
       {adjuntos.length > 0 && (
         <ul className="tl-adjuntos-enviados" aria-label="Archivos adjuntos">
           {adjuntos.map((a, i) => (
@@ -317,17 +336,27 @@ export function IndicadorPensando({ modelo, vivo = [], desde = null }: { modelo:
   }, []);
   const transcurrido = tiempoTranscurrido(desde, ahora);
   const ultimaAccion = [...vivo].reverse().find((paso) => paso.tipo === "accion");
-  const estado = !ultimaAccion
-    ? "Escribiendo"
-    : /^(github|gh)(?:[._-]|$)/i.test(ultimaAccion.herramienta ?? "")
-      ? "Usando GitHub"
-      : ["write", "edit", "patch", "apply_patch"].includes(ultimaAccion.herramienta ?? "")
-        ? "Editando archivos"
-        : ultimaAccion.herramienta === "bash"
-          ? "Ejecutando comandos"
-          : ultimaAccion.herramienta === "websearch" || ultimaAccion.herramienta === "webfetch"
-            ? "Buscando en la web"
-            : "Trabajando";
+  let estado = "Escribiendo";
+  if (ultimaAccion) {
+    const h = (ultimaAccion.herramienta ?? "").toLowerCase();
+    if (/^(github|gh)(?:[._-]|$)/i.test(h)) {
+      estado = ultimaAccion.titulo || "Usando GitHub";
+    } else if (h.startsWith("skill") || h.includes("skill")) {
+      estado = ultimaAccion.titulo || "Aplicando skill";
+    } else if (/^(agent|subagent|sub_agent|spawn|delegate)/i.test(h)) {
+      estado = ultimaAccion.titulo || "Subagente activo";
+    } else if (["write", "edit", "patch", "apply_patch"].includes(h)) {
+      estado = ultimaAccion.titulo || "Editando archivos";
+    } else if (["read", "list", "glob", "grep"].includes(h)) {
+      estado = ultimaAccion.titulo || "Investigando archivos";
+    } else if (h === "bash") {
+      estado = ultimaAccion.titulo || "Ejecutando comando";
+    } else if (h === "websearch" || h === "webfetch") {
+      estado = ultimaAccion.titulo || "Buscando en la web";
+    } else {
+      estado = ultimaAccion.titulo || "Trabajando";
+    }
+  }
   return (
     <article className="tl-msg tl-msg-agente" aria-live="polite">
       <div className="tl-msg-agente-cabecera">
@@ -336,8 +365,8 @@ export function IndicadorPensando({ modelo, vivo = [], desde = null }: { modelo:
         </span>
         <span className="tl-msg-meta">{modelo}{transcurrido ? <span className="tl-msg-duracion"> · Procesando desde hace {transcurrido}</span> : null}</span>
       </div>
-      <div className="tl-pensando">
-        <span>{estado}</span>
+      <div className="tl-pensando" title={ultimaAccion?.titulo ?? estado}>
+        <span className="tl-pensando-texto">{estado}</span>
         <span className="tl-escribiendo-puntos" aria-hidden="true">
           <span />
           <span />

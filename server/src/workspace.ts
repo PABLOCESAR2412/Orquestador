@@ -66,13 +66,21 @@ const URL_GITHUB =
 
 // Patrones de nombre que parecen secretos. Se comparan con el nombre del archivo, en minúsculas.
 const PATRONES_SENSIBLES = [
-  /^\.env(\..*)?$/,
+  /^\.env(\.(local|production|prod|staging|dev|development))?$/,
   /\.(pem|key|p12|pfx)$/,
-  /^id_(rsa|ed25519)/,
-  /^credentials/,
-  // «secret» o «secrets» como palabra del nombre (client_secret.json, secrets.yaml), no dentro de otra
-  // palabra: así secretos.ts o proyecto-secretos.tsx son código normal y no bloquean el commit.
-  /(^|[._-])secrets?([._-]|$)/,
+  /^id_(rsa|ed25519)$/,
+  /^credentials(\.(json|yaml|yml|env|txt))?$/,
+  /(^|[._-])secrets?(\.(json|yaml|yml|env|txt))$/,
+];
+
+const SUFIJOS_EJEMPLO = [
+  ".example",
+  ".sample",
+  ".template",
+  ".dist",
+  ".default",
+  ".defaults",
+  ".schema",
 ];
 
 // Error con código para la interfaz. Los códigos se traducen en web/src/lib/model.ts.
@@ -116,7 +124,16 @@ type FilaAprobacion = {
   detalle: string | null;
   rama: string | null;
   remoto: string | null;
+  autenticacion: string | null;
   created_at: string;
+};
+
+export type FuenteCredencialGithub = {
+  tipo: "github_app" | "credencial_anterior" | "clave_ssh" | "ninguna";
+  origen: "app" | "sesion_anterior" | "token_proyecto" | "token_pr_proyecto" | "ssh" | "ninguna";
+  etiqueta: string;
+  cuenta: string | null;
+  instalacion_id: number | null;
 };
 
 type Contexto = { clon: string; projectId: string | null; rama: string; base: string };
@@ -178,6 +195,9 @@ export function urlGithubPermitida(url: string): string | null {
 
 export function esSensible(ruta: string): boolean {
   const nombre = (ruta.split("/").pop() ?? ruta).toLowerCase();
+  if (SUFIJOS_EJEMPLO.some((sufijo) => nombre.endsWith(sufijo))) return false;
+  if (/\.env\.(example|sample|template|dist|default|test)/.test(nombre)) return false;
+  if (/\.(ts|tsx|js|jsx|mjs|cjs|md|mdx|html|css|scss|less)$/.test(nombre)) return false;
   return PATRONES_SENSIBLES.some((patron) => patron.test(nombre));
 }
 
@@ -468,7 +488,7 @@ function aprobacionDe(taskId: string, accion: "commit" | "push"): FilaAprobacion
       .query<
         FilaAprobacion,
         [string, string]
-      >("SELECT commit_sha, diff_hash, detalle, rama, remoto, created_at FROM task_approvals WHERE task_id = ? AND accion = ? ORDER BY rowid DESC LIMIT 1")
+      >("SELECT commit_sha, diff_hash, detalle, rama, remoto, autenticacion, created_at FROM task_approvals WHERE task_id = ? AND accion = ? ORDER BY rowid DESC LIMIT 1")
       .get(taskId, accion) ?? null
   );
 }
@@ -514,12 +534,34 @@ export function diffDeTarea(taskId: string) {
                 sha: apPush.commit_sha,
                 remoto: apPush.remoto ?? "",
                 rama: apPush.rama ?? ctx.rama,
+                autenticacion: parsearFuenteCredencialGithub(apPush.autenticacion),
                 decidida_en: apPush.created_at,
               }
             : null,
       },
+      identidad_git: db.query<{ author_name: string }, [string]>("SELECT author_name FROM project_git WHERE project_id=?").get(ctx.projectId ?? "")?.author_name ?? "Telo",
     };
   });
+}
+
+function parsearFuenteCredencialGithub(texto: string | null): FuenteCredencialGithub | null {
+  if (!texto) return null;
+  try {
+    const valor = JSON.parse(texto) as Partial<FuenteCredencialGithub>;
+    if (
+      (valor.tipo === "github_app" || valor.tipo === "credencial_anterior" || valor.tipo === "clave_ssh" || valor.tipo === "ninguna") &&
+      typeof valor.etiqueta === "string"
+    ) {
+      return {
+        tipo: valor.tipo,
+        origen: valor.origen ?? "ninguna",
+        etiqueta: valor.etiqueta,
+        cuenta: typeof valor.cuenta === "string" ? valor.cuenta : null,
+        instalacion_id: typeof valor.instalacion_id === "number" ? valor.instalacion_id : null,
+      };
+    }
+  } catch { /* Compatibilidad con aprobaciones anteriores sin método guardado. */ }
+  return null;
 }
 
 function mensajeDeCommit(taskId: string, valor: unknown): string {
@@ -606,6 +648,7 @@ export async function aprobarTarea(
     mensaje?: unknown;
     destinoRama?: string;
     commitEsperado?: string;
+    autenticacion?: FuenteCredencialGithub;
   },
 ): Promise<ResultadoAprobacion> {
   return conTarea(taskId, async () => {
@@ -613,9 +656,12 @@ export async function aprobarTarea(
     if (opts.commitEsperado && (await gitOkSeguro(["rev-parse", "HEAD"], {cwd:ctx.clon})).trim() !== opts.commitEsperado)
       throw new ErrorTarea("cambios_cambiaron", 409);
     if (opts.accion === "push") {
+      if (!opts.autenticacion || opts.autenticacion.tipo === "ninguna")
+        throw new ErrorTarea("credenciales_git_faltantes", 409);
       return subirAprobado(taskId, ctx, opts.hash, {
         destinoRama: opts.destinoRama,
         mensaje: opts.mensaje,
+        autenticacion: opts.autenticacion,
       });
     }
     return commitInterno(taskId, ctx, opts.hash, opts.mensaje);
@@ -626,7 +672,7 @@ async function subirAprobado(
   taskId: string,
   ctx: Contexto,
   hash: string,
-  opts?: { destinoRama?: string; mensaje?: unknown },
+  opts?: { destinoRama?: string; mensaje?: unknown; autenticacion?: FuenteCredencialGithub },
 ): Promise<ResultadoAprobacion> {
   // El destino sale de remoto.txt, no del clon: el agente puede cambiar el origen del clon, pero no esa URL.
   const guardado = leerRemoto(taskId);
@@ -634,10 +680,20 @@ async function subirAprobado(
   const remoto = urlGithubPermitida(guardado);
   if (!remoto) throw new ErrorTarea("remoto_no_permitido", 409);
 
-  const tokenApp = await tokenGithubAppParaRepo(remoto, { contents: "write" });
-  const token = tokenApp || tokenGithubGlobal() || (ctx.projectId ? valorSecreto(ctx.projectId, "GITHUB_TOKEN") || null : null);
-  const destinoSsh =
-    !token && ctx.projectId && clavePublicaDe(ctx.projectId) ? urlSshDeGithub(remoto) : null;
+  const fuente = opts?.autenticacion;
+  let token: string | null = null;
+  let destinoSsh: string | null = null;
+  if (fuente?.tipo === "github_app") {
+    token = await tokenGithubAppParaRepo(remoto, { contents: "write" });
+  } else if (fuente?.origen === "sesion_anterior") {
+    token = tokenGithubGlobal();
+  } else if (fuente?.origen === "token_proyecto" && ctx.projectId) {
+    token = valorSecreto(ctx.projectId, "GITHUB_TOKEN");
+  } else if (fuente?.tipo === "clave_ssh" && fuente.origen === "ssh" && ctx.projectId && clavePublicaDe(ctx.projectId)) {
+    destinoSsh = urlSshDeGithub(remoto);
+  }
+  if (fuente?.tipo !== "github_app" && fuente?.tipo !== "credencial_anterior" && fuente?.tipo !== "clave_ssh")
+    throw new ErrorTarea("credenciales_git_faltantes", 409);
   if (!token && !destinoSsh) throw new ErrorTarea("credenciales_git_faltantes", 409);
 
   let head = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: ctx.clon })).trim();
@@ -682,14 +738,20 @@ async function subirAprobado(
       });
     }
   } catch (err) {
-    const detalle = mensajeSeguro(err, token).slice(0, 600);
+    const raw = err instanceof Error ? err.message : String(err);
+    let detalle = mensajeSeguro(err, token).slice(0, 600);
+    if (/denied to deploy key|deploy key does not have write access|key does not have write access/i.test(raw)) {
+      detalle = "La clave Deploy Key de GitHub no tiene permisos de escritura. Ve a Settings > Deploy keys en el repositorio de GitHub y marca la casilla 'Allow write access'.";
+    } else if (/protected branch|GH006|pre-receive hook declined/i.test(raw)) {
+      detalle = `La rama remota '${ramaDestino}' está protegida en GitHub contra subidas directas. Prepara la subida en una rama propia o abre un Pull Request.`;
+    }
     registrarEvento(taskId, "push_fallido", detalle);
     throw new ErrorTarea("push_fallido", 502, detalle);
   }
 
   db.query(
-    "INSERT INTO task_approvals (id, task_id, accion, diff_hash, commit_sha, rama, remoto, detalle) VALUES (?, ?, 'push', ?, ?, ?, ?, NULL)",
-  ).run(crypto.randomUUID(), taskId, estado.hash, head, ramaDestino, remoto);
+    "INSERT INTO task_approvals (id, task_id, accion, diff_hash, commit_sha, rama, remoto, detalle, autenticacion) VALUES (?, ?, 'push', ?, ?, ?, ?, NULL, ?)",
+  ).run(crypto.randomUUID(), taskId, estado.hash, head, ramaDestino, remoto, JSON.stringify(fuente));
   registrarEvento(taskId, "push_aprobado", `${head.slice(0, 8)} a ${remoto} (${ramaDestino})`);
 
   return { accion: "push", sha: head, rama: ramaDestino, remoto };
@@ -767,83 +829,5 @@ export function iniciarLimpieza(): void {
   }
 }
 
-// Registro de la salida del agente: DATA_DIR/tasks/<id>/salida.log, con tope de 5 MB.
-export type RegistroSalida = { linea: (texto: string) => void; cerrar: () => void };
-
-export function abrirRegistroSalida(taskId: string): RegistroSalida {
-  const carpeta = carpetaTarea(taskId);
-  mkdirSync(carpeta, { recursive: true });
-  const ruta = join(carpeta, "salida.log");
-
-  // En una tarea sin repo el agente escribe en esta misma carpeta: un enlace no debe redirigir el registro.
-  try {
-    if (!lstatSync(ruta).isFile()) rmSync(ruta, { recursive: true, force: true });
-  } catch {
-    // no existe todavía
-  }
-
-  let fd: number | null = null;
-  try {
-    fd = openSync(
-      ruta,
-      fsConstants.O_WRONLY | fsConstants.O_APPEND | fsConstants.O_CREAT | fsConstants.O_NOFOLLOW,
-      0o600,
-    );
-  } catch {
-    fd = null;
-  }
-  let tamano = fd !== null ? statSync(ruta).size : 0;
-  let lleno = tamano >= TOPE_SALIDA_LOG;
-  const codificador = new TextEncoder();
-
-  return {
-    linea(texto: string) {
-      if (fd === null || lleno) return;
-      const bytes = codificador.encode(texto + "\n").length;
-      try {
-        if (tamano + bytes > TOPE_SALIDA_LOG) {
-          lleno = true;
-          writeSync(fd, AVISO_LLENO + "\n");
-          return;
-        }
-        writeSync(fd, texto + "\n");
-        tamano += bytes;
-      } catch {
-        lleno = true;
-      }
-    },
-    cerrar() {
-      if (fd === null) return;
-      try {
-        closeSync(fd);
-      } catch {
-        // ya cerrado
-      }
-      fd = null;
-    },
-  };
-}
-
-// Últimas 512 KB del registro. Si se recortó, la primera línea parcial se descarta.
-export async function leerSalida(taskId: string): Promise<{ texto: string; truncado: boolean }> {
-  const ruta = join(carpetaTarea(taskId), "salida.log");
-  try {
-    if (!lstatSync(ruta).isFile()) return { texto: "", truncado: false };
-  } catch {
-    return { texto: "", truncado: false };
-  }
-  const archivo = Bun.file(ruta);
-  const total = archivo.size;
-  const inicio = Math.max(0, total - VENTANA_SALIDA);
-  let texto = await archivo.slice(inicio, total).text();
-  const truncado = inicio > 0;
-  if (truncado) {
-    const corte = texto.indexOf("\n");
-    if (corte >= 0) texto = texto.slice(corte + 1);
-  }
-  // La salida pasa por la redacción también al leerla: cubre lo que se guardó antes de ampliar las reglas.
-  const fila = db
-    .query<{ project_id: string | null }, [string]>("SELECT project_id FROM tasks WHERE id = ?")
-    .get(taskId);
-  return { texto: redactar(texto, valoresDe(fila?.project_id ?? null)), truncado };
-}
+// Registro y lectura de la salida del agente delegados a workspace-registro.ts
+export { abrirRegistroSalida, leerSalida, type RegistroSalida } from "./workspace-registro";

@@ -7,8 +7,9 @@ import { entornoProveedores } from "./claves-proveedor";
 import { redactar } from "./redaccion";
 import { AislamientoError } from "./runners/aislamiento";
 import { ErrorAgente, runOpenCode, type RunResult, type Usage } from "./runners/opencode";
-import { conMemoria, extraerMemoria, guardarMemoria, memoriaDelProyecto, quitarBloqueMemoria } from "./memoria";
+import { conMemoria, extraerMemoria, guardarMemoria, guardarPropuestaMemoria, memoriaDelProyecto, quitarBloqueMemoria } from "./memoria";
 import { conservarMemoriaSegunJev, puntuarMemoriaJev } from "./jev";
+import { inyectarSkillsEnPrompt } from "./resolucion-skills";
 
 // Longitud mínima de un valor de secreto para ocultarlo en la salida. Más corto, aparecería en texto normal.
 const MINIMO_OCULTAR = 4;
@@ -166,26 +167,64 @@ function etiquetaDelError(err: unknown): string {
   return codigo ? codigo[1] : "Error del proveedor";
 }
 
+// Obtiene un resumen conciso de los otros chats recientes del proyecto si compartir_contexto está activo.
+export function contextoCompartidoProyecto(projectId: string, omitirConversationId?: string | null): string {
+  const params: string[] = [projectId];
+  let filtroConv = "";
+  if (omitirConversationId) {
+    filtroConv = "AND c.id != ?";
+    params.push(omitirConversationId);
+  }
+  const filas = db
+    .query<{ id: string; title: string; ultimo_mensaje: string | null }, string[]>(
+      `SELECT c.id, c.title,
+         (SELECT m.content FROM messages m WHERE m.conversation_id = c.id AND m.role IN ('user', 'assistant') ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) AS ultimo_mensaje
+       FROM conversations c
+       WHERE c.project_id = ? ${filtroConv}
+       ORDER BY c.created_at DESC, c.rowid DESC
+       LIMIT 3`,
+    )
+    .all(...params);
+
+  if (filas.length === 0) return "";
+  const resumenes = filas
+    .filter((f) => f.title || f.ultimo_mensaje)
+    .map((f) => {
+      const extracto = f.ultimo_mensaje ? f.ultimo_mensaje.slice(0, 150).replace(/\s+/g, " ").trim() : "Sin actividad reciente";
+      return `- Chat "${f.title || "Sin título"}": ${extracto}`;
+    });
+  if (resumenes.length === 0) return "";
+  return `Contexto compartido de otros chats del proyecto:\n${resumenes.join("\n")}`;
+}
+
 // Instrucciones del proyecto: se anteponen al prompt de sus tareas y chats. No se guardan ni en
 // tasks.prompt ni en el mensaje del chat, así que cambiarlas afecta a los siguientes envíos.
-export function conInstrucciones(projectId: string | null | undefined, prompt: string): string {
+export function conInstrucciones(projectId: string | null | undefined, prompt: string, conversationId?: string | null): string {
   if (!projectId) return prompt;
   const fila = db
     .query<{ instrucciones: string | null; compartir_contexto: number }, [string]>("SELECT instrucciones, compartir_contexto FROM projects WHERE id = ?")
     .get(projectId);
   const texto = fila?.instrucciones?.trim();
-  if (!texto) return prompt;
-  return `Instrucciones del proyecto (escritas por el dueño):\n${texto}\n---\n${prompt}`;
+  const compartido = fila?.compartir_contexto ? contextoCompartidoProyecto(projectId, conversationId) : "";
+
+  if (!texto && !compartido) return prompt;
+  const partes: string[] = [];
+  if (texto) partes.push(`Instrucciones del proyecto (escritas por el dueño):\n${texto}`);
+  if (compartido) partes.push(compartido);
+  return `${partes.join("\n\n")}\n---\n${prompt}`;
 }
 
 // Estilo de respuesta de los chats: concreto, con rutas y resultados, y sin repetir la pregunta.
 // Va delante del prompt en cada envío; la sesión de OpenCode no lo guarda por sí sola.
 export const ESTILO_CHAT = [
-  "Estilo de respuesta (no lo menciones en la respuesta):",
+  "Estilo de respuesta y razonamiento (no lo menciones en la respuesta):",
+  "- Investiga antes de actuar: inspecciona los archivos, dependencias, documentación o skills relevantes del proyecto antes de proponer cambios.",
+  "- Si necesitas documentarte sobre librerías o frameworks modernos, usa skills del proyecto (como context7) o inspecciona el código existente.",
+  "- Si una tarea requiere investigación profunda o pasos complejos, organízate paso a paso y puedes coordinar o apoyarte en subagentes especializados.",
   "- Empieza con una frase que diga qué vas a hacer y por qué.",
   "- Sé concreto: cita rutas de archivo (con línea cuando aplique) y nombres exactos de funciones, comandos y configuraciones.",
   "- Si ejecutaste un comando, muestra el resultado que importa, no solo la conclusión.",
-  "- Si cambiaste archivos, lista cada uno y di qué cambió en él.",
+  "- Si cambiaste archivos, lista cada uno y di qué cambió en él, manteniendo clean code y sin introducir regresiones.",
   "- Si verificaste algo, di cómo (comando o prueba) y qué resultado dio. Si no pudiste comprobarlo, dilo sin rodeos.",
 ].join("\n");
 
@@ -240,7 +279,15 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
   };
   const memoria = opts.projectId ? memoriaDelProyecto(opts.projectId).texto : null;
   const base = {
-    prompt: conEstilo(conMemoria(conInstrucciones(opts.projectId, opts.prompt), memoria, opts.aprender === true), opts.estilo, opts.estilo === "chat" && Boolean(opts.projectId)),
+    prompt: conEstilo(
+      conMemoria(
+        conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(opts.prompt, opts.projectId).promptFinal, opts.conversationId),
+        memoria,
+        opts.aprender === true,
+      ),
+      opts.estilo,
+      opts.estilo === "chat" && Boolean(opts.projectId),
+    ),
     cwd: opts.cwd,
     timeoutMs: opts.timeoutMs,
     signal: opts.signal,
@@ -272,8 +319,8 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
           try {
             const memoriaAnterior = memoriaDelProyecto(projectId).texto;
             const proyecto = db.query<{ name: string }, [string]>("SELECT name FROM projects WHERE id = ?").get(projectId)?.name ?? "Proyecto";
-            let guardar = true;
             let puntuacion: number | null = null;
+            let evaluadaPorJev = false;
             try {
               puntuacion = await puntuarMemoriaJev({
                 proyectoId: projectId,
@@ -286,12 +333,13 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
                   propuesta: nueva,
                 },
               });
+              evaluadaPorJev = puntuacion !== null;
             } catch {
-              // La memoria conserva su flujo anterior si Jev no está disponible.
+              evaluadaPorJev = false;
             }
-            const decisionJev = conservarMemoriaSegunJev(puntuacion);
-            if (decisionJev !== null && puntuacion !== null) {
-              guardar = decisionJev;
+
+            if (evaluadaPorJev && puntuacion !== null) {
+              const guardar = conservarMemoriaSegunJev(puntuacion) === true;
               if (opts.taskId) {
                 try {
                   registrarEvento(
@@ -303,8 +351,22 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
                   // Si la tarea se borró antes de la evaluación, la decisión aún se puede aplicar al proyecto.
                 }
               }
+              if (guardar) guardarMemoria(projectId, nueva);
+            } else {
+              // Jev no estuvo disponible o no pudo evaluar: se guarda como propuesta pendiente de revisión por el usuario
+              guardarPropuestaMemoria(projectId, nueva, opts.taskId);
+              if (opts.taskId) {
+                try {
+                  registrarEvento(
+                    opts.taskId,
+                    "memoria_propuesta",
+                    "La memoria no pudo ser evaluada por Jev; quedó guardada como propuesta pendiente de revisión por el usuario.",
+                  );
+                } catch {
+                  // Se ignora si la tarea ya no existe
+                }
+              }
             }
-            if (guardar) guardarMemoria(projectId, nueva);
           } catch (err) {
             console.error("Guardar la memoria del proyecto:", mensajeDe(err));
           }

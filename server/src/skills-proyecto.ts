@@ -280,27 +280,89 @@ export async function importarSkill(projectId: string, url: string): Promise<Ski
 
 type ComandoSkill = { owner: string; repo: string; name: string };
 
-// Interpreta el comando de Skills CLI como datos. Nunca pasa el texto a un shell.
+const SKILLS_CONOCIDAS: Record<string, { owner: string; repo: string; name: string }> = {
+  playwright: { owner: "openai", repo: "skills", name: "playwright" },
+  caveman: { owner: "JuliusBrussee", repo: "caveman", name: "caveman" },
+  impeccable: { owner: "pbakaus", repo: "impeccable", name: "impeccable" },
+  "frontend-design": { owner: "vercel-labs", repo: "agent-skills", name: "frontend-design" },
+  context7: { owner: "upstash", repo: "context7", name: "context7" },
+  "context-7": { owner: "upstash", repo: "context7", name: "context7" },
+};
+
+// Interpreta el comando de Skills CLI como datos. Soporta comandos completos, abreviados y URLs.
 export function parsearComandoSkill(comando: unknown): ComandoSkill {
   if (typeof comando !== "string" || comando.length > 2048) throw new SkillError("invalid_skill_command");
-  const partes = comando.trim().replace(/^\$\s*/, "").split(/\s+/).filter(Boolean).map((parte) => {
+  if (/[;&|`]/.test(comando)) throw new SkillError("invalid_skill_command");
+  const limpio = comando.trim().replace(/^[$#/]\s*/, "");
+  if (!limpio) throw new SkillError("invalid_skill_command");
+
+  // Si es directamente el nombre de una skill conocida (ej: "playwright", "caveman", "impeccable")
+  const claveDirecta = limpio.toLowerCase();
+  if (SKILLS_CONOCIDAS[claveDirecta]) {
+    return SKILLS_CONOCIDAS[claveDirecta]!;
+  }
+
+  // Si es una URL de GitHub directa
+  if (limpio.startsWith("https://")) {
+    let url: URL;
+    try { url = new URL(limpio); } catch { throw new SkillError("invalid_skill_command"); }
+    if (url.hostname === "github.com") {
+      const partes = url.pathname.split("/").filter(Boolean);
+      if (partes.length >= 2) {
+        const owner = partes[0]!;
+        const repoName = partes[1]!.replace(/\.git$/i, "");
+        let name = repoName.toLowerCase();
+        if (partes.includes("skills") && partes.length > partes.indexOf("skills") + 1) {
+          const despues = partes[partes.indexOf("skills") + 1]!;
+          if (despues !== "SKILL.md" && !despues.startsWith(".")) name = despues.toLowerCase();
+        } else if (partes[partes.length - 1]?.toLowerCase().endsWith(".md")) {
+          const ultimo = partes[partes.length - 1]!;
+          if (ultimo.toUpperCase() === "SKILL.MD" && partes.length > 3) {
+            name = partes[partes.length - 2]!.toLowerCase();
+          } else {
+            name = ultimo.replace(/\.md$/i, "").toLowerCase();
+          }
+        }
+        if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) && /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37})$/.test(owner) && /^[A-Za-z0-9_.-]{1,100}$/.test(repoName)) {
+          return { owner, repo: repoName, name };
+        }
+      }
+    }
+  }
+
+  const partes = limpio.split(/\s+/).filter(Boolean).map((parte) => {
     const comillas = /^(?:"(.*)"|'(.*)')$/.exec(parte);
     return comillas ? comillas[1] ?? comillas[2]! : parte;
   });
+
   let indice: number;
   if (partes[0] === "npx" && partes[1] === "skills" && partes[2] === "add") indice = 3;
   else if (partes[0] === "bunx" && partes[1] === "skills" && partes[2] === "add") indice = 3;
   else if (["pnpm", "yarn"].includes(partes[0]!) && partes[1] === "dlx" && partes[2] === "skills" && partes[3] === "add") indice = 4;
   else if (partes[0] === "skills" && partes[1] === "add") indice = 2;
-  else throw new SkillError("invalid_skill_command");
+  else if (partes.length === 1 && partes[0]!.includes("/")) indice = 0;
+  else if (partes.length === 1 && SKILLS_CONOCIDAS[partes[0]!.toLowerCase()]) {
+    return SKILLS_CONOCIDAS[partes[0]!.toLowerCase()]!;
+  } else throw new SkillError("invalid_skill_command");
 
   const destino = partes[indice];
+  if (!destino) throw new SkillError("invalid_skill_command");
+
+  if (SKILLS_CONOCIDAS[destino.toLowerCase()] && partes.length === indice + 1) {
+    return SKILLS_CONOCIDAS[destino.toLowerCase()]!;
+  }
+
   let name: string | undefined;
   const opcion = partes[indice + 1];
-  if (opcion === "--skill" && partes.length === indice + 3) name = partes[indice + 2];
-  else if (opcion?.startsWith("--skill=") && partes.length === indice + 2) name = opcion.slice("--skill=".length);
-  if (!destino || !name) throw new SkillError("invalid_skill_command");
-  validarNombre(name);
+  if (opcion === "--skill" && partes.length === indice + 3) {
+    name = partes[indice + 2];
+  } else if (opcion?.startsWith("--skill=") && partes.length === indice + 2) {
+    name = opcion.slice("--skill=".length);
+  } else if (partes.length === indice + 1) {
+    // Sin argumentos adicionales: inferir name más adelante
+  } else {
+    throw new SkillError("invalid_skill_command");
+  }
 
   let repo = destino;
   if (destino.startsWith("https://")) {
@@ -313,11 +375,41 @@ export function parsearComandoSkill(comando: unknown): ComandoSkill {
     if (segmentos.length !== 2) throw new SkillError("invalid_skill_command");
     repo = `${segmentos[0]}/${segmentos[1]!.replace(/\.git$/i, "")}`;
   }
+
   const [owner, repoName, extra] = repo.split("/");
   if (extra !== undefined || !owner || !repoName || !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37})$/.test(owner) || !/^[A-Za-z0-9_.-]{1,100}$/.test(repoName)) {
     throw new SkillError("invalid_skill_command");
   }
+
+  if (!name) {
+    name = repoName.toLowerCase().replace(/^(?:claude-|opencode-|agent-|skill-)/, "").replace(/-(?:skill|plugin)$/, "");
+  }
+
+  validarNombre(name);
   return { owner, repo: repoName, name };
+}
+
+function puntuarRutaSkill(ruta: string, nombre: string): number {
+  const norm = ruta.toLowerCase();
+  if (norm.includes("test") || norm.includes("oracle") || norm.includes("fixture") || norm.includes("mock") || norm.includes("example") || norm.includes("vendor") || norm.includes("node_modules")) {
+    return -100;
+  }
+  let puntos = 0;
+  if (norm.includes(`.opencode/skills/${nombre}/skill.md`)) puntos += 100;
+  else if (norm.includes(`skills/.curated/${nombre}/skill.md`)) puntos += 95;
+  else if (norm.includes(`skills/${nombre}/skill.md`)) puntos += 90;
+  else if (norm === `${nombre}/skill.md`) puntos += 85;
+  else if (norm === "skill.md") puntos += 80;
+  else if (norm.includes(`.claude/skills/${nombre}/skill.md`)) puntos += 75;
+  else if (norm.includes(`.agents/skills/${nombre}/skill.md`)) puntos += 70;
+  else if (norm.includes(`plugin/skills/${nombre}/skill.md`)) puntos += 65;
+  else if (norm.includes("plugins/")) puntos += 60;
+  else if (norm.endsWith(`/${nombre}/skill.md`)) puntos += 55;
+  else if (norm.endsWith("/skill.md")) puntos += 50;
+
+  const profundidad = ruta.split("/").length;
+  puntos -= profundidad * 2;
+  return puntos;
 }
 
 async function jsonGithub(url: string, limite: number): Promise<Record<string, unknown>> {
@@ -373,15 +465,25 @@ export async function instalarSkillComando(ambito: AmbitoSkills, comando: unknow
   }
   const arbol = await jsonGithub(`${base}/git/trees/${encodeURIComponent(rama)}?recursive=1`, 2_000_000);
   if (!Array.isArray(arbol.tree) || arbol.truncated === true) throw new SkillError("skill_catalog_failed", 502);
-  const rutas = (arbol.tree as { type?: unknown; path?: unknown }[])
-    .filter((item) => item?.type === "blob" && typeof item.path === "string" && item.path.endsWith(`/${pedido.name}/SKILL.md`))
+
+  const blobs = (arbol.tree as { type?: unknown; path?: unknown }[])
+    .filter((item) => item?.type === "blob" && typeof item.path === "string" && (item.path as string).toLowerCase().endsWith("skill.md"))
     .map((item) => item.path as string);
-  const raiz = `${pedido.name}/SKILL.md`;
-  if ((arbol.tree as { type?: unknown; path?: unknown }[]).some((item) => item?.type === "blob" && item.path === raiz)) rutas.unshift(raiz);
-  const unicas = [...new Set(rutas)];
-  if (!unicas.length) throw new SkillError("skill_no_encontrada", 404);
-  if (unicas.length > 1) throw new SkillError("skill_command_ambiguous", 409);
-  const ruta = unicas[0]!;
+
+  let candidatos = blobs.filter((path) => {
+    const p = path.toLowerCase();
+    return p.endsWith(`/${pedido.name}/skill.md`) || p === `${pedido.name}/skill.md` || p === "skill.md";
+  });
+  if (candidatos.length === 0) {
+    candidatos = blobs;
+  }
+  if (!candidatos.length) throw new SkillError("skill_no_encontrada", 404);
+
+  const ordenados = [...new Set(candidatos)]
+    .map((r) => ({ ruta: r, puntos: puntuarRutaSkill(r, pedido.name) }))
+    .sort((a, b) => b.puntos - a.puntos);
+
+  const ruta = ordenados[0]!.ruta;
   if (ruta.split("/").some((segmento) => !/^[A-Za-z0-9._-]+$/.test(segmento) || segmento === "." || segmento === "..")) {
     throw new SkillError("invalid_skill_command");
   }
@@ -389,10 +491,13 @@ export async function instalarSkillComando(ambito: AmbitoSkills, comando: unknow
   const raw = `https://raw.githubusercontent.com/${pedido.owner}/${pedido.repo}/${rama}/${ruta}`;
   let contenido = await descargar(raw, MAX_CONTENIDO);
   const cabecera = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/.exec(contenido);
-  if (!cabecera) throw new SkillError("invalid_skill_content");
-  const campos = cabecera[1]!.split(/\r?\n/).filter((linea) => !/^source\s*:/.test(linea));
-  campos.push(`source: ${fuente}`);
-  contenido = `---\n${campos.join("\n")}\n---${cabecera[2]}${contenido.slice(cabecera[0].length)}`;
+  if (!cabecera) {
+    contenido = `---\nname: ${pedido.name}\ndescription: Instrucciones de ${pedido.name}\nsource: ${fuente}\n---\n\n${contenido}`;
+  } else {
+    const campos = cabecera[1]!.split(/\r?\n/).filter((linea) => !/^source\s*:/.test(linea));
+    campos.push(`source: ${fuente}`);
+    contenido = `---\n${campos.join("\n")}\n---${cabecera[2]}${contenido.slice(cabecera[0].length)}`;
+  }
   operacionArchivo(() => guardarSkillArchivo(ambito, pedido.name, contenido));
   const detalle = operacionArchivo(() => leerSkill(ambito, pedido.name));
   return { name: pedido.name, content: detalle.contenido, source: fuente };

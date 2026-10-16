@@ -128,11 +128,13 @@ function ProyectoGit({ id }: { id: string }) {
           ? cfg.data.github.metodo === "app"
             ? `Usando la GitHub App; Telo limita cada credencial a ${cfg.data.repository ?? "este repositorio"}.`
             : `Usando la sesión global anterior de GitHub${cfg.data.github.login ? ` (@${cfg.data.github.login})` : ""}.`
-          : cfg.data?.token
-            ? "Acceso mediante token guardado en este proyecto."
+          : cfg.data?.tokenProyecto
+            ? "Acceso mediante token GITHUB_TOKEN guardado en este proyecto."
+          : cfg.data?.tokenGlobal
+            ? "Acceso mediante sesión global anterior de GitHub."
           : cfg.data?.ssh
             ? "Clave SSH del proyecto configurada."
-            : "Vincula la instalación de GitHub App en Ajustes para clonar repositorios privados y subir cambios."}
+            : "Vincula la instalación de GitHub App en Ajustes o configura una clave SSH para clonar repositorios privados y subir cambios."}
       </p>
       {guardar.isSuccess && <p role="status">Configuración guardada.</p>}
       {comprobar.data && (
@@ -140,7 +142,7 @@ function ProyectoGit({ id }: { id: string }) {
           Acceso a {comprobar.data.repo}.{" "}
           {comprobar.data.push
             ? "Permiso para subir confirmado."
-            : "GitHub no confirmó permiso de escritura; revisa los permisos del token."}
+            : "GitHub no confirmó permiso de escritura; revisa los permisos del token o la cuenta en GitHub."}
         </p>
       )}
       {[guardar.error, comprobar.error, iniciar.error]
@@ -153,6 +155,7 @@ function ProyectoGit({ id }: { id: string }) {
       {accion && (
         <RepositoryApproval
           accion={accion}
+          projectId={id}
           onChange={() => {
             setAccion(null);
             void qc.invalidateQueries({ queryKey: ["project-git", id] });

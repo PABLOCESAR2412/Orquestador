@@ -158,23 +158,21 @@ function tareaDelChat(id: string) {
   ).get(id);
 }
 
-// Una conversación conserva su clon y sesión; cada nueva petición necesita un plan nuevo.
+// Una conversación conserva su clon y sesión; cada nueva petición crea una tarea nueva preservando el historial.
 function encolarTurno(conv: ConversationRow, prompt: string, model: string): string {
   const anterior = tareaDelChat(conv.id);
-  if (!anterior) return crearTarea({
-    prompt, model, effort: conv.effort, projectId: conv.project_id, conversationId: conv.id,
-  });
-  db.transaction(() => {
+  if (anterior) {
     db.query("UPDATE repository_actions SET state='superseded' WHERE task_id=? AND state='pending'").run(anterior.id);
-    db.query(
-      "UPDATE tasks SET prompt=?,model=?,effort=?,status='queued',plan=NULL,plan_hash=NULL,approved_hash=NULL,plan_aprobado_en=NULL,reporte=NULL,result=NULL,error=NULL,finished_at=NULL,modelo_agotado=NULL,continuar=0 WHERE id=?",
-    ).run(prompt, model, conv.effort, anterior.id);
-    db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(conv.id);
-    registrarEvento(anterior.id, "turno_encolado", "Nuevo mensaje de la conversación");
-  })();
-  publicarEstado(anterior.id);
-  notifyWorker();
-  return anterior.id;
+  }
+  db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(conv.id);
+  return crearTarea({
+    prompt,
+    model,
+    effort: conv.effort,
+    projectId: conv.project_id,
+    conversationId: conv.id,
+    providerSessionId: conv.runner_session_id || null,
+  });
 }
 
 // El mensaje del usuario se guarda antes de ejecutar: así aparece en los demás dispositivos
@@ -281,10 +279,16 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
     // Una respuesta correcta levanta el aviso de cuota, si lo había.
     db.query("UPDATE conversations SET cuota_modelo = NULL WHERE id = ?").run(conversationId);
 
+    const modeloEfectivo = result.modelo || model;
     if (result.sessionId) {
       db.query("UPDATE conversations SET runner_session_id = ?, model = ? WHERE id = ?").run(
         result.sessionId,
-        model,
+        modeloEfectivo,
+        conversationId,
+      );
+    } else {
+      db.query("UPDATE conversations SET model = ? WHERE id = ?").run(
+        modeloEfectivo,
         conversationId,
       );
     }

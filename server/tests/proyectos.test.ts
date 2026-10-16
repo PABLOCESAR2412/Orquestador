@@ -257,6 +257,23 @@ describe("API de proyectos", () => {
 });
 
 describe("métricas de la lista de proyectos", () => {
+  test("la lista tolera proyectos antiguos sin carpeta registrada", async () => {
+    const { db } = await import("../src/db");
+    const id = crypto.randomUUID();
+    db.query("INSERT INTO projects (id, name, repo_path) VALUES (?, 'Sin carpeta', NULL)").run(id);
+
+    try {
+      const lista = (await (await projects.request("/projects")).json()) as {
+        id: string;
+        repo_path: string;
+        carpeta: string;
+      }[];
+      expect(lista.find((proyecto) => proyecto.id === id)).toMatchObject({ repo_path: "", carpeta: "" });
+    } finally {
+      db.query("DELETE FROM projects WHERE id = ?").run(id);
+    }
+  });
+
   test("cuenta chats y tareas, y toma la última actividad del mensaje o de la tarea más reciente", async () => {
     const { db } = await import("../src/db");
     const proyecto = crypto.randomUUID();

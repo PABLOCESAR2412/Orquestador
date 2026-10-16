@@ -181,3 +181,48 @@ test("instala solo SKILL.md desde el repositorio indicado por el comando", async
   expect(urls).toHaveLength(3);
   expect(listarSkills(id)[0]?.name).toBe("frontend-design");
 });
+
+test("instala skills conocidas y desempata rutas múltiples (playwright, caveman, impeccable)", async () => {
+  const id = proyecto();
+  expect(parsearComandoSkill("playwright")).toEqual({ owner: "openai", repo: "skills", name: "playwright" });
+  expect(parsearComandoSkill("npx skills add caveman")).toEqual({ owner: "JuliusBrussee", repo: "caveman", name: "caveman" });
+  expect(parsearComandoSkill("npx skills add pbakaus/impeccable")).toEqual({ owner: "pbakaus", repo: "impeccable", name: "impeccable" });
+
+  globalThis.fetch = (async (url) => {
+    const destino = String(url);
+    if (destino.endsWith("/repos/pbakaus/impeccable")) {
+      return Response.json({ default_branch: "main" });
+    }
+    if (destino.includes("/git/trees/main?recursive=1")) {
+      // Múltiples rutas como en el repo real de impeccable
+      return Response.json({
+        tree: [
+          { type: "blob", path: "tests/oracle/workspaces/ctx-pin/.claude/skills/impeccable/SKILL.md" },
+          { type: "blob", path: ".agent/skills/impeccable/SKILL.md" },
+          { type: "blob", path: ".opencode/skills/impeccable/SKILL.md" },
+          { type: "blob", path: "plugin/skills/impeccable/SKILL.md" },
+        ],
+      });
+    }
+    if (destino.includes("/.opencode/skills/impeccable/SKILL.md")) {
+      return new Response("---\nname: impeccable\ndescription: Design taste\n---\n\n# Impeccable rules");
+    }
+    return new Response("Not found", { status: 404 });
+  }) as typeof fetch;
+
+  const respuesta = await app.request("/projects/skills-test/skills/instalar", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ comando: "npx skills add pbakaus/impeccable" }),
+  });
+  expect(respuesta.status).toBe(201);
+  const data = (await respuesta.json()) as { name: string; content: string };
+  expect(data.name).toBe("impeccable");
+  expect(data.content).toContain("# Impeccable rules");
+
+  // Verifica que se guardó en .opencode/skills/ y también sincronizó en skills/ visible
+  const rutaOpencode = join(carpetaProyecto, ".opencode", "skills", "impeccable", "SKILL.md");
+  const rutaVisible = join(carpetaProyecto, "skills", "impeccable", "SKILL.md");
+  expect(existsSync(rutaOpencode)).toBe(true);
+  expect(existsSync(rutaVisible)).toBe(true);
+});

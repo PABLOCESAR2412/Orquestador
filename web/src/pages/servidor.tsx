@@ -214,6 +214,7 @@ export function EstadoServidor({ latencia }: { latencia: MuestrasLatencia }) {
           principal={datos ? duracion(datos.proceso.segundosActivo) : "—"}
         >
           <Fila etiqueta="Arranque" valor={datos ? fechaCorta(datos.proceso.arrancado) : "—"} />
+          <Fila etiqueta="Commit del servidor" valor={datos?.proceso.commit ?? "No disponible"} />
           <Fila etiqueta="Runtime" valor={datos ? `Bun ${datos.proceso.bun}` : "—"} />
           <Fila etiqueta="Plataforma" valor={datos?.proceso.plataforma ?? "—"} />
           <Fila

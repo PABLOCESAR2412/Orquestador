@@ -1,25 +1,7 @@
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { api, type Task } from "../api";
-import { errorText } from "../lib/model";
+import type { Task } from "../api";
 
 export function PlanRevision({ tarea }: { tarea: Task }) {
-  const qc = useQueryClient();
-  const [feedback, setFeedback] = useState("");
-  const decision = useMutation({
-    mutationFn: (decision: "approve" | "revise") =>
-      api.decidePlan(tarea.id, {
-        decision,
-        plan_hash: tarea.plan_hash!,
-        feedback,
-      }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["tasks"] });
-      void qc.invalidateQueries({ queryKey: ["task", tarea.id] });
-      void qc.invalidateQueries({ queryKey: ["conversation-tasks"] });
-    },
-  });
   if (tarea.status !== "waiting_approval" || !tarea.plan || !tarea.plan_hash)
     return null;
   const p = tarea.plan;
@@ -65,58 +47,9 @@ export function PlanRevision({ tarea }: { tarea: Task }) {
         </p>
       ))}
       {tarea.error && <p role="alert">{tarea.error}</p>}
-      <details
-        className="approval-notes"
-        open={p.preguntas.length > 0 ? true : undefined}
-      >
-        <summary>Aclaraciones o cambios al plan</summary>
-        <label className="approval-feedback">
-          Aclaraciones o cambios al plan
-          <textarea
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            maxLength={8000}
-            rows={2}
-            placeholder="Responde las preguntas o indica qué cambiar"
-          />
-        </label>
-      </details>
-      <div className="approval-buttons">
-        <button
-          type="button"
-          className="primary"
-          disabled={decision.isPending}
-          onClick={() => decision.mutate("approve")}
-        >
-          {decision.isPending ? "Aprobando…" : "Aprobar plan"}
-        </button>
-        {feedback.trim() && (
-          <button
-            type="button"
-            className="ghost"
-            disabled={decision.isPending}
-            onClick={() => decision.mutate("revise")}
-            title="Solicitar al analizador que elabore un nuevo plan con estas aclaraciones"
-          >
-            Re-analizar plan
-          </button>
-        )}
-        <button
-          type="button"
-          className="ghost"
-          disabled={decision.isPending}
-          onClick={() => {
-            void api.cancelTask(tarea.id).then(() => qc.invalidateQueries());
-          }}
-        >
-          Cancelar tarea
-        </button>
+      <div className="tl-plan-aviso-composer">
+        <span>Responde a las preguntas o indica qué cambiar en el compositor de abajo antes de aprobar.</span>
       </div>
-      {decision.isError && (
-        <p className="error" role="alert">
-          {errorText(decision.error)}
-        </p>
-      )}
     </section>
   );
 }

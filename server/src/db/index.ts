@@ -490,6 +490,41 @@ const migrations: Migration[] = [
       CREATE INDEX uso_jev_proyecto ON uso_jev(proyecto_id, created_at);
     `,
   },
+  {
+    name: "026_metodo_autenticacion_push",
+    sql: `
+      ALTER TABLE task_approvals ADD COLUMN autenticacion TEXT;
+    `,
+  },
+  {
+    name: "027_sesiones_y_propuestas_memoria",
+    sql: `
+      ALTER TABLE projects ADD COLUMN memoria_propuesta TEXT;
+      ALTER TABLE projects ADD COLUMN memoria_propuesta_en TEXT;
+      ALTER TABLE projects ADD COLUMN memoria_propuesta_tarea_id TEXT REFERENCES tasks(id) ON DELETE SET NULL;
+
+      CREATE TABLE auth_sessions (
+        id TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL UNIQUE,
+        user_agent TEXT,
+        ip TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX auth_sessions_token_hash ON auth_sessions(token_hash);
+    `,
+  },
+  {
+    name: "028_indices_rendimiento_y_sesiones",
+    sql: `
+      CREATE INDEX IF NOT EXISTS messages_conversation_created ON messages (conversation_id, created_at);
+      CREATE INDEX IF NOT EXISTS tasks_project_created ON tasks (project_id, created_at);
+      CREATE INDEX IF NOT EXISTS conversations_project_created ON conversations (project_id, created_at);
+      CREATE INDEX IF NOT EXISTS usage_project ON usage (project_id, created_at);
+      CREATE INDEX IF NOT EXISTS usage_conversation ON usage (conversation_id, created_at);
+      CREATE INDEX IF NOT EXISTS auth_sessions_last_seen ON auth_sessions (last_seen_at);
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

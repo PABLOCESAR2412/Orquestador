@@ -1,10 +1,10 @@
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { extname, resolve } from "node:path";
 
 // Solo fixtures locales: estas pruebas nunca llaman a proveedores ni a repositorios reales.
-const root = resolve("dist");
+const root = existsSync("web/dist") ? resolve("web/dist") : resolve("dist");
 const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
   const path = resolve(root, "." + new URL(req.url).pathname);
   const file = Bun.file(path);
@@ -30,13 +30,14 @@ try {
     ];
     const actions = [
       { id: "git-old", action: "push", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ mensaje: "Falló el intento anterior" }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
-      { id: "git1", action: "push", task_id: "t1", message_id: "u2", state: "pending", result: null, payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
+      { id: "git1", action: "push", task_id: "t1", message_id: "u2", state: "pending", result: null, payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2", autenticacion: { tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "PABLOCESAR2412", instalacion_id: 1 } }) },
     ];
     let authenticated = false;
     let codexSesionEnPicker = false;
     let jevConfigurada = false;
     let approvals = 0;
     let skillInstallRequests = 0;
+    let diffRequests = 0;
     let sinDatos = false;
     let anunciarEnvioA;
     let liberarEnvioA;
@@ -68,7 +69,12 @@ try {
       else if (path === "/api/conversations/c2/messages") data = [];
       else if (path === "/api/conversations/c1/acciones") data = actions;
       else if (path === "/api/conversations/c1/tasks" || path === "/api/tasks") data = [task];
-      else if (path === "/api/tasks/t1/diff") data = { estado: "sin_cambios", archivos: [], hash: null, diff: "", remoto: true, aprobaciones: { commit: null, push: null } };
+      else if (path === "/api/tasks/t1/diff") {
+        diffRequests++;
+        data = diffRequests === 1
+          ? { estado: "en_curso" }
+          : { estado: "con_cambios", rama: "telo/prueba", base_commit: null, commit: "abcdef012345", archivos: [{ ruta: "src/app.ts", estado: "modificado", adiciones: 2, eliminaciones: 1, binario: false, sensible: false }], hash: "0123456789abcdef", diff: "diff de prueba", truncado: false, remoto: true, aprobaciones: { commit: null, push: null } };
+      }
       else if (path.endsWith("/decidir")) { approvals++; actions[1].state = "approved"; actions[1].result = JSON.stringify({ sha: "abcdef012345" }); return route.fulfill({ status: 409, json: { error: "action_already_decided" } }); }
       else if (path === "/api/models") data = { models: [
         { id: "opencode/claude-fable-5", provider: "opencode", name: "Claude Fable 5", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Claude", recommended: true },
@@ -100,6 +106,8 @@ try {
         { id: 1, name: "PABLOCESAR2412", login: "PABLOCESAR2412", avatar_url: "", repository_selection: "all" },
       ] };
       else if (path.includes("github/cuenta") || path.includes("google")) data = { conectado: true, metodo: "app", login: "PABLOCESAR2412", sesion_anterior: false };
+      else if (path.includes("/projects/") && path.includes("/git/comprobar")) data = { ok: true, repo: "ejemplo/pruebas", push: true, verificacion: "confirmada", autenticacion: { tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "PABLOCESAR2412", instalacion_id: 1 } };
+      else if (path.includes("/projects/") && path.endsWith("/git")) data = { remote: "https://github.com/ejemplo/pruebas", repository: "ejemplo/pruebas", author_name: "Telo", base_branch: "main", inicializado: true, ocupado: false, token: false, tokenProyecto: false, tokenGlobal: false, prToken: false, ssh: false, github: { conectado: true, metodo: "app", login: "PABLOCESAR2412" } };
       else if (path === "/api/runner") data = { opencode: true, bwrap: true, aislamiento: true };
       else if (path === "/api/projects") data = [{ id: "p1", name: "Pruebas" }];
       else if (path === "/api/uso") data = { generado: now, proveedores: [{
@@ -118,12 +126,14 @@ try {
       else if (path.includes("eventos-vivos")) return route.fulfill({ contentType: "text/event-stream", body: ": alive\n\n" });
       return route.fulfill({ json: data });
     });
+    const respuestaDiffTransitoria = page.waitForResponse(response => response.url().endsWith("/api/tasks/t1/diff"));
     await page.goto(`${base}/entrar`);
     await page.getByLabel("Clave de acceso").fill("clave-ficticia-de-prueba");
     await page.getByRole("button", { name: "Entrar", exact: true }).click();
     await page.waitForURL("**/chat");
     console.log(`${width}px: sesión local de prueba iniciada`);
     await page.getByText("ANTERIORES", { exact: true }).waitFor();
+    assert.equal((await (await respuestaDiffTransitoria).json()).estado, "en_curso");
     await page.locator(".tl-diagrama-visual svg").waitFor();
     const comprobarTemaDiagrama = async tema => {
       await page.evaluate(valor => { document.documentElement.dataset.theme = valor; }, tema);
@@ -169,16 +179,21 @@ try {
     await page.getByText("Faltan dependencias", { exact: true }).waitFor();
     assert.equal(await page.getByRole("article", { name: "Acción de Git" }).count(), 1);
     await page.getByText("Ver 1 intento anterior", { exact: true }).waitFor();
-    const accionDespuesDeRespuesta = await page.locator(".tl-hilo-columna").evaluate(root => {
-      const respuesta = [...root.querySelectorAll(".tl-msg-agente:not(.tl-msg-git)")].at(-1);
+    await page.locator(".tl-resumen-cambios").waitFor();
+    const cambiosAntesDeAccion = await page.locator(".tl-hilo-columna").evaluate(root => {
+      const cambios = root.querySelector(".tl-resumen-cambios");
       const accion = root.querySelector('article[aria-label="Acción de Git"]');
-      return Boolean(respuesta && accion && (respuesta.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING));
+      return Boolean(cambios && accion && (cambios.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING));
     });
-    assert.equal(accionDespuesDeRespuesta, true);
+    assert.equal(cambiosAntesDeAccion, true);
     assert.equal(await page.locator(".tl-detalles-reporte pre").isVisible(), false);
     assert.equal((await page.locator("body").textContent()).includes("MEMORIA_INTERNA"), false);
     await page.getByRole("button", { name: "Autorizar commit y push", exact: true }).click();
     await page.getByText("Completada", { exact: true }).waitFor();
+    assert.equal(await page.locator(".tl-resumen-cambios").evaluate(cambios => {
+      const accion = document.querySelector('article[aria-label="Acción de Git"]');
+      return Boolean(accion && (cambios.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING));
+    }), true);
     assert.equal(approvals, 1);
     assert.equal(await page.locator('article[aria-label="Acción de Git"] [role="alert"]').count(), 0);
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Envío del chat A");

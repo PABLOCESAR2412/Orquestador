@@ -1062,6 +1062,7 @@ function DetalleTarea({ id }: { id: string }) {
             ) : (
               <RevisionCambios
                 id={id}
+                projectId={t.project_id ?? null}
                 datos={diff.data}
                 cargando={diff.isPending || diff.isFetching}
                 error={diff.error}

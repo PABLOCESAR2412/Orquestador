@@ -52,9 +52,55 @@ function parseEvents(stdout: string): OpenCodeEvent[] {
   return events;
 }
 
+function registro(valor: unknown): Record<string, unknown> | null {
+  return valor !== null && typeof valor === "object" && !Array.isArray(valor)
+    ? valor as Record<string, unknown>
+    : null;
+}
+
+// OpenCode incluye en el evento error cabeceras, sessionID y otros metadatos que no ayudan
+// al usuario. Conservamos solo el código y el mensaje del proveedor, con un primer paso claro.
+export function explicarErrorProveedor(evento: unknown): string {
+  const ev = registro(evento);
+  const error = registro(ev?.error);
+  const data = registro(error?.data);
+  const status = typeof data?.statusCode === "number"
+    ? data.statusCode
+    : typeof error?.statusCode === "number" ? error.statusCode : null;
+  const mensaje = typeof data?.message === "string"
+    ? data.message
+    : typeof error?.message === "string" ? error.message : "";
+
+  if (status === 402 && /more credits|fewer max_tokens|can only afford/i.test(mensaje)) {
+    const solicitados = mensaje.match(/requested up to\s+([\d,]+)/i)?.[1];
+    const disponibles = mensaje.match(/can only afford\s+([\d,]+)/i)?.[1];
+    const detalle = solicitados && disponibles
+      ? `El saldo alcanza para ${disponibles} tokens, pero la solicitud pide hasta ${solicitados}.`
+      : "El saldo disponible no alcanza para el máximo de tokens de esta solicitud.";
+    return `El proveedor rechazó la solicitud por presupuesto insuficiente. ${detalle} Por dónde empezar: cambia a un modelo o proveedor con un máximo de salida menor, o añade créditos en OpenRouter. Telo no permite ajustar max_tokens directamente.`;
+  }
+  if (status === 402) {
+    return "El proveedor rechazó la solicitud porque el saldo o los créditos disponibles no alcanzan. Por dónde empezar: revisa el saldo de la cuenta del proveedor o usa otro modelo con presupuesto disponible.";
+  }
+  if (status === 401) {
+    return "El proveedor rechazó la clave o la sesión. Por dónde empezar: revisa la conexión y la clave del proveedor en Ajustes.";
+  }
+  if (status === 403) {
+    return "El proveedor no autorizó el acceso a este modelo. Por dónde empezar: comprueba que tu cuenta tenga acceso al modelo o elige otro.";
+  }
+  if (status === 429) {
+    return "El proveedor limitó las solicitudes temporalmente. Por dónde empezar: espera un momento o elige otro modelo/proveedor.";
+  }
+  if (status !== null && status >= 500) {
+    return `El proveedor tuvo un error temporal (HTTP ${status}). Por dónde empezar: espera un momento y vuelve a intentarlo; si se repite, prueba otro modelo.`;
+  }
+  if (mensaje) return `El proveedor devolvió un error${status === null ? "" : ` (HTTP ${status})`}: ${mensaje.slice(0, 500)}`;
+  return `OpenCode informó un error del proveedor${status === null ? "" : ` (HTTP ${status})`}. Revisa «Ver proceso» y vuelve a intentarlo.`;
+}
+
 function failureDetail(stdout: string, stderr: string, events: OpenCodeEvent[]): string {
   const errorEvent = events.find((e) => e.type === "error");
-  if (errorEvent) return JSON.stringify(errorEvent).slice(0, 800);
+  if (errorEvent) return explicarErrorProveedor(errorEvent);
   return (stderr || stdout).trim().slice(-800) || "sin salida";
 }
 

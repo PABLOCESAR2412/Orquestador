@@ -14,7 +14,7 @@ const { repositoryActions } = await import("../src/routes/repository-actions");
 const { guardarSecreto } = await import("../src/secretos");
 const { gitOk } = await import("../src/git");
 const { guardarCuentaGithubGlobal, borrarCuentaGithubGlobal } = await import("../src/github-auth");
-const { githubApi, githubApiPr } = await import("../src/routes/proyecto-config");
+const { fuenteAutenticacionGithub, githubApi, githubApiPr } = await import("../src/routes/proyecto-config");
 const app = new Hono().route("/", proyectoConfig).route("/", repositoryActions);
 const proyectos: { id: string; cwd: string }[] = [];
 const claveOriginal = process.env.TELO_CLAVE_CIFRADO;
@@ -128,10 +128,39 @@ describe("configuración del proyecto", () => {
       autorizacion = new Headers(init?.headers).get("Authorization") ?? "";
       return Response.json({ html_url: "https://github.com/ejemplo/proyecto/pull/1" });
     }) as typeof fetch;
-    await githubApi(p.id, "/repos/ejemplo/proyecto");
+    await githubApi(p.id, "/repos/ejemplo/proyecto", fuenteAutenticacionGithub(p.id, "push"));
     expect(autorizacion).toBe(`Bearer ${secreto}`);
-    await githubApiPr(p.id, "/repos/ejemplo/proyecto/pulls", { title: "PR" });
+    await githubApiPr(p.id, "/repos/ejemplo/proyecto/pulls", fuenteAutenticacionGithub(p.id, "pr"), { title: "PR" });
     expect(autorizacion).toBe(`Bearer ${secreto}`);
+  });
+
+  test("comprobar acceso informa la credencial elegida y valida escritura antes de autorizar", async () => {
+    const p = proyecto();
+    const secreto = "token-previo-de-prueba";
+    guardarCuentaGithubGlobal({
+      token: secreto,
+      login: "pablo",
+      name: "Pablo",
+      avatar_url: "",
+      scopes: ["repo"],
+      actualizado_en: new Date().toISOString(),
+    });
+    await pedir(`/projects/${p.id}/git`, cfg, "PUT");
+    globalThis.fetch = (async (url, init) => {
+      expect(String(url)).toBe("https://api.github.com/repos/ejemplo/proyecto");
+      expect(new Headers(init?.headers).get("Authorization")).toBe(`Bearer ${secreto}`);
+      return Response.json({ full_name: "ejemplo/proyecto", permissions: { push: true } });
+    }) as typeof fetch;
+
+    const respuesta = await pedir(`/projects/${p.id}/git/comprobar`, { action: "push" });
+    expect(respuesta.status).toBe(200);
+    expect(await respuesta.json()).toMatchObject({
+      ok: true,
+      repo: "ejemplo/proyecto",
+      push: true,
+      verificacion: "confirmada",
+      autenticacion: { tipo: "credencial_anterior", etiqueta: "Credencial anterior", cuenta: "pablo" },
+    });
   });
 
   test("un remoto de origin se detecta y queda bloqueado aunque aún no esté guardado en Telo", async () => {

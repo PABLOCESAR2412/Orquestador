@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { cantidadSuscriptores, suscribir, type EventoVivo } from "../bus";
+import { cantidadSuscriptores, suscribir, eventosDesde, type EventoVivo } from "../bus";
 import { sinLimiteDeInactividad } from "../conexion";
 
 // Canal en vivo: estados de tareas, eventos del historial, líneas de salida del agente y pasos de los chats.
@@ -86,11 +86,29 @@ stream.get("/eventos-vivos", (c) => {
         return;
       }
 
-      baja = suscribir((evento) => {
+      // Si el cliente reconectó con Last-Event-ID, entrega los eventos perdidos en orden
+      const lastEventIdStr = c.req.header("last-event-id");
+      if (lastEventIdStr) {
+        const lastEventId = parseInt(lastEventIdStr, 10);
+        if (!Number.isNaN(lastEventId) && lastEventId > 0) {
+          const pendientes = eventosDesde(lastEventId);
+          for (const item of pendientes) {
+            try {
+              const msg = aMensaje(item.evento);
+              controller.enqueue(encoder.encode(`id: ${item.id}\nevent: ${msg.event}\ndata: ${msg.data}\n\n`));
+            } catch {
+              limpiar();
+              return;
+            }
+          }
+        }
+      }
+
+      baja = suscribir((evento, id) => {
         if (terminado) return;
         try {
           const mensaje = aMensaje(evento);
-          controller.enqueue(encoder.encode(`event: ${mensaje.event}\ndata: ${mensaje.data}\n\n`));
+          controller.enqueue(encoder.encode(`id: ${id}\nevent: ${mensaje.event}\ndata: ${mensaje.data}\n\n`));
         } catch {
           limpiar();
         }

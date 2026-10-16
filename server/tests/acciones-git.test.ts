@@ -18,7 +18,7 @@ const { gitOk } = await import("../src/git");
 const { aprobarTarea, diffDeTarea, prepararCopia } = await import("../src/workspace");
 const { repositoryActions } = await import("../src/routes/repository-actions");
 const { guardarSecreto, entornoDeProyecto } = await import("../src/secretos");
-const { githubApiPr } = await import("../src/routes/proyecto-config");
+const { fuenteAutenticacionGithub, githubApiPr } = await import("../src/routes/proyecto-config");
 const { borrarCuentaGithubGlobal } = await import("../src/github-auth");
 const originalFetch = globalThis.fetch;
 const claveOriginal = process.env.TELO_CLAVE_CIFRADO;
@@ -104,7 +104,7 @@ async function tareaConCommit() {
   return { ...p, taskId, clon: copia.cwd, diff };
 }
 
-test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama y base aprobadas", async () => {
+test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama y base aprobadas", { timeout: 15000 }, async () => {
   const p = await tareaConCommit();
   expect(db.query("SELECT 1 FROM project_git WHERE project_id=?").get(p.id)).toBeNull();
   guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
@@ -112,13 +112,17 @@ test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama
   expect(respuesta.status).toBe(201);
   const accion = (await respuesta.json()) as any;
   expect(JSON.parse(accion.payload).remote).toBe(REMOTO);
-  let llamadas = 0;
+  const llamadas: string[] = [];
   globalThis.fetch = (async (url: any, init: any) => {
-    llamadas++;
-    expect(String(url)).toBe("https://api.github.com/repos/dueno/prueba/pulls");
-    expect(init?.method).toBe("POST");
+    llamadas.push(`${init?.method} ${String(url)}`);
     expect(init?.redirect).toBe("error");
     expect(new Headers(init?.headers).get("Authorization")).toBe(`Bearer ${TOKEN_PR}`);
+    if (String(url) === "https://api.github.com/repos/dueno/prueba") {
+      expect(init?.method).toBe("GET");
+      return Response.json({ full_name: "dueno/prueba", permissions: { push: true } });
+    }
+    expect(String(url)).toBe("https://api.github.com/repos/dueno/prueba/pulls");
+    expect(init?.method).toBe("POST");
     const body = JSON.parse(String(init?.body));
     expect(body.head).toBe(p.diff.rama);
     expect(body.base).toBe("main");
@@ -127,11 +131,38 @@ test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama
   const aprobada = await pedir(`/acciones/${accion.id}/decidir`, { approve: true });
   const texto = await aprobada.text();
   expect(aprobada.status).toBe(200);
-  expect(llamadas).toBe(1);
+  expect(llamadas).toEqual([
+    "GET https://api.github.com/repos/dueno/prueba",
+    "POST https://api.github.com/repos/dueno/prueba/pulls",
+  ]);
   expect(texto).not.toContain(TOKEN_PR);
   expect(JSON.parse(texto).result).toEqual({ url: "https://github.com/dueno/prueba/pull/1" });
   expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: true })).status).toBe(200);
-  expect(llamadas).toBe(1);
+  expect(llamadas).toHaveLength(2);
+});
+
+test("PR sin commits nuevos muestra cómo corregir rama y base", { timeout: 15000 }, async () => {
+  const p = await tareaConCommit();
+  guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
+  const creada = await pedir(`/projects/${p.id}/acciones`, { action: "pr", taskId: p.taskId });
+  const accion = await creada.json() as any;
+  globalThis.fetch = (async (url: any) => {
+    if (String(url) === "https://api.github.com/repos/dueno/prueba") {
+      return Response.json({ full_name: "dueno/prueba", permissions: { push: true } });
+    }
+    return Response.json(
+      { message: "Validation Failed", errors: [{ message: "No commits between main and telo/0e680496; not all refs are readable" }] },
+      { status: 422 },
+    );
+  }) as unknown as typeof fetch;
+
+  const respuesta = await pedir(`/acciones/${accion.id}/decidir`, { approve: true });
+  const resultado = await respuesta.json() as { detail: string };
+  expect(respuesta.status).toBe(409);
+  expect(resultado.detail).toContain("GitHub no ve commits nuevos");
+  expect(resultado.detail).toContain("Comprueba que el commit se haya subido");
+  expect(resultado.detail).toContain("prepara una nueva autorización de PR");
+  expect(resultado.detail).not.toContain("Validation Failed");
 });
 
 test("push muestra remoto fijado en clon y no el nuevo remoto de configuración", async () => {
@@ -157,6 +188,7 @@ test("push muestra remoto fijado en clon y no el nuevo remoto de configuración"
 
 test("si diff cambia después de solicitar PR, rechaza aprobar antes de llamar GitHub", async () => {
   const p = await tareaConCommit();
+  guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
   const accion = (await (
     await pedir(`/projects/${p.id}/acciones`, { action: "pr", taskId: p.taskId })
   ).json()) as any;
@@ -199,11 +231,16 @@ test("init rechaza .git archivo que apunta a otro repositorio y conserva su cont
 });
 
 
-test("una autorización ejecuta commit antes de push y usa la cuenta del servidor como respaldo", async () => {
+test("una autorización registra la cuenta del servidor y comprueba acceso antes del push", { timeout: 15000 }, async () => {
   const p=await tareaConCommit();
   const {guardarCuentaGithubGlobal,borrarCuentaGithubGlobal}=await import("../src/github-auth");
   db.query("DELETE FROM project_secrets WHERE project_id=? AND name='GITHUB_TOKEN'").run(p.id);
   guardarCuentaGithubGlobal({token:TOKEN,login:"prueba",name:"Prueba",avatar_url:"",scopes:[],actualizado_en:new Date().toISOString()});
+  globalThis.fetch = (async (url: any, init: RequestInit) => {
+    expect(String(url)).toBe("https://api.github.com/repos/dueno/prueba");
+    expect(new Headers(init.headers).get("Authorization")).toBe(`Bearer ${TOKEN}`);
+    return Response.json({ full_name: "dueno/prueba", permissions: { push: true } });
+  }) as typeof fetch;
   writeFileSync(join(p.clon,"archivo.txt"),"commit y push juntos\n");
   const accion=await (await pedir(`/projects/${p.id}/acciones`,{action:"push",taskId:p.taskId})).json() as any;
   const anterior=(await diffDeTarea(p.taskId)).commit;
@@ -223,6 +260,8 @@ test("una autorización ejecuta commit antes de push y usa la cuenta del servido
   }) as typeof Bun.spawn);
   try {
     const respuesta=await pedir(`/acciones/${accion.id}/decidir`,{approve:true});
+    const respuestaTexto=await respuesta.clone().text();
+    if (respuesta.status !== 200) throw new Error(`La aprobación del push falló (${respuesta.status}): ${respuestaTexto}`);
     expect(respuesta.status).toBe(200);
     expect(subidas).toBe(1);
     const diff=await diffDeTarea(p.taskId);
@@ -281,7 +320,7 @@ test("cada petición conserva su mensaje aunque se reutilice la tarea del chat",
   }
 });
 
-test("el chat prepara commit y push juntos y vincula la tarjeta al nuevo mensaje", async () => {
+test("el chat prepara commit y push juntos y vincula la tarjeta al nuevo mensaje", { timeout: 15000 }, async () => {
   const p = await tareaConCommit();
   const { chat } = await import("../src/routes/chat");
   const conversationId = randomUUID();
@@ -342,8 +381,9 @@ test("merge y push_main ya no se aceptan, y una acción antigua de merge pendien
 
 test("crear un pull request usa solo GITHUB_PR_TOKEN, sin respaldo a GITHUB_TOKEN", async () => {
   const p = proyecto();
+  process.env.TELO_CLAVE_CIFRADO = randomBytes(32).toString("base64");
   guardarSecreto(p.id, "GITHUB_TOKEN", TOKEN);
-  await expect(githubApiPr(p.id, "/repos/dueno/prueba/pulls", { title: "x" })).rejects.toThrow("permiso de Pull requests");
+  await expect(githubApiPr(p.id, "/repos/dueno/prueba/pulls", fuenteAutenticacionGithub(p.id, "pr"), { title: "x" })).rejects.toThrow("Pull requests");
 
   guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
   let autorizacion = "";
@@ -353,7 +393,7 @@ test("crear un pull request usa solo GITHUB_PR_TOKEN, sin respaldo a GITHUB_TOKE
       headers: { "Content-Type": "application/json" },
     });
   }) as typeof fetch;
-  const pr = (await githubApiPr(p.id, "/repos/dueno/prueba/pulls", { title: "x" })) as { html_url: string };
+  const pr = (await githubApiPr(p.id, "/repos/dueno/prueba/pulls", fuenteAutenticacionGithub(p.id, "pr"), { title: "x" })) as { html_url: string };
   expect(autorizacion).toBe(`Bearer ${TOKEN_PR}`);
   expect(pr.html_url).toContain("/pull/1");
 

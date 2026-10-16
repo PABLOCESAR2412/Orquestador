@@ -67,7 +67,13 @@ export type ProjectDetail = {
   } | null;
   tamano_bytes: number;
   // Lo que los agentes aprendieron del proyecto. Es nota del agente, no órdenes.
-  memoria: { texto: string | null; actualizada_en: string | null };
+  memoria: {
+    texto: string | null;
+    actualizada_en: string | null;
+    propuesta?: string | null;
+    propuesta_en?: string | null;
+    propuesta_tarea_id?: string | null;
+  };
 };
 
 export type ProjectFileEntry = {
@@ -124,21 +130,24 @@ export type TaskDiffArchivo = {
   sensible: boolean;
 };
 
-export type TaskDiff = {
-  estado: "sin_repo" | "sin_cambios" | "con_cambios";
-  rama: string | null;
-  base_commit: string | null;
-  commit: string | null;
-  archivos: TaskDiffArchivo[];
-  diff: string;
-  truncado: boolean;
-  hash: string | null;
-  remoto: boolean;
-  aprobaciones: {
-    commit: { estado: "pendiente" | "aprobada"; sha: string; hash: string; decidida_en: string; mensaje: string } | null;
-    push: { sha: string; remoto: string; rama?: string; decidida_en: string } | null;
-  };
-};
+export type TaskDiff =
+  | { estado: "en_curso" }
+  | {
+      estado: "sin_repo" | "sin_cambios" | "con_cambios";
+      rama: string | null;
+      base_commit: string | null;
+      commit: string | null;
+      archivos: TaskDiffArchivo[];
+      diff: string;
+      truncado: boolean;
+      hash: string | null;
+      remoto: boolean;
+      aprobaciones: {
+        commit: { estado: "pendiente" | "aprobada"; sha: string; hash: string; decidida_en: string; mensaje: string } | null;
+        push: { sha: string; remoto: string; rama?: string; autenticacion?: FuenteAutenticacionGithub | null; decidida_en: string } | null;
+      };
+      identidad_git?: string;
+    };
 
 export type UsoProveedor = {
   id: string;
@@ -163,7 +172,7 @@ export type RegistrosServidor = { lineas: number; texto: string; generado: strin
 
 export type ServidorEstado = {
   generado: string;
-  proceso: { arrancado: string; segundosActivo: number; bun: string; rssMb: number; plataforma: string };
+  proceso: { arrancado: string; segundosActivo: number; bun: string; commit: string | null; rssMb: number; plataforma: string };
   disco: { etiqueta: "datos" | "proyectos"; totalBytes: number; usadoBytes: number; libreBytes: number }[];
   carpetas: { nombre: string; bytes: number; archivos: number }[];
   herramientas: { nombre: string; version: string | null; disponible: boolean }[];
@@ -308,6 +317,7 @@ export type TaskEventKind =
   | "turno_encolado"
   | "clasificacion_jev"
   | "memoria_evaluada"
+  | "memoria_propuesta"
   | "seguida";
 
 // Evento en vivo del canal /api/eventos-vivos (SSE).
@@ -435,10 +445,17 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
-  checkProjectGit: (id: string) =>
-    request<{ ok: boolean; repo: string; push: boolean }>(`/api/projects/${id}/git/comprobar`, {
+  checkProjectGit: (id: string, action: "push" | "pr" = "push") =>
+    request<{
+      ok: boolean;
+      repo: string;
+      push: boolean | null;
+      autenticacion: FuenteAutenticacionGithub;
+      verificacion: "confirmada" | "no_verificada";
+      aviso: string | null;
+    }>(`/api/projects/${id}/git/comprobar`, {
       method: "POST",
-      body: "{}",
+      body: JSON.stringify({ action }),
     }),
   projectContext: (id: string) =>
     request<{ compartir: boolean; chats: { id: string; title: string; mensajes: number }[] }>(
@@ -574,6 +591,16 @@ export const api = {
     request<{ texto: string | null; actualizada_en: string | null }>(`/api/projects/${id}/memoria`, {
       method: "PUT",
       body: JSON.stringify({ texto }),
+    }),
+  approveProjectMemoryProposal: (id: string) =>
+    request<ProjectDetail["memoria"]>(`/api/projects/${id}/memoria/aprobar`, {
+      method: "POST",
+      body: "{}",
+    }),
+  discardProjectMemoryProposal: (id: string) =>
+    request<ProjectDetail["memoria"]>(`/api/projects/${id}/memoria/descartar`, {
+      method: "POST",
+      body: "{}",
     }),
   listProjectFiles: (id: string, ruta = "") =>
     request<{ ruta: string; entradas: ProjectFileEntry[] }>(
@@ -713,6 +740,18 @@ export const api = {
     if (filtros.modelo) q.set("modelo", filtros.modelo);
     return request<Analytics>(`/api/analytics?${q.toString()}`);
   },
+  listSessions: () => request<AuthSession[]>("/api/sesiones"),
+  revokeSession: (id: string) => request<{ ok: boolean }>(`/api/sesiones/${id}`, { method: "DELETE" }),
+  closeOtherSessions: () => request<{ ok: boolean; revocadas: number }>("/api/sesiones/cerrar-otras", { method: "POST", body: "{}" }),
+};
+
+export type AuthSession = {
+  id: string;
+  user_agent: string | null;
+  ip: string | null;
+  created_at: string;
+  last_seen_at: string;
+  actual?: boolean;
 };
 
 export type JevStatus = { disponible: boolean; configurada: boolean; actualizada_en: string | null };
@@ -734,6 +773,8 @@ export type GithubAppInstalacion = {
   name: string;
   avatar_url: string;
   repository_selection: "all" | "selected";
+  permissions: Record<string, "read" | "write">;
+  configuration_url: string | null;
 };
 
 export type GithubAppEstado = {
@@ -741,6 +782,14 @@ export type GithubAppEstado = {
   faltantes: string[];
   seleccionada: number | null;
   instalaciones: GithubAppInstalacion[];
+};
+
+export type FuenteAutenticacionGithub = {
+  tipo: "github_app" | "credencial_anterior" | "clave_ssh" | "ninguna";
+  origen: "app" | "sesion_anterior" | "token_proyecto" | "token_pr_proyecto" | "ssh" | "ninguna";
+  etiqueta: string;
+  cuenta: string | null;
+  instalacion_id: number | null;
 };
 
 export type Preferences = {
@@ -793,6 +842,8 @@ export type GitConfig = {
   inicializado: boolean;
   ocupado: boolean;
   token: boolean;
+  tokenProyecto?: boolean;
+  tokenGlobal?: boolean;
   prToken: boolean;
   ssh: boolean;
   github: GithubCuenta;

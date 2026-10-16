@@ -15,7 +15,7 @@ import { urlGithubPermitida, mensajeSeguro } from "../workspace";
 import { valorSecreto } from "../secretos";
 import { clavePublicaDe } from "../clave-ssh";
 import { cuentaGithubGlobal, tokenGithubGlobal } from "../github-auth";
-import { tokenGithubAppParaRepo } from "../github-app";
+import { instalacionSeleccionadaGithubApp, tokenGithubAppParaRepo } from "../github-app";
 
 export const proyectoConfig = new Hono();
 proyectoConfig.use("/projects/:id/*", async (c, next) => {
@@ -120,7 +120,9 @@ proyectoConfig.get("/projects/:id/git", async (c) => {
     github: cuentaGithubGlobal(),
     inicializado: repo?.inicializado ?? tieneGitReal(cwd),
     ocupado: repo === null,
-    token: !!valorSecreto(id, "GITHUB_TOKEN") || !!tokenGithubGlobal(),
+    token: !!valorSecreto(id, "GITHUB_TOKEN"),
+    tokenProyecto: !!valorSecreto(id, "GITHUB_TOKEN"),
+    tokenGlobal: !instalacionSeleccionadaGithubApp() && !!tokenGithubGlobal(),
     prToken: !!valorSecreto(id, "GITHUB_PR_TOKEN"),
     ssh: !!clavePublicaDe(id),
   });
@@ -159,28 +161,158 @@ proyectoConfig.put("/projects/:id/git", async (c) => {
   return c.json({ ok: true });
 });
 
-export async function githubApi(projectId: string, path: string, body?: unknown) {
-  const remoto = remotoDeRutaGithub(path);
-  if (!remoto) throw new Error("La ruta de GitHub no identifica un repositorio válido.");
-  const tokenApp = await tokenGithubAppParaRepo(remoto, { contents: "write" });
-  const token = tokenApp || tokenGithubGlobal() || valorSecreto(projectId, "GITHUB_TOKEN");
-  if (!token)
-    throw new Error(
-      "Vincula la instalación de GitHub App en Ajustes. Para subir necesita permiso Contents de escritura.",
-    );
-  return { data: await githubLlamar(token, path, body), viaApp: !!tokenApp };
+export type AccionGithub = "push" | "pr";
+export type FuenteAutenticacionGithub = {
+  tipo: "github_app" | "credencial_anterior" | "clave_ssh" | "ninguna";
+  origen: "app" | "sesion_anterior" | "token_proyecto" | "token_pr_proyecto" | "ssh" | "ninguna";
+  etiqueta: string;
+  cuenta: string | null;
+  instalacion_id: number | null;
+};
+
+export function fuenteAutenticacionGithub(
+  projectId: string,
+  accion: AccionGithub,
+  remotoOpt?: string | null,
+): FuenteAutenticacionGithub {
+  const remoto = remotoOpt ?? configGit(projectId).remote;
+  const ownerMatch = remoto ? /github\.com\/([A-Za-z0-9-]+)\//i.exec(remoto) : null;
+  const ownerRepo = ownerMatch ? ownerMatch[1].toLowerCase() : null;
+  const instalacion = instalacionSeleccionadaGithubApp();
+
+  // Si hay GitHub App configurada y coincide con el dueño del repositorio (o no hay dueño conocido aún)
+  if (instalacion && (!ownerRepo || instalacion.login.toLowerCase() === ownerRepo)) {
+    return {
+      tipo: "github_app",
+      origen: "app",
+      etiqueta: "GitHub App",
+      cuenta: instalacion.login,
+      instalacion_id: instalacion.id,
+    };
+  }
+
+  // Sesión global activa de GitHub (máxima precedencia tras la GitHub App para identificar la cuenta de usuario)
+  if (tokenGithubGlobal()) {
+    return {
+      tipo: "credencial_anterior",
+      origen: "sesion_anterior",
+      etiqueta: "Credencial anterior",
+      cuenta: cuentaGithubGlobal().login ?? null,
+      instalacion_id: null,
+    };
+  }
+
+  // Si no hay sesión global activa ni App coincidente, usamos credenciales locales del proyecto
+  if (accion === "push" && clavePublicaDe(projectId)) {
+    return {
+      tipo: "clave_ssh",
+      origen: "ssh",
+      etiqueta: "Clave SSH del proyecto",
+      cuenta: null,
+      instalacion_id: null,
+    };
+  }
+  if (accion === "push" && valorSecreto(projectId, "GITHUB_TOKEN")) {
+    return {
+      tipo: "credencial_anterior",
+      origen: "token_proyecto",
+      etiqueta: "Credencial anterior del proyecto",
+      cuenta: null,
+      instalacion_id: null,
+    };
+  }
+  if (accion === "pr" && valorSecreto(projectId, "GITHUB_PR_TOKEN")) {
+    return {
+      tipo: "credencial_anterior",
+      origen: "token_pr_proyecto",
+      etiqueta: "Credencial anterior del proyecto",
+      cuenta: null,
+      instalacion_id: null,
+    };
+  }
+
+  // Si no hay credenciales locales del proyecto, pero hay GitHub App conectada:
+  if (instalacion) {
+    return {
+      tipo: "github_app",
+      origen: "app",
+      etiqueta: "GitHub App",
+      cuenta: instalacion.login,
+      instalacion_id: instalacion.id,
+    };
+  }
+
+  return {
+    tipo: "ninguna",
+    origen: "ninguna",
+    etiqueta: "Sin credencial disponible",
+    cuenta: null,
+    instalacion_id: null,
+  };
 }
 
-// La App entrega una credencial limitada al repositorio y a Pull requests. Los tokens antiguos
-// siguen disponibles durante la transición, pero nunca sustituyen una instalación App ya elegida.
-export async function githubApiPr(projectId: string, path: string, body: unknown) {
+export async function githubApi(
+  projectId: string,
+  path: string,
+  autenticacion: FuenteAutenticacionGithub,
+  body?: unknown,
+) {
   const remoto = remotoDeRutaGithub(path);
   if (!remoto) throw new Error("La ruta de GitHub no identifica un repositorio válido.");
-  const tokenApp = await tokenGithubAppParaRepo(remoto, { pull_requests: "write" });
-  const token = tokenApp || tokenGithubGlobal() || valorSecreto(projectId, "GITHUB_PR_TOKEN");
-  if (!token)
-    throw new Error("Vincula la GitHub App en Ajustes o configura una credencial con permiso de Pull requests.");
-  return githubLlamar(token, path, body);
+  const token = await tokenParaFuenteGithub(projectId, remoto, "push", autenticacion);
+  return {
+    data: await githubLlamar(token, path, body, autenticacion.tipo === "github_app" ? "github_app" : "credencial_anterior", "Contents"),
+    viaApp: autenticacion.tipo === "github_app",
+  };
+}
+
+export async function githubApiPr(
+  projectId: string,
+  path: string,
+  autenticacion: FuenteAutenticacionGithub,
+  body?: unknown,
+) {
+  const remoto = remotoDeRutaGithub(path);
+  if (!remoto) throw new Error("La ruta de GitHub no identifica un repositorio válido.");
+  const token = await tokenParaFuenteGithub(projectId, remoto, "pr", autenticacion);
+  return githubLlamar(token, path, body, autenticacion.tipo === "github_app" ? "github_app" : "credencial_anterior", "Pull requests");
+}
+
+async function tokenParaFuenteGithub(
+  projectId: string,
+  remoto: string,
+  accion: AccionGithub,
+  autenticacion: FuenteAutenticacionGithub,
+): Promise<string> {
+  const actual = fuenteAutenticacionGithub(projectId, accion);
+  if (
+    actual.tipo !== autenticacion.tipo ||
+    actual.origen !== autenticacion.origen ||
+    actual.cuenta !== autenticacion.cuenta ||
+    actual.instalacion_id !== autenticacion.instalacion_id
+  ) {
+    throw new Error("La credencial de GitHub cambió desde que preparaste la acción. Solicita una autorización nueva.");
+  }
+
+  let token: string | null = null;
+  if (autenticacion.tipo === "github_app") {
+    token = await tokenGithubAppParaRepo(
+      remoto,
+      accion === "pr" ? { pull_requests: "write" } : { contents: "write" },
+    );
+  } else if (autenticacion.origen === "sesion_anterior") {
+    token = tokenGithubGlobal();
+  } else if (autenticacion.origen === "token_proyecto" && accion === "push") {
+    token = valorSecreto(projectId, "GITHUB_TOKEN");
+  } else if (autenticacion.origen === "token_pr_proyecto" && accion === "pr") {
+    token = valorSecreto(projectId, "GITHUB_PR_TOKEN");
+  }
+  if (!token) {
+    throw new Error(autenticacion.tipo === "ninguna"
+      ? `No hay una credencial disponible para ${accion === "pr" ? "Pull requests" : "subir cambios"}. Vincula la GitHub App o selecciona una credencial en Ajustes.`
+      : "La credencial que autorizaste ya no está disponible. Revisa GitHub en Ajustes y prepara otra autorización.");
+  }
+  return token;
 }
 
 function remotoDeRutaGithub(path: string): string | null {
@@ -188,7 +320,13 @@ function remotoDeRutaGithub(path: string): string | null {
   return match ? `https://github.com/${match[1]}/${match[2]}` : null;
 }
 
-async function githubLlamar(token: string, path: string, body?: unknown) {
+async function githubLlamar(
+  token: string,
+  path: string,
+  body?: unknown,
+  tipoAutenticacion: "github_app" | "credencial_anterior" = "credencial_anterior",
+  permiso = "escritura",
+) {
   const res = await fetch("https://api.github.com" + path, {
     method: body ? "POST" : "GET",
     redirect: "error",
@@ -225,31 +363,76 @@ async function githubLlamar(token: string, path: string, body?: unknown) {
           : []),
       ].filter(Boolean);
       const detalle = mensajes.join("; ").slice(0, 500);
+      if (path.endsWith("/pulls") && /no commits between/i.test(detalle)) {
+        throw new Error(
+          "GitHub no ve commits nuevos entre la rama de Telo y la rama base. Comprueba que el commit se haya subido a la rama indicada y que la rama base sea correcta; después prepara una nueva autorización de PR.",
+        );
+      }
       throw new Error(`GitHub no pudo completar la acción (422)${detalle ? `: ${detalle}` : "."}`);
     }
-    throw new Error(
-      res.status === 401
-        ? "GitHub rechazó el token. Revísalo en los secretos del proyecto."
-        : res.status === 403 || res.status === 404
-          ? "El token no tiene acceso a ese repositorio o le faltan permisos."
-          : `GitHub no pudo completar la acción (${res.status}).`,
-    );
+    if (res.status === 401) {
+      throw new Error(tipoAutenticacion === "github_app"
+        ? "GitHub rechazó la credencial temporal de la App. Revisa la instalación y vuelve a vincularla en Ajustes."
+        : "GitHub rechazó la credencial anterior. Vuelve a conectar la cuenta en Ajustes o cambia a la GitHub App.");
+    }
+    if (res.status === 403 || res.status === 404) {
+      throw new Error(tipoAutenticacion === "github_app"
+        ? `La GitHub App no puede acceder a este repositorio o no tiene permiso ${permiso} de escritura. Añade el repo a la instalación y revisa sus permisos en GitHub.`
+        : `La credencial anterior no tiene acceso de escritura a este repositorio para ${permiso}. Revisa su acceso en GitHub o cambia a la GitHub App.`);
+    }
+    throw new Error(`GitHub no pudo completar la acción (${res.status}).`);
   }
   return res.json();
 }
+
+export async function comprobarAccesoGithub(
+  projectId: string,
+  remoto: string,
+  accion: AccionGithub,
+  fuente = fuenteAutenticacionGithub(projectId, accion, remoto),
+) {
+  if (fuente.tipo === "ninguna") {
+    throw new Error("No hay una credencial de GitHub disponible. Vincula la GitHub App o revisa las credenciales anteriores.");
+  }
+  if (accion === "push" && fuente.tipo === "clave_ssh") {
+    return {
+      repo: remoto.replace(/^https:\/\/github\.com\//, ""),
+      push: null,
+      autenticacion: fuente,
+      verificacion: "no_verificada" as const,
+      aviso: "La clave SSH está configurada, pero GitHub no permite confirmar escritura sin intentar la subida. Revisa que la clave tenga acceso de escritura.",
+    };
+  }
+
+  const ruta = "/repos/" + remoto.replace(/^https:\/\/github\.com\//, "");
+  const respuesta = accion === "pr"
+    ? await githubApiPr(projectId, ruta, fuente) as { full_name?: string; permissions?: { push?: boolean } }
+    : (await githubApi(projectId, ruta, fuente)).data as { full_name?: string; permissions?: { push?: boolean } };
+  const escritura = respuesta.permissions?.push === true;
+  if (fuente.tipo !== "github_app" && !escritura) {
+    const accionTexto = accion === "pr" ? "crear pull requests" : "subir cambios";
+    throw new Error(`GitHub permite consultar ${respuesta.full_name ?? "el repositorio"}, pero la credencial anterior no tiene permiso para ${accionTexto}. Revisa los permisos de la cuenta en GitHub o cambia a la GitHub App.`);
+  }
+  return {
+    repo: respuesta.full_name ?? remoto.replace(/^https:\/\/github\.com\//, ""),
+    push: accion === "push" ? (fuente.tipo === "github_app" ? true : escritura) : escritura,
+    autenticacion: fuente,
+    verificacion: "confirmada" as const,
+    aviso: null,
+  };
+}
 proyectoConfig.post("/projects/:id/git/comprobar", async (c) => {
   const id = c.req.param("id");
+  const body = await leerCuerpoJson<{ action?: unknown }>(c);
+  const action = body?.action === undefined ? "push" : body.action;
+  if (action !== "push" && action !== "pr") return c.json({ error: "invalid_body" }, 400);
   const repoLocal = await datosRepositorio(id);
   if (!repoLocal) return c.json({ error: "proyecto_ocupado" }, 409);
   const remoto = configGit(id).remote ?? repoLocal.remote;
   if (!remoto) return c.json({ error: "sin_remoto" }, 409);
   try {
-    const respuesta = await githubApi(id, "/repos/" + remoto.replace("https://github.com/", ""));
-    const repo = respuesta.data as {
-      permissions?: { push?: boolean };
-      full_name: string;
-    };
-    return c.json({ ok: true, repo: repo.full_name, push: respuesta.viaApp || repo.permissions?.push === true });
+    const respuesta = await comprobarAccesoGithub(id, remoto, action);
+    return c.json({ ok: true, ...respuesta });
   } catch (e) {
     return c.json({ error: "github_access", detail: mensajeSeguro(e) }, 409);
   }

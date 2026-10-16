@@ -32,12 +32,12 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
   };
   useDialogo(ref, cerrar);
 
-  // Solo consulta mientras el panel está abierto y refresca el uso cada 30 s.
+  // Solo consulta mientras el panel está abierto; recoge el uso que registra cada paso del agente.
   const uso = useQuery({
     queryKey: ["uso"],
     queryFn: api.usage,
     enabled: proveedorId !== null,
-    refetchInterval: 30_000,
+    refetchInterval: 5_000,
   });
   const proveedor: UsoProveedor | null =
     uso.data?.proveedores.find((p) => p.id === proveedorId) ?? null;

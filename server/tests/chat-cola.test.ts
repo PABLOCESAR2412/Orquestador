@@ -41,7 +41,7 @@ const enviar = (id: string, content: unknown) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content }),
   });
-test("el chat guarda el mensaje y encola, rechaza solapes y conserva la tarea y la sesión entre turnos", async () => {
+test("el chat guarda el mensaje y encola, rechaza solapes y crea una nueva tarea conservando el historial y la sesión", async () => {
   const c = await crear();
   const r = await enviar(c.id, "Revisa el proyecto");
   expect(r.status).toBe(202);
@@ -54,16 +54,23 @@ test("el chat guarda el mensaje y encola, rechaza solapes y conserva la tarea y 
   db.query(
     "UPDATE tasks SET status='done',provider_session_id='ses_conservada',plan='{}',reporte='{}' WHERE id=?",
   ).run(first.taskId);
+  db.query("UPDATE conversations SET runner_session_id='ses_conservada' WHERE id=?").run(c.id);
   db.query(
     "INSERT INTO repository_actions(id,project_id,conversation_id,task_id,action,payload) VALUES (?,?,?,?,'commit','{}')",
   ).run(crypto.randomUUID(), c.proyecto, c.id, first.taskId);
   const segundo = await enviar(c.id, "Ahora comprueba los cambios");
   expect(segundo.status).toBe(202);
-  expect(((await segundo.json()) as any).taskId).toBe(first.taskId);
-  const continua = db.query<any, [string]>("SELECT * FROM tasks WHERE id=?").get(first.taskId);
-  expect(continua.provider_session_id).toBe("ses_conservada");
-  expect(continua.plan).toBeNull();
-  expect(continua.reporte).toBeNull();
+  const segundoId = ((await segundo.json()) as any).taskId;
+  expect(segundoId).not.toBe(first.taskId);
+  // La tarea anterior no se destruye: conserva su reporte y plan intactos
+  const anterior = db.query<any, [string]>("SELECT * FROM tasks WHERE id=?").get(first.taskId);
+  expect(anterior.status).toBe("done");
+  expect(anterior.plan).toBe("{}");
+  expect(anterior.reporte).toBe("{}");
+  // La nueva tarea hereda la sesión para continuidad
+  const nueva = db.query<any, [string]>("SELECT * FROM tasks WHERE id=?").get(segundoId);
+  expect(nueva.status).toBe("queued");
+  expect(nueva.provider_session_id).toBe("ses_conservada");
   expect(
     db
       .query<any, [string]>("SELECT state FROM repository_actions WHERE task_id=?")

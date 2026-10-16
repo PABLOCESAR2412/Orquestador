@@ -130,10 +130,20 @@ tasks.get("/tasks/:id/salida", async (c) => {
 // GET /api/tasks/:id/diff -> cambios del clon frente a base_commit, con el hash que exige aprobar
 tasks.get("/tasks/:id/diff", async (c) => {
   const id = c.req.param("id");
-  if (!esIdTarea(id) || !leerTarea(id)) return c.json({ error: "task_not_found" }, 404);
+  const tarea = esIdTarea(id) ? leerTarea(id) : null;
+  if (!tarea) return c.json({ error: "task_not_found" }, 404);
+  // El cliente puede conservar por un instante el estado terminal anterior al reanudar.
+  // No hay diff disponible mientras el obrero todavía modifica el workspace.
+  if (["queued", "analyzing", "waiting_approval", "running"].includes(tarea.status)) {
+    return c.json({ estado: "en_curso" as const });
+  }
   try {
     return c.json(await diffDeTarea(id));
   } catch (err) {
+    // La tarea puede reanudarse después de leer su estado arriba y antes de abrir el clon.
+    if (err instanceof ErrorTarea && err.code === "task_running") {
+      return c.json({ estado: "en_curso" as const });
+    }
     return respuestaDeError(c, err);
   }
 });
@@ -150,6 +160,12 @@ tasks.post("/tasks/:id/aprobar", async (c) => {
     return c.json({ error: "invalid_hash" }, 400);
   }
   if (!esIdTarea(id) || !leerTarea(id)) return c.json({ error: "task_not_found" }, 404);
+  if (body.accion === "push") {
+    return c.json({
+      error: "github_access",
+      detail: "Las subidas a GitHub (push) requieren verificar credenciales de repositorio (GitHub App, SSH o token) y permisos de rama. Prepara la subida desde la tarjeta de repositorio o el panel de subida de la interfaz.",
+    }, 409);
+  }
 
   try {
     const resultado = await aprobarTarea(id, {

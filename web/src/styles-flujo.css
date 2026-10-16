@@ -148,6 +148,24 @@
 .approval-heading { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; justify-content: space-between; }
 .approval-heading > a, .approval-heading > span { font-size: 12px; }
 .approval-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--ink-2); font-size: 12px; }
+.approval-auth {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.approval-auth strong { color: var(--ink); font-weight: 600; }
+.approval-auth-warning {
+  border-color: var(--danger-line);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
 .approval-steps { display: flex; flex-wrap: wrap; gap: 4px 28px; font-size: 13px; }
 .approval-notes { margin-top: 8px; }
 .approval-notes .approval-feedback { margin-block: 8px; font-size: 13px; }
@@ -161,6 +179,7 @@
 .approval-history > summary > .approval-files { margin-left: auto; }
 .approval-history-row { border-top: 1px solid var(--line); }
 .approval-history-row > summary { flex-wrap: wrap; }
+.approval-history-auth { display: block; margin-top: 3px; color: var(--ink-2); font-size: 11px; }
 .approval-history-body { padding: 0 0 10px; }
 .approval-history-body p { margin-block: 4px; }
 .approval-history-body .approval-meta { font-size: 12px; }

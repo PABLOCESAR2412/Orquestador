@@ -63,18 +63,80 @@ export function componerInstrucciones(
   return { texto: secciones.join("\n\n"), fuentes };
 }
 
-export function memoriaDelProyecto(projectId: string): { texto: string | null; actualizada_en: string | null } {
+export function memoriaDelProyecto(projectId: string): {
+  texto: string | null;
+  actualizada_en: string | null;
+  propuesta?: string | null;
+  propuesta_en?: string | null;
+  propuesta_tarea_id?: string | null;
+} {
   const fila = db
-    .query<{ memoria: string | null; memoria_actualizada_en: string | null }, [string]>(
-      "SELECT memoria, memoria_actualizada_en FROM projects WHERE id = ?",
+    .query<
+      {
+        memoria: string | null;
+        memoria_actualizada_en: string | null;
+        memoria_propuesta: string | null;
+        memoria_propuesta_en: string | null;
+        memoria_propuesta_tarea_id: string | null;
+      },
+      [string]
+    >(
+      "SELECT memoria, memoria_actualizada_en, memoria_propuesta, memoria_propuesta_en, memoria_propuesta_tarea_id FROM projects WHERE id = ?",
     )
     .get(projectId);
-  return { texto: fila?.memoria ?? null, actualizada_en: fila?.memoria_actualizada_en ?? null };
+  const res: {
+    texto: string | null;
+    actualizada_en: string | null;
+    propuesta?: string | null;
+    propuesta_en?: string | null;
+    propuesta_tarea_id?: string | null;
+  } = {
+    texto: fila?.memoria ?? null,
+    actualizada_en: fila?.memoria_actualizada_en ?? null,
+  };
+  if (fila?.memoria_propuesta) {
+    res.propuesta = fila.memoria_propuesta;
+    res.propuesta_en = fila.memoria_propuesta_en ?? null;
+    res.propuesta_tarea_id = fila.memoria_propuesta_tarea_id ?? null;
+  }
+  return res;
 }
 
-// null borra la memoria.
+// null borra la memoria permanente.
 export function guardarMemoria(projectId: string, texto: string | null): void {
   db.query(
     "UPDATE projects SET memoria = ?, memoria_actualizada_en = CASE WHEN ? IS NULL THEN NULL ELSE datetime('now') END WHERE id = ?",
   ).run(texto, texto, projectId);
+}
+
+// Guarda una propuesta de memoria pendiente de revisión (usada cuando Jev no está disponible).
+export function guardarPropuestaMemoria(projectId: string, texto: string | null, tareaId?: string | null): void {
+  db.query(
+    "UPDATE projects SET memoria_propuesta = ?, memoria_propuesta_en = CASE WHEN ? IS NULL THEN NULL ELSE datetime('now') END, memoria_propuesta_tarea_id = ? WHERE id = ?",
+  ).run(texto, texto, tareaId ?? null, projectId);
+}
+
+// Aprueba la propuesta pendiente y la convierte en memoria permanente del proyecto.
+export function aprobarMemoriaPropuesta(projectId: string): {
+  texto: string | null;
+  actualizada_en: string | null;
+  propuesta?: string | null;
+  propuesta_en?: string | null;
+  propuesta_tarea_id?: string | null;
+} {
+  const actual = memoriaDelProyecto(projectId);
+  if (!actual.propuesta) return actual;
+  db.transaction(() => {
+    db.query(
+      "UPDATE projects SET memoria = memoria_propuesta, memoria_actualizada_en = datetime('now'), memoria_propuesta = NULL, memoria_propuesta_en = NULL, memoria_propuesta_tarea_id = NULL WHERE id = ?",
+    ).run(projectId);
+  })();
+  return memoriaDelProyecto(projectId);
+}
+
+// Descarta la propuesta de memoria pendiente.
+export function descartarMemoriaPropuesta(projectId: string): void {
+  db.query(
+    "UPDATE projects SET memoria_propuesta = NULL, memoria_propuesta_en = NULL, memoria_propuesta_tarea_id = NULL WHERE id = ?",
+  ).run(projectId);
 }

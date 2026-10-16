@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   extraerJson,
+  hashPlan,
   MAX_PLANES,
   promptAnalizador,
   promptObrero,
@@ -162,5 +163,17 @@ describe("prompts", () => {
 
   test("el tope de planes es el plan inicial más dos replanificaciones", () => {
     expect(MAX_PLANES).toBe(3);
+  });
+});
+
+describe("hashPlan", () => {
+  test("produce un sha256 hexadecimal consistente sensible a cambios del plan e ignora notas", () => {
+    const plan = (validarPlan(planValido) as { valor: Plan }).valor;
+    const hash1 = hashPlan(plan);
+    expect(hash1).toMatch(/^[a-f0-9]{64}$/);
+    const hashConNotas = hashPlan({ ...plan, notas: "nota del usuario al aprobar" });
+    expect(hashConNotas).toBe(hash1);
+    const hashModificado = hashPlan({ ...plan, objetivo: "Otro objetivo" });
+    expect(hashModificado).not.toBe(hash1);
   });
 });

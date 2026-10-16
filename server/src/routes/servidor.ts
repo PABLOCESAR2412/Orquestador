@@ -19,6 +19,7 @@ const TIEMPO_CACHE_MS = 30_000;
 const TIEMPO_HERRAMIENTA_MS = 3_000;
 const TIEMPO_DF_MS = 5_000;
 const HERRAMIENTAS = ["opencode", "bwrap", "git", "bun"] as const;
+const RAIZ_REPOSITORIO = resolve(import.meta.dir, "../../..");
 
 // Entorno mínimo para los comandos de diagnóstico: nunca se pasan variables TELO_* ni claves.
 function entornoMinimo(): Record<string, string> {
@@ -157,6 +158,16 @@ async function herramientasCacheadas() {
   return valor;
 }
 
+let cacheCommit: { at: number; valor: string | null } | null = null;
+async function commitDelServidor(): Promise<string | null> {
+  if (cacheCommit && Date.now() - cacheCommit.at < TIEMPO_CACHE_MS) return cacheCommit.valor;
+  const resultado = await ejecutarFijo(["git", "-C", RAIZ_REPOSITORIO, "rev-parse", "--short=12", "HEAD"]);
+  const commit = resultado?.codigo === 0 ? resultado.salida.trim().split("\n")[0] : "";
+  const valor = /^[0-9a-f]{7,40}$/i.test(commit) ? commit : null;
+  cacheCommit = { at: Date.now(), valor };
+  return valor;
+}
+
 // Costos y tareas de los últimos 30 días y del mes calendario (UTC).
 function costosYTareas() {
   const mes = db
@@ -203,11 +214,12 @@ export const servidor = new Hono();
 
 // GET /api/servidor
 servidor.get("/servidor", async (c) => {
-  const [disco_datos, disco_proyectos, carpetas, herramientas] = await Promise.all([
+  const [disco_datos, disco_proyectos, carpetas, herramientas, commit] = await Promise.all([
     discoDe(resolve(config.dataDir)),
     discoDe(config.projectsDir ? resolve(config.projectsDir) : null),
     carpetasCacheadas(),
     herramientasCacheadas(),
+    commitDelServidor(),
   ]);
 
   return c.json({
@@ -216,6 +228,7 @@ servidor.get("/servidor", async (c) => {
       arrancado: new Date(Date.now() - process.uptime() * 1000).toISOString(),
       segundosActivo: Math.round(process.uptime()),
       bun: Bun.version,
+      commit,
       rssMb: Math.round((process.memoryUsage().rss / 1048576) * 10) / 10,
       plataforma: `${process.platform} ${process.arch}`,
     },

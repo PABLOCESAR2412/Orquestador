@@ -31,7 +31,7 @@ import { jevRoute } from "./routes/jev";
 import { startScheduler } from "./programadas";
 import { startWorker } from "./worker";
 import { auth } from "./routes/auth";
-import { COOKIE_SESION, MIN_CARACTERES_CLAVE, sesionValida } from "./auth";
+import { COOKIE_SESION, MIN_CARACTERES_CLAVE, sesionValida, limpiarSesionesAntiguas } from "./auth";
 import { getCookie } from "hono/cookie";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
@@ -152,6 +152,7 @@ prepararCarpetaGlobal();
 avisarTurnosInterrumpidos();
 startWorker();
 startScheduler();
+limpiarSesionesAntiguas();
 
 app.get("*", async (c) => {
   const path = c.req.path === "/" ? "/index.html" : c.req.path;

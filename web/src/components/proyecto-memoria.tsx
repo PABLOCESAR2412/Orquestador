@@ -28,6 +28,16 @@ export function ProyectoMemoria({ id, memoria }: { id: string; memoria: ProjectD
     },
   });
 
+  const aprobarPropuesta = useMutation({
+    mutationFn: () => api.approveProjectMemoryProposal(id),
+    onSuccess: refrescar,
+  });
+
+  const descartarPropuesta = useMutation({
+    mutationFn: () => api.discardProjectMemoryProposal(id),
+    onSuccess: refrescar,
+  });
+
   const empezarEdicion = () => {
     setBorrador(memoria.texto ?? "");
     guardar.reset();
@@ -35,7 +45,7 @@ export function ProyectoMemoria({ id, memoria }: { id: string; memoria: ProjectD
   };
 
   const sinCambios = borrador.trim() === (memoria.texto ?? "").trim();
-  const error = borrar.error ?? guardar.error;
+  const error = borrar.error ?? guardar.error ?? aprobarPropuesta.error ?? descartarPropuesta.error;
 
   return (
     <section className="panel" aria-labelledby="proyecto-memoria-titulo">
@@ -65,6 +75,41 @@ export function ProyectoMemoria({ id, memoria }: { id: string; memoria: ProjectD
       <p className="help-note">
         Conocimiento persistente que los agentes aprendieron durante la ejecución de tareas previas. Puedes corregirlo a mano.
       </p>
+
+      {memoria.propuesta && (
+        <div className="approval-auth approval-auth-warning" style={{ marginTop: "12px", marginBottom: "16px" }} role="alert">
+          <strong>Propuesta de memoria pendiente de revisión</strong>
+          <p style={{ margin: "6px 0", fontSize: "13px" }}>
+            Un agente sugirió esta actualización de memoria (sin evaluación previa de Jev):
+          </p>
+          <pre className="mono-block" style={{ maxHeight: "160px", margin: "8px 0" }}>
+            {memoria.propuesta}
+          </pre>
+          {memoria.propuesta_en && (
+            <span style={{ fontSize: "11px", color: "var(--ink-2)" }}>
+              Propuesta {cuando(memoria.propuesta_en)}
+            </span>
+          )}
+          <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={aprobarPropuesta.isPending || descartarPropuesta.isPending}
+              onClick={() => aprobarPropuesta.mutate()}
+            >
+              {aprobarPropuesta.isPending ? "Aprobando…" : "Aprobar memoria"}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={aprobarPropuesta.isPending || descartarPropuesta.isPending}
+              onClick={() => descartarPropuesta.mutate()}
+            >
+              {descartarPropuesta.isPending ? "Descartando…" : "Descartar propuesta"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {editando ? (
         <form

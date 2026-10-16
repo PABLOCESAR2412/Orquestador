@@ -114,7 +114,59 @@ function describirSinError(
       const url = cadena(entrada.url) ?? "";
       return { titulo: `Consultó ${recortar(url || "una página", 120)}`, detalle: vista };
     }
+    case "agent":
+    case "subagent":
+    case "invoke_subagent":
+    case "delegate":
+    case "task":
+    case "spawn": {
+      const rol = cadena(entrada.role) ?? cadena(entrada.agent) ?? cadena(entrada.type) ?? cadena(entrada.name);
+      const tarea = cadena(entrada.prompt) ?? cadena(entrada.description) ?? cadena(entrada.task) ?? "";
+      const partes = [
+        tarea ? `Tarea asignada:\n${tarea}` : null,
+        vista ? `Resultado:\n${vista}` : null,
+      ].filter(Boolean);
+      const rolTexto = rol ? ` (${rol})` : "";
+      return {
+        titulo: `Se activó subagente${rolTexto}: ${recortar(tarea || "ejecutando tarea", 100)}`,
+        detalle: partes.length ? recortar(partes.join("\n\n"), MAX_DETALLE) : null,
+      };
+    }
+    case "skill":
+    case "skills":
+    case "use_skill":
+    case "apply_skill":
+    case "load_skill": {
+      const nombre = cadena(entrada.skill) ?? cadena(entrada.name) ?? cadena(entrada.skill_name) ?? "";
+      const args = Object.entries(entrada)
+        .filter(([k]) => !["skill", "name", "skill_name"].includes(k))
+        .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
+        .join(", ");
+      const partes = [
+        args ? `Parámetros: ${args}` : null,
+        vista ? `Resultado:\n${vista}` : null,
+      ].filter(Boolean);
+      return {
+        titulo: `Aplicando skill ${nombre || "especializada"}`,
+        detalle: partes.length ? recortar(partes.join("\n\n"), MAX_DETALLE) : null,
+      };
+    }
     default: {
+      if (herramienta.startsWith("skill_") || herramienta.startsWith("skill-")) {
+        const nombre = herramienta.replace(/^skill[-_]/, "");
+        return {
+          titulo: `Aplicando skill ${nombre}`,
+          detalle: vista ?? (Object.keys(entrada).length ? recortar(JSON.stringify(entrada), MAX_DETALLE) : null),
+        };
+      }
+      if (herramienta.startsWith("subagent_") || herramienta.startsWith("agent_")) {
+        const rol = herramienta.slice(herramienta.indexOf("_") + 1);
+        const tarea = cadena(entrada.prompt) ?? cadena(entrada.description) ?? "";
+        return {
+          titulo: `Se activó subagente (${rol}): ${recortar(tarea || "ejecutando tarea", 100)}`,
+          detalle: vista ?? (tarea ? `Tarea asignada:\n${tarea}` : null),
+        };
+      }
       const entradaTxt = Object.keys(entrada).length ? recortar(JSON.stringify(entrada), MAX_DETALLE) : null;
       return { titulo: `Usó ${herramienta}`, detalle: vista ?? entradaTxt };
     }
