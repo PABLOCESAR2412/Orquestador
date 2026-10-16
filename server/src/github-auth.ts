@@ -1,5 +1,26 @@
 import { db } from "./db";
 
+type InstalacionGithubAppGuardada = {
+  id: number;
+  login: string;
+  name: string;
+  avatar_url: string;
+  repository_selection: "all" | "selected";
+};
+
+export function instalacionGithubApp(): InstalacionGithubAppGuardada | null {
+  const row = db
+    .query<{ value: string }, []>("SELECT value FROM app_settings WHERE key='github_app_installation'")
+    .get();
+  if (!row) return null;
+  try {
+    const data = JSON.parse(row.value) as InstalacionGithubAppGuardada;
+    return Number.isSafeInteger(data.id) && data.id > 0 && typeof data.login === "string" ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 export type GithubCuenta = {
   conectado: boolean;
   login?: string;
@@ -7,6 +28,8 @@ export type GithubCuenta = {
   avatar_url?: string;
   scopes?: string[];
   actualizado_en?: string;
+  metodo?: "app" | "token";
+  sesion_anterior?: boolean;
 };
 
 export type GithubAuthStorage = {
@@ -36,6 +59,17 @@ export function tokenGithubGlobal(): string | null {
 }
 
 export function cuentaGithubGlobal(): GithubCuenta {
+  const instalacion = instalacionGithubApp();
+  if (instalacion) {
+    return {
+      conectado: true,
+      login: instalacion.login,
+      name: instalacion.name,
+      avatar_url: instalacion.avatar_url,
+      metodo: "app",
+      sesion_anterior: !!tokenGithubGlobal(),
+    };
+  }
   const row = db
     .query<{ value: string }, [string]>("SELECT value FROM app_settings WHERE key = ?")
     .get(KEY);
@@ -50,6 +84,7 @@ export function cuentaGithubGlobal(): GithubCuenta {
       avatar_url: data.avatar_url,
       scopes: data.scopes ?? [],
       actualizado_en: data.actualizado_en,
+      metodo: "token",
     };
   } catch {
     return { conectado: false };

@@ -425,6 +425,9 @@ async function ejecutarTarea(task: QueuedTask) {
       finish(task.id, "failed", { result: texto, reporte, error: reporte.resumen });
       avisarChat(task.id, reporte.resumen || "La tarea no se pudo completar.");
     } else {
+      const messageId = task.conversation_id
+        ? db.query<{ id: string }, [string]>("SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(task.conversation_id)?.id
+        : undefined;
       finish(task.id, "done", { result: texto, reporte });
       if (task.conversation_id) db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(task.conversation_id);
       avisarChat(task.id, formatearRespuestaTarea(reporte, texto));
@@ -432,7 +435,7 @@ async function ejecutarTarea(task: QueuedTask) {
         const accion = ["push","commit","pr"].find(a => planGuardado(task.id)?.requiere_aprobacion.includes(a as "commit"|"push"|"pr"));
         if (accion) await repositoryActions.request(`http://telo/projects/${task.project_id}/acciones`, {
           method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({action:accion,conversationId:task.conversation_id,taskId:task.id}),
+          body:JSON.stringify({action:accion,conversationId:task.conversation_id,taskId:task.id,messageId}),
         });
       }
     }

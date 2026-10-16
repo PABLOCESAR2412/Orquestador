@@ -171,7 +171,7 @@ export function errorText(err: unknown): string {
           ? sanearDetalle(err.detail, 600)
           : "No se pudo completar la acción. Revisa la configuración de Git del proyecto.";
       case "action_already_decided":
-        return "Esta autorización ya fue atendida. Actualiza el chat.";
+        return "Esta autorización ya no está pendiente. Revisa el estado actualizado en el chat.";
       case "action_not_found":
         return "Esta autorización ya no está disponible.";
       case "plan_con_preguntas":
@@ -345,6 +345,8 @@ export function errorText(err: unknown): string {
         return "Falta la clave de cifrado de secretos en el servidor. Los secretos no se pueden guardar.";
       case "invalid_secret_name":
         return "El nombre usa solo mayúsculas, números y guion bajo, y no empieza con TELO_.";
+      case "github_token_por_proyecto":
+        return "Conecta la GitHub App desde Ajustes; las credenciales de GitHub ya no se guardan por proyecto.";
       case "invalid_secret_value":
         return "El valor debe tener entre 1 y 8 192 caracteres.";
       case "secret_not_found":
@@ -400,7 +402,7 @@ export function errorText(err: unknown): string {
       case "cambios_cambiaron":
         return "Los cambios cambiaron desde que los revisaste. Revísalos de nuevo antes de aprobar.";
       case "commit_requerido":
-        return "Primero aprueba el commit de estos cambios.";
+        return "No hay un commit aprobado para esta tarea. Revisa sus cambios y prepara una nueva autorización.";
       case "archivo_sensible":
         return "Hay archivos que parecen secretos (claves o variables .env). Quítalos de la tarea antes de guardar el commit.";
       case "sin_remoto":
@@ -470,6 +472,7 @@ export function errorText(err: unknown): string {
       case "google_fallido":
         return "Google no completó el inicio de sesión. Intenta de nuevo.";
     }
+    if (err.detail) return sanearDetalle(err.detail, 600);
   }
   return "Algo salió mal. Intenta de nuevo.";
 }

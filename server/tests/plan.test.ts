@@ -142,6 +142,9 @@ describe("prompts", () => {
     expect(texto).toContain("Ordenar las notas");
     expect(texto).toContain("Usa la rama principal");
     expect(texto).toContain("No hagas commit, push ni PR");
+    expect(texto).toContain("Telo ejecutará esas operaciones");
+    expect(texto).toContain("Telo conserva el remoto fuera del workspace");
+    expect(promptAnalizador("Commit y push")).toContain("No incluyas su ejecución como pasos del obrero");
   });
 
   test("sin notas, el obrero no recibe la sección de notas", () => {

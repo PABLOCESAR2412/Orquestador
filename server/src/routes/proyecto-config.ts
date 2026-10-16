@@ -15,6 +15,7 @@ import { urlGithubPermitida, mensajeSeguro } from "../workspace";
 import { valorSecreto } from "../secretos";
 import { clavePublicaDe } from "../clave-ssh";
 import { cuentaGithubGlobal, tokenGithubGlobal } from "../github-auth";
+import { tokenGithubAppParaRepo } from "../github-app";
 
 export const proyectoConfig = new Hono();
 proyectoConfig.use("/projects/:id/*", async (c, next) => {
@@ -159,22 +160,32 @@ proyectoConfig.put("/projects/:id/git", async (c) => {
 });
 
 export async function githubApi(projectId: string, path: string, body?: unknown) {
-  const token = tokenGithubGlobal() || valorSecreto(projectId, "GITHUB_TOKEN");
+  const remoto = remotoDeRutaGithub(path);
+  if (!remoto) throw new Error("La ruta de GitHub no identifica un repositorio válido.");
+  const tokenApp = await tokenGithubAppParaRepo(remoto, { contents: "write" });
+  const token = tokenApp || tokenGithubGlobal() || valorSecreto(projectId, "GITHUB_TOKEN");
   if (!token)
     throw new Error(
-      "Inicia sesión con GitHub en Ajustes o configura GITHUB_TOKEN en los secretos del proyecto. Para subir necesita Contents de escritura.",
+      "Vincula la instalación de GitHub App en Ajustes. Para subir necesita permiso Contents de escritura.",
     );
+  return { data: await githubLlamar(token, path, body), viaApp: !!tokenApp };
+}
+
+// La App entrega una credencial limitada al repositorio y a Pull requests. Los tokens antiguos
+// siguen disponibles durante la transición, pero nunca sustituyen una instalación App ya elegida.
+export async function githubApiPr(projectId: string, path: string, body: unknown) {
+  const remoto = remotoDeRutaGithub(path);
+  if (!remoto) throw new Error("La ruta de GitHub no identifica un repositorio válido.");
+  const tokenApp = await tokenGithubAppParaRepo(remoto, { pull_requests: "write" });
+  const token = tokenApp || tokenGithubGlobal() || valorSecreto(projectId, "GITHUB_PR_TOKEN");
+  if (!token)
+    throw new Error("Vincula la GitHub App en Ajustes o configura una credencial con permiso de Pull requests.");
   return githubLlamar(token, path, body);
 }
 
-// Prioriza el token de PR; la cuenta global de GitHub también autoriza esta operación.
-export async function githubApiPr(projectId: string, path: string, body: unknown) {
-  const token = tokenGithubGlobal() || valorSecreto(projectId, "GITHUB_PR_TOKEN");
-  if (!token)
-    throw new Error(
-      "Inicia sesión con GitHub en Ajustes o configura un token con permiso de Pull requests.",
-    );
-  return githubLlamar(token, path, body);
+function remotoDeRutaGithub(path: string): string | null {
+  const match = /^\/repos\/([A-Za-z0-9-]+)\/([A-Za-z0-9_.-]+)(?:\/|$)/.exec(path);
+  return match ? `https://github.com/${match[1]}/${match[2]}` : null;
 }
 
 async function githubLlamar(token: string, path: string, body?: unknown) {
@@ -207,11 +218,12 @@ proyectoConfig.post("/projects/:id/git/comprobar", async (c) => {
   const remoto = configGit(id).remote ?? repoLocal.remote;
   if (!remoto) return c.json({ error: "sin_remoto" }, 409);
   try {
-    const repo = (await githubApi(id, "/repos/" + remoto.replace("https://github.com/", ""))) as {
+    const respuesta = await githubApi(id, "/repos/" + remoto.replace("https://github.com/", ""));
+    const repo = respuesta.data as {
       permissions?: { push?: boolean };
       full_name: string;
     };
-    return c.json({ ok: true, repo: repo.full_name, push: repo.permissions?.push === true });
+    return c.json({ ok: true, repo: repo.full_name, push: respuesta.viaApp || repo.permissions?.push === true });
   } catch (e) {
     return c.json({ error: "github_access", detail: mensajeSeguro(e) }, 409);
   }

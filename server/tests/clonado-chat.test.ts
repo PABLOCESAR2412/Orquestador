@@ -38,14 +38,17 @@ describe("pasos del clonado en el chat", () => {
 
 describe("mensajes finales del clonado", () => {
   test("el éxito dice la rama, el último commit y cómo se clonó, sin tecnicismos", () => {
-    const texto = textoDeExito({ visibilidad: "privado", rama: "main", ultimo_commit: "a1b2c3d Inicio" }, "app");
+    const texto = textoDeExito(
+      { visibilidad: "privado", credencial: "app", rama: "main", ultimo_commit: "a1b2c3d Inicio" },
+      "app",
+    );
     expect(texto.startsWith("Listo. app está clonado en la carpeta del proyecto, en la rama main.")).toBe(true);
     expect(texto).toContain("Último commit: a1b2c3d Inicio.");
-    expect(texto).toContain("clave SSH del proyecto");
+    expect(texto).toContain("GitHub App");
   });
 
   test("cada error tiene su motivo en español, con el paso siguiente cuando hace falta", () => {
-    expect(textoDeError(new ErrorClonado("clave_no_encontrada", 409))).toContain("Clave de GitHub");
+    expect(textoDeError(new ErrorClonado("clave_no_encontrada", 409))).toContain("Vincula la GitHub App");
     expect(textoDeError(new ErrorClonado("sin_red_github", 503))).toContain("no llega a GitHub");
     expect(textoDeError(new Error("algo interno"))).toBe(
       "No pude clonar el repositorio. Git no pudo clonarlo. Intenta de nuevo.",

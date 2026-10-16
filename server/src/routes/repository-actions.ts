@@ -20,7 +20,12 @@ repositoryActions.get("/conversations/:id/acciones", (c) =>
   c.json(
     db
       .query(
-        "SELECT id,action,payload,state,result,task_id FROM repository_actions WHERE conversation_id=? ORDER BY created_at,rowid",
+        `SELECT a.id,a.action,a.payload,a.state,a.result,a.task_id,
+          COALESCE(json_extract(a.payload,'$.messageId'),
+            (SELECT m.id FROM messages m WHERE m.conversation_id=a.conversation_id
+             AND m.role='user' AND m.created_at<=a.created_at
+             ORDER BY m.created_at DESC,m.rowid DESC LIMIT 1)) AS message_id
+         FROM repository_actions a WHERE a.conversation_id=? ORDER BY a.created_at,a.rowid`,
       )
       .all(c.req.param("id")),
   ),
@@ -33,6 +38,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
     action: string;
     conversationId?: string;
     taskId?: string;
+    messageId?: string;
     message?: string;
     title?: string;
   }>(c);
@@ -51,6 +57,9 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
       .get(b.conversationId, projectId)
   )
     return c.json({ error: "conversation_not_found" }, 404);
+  if (b.messageId !== undefined && (typeof b.messageId !== "string" || !b.conversationId ||
+    !db.query("SELECT 1 FROM messages WHERE id=? AND conversation_id=? AND role='user'").get(b.messageId, b.conversationId)))
+    return c.json({ error: "invalid_body" }, 400);
   const tarea = b.taskId
     ? db
         .query<
@@ -68,12 +77,19 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
   )
     return c.json({ error: "invalid_body" }, 400);
   try {
+    const messageId = b.messageId ?? (b.conversationId
+      ? db.query<{ id: string }, [string]>("SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(b.conversationId)?.id ?? null
+      : null);
     const diff = b.action === "init" ? null : await diffDeTarea(tarea!.id);
-    if (b.action === "commit" && diff && diff.archivos.length === 0 && !diff.commit) {
+    if ((b.action === "commit" || b.action === "push") && diff && diff.archivos.length === 0) {
+      db.query("UPDATE repository_actions SET state='superseded' WHERE task_id=? AND action IN ('commit','push') AND state='pending'").run(tarea!.id);
       return c.json({ error: "sin_cambios", detail: "No hay archivos modificados para crear un commit." }, 409);
     }
+    if (b.action === "push" && !diff?.remoto)
+      return c.json({ error: "sin_remoto" }, 409);
     const cfg = configGit(projectId);
     const payload = {
+      messageId,
       hash: diff?.hash ?? null,
       diff: diff?.diff ?? "",
       rama: diff?.rama ?? null,
@@ -104,6 +120,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
           payload: JSON.stringify(payload),
           state: "pending",
           task_id: tarea?.id ?? null,
+          message_id: payload.messageId,
         },
         200,
       );
@@ -132,6 +149,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
         payload: JSON.stringify(payload),
         state: "pending",
         task_id: tarea?.id ?? null,
+        message_id: payload.messageId,
       },
       201,
     );
@@ -157,6 +175,10 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
     >("SELECT * FROM repository_actions WHERE id=?")
     .get(c.req.param("id"));
   if (!row) return c.json({ error: "action_not_found" }, 404);
+  // Repetir la misma decisión nunca repite la operación Git.
+  if ((b.approve && row.state === "approved") || (!b.approve && row.state === "rejected"))
+    return c.json({ ok: true });
+  if (b.approve && row.state === "executing") return c.json({ ok: true }, 202);
   if (row.state !== "pending") return c.json({ error: "action_already_decided" }, 409);
   if (!b.approve) {
     db.query("UPDATE repository_actions SET state='rejected' WHERE id=?").run(row.id);
@@ -298,6 +320,7 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
               action: siguiente,
               conversationId: t.conversation_id,
               taskId: row.task_id,
+              messageId: p.messageId ?? undefined,
             }),
           });
       }

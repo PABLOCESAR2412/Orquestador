@@ -340,17 +340,33 @@ chat.post("/conversations/:id/messages", async (c) => {
   if (bloqueo) return c.json({ error: bloqueo }, 409);
 
   // Las órdenes directas de Git crean una tarjeta de autorización, sin ejecutar al agente.
-  const pedido = /^(?:(?:haz|hacer|ejecuta|realiza|crea|crear|por favor)\s+)*(?:un\s+)?(?:git\s+(init|commit|push)|(?:un\s+)?(commit|push|pr)|(?:gh\s+pr\s+create)|(pull request))(?:\s+.*)?[.!]?$/i.exec(content);
+  const pedido = /^(?:(?:haz|hacer|ejecuta|realiza|crea|crear|prepara|reintenta|por favor)\s+)*(?:de nuevo\s+)?(?:(?:un|el)\s+)?(?:git\s+(init|commit|push)|(?:un\s+)?(commit|push|pr)|(?:gh\s+pr\s+create)|(pull request))(?:\s+.*)?[.!]?$/i.exec(content);
   if (pedido && conv.project_id) {
+    const turno = guardarMensajeUsuario(conversationId, content);
     const response = await repositoryActions.request(`http://telo/projects/${conv.project_id}/acciones`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        action: (pedido[1] || pedido[2] || "pr").toLowerCase(),
-        conversationId, taskId: tareaDelChat(conversationId)?.id,
+        action: /\bcommit\s+(?:y|and|&)\s+(?:git\s+)?push\b/i.test(pedido[0]) ? "push" : (pedido[1] || pedido[2] || "pr").toLowerCase(),
+        conversationId, taskId: tareaDelChat(conversationId)?.id, messageId: turno.id,
       }),
     });
-    if (!response.ok) return response;
-    const turno = guardarMensajeUsuario(conversationId, content);
+    if (!response.ok) {
+      const error = await response.clone().json() as { error?: string };
+      const motivos: Record<string, string> = {
+        sin_cambios: "No hay cambios nuevos en esta tarea para crear un commit o hacer push.",
+        sin_remoto: "Configura el repositorio de GitHub del proyecto antes de preparar el push.",
+        task_without_repo: "Este chat todavía no tiene una tarea con cambios de Git que puedas publicar.",
+      };
+      const motivo = motivos[error.error ?? ""];
+      if (motivo) {
+        const aviso = { id: crypto.randomUUID(), role: "assistant" as const, content: motivo };
+        db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES (?,?,'assistant',?)").run(aviso.id, conversationId, motivo);
+        publicarChat(conversationId, "terminado");
+        return c.json({ messages: [turno, aviso] }, 202);
+      }
+      db.query("DELETE FROM messages WHERE id=?").run(turno.id);
+      return response;
+    }
     publicarChat(conversationId, "terminado");
     return c.json({ messages: [turno], action: await response.json() }, 202);
   }

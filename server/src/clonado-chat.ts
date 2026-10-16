@@ -35,7 +35,7 @@ export type ClonadoIniciado = { conversacion_id: string; turno_id: string };
 const MOTIVOS: Record<string, string> = {
   url_no_valida: "La dirección no es un repositorio de GitHub.",
   clave_no_encontrada:
-    "Parece privado y este proyecto todavía no tiene clave de GitHub. Créala en la sección Clave de GitHub, agrégala al repositorio y vuelve a intentarlo.",
+    "Parece privado y Telo no tiene acceso todavía. Vincula la GitHub App en Ajustes o agrega la clave de este proyecto al repositorio.",
   clave_no_autorizada:
     "GitHub no acepta la clave de este proyecto. Agrégala al repositorio (Settings → Deploy keys) y vuelve a intentarlo.",
   repo_no_encontrado: "GitHub no encuentra ese repositorio, o la clave no tiene acceso a él.",
@@ -45,6 +45,13 @@ const MOTIVOS: Record<string, string> = {
   clonado_fallo: "Git no pudo clonarlo. Intenta de nuevo.",
   clave_sin_cifrado: "El servidor no tiene configurada la clave de cifrado, así que no puedo usar la clave del proyecto.",
   clave_ilegible: "La clave de este proyecto no se puede leer. Bórrala y crea otra.",
+  github_app_no_configurada: "Falta configurar la GitHub App en el servidor. Revisa sus variables en el archivo de entorno.",
+  github_app_clave_ilegible: "El servidor no puede leer la clave privada de la GitHub App.",
+  github_app_clave_invalida: "La clave privada de la GitHub App no es válida.",
+  github_app_sin_acceso: "La GitHub App no tiene acceso a este repositorio. Agrégalo en los ajustes de instalación de GitHub.",
+  github_app_credencial_rechazada: "GitHub rechazó la configuración de la App. Revisa el App ID y su clave privada en el servidor.",
+  github_app_token_invalido: "GitHub no devolvió una credencial válida para la instalación.",
+  github_sin_conexion: "No se pudo conectar con GitHub. Revisa la conexión del servidor.",
   carpeta_no_vacia: "La carpeta del proyecto ya tiene archivos.",
 };
 
@@ -66,7 +73,11 @@ export function textoDeExito(resultado: ResultadoClonado, repo: string): string 
   const via =
     resultado.visibilidad === "publico"
       ? "Es público, así que lo clonó por HTTPS sin clave."
-      : "Es privado, así que lo clonó con la clave SSH del proyecto.";
+      : resultado.credencial === "app"
+        ? "Es privado y lo clonó mediante la GitHub App, con acceso limitado a este repositorio."
+        : resultado.credencial === "token"
+          ? "Es privado y lo clonó con la sesión de GitHub anterior."
+          : "Es privado, así que lo clonó con la clave SSH del proyecto.";
   return `Listo. ${repo} está clonado en la carpeta del proyecto${rama}.${commit} ${via}\n\nYa puedes pedirme cambios o abrir una tarea sobre este código.`;
 }
 

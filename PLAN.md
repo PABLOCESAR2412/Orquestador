@@ -40,8 +40,8 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - Pendiente: probar con OpenCode real en el VM. Los criterios de aceptación se cumplen con el falso; con un modelo real, el JSON del analizador y el reporte del obrero pueden necesitar ajuste de los prompts.
 
 ### 6. Proyectos de GitHub
-- Estado: mergeada (PR #14). Cada tarea de un proyecto Git trabaja en su clon (`telo/<id8>`). Aprobación de commit y push ligada al hash del diff; escaneo de secretos antes del commit; push solo a `github.com` por HTTPS con `GITHUB_TOKEN` como secreto del proyecto. Pendiente: probar un push real a GitHub y un agente real en el VM.
-- Token de acceso personal fine-grained, cifrado con AES-256-GCM. La clave maestra vive en el archivo de entorno del servicio, fuera del repo.
+- Estado: mergeada (PR #14), con integración posterior de GitHub App. Cada tarea de un proyecto Git trabaja en su clon (`telo/<id8>`). Aprobación de commit y push ligada al hash del diff; escaneo de secretos antes del commit; la GitHub App vinculada emite tokens breves limitados al repo para clonar, subir y abrir PRs. Pendiente: configurar la App en el VM y probar un push real y un agente real.
+- La clave privada de la GitHub App vive en el VM, fuera del repo y legible solo por el servicio. La instalación se limita a los repositorios seleccionados.
 - Clonar repos en el VM. Cada tarea corre en el workspace de su proyecto.
 - Antes de commit, push o PR, mostrar el diff en la app y pedir aprobación.
 - **Criterio:** el token nunca aparece en logs ni en respuestas de la API. No hay push sin aprobación registrada.

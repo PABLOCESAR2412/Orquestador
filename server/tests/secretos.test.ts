@@ -154,7 +154,10 @@ describe("secretos por proyecto", () => {
     expect(escrito).not.toContain("valor-secreto-123");
     expect(JSON.parse(escrito)).toMatchObject({ nombre: "API_KEY" });
 
-    await put("GITHUB_TOKEN", { valor: "ghp_token_de_prueba" });
+    const githubToken = await put("GITHUB_TOKEN", { valor: "ghp_token_de_prueba" });
+    expect(githubToken.status).toBe(409);
+    // Un secreto antiguo sigue disponible para completar la migración, pero la API ya no permite crear otro.
+    guardarSecreto(pid, "GITHUB_TOKEN", "ghp_token_de_prueba");
 
     const lista = await rutas.request(base);
     const textoLista = await lista.text();
@@ -181,6 +184,7 @@ describe("secretos por proyecto", () => {
   test("validaciones: nombre, valor vacío y valor con NUL", async () => {
     process.env.TELO_CLAVE_CIFRADO = CLAVE_VALIDA;
     expect(await (await put("PATH", { valor: "x" })).json()).toEqual({ error: "invalid_secret_name" });
+    expect((await put("GITHUB_PR_TOKEN", { valor: "github_pat_prueba" })).status).toBe(409);
     expect(await (await put("API_KEY", { valor: "" })).json()).toEqual({ error: "invalid_secret_value" });
     expect(await (await put("API_KEY", { valor: "a\u0000b" })).json()).toEqual({ error: "invalid_secret_value" });
     expect(await (await put("API_KEY", { valor: "x".repeat(8193) })).json()).toEqual({ error: "invalid_secret_value" });
