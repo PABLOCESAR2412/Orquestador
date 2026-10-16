@@ -74,6 +74,7 @@
     { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Sesiones verificadas por CLI, comprobaciones previas, reportes legibles, precisión de métricas y CI de navegador", "pr": 53 },
     { "fecha": "2026-10-16", "tipo": "mediano", "titulo": "GitHub App: clonado privado sin deploy key y detalle de errores al crear PR", "pr": 53 },
     { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Chat: acciones Git tras la respuesta, reintentos agrupados y confirmación de borrado más clara", "pr": 54 },
-    { "fecha": "2026-10-16", "tipo": "mediano", "titulo": "Modelos agrupados por proveedor, con el catálogo de la cuenta Codex identificado", "pr": 55 }
+    { "fecha": "2026-10-16", "tipo": "mediano", "titulo": "Modelos agrupados por proveedor, con el catálogo de la cuenta Codex identificado", "pr": 55 },
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Uso del proveedor: gasto y saldo estimado en porcentajes por ventana", "pr": 56 }
   ]
 }

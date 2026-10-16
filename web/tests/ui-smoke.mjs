@@ -76,6 +76,12 @@ try {
       else if (path.includes("github/cuenta") || path.includes("google")) data = { conectado: false, configurado: false, faltantes: [] };
       else if (path === "/api/runner") data = { opencode: true, bwrap: true, aislamiento: true };
       else if (path === "/api/projects") data = [{ id: "p1", name: "Pruebas" }];
+      else if (path === "/api/uso") data = { generado: now, proveedores: [{
+        id: "google", nombre: "Google (Gemini)",
+        ultimas5h: { costoUsd: 0.5, tokens: 1200, llamadas: 2 },
+        ultimos7d: { costoUsd: 1, tokens: 4000, llamadas: 6 },
+        cuotaRestanteUsd: 4, precision: "medida_telo",
+      }] };
       else if (path === "/api/analytics") data = {
         days: 30, filtros: { proyecto: null, modelo: null }, proyectos: [], modelos: [], budget: null,
         totals: { calls: 1, inputTokens: sinDatos ? 0 : 8, outputTokens: sinDatos ? 0 : 2, cost: 0 }, byDay: [], byModel: [],
@@ -109,6 +115,18 @@ try {
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Prueba de mensaje");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByText("Mensaje recibido", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Uso", exact: true }).click();
+    const panelUso = page.getByRole("dialog", { name: "Uso del proveedor" });
+    await panelUso.waitFor();
+    const medidoresUso = panelUso.locator('[role="meter"]');
+    assert.equal(await medidoresUso.count(), 2);
+    assert.equal(await medidoresUso.nth(0).getAttribute("aria-valuenow"), "11.1");
+    assert.equal(await medidoresUso.nth(1).getAttribute("aria-valuenow"), "20");
+    assert.equal((await panelUso.textContent()).includes("US$ 0.50 · 11,1 %"), true);
+    assert.equal((await panelUso.textContent()).includes("US$ 4.00 · 88,9 %"), true);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/uso-${width}.png` });
+    await page.keyboard.press("Escape");
     console.log(`${width}px: mensajes y aprobación comprobados`);
     assert.equal(await page.getByText("Historial de Git", { exact: true }).count(), 0);
     await page.screenshot({ path: `scratch/capturas-ci/chat-${width}.png` });

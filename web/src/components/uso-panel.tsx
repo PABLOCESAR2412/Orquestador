@@ -41,7 +41,6 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
   });
   const proveedor: UsoProveedor | null =
     uso.data?.proveedores.find((p) => p.id === proveedorId) ?? null;
-  const medido = proveedor?.precision === "medida_telo";
 
   let cuerpo: ReactNode;
   if (!proveedorId) {
@@ -65,56 +64,24 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
         </button>
       </div>
     );
-  } else if (!proveedor || proveedor.precision === "sin_datos") {
-    cuerpo = (
-      <>
-        <div className="usage-window">
-          <span className="window-label">Últimas 5 horas</span>
-          <div className="window-data">
-            <span>Sin uso registrado</span>
-          </div>
-        </div>
-        <div className="usage-window">
-          <span className="window-label">Últimos 7 días</span>
-          <div className="window-data">
-            <span>Sin uso registrado</span>
-          </div>
-        </div>
-        <p className="usage-note">
-          Telo registra los tokens que informa el agente. La conexión de Google no importa el
-          historial de otras aplicaciones. Los límites y el saldo del proveedor no se consultan en
-          vivo.
-        </p>
-      </>
-    );
   } else {
+    const registrado = proveedor?.precision === "medida_telo";
     cuerpo = (
       <>
-        <div className="usage-window">
-          <span className="window-label">Últimas 5 horas</span>
-          <div className="window-data">
-            <span>{compact(proveedor.ultimas5h.tokens)} tokens</span>
-            <span>{formatUsd(proveedor.ultimas5h.costoUsd)}</span>
-          </div>
-        </div>
-        <div className="usage-window">
-          <span className="window-label">Últimos 7 días</span>
-          <div className="window-data">
-            <span>{compact(proveedor.ultimos7d.tokens)} tokens</span>
-            <span>{formatUsd(proveedor.ultimos7d.costoUsd)}</span>
-          </div>
-        </div>
-        {proveedor.cuotaRestanteUsd !== null && (
-          <div className="usage-window">
-            <span className="window-label">Saldo restante estimado</span>
-            <div className="window-data">
-              <span>{formatUsd(proveedor.cuotaRestanteUsd)}</span>
-            </div>
-          </div>
-        )}
+        <VentanaSaldo
+          titulo="Últimas 5 horas"
+          datos={registrado ? proveedor.ultimas5h : null}
+          saldoUsd={proveedor?.cuotaRestanteUsd ?? null}
+        />
+        <VentanaSaldo
+          titulo="Últimos 7 días"
+          datos={registrado ? proveedor.ultimos7d : null}
+          saldoUsd={proveedor?.cuotaRestanteUsd ?? null}
+        />
         <p className="usage-note">
-          Los límites de 5 horas y semanales del proveedor no se leen de su API. Estas cifras son lo
-          que Telo registró.
+          {proveedor?.cuotaRestanteUsd === null || !proveedor
+            ? "Anota el saldo restante para ver porcentajes. Telo no consulta en vivo los límites ni el saldo del proveedor."
+            : "Los porcentajes comparan el costo registrado en cada ventana con ese gasto más el saldo anotado restante. Son una estimación de Telo, no la cuota real del proveedor."}
         </p>
       </>
     );
@@ -149,14 +116,65 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
   );
 }
 
-function VentanaUso({ titulo, datos }: { titulo: string; datos: Ventana }) {
+function porcentajeGastado(costoUsd: number, saldoUsd: number | null): number | null {
+  if (saldoUsd === null) return null;
+  const gasto = Math.max(0, costoUsd);
+  const saldo = Math.max(0, saldoUsd);
+  const total = gasto + saldo;
+  if (total === 0) return null;
+  return Math.round((gasto / total) * 1000) / 10;
+}
+
+function formatoPorcentaje(valor: number): string {
+  return new Intl.NumberFormat("es", { maximumFractionDigits: 1 }).format(valor);
+}
+
+function VentanaSaldo({
+  titulo,
+  datos,
+  saldoUsd,
+}: {
+  titulo: string;
+  datos: Ventana | null;
+  saldoUsd: number | null;
+}) {
+  const gastoUsd = datos?.costoUsd ?? 0;
+  const gastado = porcentajeGastado(gastoUsd, saldoUsd);
+  const restante = gastado === null ? null : 100 - gastado;
+
   return (
-    <div className="uso-ventana" role="group" aria-label={titulo}>
-      <span className="uso-ventana-etiqueta">{titulo}</span>
-      <strong>{formatUsd(datos.costoUsd)}</strong>
-      <span className="uso-ventana-meta">
-        {compact(datos.tokens)} tokens · {datos.llamadas} llamadas
-      </span>
+    <div className="usage-window" role="group" aria-label={titulo}>
+      <div className="window-heading">
+        <span className="window-label">{titulo}</span>
+        <span className="window-meta">
+          {datos ? `${compact(datos.tokens)} tokens · ${datos.llamadas} llamadas` : "Sin uso registrado"}
+        </span>
+      </div>
+      <div className="usage-balance-row">
+        <span>Gastado</span>
+        <strong>
+          {formatUsd(gastoUsd)}{gastado !== null && ` · ${formatoPorcentaje(gastado)} %`}
+        </strong>
+      </div>
+      <div className="usage-balance-row">
+        <span>Saldo restante</span>
+        <strong>
+          {saldoUsd === null ? "Sin anotar" : formatUsd(saldoUsd)}
+          {restante !== null && ` · ${formatoPorcentaje(restante)} %`}
+        </strong>
+      </div>
+      {gastado !== null && (
+        <div
+          className="usage-progress"
+          role="meter"
+          aria-label={`${titulo}: ${formatoPorcentaje(gastado)} % gastado`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={gastado}
+        >
+          <span style={{ width: `${gastado}%` }} />
+        </div>
+      )}
     </div>
   );
 }
