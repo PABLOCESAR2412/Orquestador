@@ -311,6 +311,8 @@ export function errorText(err: unknown): string {
         return "Solo se pueden seguir tareas detenidas por falta de cuota.";
       case "chat_sin_cuota":
         return "Este chat no está detenido por falta de cuota.";
+      case "chat_quota_pending":
+        return "Este chat está detenido por falta de cuota. Cambia de modelo y pulsa Seguir antes de enviar otro mensaje.";
       case "task_not_retryable":
         return "Esta tarea no se puede reintentar en este estado.";
       case "task_not_found":

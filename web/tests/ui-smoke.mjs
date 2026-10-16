@@ -21,7 +21,7 @@ try {
     const errors = [];
     page.on("pageerror", error => { errors.push(error.message); console.error(error.message); });
     const now = new Date().toISOString();
-    const task = { id: "t1", title: "Prueba", model: "google/prueba", status: "done", created_at: now, started_at: now, finished_at: now, plan: null, reporte: null };
+    const task = { id: "t1", title: "Prueba", model: "google/prueba", modelo_agotado: null, status: "done", created_at: now, started_at: now, finished_at: now, plan: null, reporte: null };
     const messages = [
       { id: "u1", role: "user", content: "git commit y push", created_at: now },
       { id: "a1", role: "assistant", content: '{"estado":"fallo","resumen":"Faltan dependencias","desviacion":"Instala antes de probar","pendientes":["x".replace("x","y")]}<telo-memoria>MEMORIA_INTERNA</telo-memoria>', created_at: now },
@@ -154,6 +154,7 @@ try {
     const panelUso = page.getByRole("dialog", { name: "Uso del proveedor" });
     await panelUso.waitFor();
     const medidoresUso = panelUso.locator('[role="meter"]');
+    await medidoresUso.nth(1).waitFor({ state: "visible" });
     assert.equal(await medidoresUso.count(), 2);
     assert.equal(await medidoresUso.nth(0).getAttribute("aria-valuenow"), "11.1");
     assert.equal(await medidoresUso.nth(1).getAttribute("aria-valuenow"), "20");
@@ -162,6 +163,17 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/uso-${width}.png` });
     await page.keyboard.press("Escape");
+    task.status = "sin_cuota";
+    task.modelo_agotado = "google/prueba";
+    await page.locator(".cuota-aviso").waitFor();
+    await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("No se debe aceptar mientras falte cuota");
+    assert.equal(await page.getByRole("button", { name: "Enviar", exact: true }).isDisabled(), true);
+    assert.equal((await page.locator(".cuota-aviso").textContent()).includes("Se acabó la cuota de google/prueba"), true);
+    await page.screenshot({ path: `scratch/capturas-ci/cuota-chat-${width}.png` });
+    await page.getByRole("button", { name: "Cambiar modelo", exact: true }).click();
+    await page.locator(".picker").waitFor();
+    await page.keyboard.press("Escape");
+    await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("");
     console.log(`${width}px: mensajes y aprobación comprobados`);
     assert.equal(await page.getByText("Historial de Git", { exact: true }).count(), 0);
     await page.screenshot({ path: `scratch/capturas-ci/chat-${width}.png` });
