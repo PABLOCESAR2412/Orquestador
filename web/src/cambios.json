@@ -70,6 +70,7 @@
     { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Analíticas separan el consumo de chat, tareas y funciones locales", "pr": 50 },
     { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "GitHub App: credenciales temporales limitadas al repo para clonar, subir y crear PR", "pr": 51 },
     { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Autorizaciones Git por mensaje, validación de cambios y decisiones repetidas sin duplicar operaciones", "pr": 51 },
-    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Inicio de sesión de Codex: enlace limpio y código de dispositivo visible y copiable", "pr": 52 }
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Inicio de sesión de Codex: enlace limpio y código de dispositivo visible y copiable", "pr": 52 },
+    { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Sesiones verificadas por CLI, comprobaciones previas, reportes legibles, precisión de métricas y CI de navegador", "pr": null }
   ]
 }

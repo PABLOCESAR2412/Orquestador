@@ -69,6 +69,8 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
 
 // Historial de una tarea (tabla task_events del servidor).
 export const EVENT_LABEL: Record<TaskEventKind, string> = {
+  comprobacion_fallida: "Comprobación previa fallida",
+  comprobacion_aviso: "Aviso de preparación",
   creada: "Creada",
   iniciada: "Iniciada",
   sesion_asignada: "Sesión del agente asignada",

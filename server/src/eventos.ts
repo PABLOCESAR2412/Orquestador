@@ -6,6 +6,8 @@ import { redactar } from "./redaccion";
 // para auditar y como base de las notificaciones (fase 8).
 
 export type TipoEvento =
+  | "comprobacion_fallida"
+  | "comprobacion_aviso"
   | "plan_listo"
   | "plan_aprobado"
   | "plan_revision"

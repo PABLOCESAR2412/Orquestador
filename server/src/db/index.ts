@@ -457,6 +457,14 @@ const migrations: Migration[] = [
       CREATE INDEX tasks_conversation ON tasks(conversation_id);
     `,
   },
+  {
+    name: "023_precision_uso",
+    sql: `
+      ALTER TABLE usage ADD COLUMN tokens_precision TEXT NOT NULL DEFAULT 'desconocida';
+      ALTER TABLE usage ADD COLUMN cost_precision TEXT NOT NULL DEFAULT 'desconocida';
+      CREATE INDEX usage_task ON usage(task_id);
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

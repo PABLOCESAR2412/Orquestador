@@ -44,6 +44,24 @@ analytics.get("/analytics", (c) => {
     usoParams.push(modelo);
   }
   const usoWhere = `WHERE ${usoCond.join(" AND ")}`;
+  const calidad = db.query<{
+    tokensMedidos: number; costesEstimados: number; sinTokens: number; sinCoste: number; historicos: number;
+  }, string[]>(`SELECT
+    COALESCE(SUM(tokens_precision='medida'),0) AS tokensMedidos,
+    COALESCE(SUM(cost_precision='estimado'),0) AS costesEstimados,
+    COALESCE(SUM(tokens_precision='no_disponible'),0) AS sinTokens,
+    COALESCE(SUM(cost_precision='no_disponible'),0) AS sinCoste,
+    COALESCE(SUM(tokens_precision='desconocida' OR cost_precision='desconocida'),0) AS historicos
+    FROM usage u ${usoWhere}`).get(...usoParams)!;
+  const byTask = db.query<{
+    taskId: string; calls: number; tokens: number; cost: number; tokensMedidos: number; costesEstimados: number; sinTokens: number; sinCoste: number; historicos: number;
+  }, string[]>(`SELECT task_id AS taskId, COUNT(*) AS calls,
+    SUM(input_tokens + output_tokens) AS tokens, SUM(cost) AS cost,
+    SUM(tokens_precision='medida') AS tokensMedidos, SUM(cost_precision='estimado') AS costesEstimados,
+    SUM(tokens_precision='no_disponible') AS sinTokens, SUM(cost_precision='no_disponible') AS sinCoste,
+    SUM(tokens_precision='desconocida' OR cost_precision='desconocida') AS historicos
+    FROM usage u ${usoWhere} AND task_id IS NOT NULL
+    GROUP BY task_id ORDER BY MAX(created_at) DESC LIMIT 200`).all(...usoParams);
 
   const tareaCond = ["created_at >= datetime('now', ?)"];
   const tareaParams: string[] = [since];
@@ -204,6 +222,8 @@ analytics.get("/analytics", (c) => {
       cost: totals.cost,
     },
     byType,
+    calidad,
+    byTask,
     byDay,
     byModel,
     tasks,

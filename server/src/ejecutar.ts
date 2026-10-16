@@ -47,12 +47,14 @@ export function registrarUsoAgente(
 ): void {
   db.query(
     `INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens,
-      reasoning_tokens, cache_read_tokens, cost, project_id, task_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      reasoning_tokens, cache_read_tokens, cost, project_id, task_id, tokens_precision, cost_precision)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     crypto.randomUUID(), contexto.conversationId ?? null, modelo.split("/")[0], modelo,
     uso.input, uso.output, uso.reasoning, uso.cacheRead, uso.cost,
     contexto.projectId ?? null, contexto.taskId ?? null,
+    uso.tokensMedidos === undefined ? "desconocida" : uso.tokensMedidos ? "medida" : "no_disponible",
+    uso.costeDisponible === undefined ? "desconocida" : uso.costeDisponible ? "estimado" : "no_disponible",
   );
 }
 
@@ -227,7 +229,7 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
         }
       }
     }
-    return { ...r, text: opts.aprender ? quitarBloqueMemoria(texto) : texto, textoFinal, modelo };
+    return { ...r, text: opts.aprender ? quitarBloqueMemoria(texto) : texto, textoFinal: opts.aprender ? quitarBloqueMemoria(textoFinal) : textoFinal, modelo };
   };
 
   const inicio = Date.now();

@@ -296,6 +296,8 @@ export type TaskEventKind =
   | "plan_rechazado"
   | "replanificada"
   | "obrero_iniciado"
+  | "comprobacion_fallida"
+  | "comprobacion_aviso"
   | "plan_revision"
   | "sin_cuota"
   | "turno_encolado"
@@ -745,7 +747,10 @@ export type Preferences = {
   compartirContextoChats?: boolean;
 };
 
+export type CalidadUso = { tokensMedidos: number; costesEstimados: number; sinTokens: number; sinCoste: number; historicos: number };
 export type Analytics = {
+  calidad?: CalidadUso;
+  byTask?: (CalidadUso & { taskId: string; calls: number; tokens: number; cost: number })[];
   days: number;
   filtros: { proyecto: string | null; modelo: string | null };
   proyectos: { id: string; name: string }[];

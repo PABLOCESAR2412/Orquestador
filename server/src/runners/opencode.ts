@@ -9,7 +9,7 @@ export function sesionValida(id: unknown): id is string {
   return typeof id === "string" && PATRON_SESION.test(id);
 }
 
-export type Usage = { input: number; output: number; reasoning: number; cacheRead: number; cost: number };
+export type Usage = { input: number; output: number; reasoning: number; cacheRead: number; cost: number; tokensMedidos?: boolean; costeDisponible?: boolean };
 // `text` une todo lo que el agente escribió. `textoFinal` es lo que dijo después de su última
 // herramienta: la respuesta, sin la narración de los pasos (que el chat muestra aparte).
 export type RunResult = { text: string; textoFinal: string; sessionId: string | null; usage: Usage | null };
@@ -27,13 +27,15 @@ type OpenCodeEvent = {
 };
 
 // Algunos proveedores omiten campos de uso. Nunca se guardan NaN ni contadores negativos.
-function usoDelEvento(ev: OpenCodeEvent): Usage | null {
-  if (ev.type !== "step_finish" || !ev.part?.tokens) return null;
-  const t = ev.part.tokens;
+export function usoDelEvento(ev: OpenCodeEvent): Usage | null {
+  if (ev.type !== "step_finish") return null;
+  const t = ev.part?.tokens;
   const numero = (n: unknown) => typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : 0;
   return {
-    input: numero(t.input), output: numero(t.output), reasoning: numero(t.reasoning),
-    cacheRead: numero(t.cache?.read), cost: numero(ev.part.cost),
+    input: numero(t?.input), output: numero(t?.output), reasoning: numero(t?.reasoning),
+    cacheRead: numero(t?.cache?.read), cost: numero(ev.part?.cost),
+    tokensMedidos: typeof t?.input === "number" && Number.isFinite(t.input) && t.input >= 0 && typeof t.output === "number" && Number.isFinite(t.output) && t.output >= 0,
+    costeDisponible: typeof ev.part?.cost === "number" && Number.isFinite(ev.part.cost) && ev.part.cost >= 0,
   };
 }
 

@@ -122,6 +122,8 @@
 /* Respuesta del agente: texto plano, sin burbuja */
 .tl-msg-agente { gap: 10px; }
 .tl-msg-git { overflow-wrap: anywhere; }
+.tl-detalles-reporte { min-width: 0; margin-block: 12px; }
+.tl-detalles-reporte pre { max-width: 100%; max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .tl-msg-git .approval-diff { max-width: 100%; overflow: auto; }
 .tl-msg-agente-cabecera {
   display: flex;

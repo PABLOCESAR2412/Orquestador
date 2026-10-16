@@ -1,0 +1,53 @@
+name: Comprobaciones
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  servidor:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: sudo apt-get update && sudo apt-get install -y bubblewrap python3
+      - run: bun install --frozen-lockfile
+        working-directory: server
+      - run: bun run typecheck
+        working-directory: server
+      # Cada suite aísla sus variables y su base temporal en un proceso propio.
+      - run: for suite in tests/*.test.ts; do bun test --timeout 60000 "$suite"; done
+        working-directory: server
+      - run: bun run test:worker
+        working-directory: server
+  interfaz:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+        working-directory: web
+      - run: bun test tests
+        working-directory: web
+      - run: bun run build
+        working-directory: web
+      - run: bunx playwright install --with-deps chromium
+        working-directory: web
+      - run: bun run test:ui
+        working-directory: web
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capturas-ui
+          path: web/scratch/capturas-ci/
+          if-no-files-found: ignore
