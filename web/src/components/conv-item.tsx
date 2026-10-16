@@ -19,10 +19,14 @@ export function ConvItem({ conv, active, onSelect, onRename, onTogglePin, onDele
   const [renombrando, setRenombrando] = useState(false);
   const [nombre, setNombre] = useState(conv.title);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cancelarEliminarRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (renombrando) inputRef.current?.focus();
   }, [renombrando]);
+  useEffect(() => {
+    if (confirmando) cancelarEliminarRef.current?.focus();
+  }, [confirmando]);
 
   if (renombrando) {
     return (
@@ -119,6 +123,7 @@ export function ConvItem({ conv, active, onSelect, onRename, onTogglePin, onDele
             className="conv-icono is-peligro"
             aria-label={`Eliminar ${conv.title}`}
             aria-expanded={confirmando}
+            aria-controls={`conv-delete-${conv.id}`}
             title="Eliminar"
             onClick={() => setConfirmando((o) => !o)}
           >
@@ -133,9 +138,33 @@ export function ConvItem({ conv, active, onSelect, onRename, onTogglePin, onDele
       </div>
 
       {confirmando && (
-        <div className="conv-menu conv-confirm" role="group" aria-label="Confirmar eliminación">
-          <p className="muted-note">¿Eliminar este chat y sus mensajes? No se puede deshacer.</p>
+        <div
+          id={`conv-delete-${conv.id}`}
+          className="conv-menu conv-confirm"
+          role="group"
+          aria-labelledby={`conv-delete-title-${conv.id}`}
+          aria-describedby={`conv-delete-description-${conv.id}`}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setConfirmando(false);
+          }}
+        >
+          <div className="conv-confirm-cabecera">
+            <span className="conv-confirm-icono" aria-hidden="true">
+              <svg {...SVG}>
+                <path d="M12 9v4" />
+                <path d="M12 17h.01" />
+                <path d="M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0z" />
+              </svg>
+            </span>
+            <div>
+              <strong id={`conv-delete-title-${conv.id}`} className="conv-confirm-titulo">Eliminar este chat</strong>
+              <p id={`conv-delete-description-${conv.id}`}>Se eliminarán «{conv.title}» y todos sus mensajes. No se puede deshacer.</p>
+            </div>
+          </div>
           <div className="conv-rename-acciones">
+            <button ref={cancelarEliminarRef} type="button" className="ghost task-mini-btn" onClick={() => setConfirmando(false)}>
+              Cancelar
+            </button>
             <button
               type="button"
               className="danger-solid task-mini-btn"
@@ -144,10 +173,7 @@ export function ConvItem({ conv, active, onSelect, onRename, onTogglePin, onDele
                 onDelete(conv.id);
               }}
             >
-              Sí, eliminar
-            </button>
-            <button type="button" className="ghost task-mini-btn" onClick={() => setConfirmando(false)}>
-              No
+              Eliminar chat
             </button>
           </div>
         </div>

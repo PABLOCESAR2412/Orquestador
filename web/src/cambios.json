@@ -72,6 +72,7 @@
     { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Autorizaciones Git por mensaje, validación de cambios y decisiones repetidas sin duplicar operaciones", "pr": 51 },
     { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Inicio de sesión de Codex: enlace limpio y código de dispositivo visible y copiable", "pr": 52 },
     { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Sesiones verificadas por CLI, comprobaciones previas, reportes legibles, precisión de métricas y CI de navegador", "pr": 53 },
-    { "fecha": "2026-10-16", "tipo": "mediano", "titulo": "GitHub App: clonado privado sin deploy key y detalle de errores al crear PR", "pr": 53 }
+    { "fecha": "2026-10-16", "tipo": "mediano", "titulo": "GitHub App: clonado privado sin deploy key y detalle de errores al crear PR", "pr": 53 },
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Chat: acciones Git tras la respuesta, reintentos agrupados y confirmación de borrado más clara", "pr": 54 }
   ]
 }
