@@ -21,6 +21,8 @@ if modelo == "fixture/fallo":
 if modelo == "fixture/cancelar":
     time.sleep(60)
     sys.exit(0)
+if modelo == "fixture/lento":
+    time.sleep(1.5)
 
 if "Actúa SOLO como analizador" in prompt or "Eres el analizador de Telo" in prompt:
     try:

@@ -31,7 +31,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
   const homeAnterior = process.env.HOME;
   const pathAnterior = process.env.PATH;
   const aislamientoAnterior = process.env.TELO_AISLAMIENTO;
-  const creados: { id: string; proyecto: string; conversacion: string }[] = [];
+  const creados: { id: string; proyecto?: string; conversacion?: string }[] = [];
 
   beforeAll(async () => {
     const raiz = join(tmpdir(), "telo-pruebas-servicio");
@@ -71,8 +71,8 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
       cancelTask(fila.id);
       db.query("DELETE FROM usage WHERE task_id=?").run(fila.id);
       db.query("DELETE FROM tasks WHERE id=?").run(fila.id);
-      db.query("DELETE FROM conversations WHERE id=?").run(fila.conversacion);
-      db.query("DELETE FROM projects WHERE id=?").run(fila.proyecto);
+      if (fila.conversacion) db.query("DELETE FROM conversations WHERE id=?").run(fila.conversacion);
+      if (fila.proyecto) db.query("DELETE FROM projects WHERE id=?").run(fila.proyecto);
     }
     if (homeAnterior === undefined) delete process.env.HOME;
     else process.env.HOME = homeAnterior;
@@ -136,6 +136,11 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     creados.push({ id, proyecto, conversacion });
     return { id, conversacion, clon: join(datos, "tasks", id, "repo") };
   }
+  function nuevaSinProyecto(model = "fixture/lento") {
+    const id = crearTarea({ prompt: "Prueba tareas concurrentes", model, effort: null, projectId: null });
+    creados.push({ id });
+    return id;
+  }
   async function aprobar(id: string, hash = fila(id).plan_hash) {
     return tasks.request(`http://telo/tasks/${id}/plan`, {
       method: "POST",
@@ -166,6 +171,14 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
         )
         .get(conversacion),
     ).not.toBeNull();
+  }, 15000);
+
+  test("el worker procesa diez tareas independientes al mismo tiempo", async () => {
+    const ids = Array.from({ length: 10 }, () => nuevaSinProyecto());
+    const inicio = Date.now();
+    await esperar(() => ids.every((id) => ["waiting_approval", "failed"].includes(fila(id).status)), "diez planes concurrentes");
+    expect(ids.map((id) => fila(id).status)).toEqual(Array(10).fill("waiting_approval"));
+    expect(Date.now() - inicio).toBeLessThan(9_000);
   }, 15000);
 
   test("prepara una sola autorización para commit y push sin ejecutar nada al rechazar", async () => {

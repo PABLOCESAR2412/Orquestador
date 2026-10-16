@@ -306,6 +306,7 @@ function iniciarTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: string
     .finally(() => {
       liberarConversacion(conv.id);
       publicarChat(conv.id, "terminado");
+      notifyWorker();
     });
 }
 

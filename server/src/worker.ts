@@ -37,7 +37,7 @@ import {
   type RegistroSalida,
 } from "./workspace";
 
-// Un solo worker: ejecuta una tarea a la vez, en orden de llegada.
+// Un worker coordina hasta diez tareas independientes en orden de llegada.
 // Corre dentro del mismo proceso que la API, así que sigue activo aunque
 // el teléfono o el navegador estén apagados.
 //
@@ -53,6 +53,8 @@ export const MAX_NOTAS = 2000;
 
 const controllers = new Map<string, AbortController>();
 const cancelRequested = new Set<string>();
+const tareasEnEjecucion = new Set<string>();
+const MAX_TAREAS_SIMULTANEAS = 10;
 let wake: (() => void) | null = null;
 
 // Error del analizador u obrero con texto pensado para el usuario.
@@ -92,11 +94,14 @@ export function notifyWorker() {
 }
 
 function nextQueued(): QueuedTask | null {
-  return db
+  const pendientes = db
     .query<QueuedTask, []>(
-      "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, t.conversation_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado, t.continuar FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC LIMIT 1",
+      "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, t.conversation_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado, t.continuar FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC",
     )
-    .get();
+    .all();
+  return pendientes.find((task) =>
+    !tareasEnEjecucion.has(task.id) && (!task.project_id || !proyectoOcupado(task.project_id)),
+  ) ?? null;
 }
 
 function estadoActual(id: string): string | null {
@@ -471,37 +476,61 @@ async function ejecutarTarea(task: QueuedTask) {
   }
 }
 
+async function ejecutarSlot(task: QueuedTask): Promise<void> {
+  try {
+    await runTask(task);
+  } catch (err) {
+    console.error("Error inesperado en el worker:", mensajeSeguro(err));
+    try {
+      db.query(
+        "UPDATE tasks SET status = 'failed', error = ?, finished_at = datetime('now') WHERE id = ? AND status IN ('queued', 'analyzing', 'running')",
+      ).run(`Error inesperado del worker: ${mensajeSeguro(err)}`, task.id);
+      publicarEstado(task.id);
+    } catch {
+      // Si tampoco se puede escribir, la tarea queda como está hasta el siguiente arranque.
+    }
+  } finally {
+    tareasEnEjecucion.delete(task.id);
+    notifyWorker();
+  }
+}
+
+async function esperarWorker(): Promise<void> {
+  let hayTareasEnCola = false;
+  try {
+    hayTareasEnCola = !!db.query("SELECT 1 FROM tasks WHERE status='queued' LIMIT 1").get();
+  } catch {
+    await Bun.sleep(2_000);
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const despertar = () => {
+      if (wake === despertar) wake = null;
+      if (timer) clearTimeout(timer);
+      resolve();
+    };
+    wake = despertar;
+    // Una revisión externa de Git o un chat de proyecto pueden liberar la siguiente tarea.
+    if (tareasEnEjecucion.size < MAX_TAREAS_SIMULTANEAS && hayTareasEnCola) timer = setTimeout(despertar, 500);
+  });
+}
+
 async function loop() {
   for (;;) {
-    let task: QueuedTask | null = null;
     try {
-      task = nextQueued();
-      if (task) {
-        await runTask(task);
-        continue;
+      while (tareasEnEjecucion.size < MAX_TAREAS_SIMULTANEAS) {
+        const task = nextQueued();
+        if (!task) break;
+        tareasEnEjecucion.add(task.id);
+        void ejecutarSlot(task);
       }
     } catch (err) {
       console.error("Error inesperado en el worker:", mensajeSeguro(err));
-      // Si la base falla, esperar evita un bucle apretado que impediría atender peticiones.
-      if (task) {
-        try {
-          db.query(
-            "UPDATE tasks SET status = 'failed', error = ?, finished_at = datetime('now') WHERE id = ? AND status IN ('queued', 'analyzing', 'running')",
-          ).run(`Error inesperado del worker: ${mensajeSeguro(err)}`, task.id);
-          publicarEstado(task.id);
-        } catch {
-          // Si tampoco se puede escribir, la tarea queda como está hasta el siguiente arranque.
-        }
-      }
       await Bun.sleep(2_000);
-      continue;
     }
-    // Sin tareas: duerme hasta que llegue una. La consulta y la asignación
-    // de `wake` ocurren sin await entre ellas, así que ningún aviso se pierde.
-    await new Promise<void>((resolve) => {
-      wake = resolve;
-    });
-    wake = null;
+    // Espera un cambio cuando no hay nada listo; vuelve a revisar si la cola solo está bloqueada.
+    await esperarWorker();
   }
 }
 

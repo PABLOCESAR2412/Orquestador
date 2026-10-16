@@ -174,6 +174,9 @@ export function ChatPage() {
   const colasPorChatRef = useRef(colasPorChat);
   const [colaRevision, setColaRevision] = useState(0);
   const [falloCola, setFalloCola] = useState<{ conversacionId: string; mensajeId: string } | null>(null);
+  const enviosPorChatRef = useRef<Record<string, { content: string; colaId?: string }>>({});
+  const [enviosPorChat, setEnviosPorChat] = useState(enviosPorChatRef.current);
+  const [erroresEnvio, setErroresEnvio] = useState<Record<string, string>>({});
   const [menuColaAbierto, setMenuColaAbierto] = useState<string | null>(null);
   const [editandoColaId, setEditandoColaId] = useState<string | null>(null);
   const [textoEditadoCola, setTextoEditadoCola] = useState("");
@@ -348,6 +351,8 @@ export function ChatPage() {
   const [vivos, setVivos] = useState<Record<string, { turnoId: string; pasos: PasoActividad[] }>>({});
   useEventosVivos({}, (evento) => {
     if (evento.tipo === "tarea" || evento.tipo === "evento") {
+      const taskId = evento.tipo === "tarea" ? evento.id : evento.task_id;
+      if (taskId !== tareaChat?.id) return;
       void qc.invalidateQueries({ queryKey: ["conversation-tasks", selectedId] });
       void qc.invalidateQueries({ queryKey: ["messages", selectedId] });
       void qc.invalidateQueries({ queryKey: ["conversations"] });
@@ -392,14 +397,21 @@ export function ChatPage() {
       }
     },
     onSuccess: (_data, { id, content, colaId }) => {
+      setErroresEnvio((prev) => {
+        const siguiente = { ...prev };
+        delete siguiente[id];
+        return siguiente;
+      });
       if (colaId) {
         cambiarCola(id, (mensajes) => mensajes.filter((item) => item.id !== colaId));
-        colaEsperandoTurnoRef.current[id] = { vioAgenteOcupado: agenteOcupado, texto: content };
+        const ocupada = qc.getQueryData<Conversation[]>(["conversations"])?.find((chat) => chat.id === id)?.ocupada ?? false;
+        colaEsperandoTurnoRef.current[id] = { vioAgenteOcupado: ocupada, texto: content };
         setFalloCola((prev) => (prev?.mensajeId === colaId ? null : prev));
       }
     },
-    onError: (_err, { id, restaurar, colaId }) => {
+    onError: (err, { id, restaurar, colaId }) => {
       if (colaId) setFalloCola({ conversacionId: id, mensajeId: colaId });
+      else setErroresEnvio((prev) => ({ ...prev, [id]: errorText(err) }));
       if (!restaurar) return;
       if (id === selectedId) {
         const nuevo = restaurar.texto && draft.trim() ? `${restaurar.texto}\n${draft}` : restaurar.texto || draft;
@@ -411,6 +423,10 @@ export function ChatPage() {
       }
     },
     onSettled: (_data, _error, { id }) => {
+      const siguientes = { ...enviosPorChatRef.current };
+      delete siguientes[id];
+      enviosPorChatRef.current = siguientes;
+      setEnviosPorChat(siguientes);
       qc.invalidateQueries({ queryKey: ["messages", id] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["conversation-tasks", id] });
@@ -418,11 +434,25 @@ export function ChatPage() {
     },
   });
 
+  const iniciarEnvio = (variables: { id: string; content: string; restaurar?: Restaurar; colaId?: string }) => {
+    if (enviosPorChatRef.current[variables.id]) return false;
+    setErroresEnvio((prev) => {
+      const siguiente = { ...prev };
+      delete siguiente[variables.id];
+      return siguiente;
+    });
+    const siguientes = { ...enviosPorChatRef.current, [variables.id]: { content: variables.content, colaId: variables.colaId } };
+    enviosPorChatRef.current = siguientes;
+    setEnviosPorChat(siguientes);
+    send.mutate(variables);
+    return true;
+  };
+
   // Tras una cuota agotada: el chat retoma su sesión con el modelo elegido (ver /seguir en el servidor).
   const seguirChat = useMutation({
-    mutationFn: () => api.continueChat(selectedId!),
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["messages", selectedId] });
+    mutationFn: (id: string) => api.continueChat(id),
+    onSettled: (_data, _error, id) => {
+      qc.invalidateQueries({ queryKey: ["messages", id] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
     },
   });
@@ -448,9 +478,11 @@ export function ChatPage() {
 
   // Adjuntos listos: solo los de texto viajan al agente.
   const adjuntosListos = pendientes.flatMap((p) => (p.lectura.tipo === "texto" ? [p.lectura.adjunto] : []));
+  const envioActual = selectedId ? enviosPorChat[selectedId] : undefined;
+  const enviandoActual = !!envioActual;
   const bloqueoEnvioCola = !colaActiva && (agenteOcupado || cola.length > 0);
   const puedeEnviar =
-    !!selectedId && !send.isPending && !bloqueoEnvioCola && (draft.trim() !== "" || adjuntosListos.length > 0);
+    !!selectedId && !enviandoActual && !bloqueoEnvioCola && (draft.trim() !== "" || adjuntosListos.length > 0);
 
   const submit = () => {
     if (!puedeEnviar || !selectedId) return;
@@ -481,7 +513,7 @@ export function ChatPage() {
     }
     cambiarBorrador("");
     setPendientes([]);
-    send.mutate({ id: selectedId, content, restaurar });
+    iniciarEnvio({ id: selectedId, content, restaurar });
   };
 
   const redirigirMensajeCola = (item: MensajeEnCola) => {
@@ -519,16 +551,16 @@ export function ChatPage() {
       }
       else return;
     }
-    if (agenteOcupado || send.isPending || errorCola || cola.length === 0) return;
-    send.mutate({ id: selectedId, content: cola[0].texto, colaId: cola[0].id });
-  }, [selectedId, agenteOcupado, send.isPending, errorCola, cola, lista]);
+    if (agenteOcupado || enviandoActual || errorCola || cola.length === 0) return;
+    iniciarEnvio({ id: selectedId, content: cola[0].texto, colaId: cola[0].id });
+  }, [selectedId, agenteOcupado, enviandoActual, errorCola, cola, lista]);
 
   // Vuelve a enviar el mensaje del usuario que precede a una respuesta.
   const reintentar = (mensajeId: string) => {
     const i = lista.findIndex((m) => m.id === mensajeId);
     const previo = lista.slice(0, i).reverse().find((m) => m.role === "user");
-    if (previo && selectedId && !send.isPending && !current?.ocupada) {
-      send.mutate({ id: selectedId, content: previo.content });
+    if (previo && selectedId && !enviandoActual && !current?.ocupada) {
+      iniciarEnvio({ id: selectedId, content: previo.content });
     }
   };
 
@@ -626,10 +658,10 @@ export function ChatPage() {
   // Mantiene visible el último mensaje, incluido el de "pensando".
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.data?.length, send.isPending, selectedId, tareaChat?.status, tareaChat?.plan_hash]);
+  }, [messages.data?.length, enviandoActual, selectedId, tareaChat?.status, tareaChat?.plan_hash]);
 
   // Solo llega aquí un fallo que no se guardó (409 si el chat ya responde, 4xx o 5xx del servidor).
-  const sendError = send.isError && !send.variables?.colaId ? errorText(send.error) : null;
+  const sendError = selectedId ? erroresEnvio[selectedId] ?? null : null;
   const settingsError = configure.isError ? errorText(configure.error) : null;
   const docError = crearDoc.isError ? errorText(crearDoc.error) : null;
   const anclarError = anclar.isError ? errorText(anclar.error) : null;
@@ -637,10 +669,11 @@ export function ChatPage() {
 
   // El mensaje que se envió desde este dispositivo ya puede estar en la lista (el sondeo lo trae antes de terminar).
   const ultimoMensaje = lista.at(-1);
-  const yaGuardado = send.isPending && ultimoMensaje?.role === "user" && ultimoMensaje.content === send.variables?.content;
+  const yaGuardado = enviandoActual && ultimoMensaje?.role === "user" && ultimoMensaje.content === envioActual?.content;
   const esperandoPlan = tareaChat?.status === "waiting_approval";
   const tareaActiva = !!tareaChat && ["queued", "analyzing", "running"].includes(tareaChat.status);
-  const pensando = send.isPending || seguirChat.isPending || (tareaChat ? tareaActiva : !!current?.ocupada);
+  const siguiendoActual = seguirChat.isPending && seguirChat.variables === selectedId;
+  const pensando = enviandoActual || siguiendoActual || (tareaChat ? tareaActiva : !!current?.ocupada);
   const sugerencia = !sugerenciaOculta && !pensando && !draft.startsWith("/")
     ? sugerenciasChat(lista).find((s) => !draft || (s.toLocaleLowerCase().startsWith(draft.toLocaleLowerCase()) && s.length > draft.length))
     : undefined;
@@ -980,7 +1013,7 @@ export function ChatPage() {
                   </button>
                 </div>
               )}
-              {messages.data?.length === 0 && !send.isPending && (
+              {messages.data?.length === 0 && !enviandoActual && (
                 <p className="tl-nota">Aún no hay mensajes. Escribe una instrucción para el agente o pulsa Ctrl+K para comandos.</p>
               )}
               {lista.map((m, i) =>
@@ -1013,7 +1046,7 @@ export function ChatPage() {
                           : undefined
                       }
                       onReintentar={
-                        lista.slice(0, i).some((p) => p.role === "user") && !send.isPending
+                        lista.slice(0, i).some((p) => p.role === "user") && !enviandoActual
                           ? () => reintentar(m.id)
                           : undefined
                       }
@@ -1033,8 +1066,8 @@ export function ChatPage() {
                   </Fragment>
                 ),
               )}
-              {send.isPending && !yaGuardado && (
-                <MensajeUsuario texto={send.variables?.content ?? ""} cuando={null} />
+              {enviandoActual && !yaGuardado && (
+                <MensajeUsuario texto={envioActual?.content ?? ""} cuando={null} />
               )}
               {pensando && (
                 <IndicadorPensando
@@ -1072,10 +1105,10 @@ export function ChatPage() {
                 <AvisoCuota
                   modeloAgotado={modelList.find((m) => m.id === current.cuota_modelo)?.name ?? current.cuota_modelo}
                   puedeSeguir={!!current.model && current.model !== current.cuota_modelo}
-                  seguirPendiente={seguirChat.isPending}
+                  seguirPendiente={siguiendoActual}
                   onCambiarModelo={() => setPickerOpen(true)}
-                  onSeguir={() => seguirChat.mutate()}
-                  error={seguirChat.isError ? errorText(seguirChat.error) : null}
+                  onSeguir={() => selectedId && seguirChat.mutate(selectedId)}
+                  error={seguirChat.isError && seguirChat.variables === selectedId ? errorText(seguirChat.error) : null}
                 />
               )}
               <div ref={endRef} />
@@ -1171,7 +1204,7 @@ export function ChatPage() {
                             <button
                               type="button"
                               className="tl-cola-redirigir"
-                              disabled={send.isPending && send.variables?.colaId === item.id}
+                              disabled={envioActual?.colaId === item.id}
                               title="Mover el mensaje al compositor"
                               aria-label={`Redirigir mensaje ${indice + 1} al compositor`}
                               onClick={() => redirigirMensajeCola(item)}
@@ -1185,7 +1218,7 @@ export function ChatPage() {
                             <button
                               type="button"
                               className="tl-accion-icono tl-cola-quitar"
-                              disabled={send.isPending && send.variables?.colaId === item.id}
+                              disabled={envioActual?.colaId === item.id}
                               aria-label={`Quitar mensaje ${indice + 1} de la cola`}
                               title="Quitar de la cola"
                               onClick={() => cambiarCola(selectedId!, (mensajes) => mensajes.filter((mensaje) => mensaje.id !== item.id))}
@@ -1198,7 +1231,7 @@ export function ChatPage() {
                               <button
                                 type="button"
                                 className="tl-accion-icono"
-                                disabled={send.isPending && send.variables?.colaId === item.id}
+                                disabled={envioActual?.colaId === item.id}
                                 aria-label={`Más opciones para mensaje ${indice + 1}`}
                                 aria-expanded={menuColaAbierto === item.id}
                                 title="Más opciones"
@@ -1215,7 +1248,7 @@ export function ChatPage() {
                     </div>
                   ))}
                 </div>
-                {menuColaItem && !(send.isPending && send.variables?.colaId === menuColaItem.id) && (
+                {menuColaItem && envioActual?.colaId !== menuColaItem.id && (
                   <div className="tl-cola-menu" role="menu">
                     <button type="button" role="menuitem" onClick={() => {
                       setTextoEditadoCola(menuColaItem.texto);
