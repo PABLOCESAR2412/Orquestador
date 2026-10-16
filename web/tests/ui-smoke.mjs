@@ -78,7 +78,7 @@ try {
       else if (path === "/api/providers") data = [{ id: "codex", name: "Codex", configured: codexSesionEnPicker, variable: null, enAgente: false, guardable: false, sesion: codexSesionEnPicker }];
       else if (path === "/api/providers/codex/models") data = { generado: now, models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", context: 100000, variants: ["high"] }] };
       else if (path === "/api/providers/codex/login") data = { estado: "esperando", conectada: false, url: "https://auth.openai.com/codex/device", codigo: "ABCD-EFGH", salida: "Salida de prueba\n" + "x".repeat(300) };
-      else if (path === "/api/skills/instalar") {
+      else if (path === "/api/skills/instalar" {
         skillInstallRequests++;
         await new Promise(resolve => setTimeout(resolve, 100));
         return route.fulfill({ status: 409, json: { error: "skill_command_ambiguous" } });
@@ -118,6 +118,18 @@ try {
     assert.deepEqual(await page.locator(".tl-grupo-titulo").allTextContents(), ["RECIENTES", "ÚLTIMOS 7 DÍAS", "ANTERIORES"]);
     assert.equal(await page.getByText("HOY", { exact: true }).count(), 0);
     assert.equal(await page.getByText("AYER", { exact: true }).count(), 0);
+    if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
+    const versionButton = page.getByRole("button", { name: /Ver historial de cambios de la versión/ });
+    await versionButton.click();
+    const historialCambios = page.getByRole("dialog", { name: "Historial de cambios" });
+    await historialCambios.waitFor();
+    assert.ok(await historialCambios.locator(".tl-cambio").count() > 0);
+    assert.equal(await historialCambios.getAttribute("aria-modal"), "true");
+    await page.screenshot({ path: `scratch/capturas-ci/cambios-${width}.png` });
+    await page.keyboard.press("Escape");
+    await historialCambios.waitFor({ state: "detached" });
+    assert.equal(await versionButton.evaluate(el => el === document.activeElement), true);
+    if (width === 390) await page.getByRole("button", { name: "Cerrar barra lateral", exact: true }).click();
     const contrasteGrupo = await page.locator(".tl-grupo-titulo").first().evaluate(el => getComputedStyle(el).color);
     const contrasteChat = await page.locator(".sidebar-conv-title").first().evaluate(el => getComputedStyle(el).color);
     assert.notEqual(contrasteGrupo, contrasteChat);
@@ -158,8 +170,8 @@ try {
     const medidoresUso = panelUso.locator('[role="meter"]');
     await medidoresUso.nth(1).waitFor({ state: "visible" });
     assert.equal(await medidoresUso.count(), 2);
-    assert.equal(await medidoresUso.nth(0).getAttribute("aria-valuenow"), "11.1");
-    assert.equal(await medidoresUso.nth(1).getAttribute("aria-valuenow"), "20");
+    assert.equal(await medidoresUso.nth(0).getAttribute("aria-valuenow"), "80");
+    assert.equal(await medidoresUso.nth(1).getAttribute("aria-valuenow"), "88.9");
     assert.equal((await panelUso.textContent()).includes("US$ 0.50 · 11,1 %"), true);
     assert.equal((await panelUso.textContent()).includes("US$ 4.00 · 88,9 %"), true);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
@@ -200,6 +212,7 @@ try {
     assert.equal(await tarjetaGithub.getByRole("link", { name: "GitHub", exact: true }).count(), 1);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/github-ajustes-${width}.png` });
+
     await page.getByRole("button", { name: "Copiar código", exact: true }).click();
     await page.getByText("Código copiado.", { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "ABCD-EFGH");

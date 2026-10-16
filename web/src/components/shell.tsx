@@ -10,6 +10,7 @@ import { VERSION_SISTEMA } from "../lib/version-sistema";
 import { AppNav } from "./nav";
 import { ConvItem } from "./conv-item";
 import { NuevoProyectoDialog } from "./proyecto-nuevo";
+import { HistorialCambios } from "./historial-cambios";
 import { PaletaComandos } from "./paleta-comandos";
 import { useShell } from "./shell-context";
 import { ShellTopbar } from "./shell-topbar";
@@ -50,6 +51,8 @@ export function Shell({ children }: { children: ReactNode }) {
   // Instalar la app: en Chrome/Edge con el evento del navegador; en iPhone, con instrucciones.
   const install = useInstallPrompt();
   const [pistaIOS, setPistaIOS] = useState(false);
+  const [historialCambiosAbierto, setHistorialCambiosAbierto] = useState(false);
+  const versionRef = useRef<HTMLButtonElement>(null);
   const mostrarInstalar = !isStandalone() && (install.canInstall || isIOS());
 
   const navigate = useNavigate();
@@ -262,11 +265,27 @@ export function Shell({ children }: { children: ReactNode }) {
             </div>
           </div>
           <hr className="tl-rail-separador" />
-          <p className="tl-rail-version">Versión {VERSION_SISTEMA}</p>
+          <button
+            ref={versionRef}
+            type="button"
+            className="tl-rail-version"
+            aria-label={`Ver historial de cambios de la versión ${VERSION_SISTEMA}`}
+            aria-haspopup="dialog"
+            aria-expanded={historialCambiosAbierto}
+            onClick={() => setHistorialCambiosAbierto(true)}
+          >
+            Versión {VERSION_SISTEMA}
+          </button>
         </div>
       </aside>
 
       {nuevoProyectoAbierto && <NuevoProyectoDialog onCerrar={() => setNuevoProyectoAbierto(false)} />}
+      {historialCambiosAbierto && (
+        <HistorialCambios
+          disparador={versionRef}
+          onCerrar={() => setHistorialCambiosAbierto(false)}
+        />
+      )}
 
       {/* Scrim para cerrar el cajón en móvil */}
       {drawerOpen && <div className="scrim dim" onClick={closeDrawer} aria-hidden="true" />}

@@ -69,13 +69,13 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
     cuerpo = (
       <>
         <VentanaSaldo
-          titulo="Últimas 5 horas"
-          datos={registrado ? proveedor.ultimas5h : null}
+          titulo="Últimos 7 días"
+          datos={registrado ? proveedor.ultimos7d : null}
           saldoUsd={proveedor?.cuotaRestanteUsd ?? null}
         />
         <VentanaSaldo
-          titulo="Últimos 7 días"
-          datos={registrado ? proveedor.ultimos7d : null}
+          titulo="Últimas 5 horas"
+          datos={registrado ? proveedor.ultimas5h : null}
           saldoUsd={proveedor?.cuotaRestanteUsd ?? null}
         />
         <p className="usage-note">
@@ -141,40 +141,53 @@ function VentanaSaldo({
   const gastoUsd = datos?.costoUsd ?? 0;
   const gastado = porcentajeGastado(gastoUsd, saldoUsd);
   const restante = gastado === null ? null : 100 - gastado;
+  const circunferencia = 2 * Math.PI * 8;
+  const etiquetaAccesible = restante === null
+    ? `${titulo}: ${saldoUsd === null ? "saldo sin anotar" : "porcentaje no disponible"}`
+    : `${titulo}: ${formatoPorcentaje(restante)} % restante`;
 
   return (
-    <div className="usage-window" role="group" aria-label={titulo}>
-      <div className="window-heading">
-        <span className="window-label">{titulo}</span>
-        <span className="window-meta">
-          {datos ? `${compact(datos.tokens)} tokens · ${datos.llamadas} llamadas` : "Sin uso registrado"}
-        </span>
-      </div>
-      <div className="usage-balance-row">
-        <span>Gastado</span>
-        <strong>
-          {formatUsd(gastoUsd)}{gastado !== null && ` · ${formatoPorcentaje(gastado)} %`}
-        </strong>
-      </div>
-      <div className="usage-balance-row">
-        <span>Saldo restante</span>
-        <strong>
-          {saldoUsd === null ? "Sin anotar" : formatUsd(saldoUsd)}
-          {restante !== null && ` · ${formatoPorcentaje(restante)} %`}
-        </strong>
-      </div>
-      {gastado !== null && (
-        <div
-          className="usage-progress"
-          role="meter"
-          aria-label={`${titulo}: ${formatoPorcentaje(gastado)} % gastado`}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={gastado}
-        >
-          <span style={{ width: `${gastado}%` }} />
+    <div
+      className="usage-window"
+      role={restante === null ? "group" : "meter"}
+      aria-label={etiquetaAccesible}
+      aria-valuemin={restante === null ? undefined : 0}
+      aria-valuemax={restante === null ? undefined : 100}
+      aria-valuenow={restante ?? undefined}
+    >
+      <div className="usage-window-heading">
+        <div className="usage-window-copy">
+          <span className="window-label">{titulo}</span>
+          <span className="window-meta">
+            {datos ? `${compact(datos.tokens)} tokens · ${datos.llamadas} llamadas` : "Sin uso registrado"}
+          </span>
         </div>
-      )}
+        <div className="usage-remaining" aria-hidden="true">
+          <strong>{restante === null ? "—" : `${formatoPorcentaje(restante)} %`}</strong>
+          {restante !== null && (
+            <svg className="usage-ring" viewBox="0 0 20 20">
+              <circle className="usage-ring-track" cx="10" cy="10" r="8" />
+              <circle
+                className="usage-ring-value"
+                cx="10"
+                cy="10"
+                r="8"
+                strokeDasharray={`${(restante / 100) * circunferencia} ${circunferencia}`}
+              />
+            </svg>
+          )}
+        </div>
+      </div>
+      <div className="usage-window-totals">
+        <div>
+          <span>Gastado</span>
+          <strong>{formatUsd(gastoUsd)}{gastado !== null && ` · ${formatoPorcentaje(gastado)} %`}</strong>
+        </div>
+        <div>
+          <span>Saldo restante</span>
+          <strong>{saldoUsd === null ? "Sin anotar" : formatUsd(saldoUsd)}{restante !== null && ` · ${formatoPorcentaje(restante)} %`}</strong>
+        </div>
+      </div>
     </div>
   );
 }
