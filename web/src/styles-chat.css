@@ -118,7 +118,7 @@
   border-radius: 14px;
   background: var(--surface-2);
   color: var(--ink);
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.55;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -162,7 +162,7 @@
 .tl-msg-texto {
   min-width: 0;
   color: var(--ink);
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
@@ -727,10 +727,10 @@
   letter-spacing: -0.01em;
   line-height: 1.3;
 }
-.tl-md h1 { font-size: 19px; }
-.tl-md h2 { font-size: 17px; }
-.tl-md h3 { font-size: 15.5px; }
-.tl-md h4 { font-size: 15px; }
+.tl-md h1 { font-size: 17px; }
+.tl-md h2 { font-size: 16px; }
+.tl-md h3 { font-size: 15px; }
+.tl-md h4 { font-size: 14px; }
 .tl-md ul, .tl-md ol { margin: 0 0 12px; padding-left: 22px; }
 .tl-md li { margin: 3px 0; }
 .tl-md li > p { margin: 0 0 4px; }
@@ -748,7 +748,7 @@
   border-radius: 5px;
   background: var(--surface-2);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12px;
 }
 .tl-tabla-wrap {
   max-width: 100%;
@@ -757,7 +757,7 @@
   border: 1px solid var(--line);
   border-radius: 10px;
 }
-.tl-md table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tl-md table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tl-md th, .tl-md td {
   padding: 7px 11px;
   border-bottom: 1px solid var(--line);
