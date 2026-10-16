@@ -457,39 +457,85 @@ async function leerRespuesta(respuesta: Response, limite: number): Promise<strin
 
 export async function instalarSkillComando(ambito: AmbitoSkills, comando: unknown) {
   const pedido = parsearComandoSkill(comando);
-  const base = `https://api.github.com/repos/${pedido.owner}/${pedido.repo}`;
-  const repo = await jsonGithub(base, 128_000);
-  const rama = repo.default_branch;
-  if (typeof rama !== "string" || !/^[A-Za-z0-9._/-]{1,200}$/.test(rama) || rama.includes("..")) {
-    throw new SkillError("skill_catalog_failed", 502);
+  let contenido = "";
+  let fuente = "";
+
+  // Si se instala a nivel proyecto y la skill ya existe globalmente en el servidor,
+  // la conservamos como respaldo confiable ante límites de cuota de la API de GitHub.
+  let copiaGlobal: { content: string; source: string | null } | null = null;
+  if (ambito.ambito === "proyecto") {
+    try {
+      const glob = operacionArchivo(() => leerSkill({ ambito: "global" }, pedido.name));
+      if (glob?.contenido) {
+        copiaGlobal = { content: glob.contenido, source: leerFrontmatter(glob.contenido)?.source ?? null };
+      }
+    } catch {
+      // No existe globalmente
+    }
   }
-  const arbol = await jsonGithub(`${base}/git/trees/${encodeURIComponent(rama)}?recursive=1`, 2_000_000);
-  if (!Array.isArray(arbol.tree) || arbol.truncated === true) throw new SkillError("skill_catalog_failed", 502);
 
-  const blobs = (arbol.tree as { type?: unknown; path?: unknown }[])
-    .filter((item) => item?.type === "blob" && typeof item.path === "string" && (item.path as string).toLowerCase().endsWith("skill.md"))
-    .map((item) => item.path as string);
+  try {
+    const base = `https://api.github.com/repos/${pedido.owner}/${pedido.repo}`;
+    const repo = await jsonGithub(base, 128_000);
+    const rama = repo.default_branch;
+    if (typeof rama !== "string" || !/^[A-Za-z0-9._/-]{1,200}$/.test(rama) || rama.includes("..")) {
+      throw new SkillError("skill_catalog_failed", 502);
+    }
+    const arbol = await jsonGithub(`${base}/git/trees/${encodeURIComponent(rama)}?recursive=1`, 2_000_000);
+    if (!Array.isArray(arbol.tree) || arbol.truncated === true) throw new SkillError("skill_catalog_failed", 502);
 
-  let candidatos = blobs.filter((path) => {
-    const p = path.toLowerCase();
-    return p.endsWith(`/${pedido.name}/skill.md`) || p === `${pedido.name}/skill.md` || p === "skill.md";
-  });
-  if (candidatos.length === 0) {
-    candidatos = blobs;
+    const blobs = (arbol.tree as { type?: unknown; path?: unknown }[])
+      .filter((item) => item?.type === "blob" && typeof item.path === "string" && (item.path as string).toLowerCase().endsWith("skill.md"))
+      .map((item) => item.path as string);
+
+    let candidatos = blobs.filter((path) => {
+      const p = path.toLowerCase();
+      return p.endsWith(`/${pedido.name}/skill.md`) || p === `${pedido.name}/skill.md` || p === "skill.md";
+    });
+    if (candidatos.length === 0) {
+      candidatos = blobs;
+    }
+    if (!candidatos.length) throw new SkillError("skill_no_encontrada", 404);
+
+    const ordenados = [...new Set(candidatos)]
+      .map((r) => ({ ruta: r, puntos: puntuarRutaSkill(r, pedido.name) }))
+      .sort((a, b) => b.puntos - a.puntos);
+
+    const ruta = ordenados[0]!.ruta;
+    if (ruta.split("/").some((segmento) => !/^[A-Za-z0-9._-]+$/.test(segmento) || segmento === "." || segmento === "..")) {
+      throw new SkillError("invalid_skill_command");
+    }
+    fuente = `https://github.com/${pedido.owner}/${pedido.repo}/blob/${rama}/${ruta}`;
+    const raw = `https://raw.githubusercontent.com/${pedido.owner}/${pedido.repo}/${rama}/${ruta}`;
+    contenido = await descargar(raw, MAX_CONTENIDO);
+  } catch (err) {
+    if (copiaGlobal) {
+      contenido = copiaGlobal.content;
+      fuente = copiaGlobal.source ?? `https://github.com/${pedido.owner}/${pedido.repo}`;
+    } else {
+      // Intento de descarga directa de CDN raw sin consumir cuota de la API REST de GitHub
+      const urlsCdn = [
+        `https://raw.githubusercontent.com/${pedido.owner}/${pedido.repo}/main/skills/.curated/${pedido.name}/SKILL.md`,
+        `https://raw.githubusercontent.com/${pedido.owner}/${pedido.repo}/main/skills/${pedido.name}/SKILL.md`,
+        `https://raw.githubusercontent.com/${pedido.owner}/${pedido.repo}/main/${pedido.name}/SKILL.md`,
+        `https://raw.githubusercontent.com/${pedido.owner}/${pedido.repo}/main/SKILL.md`,
+        `https://raw.githubusercontent.com/${pedido.owner}/${pedido.repo}/master/SKILL.md`,
+      ];
+      let exito = false;
+      for (const urlRaw of urlsCdn) {
+        try {
+          contenido = await descargar(urlRaw, MAX_CONTENIDO);
+          fuente = urlRaw.replace("raw.githubusercontent.com", "github.com").replace("/main/", "/blob/main/").replace("/master/", "/blob/master/");
+          exito = true;
+          break;
+        } catch {
+          // continuar probando
+        }
+      }
+      if (!exito) throw err;
+    }
   }
-  if (!candidatos.length) throw new SkillError("skill_no_encontrada", 404);
 
-  const ordenados = [...new Set(candidatos)]
-    .map((r) => ({ ruta: r, puntos: puntuarRutaSkill(r, pedido.name) }))
-    .sort((a, b) => b.puntos - a.puntos);
-
-  const ruta = ordenados[0]!.ruta;
-  if (ruta.split("/").some((segmento) => !/^[A-Za-z0-9._-]+$/.test(segmento) || segmento === "." || segmento === "..")) {
-    throw new SkillError("invalid_skill_command");
-  }
-  const fuente = `https://github.com/${pedido.owner}/${pedido.repo}/blob/${rama}/${ruta}`;
-  const raw = `https://raw.githubusercontent.com/${pedido.owner}/${pedido.repo}/${rama}/${ruta}`;
-  let contenido = await descargar(raw, MAX_CONTENIDO);
   const cabecera = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/.exec(contenido);
   if (!cabecera) {
     contenido = `---\nname: ${pedido.name}\ndescription: Instrucciones de ${pedido.name}\nsource: ${fuente}\n---\n\n${contenido}`;

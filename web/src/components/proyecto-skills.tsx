@@ -1,14 +1,14 @@
 import { SkillsEditor } from "./skills-editor";
 
-// Skills del proyecto: viven en <carpeta del proyecto>/.opencode/skills, y OpenCode las lee al trabajar ahí.
-// Las tareas que usan un clon de Git no las ven hasta que se confirman en el repositorio.
+// Skills del proyecto: viven en <carpeta del proyecto>/.opencode/skills (y skills/), y se sincronizan
+// automáticamente con los clones de trabajo para que las tareas las utilicen de inmediato.
 export function ProyectoSkills({ id }: { id: string }) {
   return (
     <section className="panel" aria-labelledby="proyecto-skills-titulo">
       <SkillsEditor
         projectId={id}
         titulo="Skills"
-        ayuda="Solo este proyecto. Los chats que trabajan en su carpeta las usan. Las tareas de un repositorio Git trabajan en un clon del último commit, así que no las ven hasta que se confirmen."
+        ayuda="Skills exclusivas de este proyecto. Se sincronizan automáticamente con el espacio de trabajo de cada tarea para que el agente las use de inmediato."
       />
     </section>
   );

@@ -1,6 +1,6 @@
 import { afterAll, afterEach, expect, test, spyOn } from "bun:test";
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 
@@ -401,3 +401,46 @@ test("crear un pull request usa solo GITHUB_PR_TOKEN, sin respaldo a GITHUB_TOKE
   expect(entornoDeProyecto(p.id)).not.toHaveProperty("GITHUB_PR_TOKEN");
   expect(entornoDeProyecto(p.id)).not.toHaveProperty("GITHUB_TOKEN");
 });
+
+test("prepararCopia sincroniza carpetas .opencode/skills y skills hacia el clon", async () => {
+  const p = proyecto();
+  await gitOk(["init", "-b", "main"], { cwd: p.cwd });
+  writeFileSync(join(p.cwd, "archivo.txt"), "base\n");
+  await gitOk(["add", "archivo.txt"], { cwd: p.cwd });
+  await gitOk(
+    [
+      "-c",
+      "user.name=Prueba",
+      "-c",
+      "user.email=prueba@example.test",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "-m",
+      "Base",
+    ],
+    { cwd: p.cwd },
+  );
+
+  // Crear una skill en el repo del proyecto sin hacer commit
+  const skillDir = join(p.cwd, ".opencode", "skills", "test-skill");
+  mkdirSync(skillDir, { recursive: true });
+  writeFileSync(join(skillDir, "SKILL.md"), "---\nname: test-skill\ndescription: Test skill\n---\nContenido");
+
+  const skillRaiz = join(p.cwd, "skills", "otra-skill");
+  mkdirSync(skillRaiz, { recursive: true });
+  writeFileSync(join(skillRaiz, "SKILL.md"), "---\nname: otra-skill\ndescription: Otra skill\n---\nContenido raiz");
+
+  const taskId = randomUUID();
+  p.taskId = taskId;
+  db.query(
+    "INSERT INTO tasks(id,title,prompt,model,status,project_id) VALUES (?,'Sync skills','Prueba','prueba','queued',?)",
+  ).run(taskId, p.id);
+
+  const copia = await prepararCopia(taskId, p.cwd, p.id);
+  expect(existsSync(join(copia.cwd, ".opencode", "skills", "test-skill", "SKILL.md"))).toBe(true);
+  expect(readFileSync(join(copia.cwd, ".opencode", "skills", "test-skill", "SKILL.md"), "utf8")).toContain("Contenido");
+  expect(existsSync(join(copia.cwd, "skills", "otra-skill", "SKILL.md"))).toBe(true);
+  expect(readFileSync(join(copia.cwd, "skills", "otra-skill", "SKILL.md"), "utf8")).toContain("Contenido raiz");
+});
+

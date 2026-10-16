@@ -25,18 +25,21 @@ function setupProyecto() {
   return "p-res";
 }
 
-test("detectarMencionesSkills detecta $ y / correctamente", () => {
-  const texto = "Quiero que uses $playwright y $caveman para revisar el flujo, o también /impeccable";
+test("detectarMencionesSkills detecta $, @, / y skill: correctamente", () => {
+  const texto = "Quiero que uses $playwright, @caveman y @skill:impeccable para revisar el flujo, o también /context7 y skill:frontend-design";
   const menciones = detectarMencionesSkills(texto);
   expect(menciones).toContain("playwright");
   expect(menciones).toContain("caveman");
   expect(menciones).toContain("impeccable");
-  expect(menciones).toHaveLength(3);
+  expect(menciones).toContain("context7");
+  expect(menciones).toContain("frontend-design");
+  expect(menciones).toHaveLength(5);
 });
 
 test("detectarMencionesSkills ignora símbolos monetarios o rutas normales", () => {
   expect(detectarMencionesSkills("El costo es $50 o $100 dólares")).toEqual([]);
   expect(detectarMencionesSkills("Visita https://ejemplo.com/ruta/archivo")).toEqual([]);
+  expect(detectarMencionesSkills("El usuario es user@email.com")).toEqual([]);
 });
 
 test("resolver e inyectar skills en el prompt", () => {

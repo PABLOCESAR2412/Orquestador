@@ -1,12 +1,12 @@
 import { db } from "./db";
 import { leerSkill, type AmbitoSkills } from "./skills";
 
-// Detecta menciones explícitas de skills con sintaxis $nombre-skill o /nombre-skill
-// (ej: $playwright, $impeccable, $caveman, /playwright, /caveman)
+// Detecta menciones explícitas de skills con sintaxis $nombre-skill, @nombre-skill, /nombre-skill o skill:nombre
+// (ej: $playwright, @impeccable, $caveman, /playwright, @skill:playwright)
 export function detectarMencionesSkills(texto: string): string[] {
   if (!texto || typeof texto !== "string") return [];
-  // Token que empieza por $ o / seguido de un nombre de skill válido que empieza por letra
-  const regex = /(?:^|[\s([{"'`])([$/])([a-z][a-z0-9]*(?:-[a-z0-9]+)*)(?=$|[\s)\]}"'`,:;.!?])/gi;
+  // Token que empieza por $, @ o / (opcionalmente seguido de 'skill:')
+  const regex = /(?:^|[\s([{"'`])([$@/])(?:skill:)?([a-z][a-z0-9]*(?:-[a-z0-9]+)*)(?=$|[\s)\]}"'`,:;.!?])/gi;
   const encontrados = new Set<string>();
   let match: RegExpExecArray | null;
   while ((match = regex.exec(texto)) !== null) {
@@ -23,6 +23,16 @@ export function detectarMencionesSkills(texto: string): string[] {
       encontrados.add(nombre);
     }
   }
+
+  // Token directo "skill:nombre" sin prefijo especial
+  const regexDirecto = /(?:^|[\s([{"'`])skill:([a-z][a-z0-9]*(?:-[a-z0-9]+)*)(?=$|[\s)\]}"'`,:;.!?])/gi;
+  while ((match = regexDirecto.exec(texto)) !== null) {
+    const nombre = match[1]?.toLowerCase();
+    if (nombre && nombre.length <= 64) {
+      encontrados.add(nombre);
+    }
+  }
+
   return [...encontrados];
 }
 
@@ -93,7 +103,7 @@ export function inyectarSkillsEnPrompt(
 
   const encabezado = [
     "[SKILLS ACTIVADAS POR EL USUARIO]",
-    "El usuario ha invocado explícitamente las siguientes skills mediante comandos ($ o /):",
+    "El usuario ha invocado explícitamente las siguientes skills mediante comandos ($, @ o /):",
     "",
     bloques.join("\n\n"),
     "",
