@@ -41,6 +41,13 @@ const TIPO_USO: Record<"chat" | "tarea" | "otro", { nombre: string; detalle: str
   otro: { nombre: "Otras llamadas", detalle: "Llamadas sin una conversación o tarea asociada." },
 };
 
+const TIPO_USO_JEV: Record<"recomendaciones_chat" | "memoria_proyecto" | "clasificacion_tarea" | "prueba_conexion", { nombre: string; detalle: string }> = {
+  recomendaciones_chat: { nombre: "Recomendaciones del chat · Jev", detalle: "Ordena las sugerencias locales según los últimos mensajes." },
+  memoria_proyecto: { nombre: "Memoria del proyecto · Jev", detalle: "Puntúa si la propuesta será útil en futuras tareas." },
+  clasificacion_tarea: { nombre: "Clasificación de tareas · Jev", detalle: "Sugiere una categoría; no elige el modelo ni ejecuta acciones." },
+  prueba_conexion: { nombre: "Pruebas de conexión · Jev", detalle: "Evaluaciones mínimas iniciadas desde Ajustes." },
+};
+
 // Tiempo de cómputo estimado: duración media de cada modelo (ponderada por sus tareas) × tareas hechas.
 // El servidor no suma la duración de cada tarea, así que es una estimación y se muestra como tal.
 export function tiempoComputoSeg(data: Analytics): number | null {
@@ -257,15 +264,17 @@ export function AnalyticsPage() {
                           <td data-etiqueta="Coste IA" className="an-numero">{r.calls > 0 && r.sinCoste === r.calls ? "—" : usd(r.cost)}</td>
                         </tr>
                       ))}
-                    <tr>
-                      <th scope="row" data-etiqueta="Origen">
-                        <span className="an-uso-nombre">Recomendaciones del chat</span>
-                        <span className="an-uso-detalle">Se calculan localmente; no llaman a un modelo.</span>
-                      </th>
-                      <td data-etiqueta="Llamadas IA" className="an-numero">0</td>
-                      <td data-etiqueta="Tokens" className="an-numero">0</td>
-                      <td data-etiqueta="Coste IA" className="an-numero">{usd(0)}</td>
-                    </tr>
+                    {(data.usoJev ?? []).map((r) => (
+                      <tr key={r.tipo}>
+                        <th scope="row" data-etiqueta="Origen">
+                          <span className="an-uso-nombre">{TIPO_USO_JEV[r.tipo].nombre}</span>
+                          <span className="an-uso-detalle">{TIPO_USO_JEV[r.tipo].detalle}</span>
+                        </th>
+                        <td data-etiqueta="Llamadas IA" className="an-numero">{compact(r.calls)}</td>
+                        <td data-etiqueta="Tokens" className="an-numero">{compact(r.tokens)}</td>
+                        <td data-etiqueta="Coste IA" className="an-numero">—</td>
+                      </tr>
+                    ))}
                     <tr>
                       <th scope="row" data-etiqueta="Origen">
                         <span className="an-uso-nombre">Lectura por voz</span>
@@ -279,7 +288,7 @@ export function AnalyticsPage() {
                 </table>
               </div>
               <p className="an-nota">
-                El contexto y la actualización de la memoria del proyecto se procesan dentro de las tareas del agente. Sus tokens y coste ya están incluidos y no se miden por separado.
+                Las llamadas de Jev aparecen aparte de las del agente y se filtran por periodo, proyecto y modelo. TypeSafe informa tokens de entrada y salida, pero esta respuesta no incluye el coste; por eso se muestra «—».
               </p>
             </section>
 

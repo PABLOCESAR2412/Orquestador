@@ -12,6 +12,7 @@ import { publicar } from "./bus";
 import { publicarEstado, registrarEvento } from "./eventos";
 import { ejecutarAgente, ErrorCuota, promptContinuacion, type ResultadoAgente } from "./ejecutar";
 import { redactar } from "./redaccion";
+import { clasificarTareaJev } from "./jev";
 import {
   extraerJson,
   MAX_PLANES,
@@ -412,6 +413,37 @@ async function ejecutarTarea(task: QueuedTask) {
 
   const controller = new AbortController();
   controllers.set(task.id, controller);
+
+  // Jev clasifica cada tarea una vez; la sugerencia no cambia el modelo ni los permisos.
+  if (!db.query(
+    "SELECT 1 AS ok FROM task_events WHERE task_id = ? AND kind = 'clasificacion_jev' LIMIT 1",
+  ).get(task.id)) {
+    void clasificarTareaJev({
+      prompt: task.prompt,
+      proyectoId: task.project_id,
+      tareaId: task.id,
+      signal: controller.signal,
+    }).then((sugerencia) => {
+      if (!sugerencia) return;
+      const nombre: Record<string, string> = {
+        correccion: "corrección",
+        funcion: "función",
+        interfaz: "interfaz",
+        documentacion: "documentación",
+        investigacion: "investigación",
+        mantenimiento: "mantenimiento",
+        operaciones: "operaciones",
+      };
+      const confianza = sugerencia.confianza > 0 ? ` · ${Math.round(sugerencia.confianza * 100)} % de confianza` : "";
+      registrarEvento(
+        task.id,
+        "clasificacion_jev",
+        `Jev sugiere «${nombre[sugerencia.categoria] ?? sugerencia.categoria}»${confianza}. Es informativo: Telo conserva el modelo y las aprobaciones.`,
+      );
+    }).catch(() => {
+      // Clasificar es auxiliar: si Jev falla, la tarea sigue su flujo normal.
+    });
+  }
 
   let salida: RegistroSalida;
   try {

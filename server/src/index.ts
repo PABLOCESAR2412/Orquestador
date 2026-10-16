@@ -27,6 +27,7 @@ import { asegurarRutaInstalada } from "./instalacion";
 import { prepararCarpetaGlobal } from "./skills";
 import { github } from "./routes/github";
 import { uso } from "./routes/uso";
+import { jevRoute } from "./routes/jev";
 import { startScheduler } from "./programadas";
 import { startWorker } from "./worker";
 import { auth } from "./routes/auth";
@@ -138,6 +139,7 @@ app.route("/api", skillsRoute);
 app.route("/api", proyectoConfig);
 app.route("/api", repositoryActions);
 app.route("/api", uso);
+app.route("/api", jevRoute);
 app.route("/api", github);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
