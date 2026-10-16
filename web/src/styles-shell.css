@@ -201,9 +201,9 @@
 .tl-grupo:first-child { margin-top: 6px; }
 .tl-grupo-titulo {
   padding: 0 10px 4px;
-  color: var(--ink-2);
+  color: var(--ink-3);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.06em;
 }
