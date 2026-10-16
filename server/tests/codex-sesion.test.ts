@@ -29,3 +29,18 @@ test("sin Codex instalado no hay sesión confirmada", async () => {
   try { expect(await sesionCodexConectada(true)).toBe(false); }
   finally { which.mockRestore(); }
 });
+
+test("una comprobación forzada después del login no reutiliza una consulta anterior pendiente", async () => {
+  const which = spyOn(Bun, "which").mockReturnValue("codex-falso");
+  let terminar!: (codigo: number) => void;
+  let n = 0;
+  const spawn = spyOn(Bun, "spawn").mockImplementation((() => ({ exited: ++n === 1 ? new Promise<number>(resolve => { terminar = resolve; }) : Promise.resolve(0), kill() {} })) as unknown as typeof Bun.spawn);
+  try {
+    const anterior = sesionCodexConectada(true);
+    const nueva = sesionCodexConectada(true);
+    terminar(1);
+    expect(await anterior).toBe(false);
+    expect(await nueva).toBe(true);
+    expect(n).toBe(2);
+  } finally { spawn.mockRestore(); which.mockRestore(); }
+});

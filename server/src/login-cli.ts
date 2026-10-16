@@ -61,7 +61,10 @@ export async function sesionCodexConectada(forzar = false): Promise<boolean> {
   if (!codex) return false;
   const clave = `${codex}\0${carpetaHome()}\0${process.env.CODEX_HOME ?? ""}`;
   if (!forzar && comprobacion?.clave === clave && comprobacion.hasta > Date.now()) return comprobacion.conectada;
-  if (consulta?.clave === clave) return consulta.promesa;
+  if (consulta?.clave === clave) {
+    if (!forzar) return consulta.promesa;
+    await consulta.promesa;
+  }
   const promesa = (async () => {
     let proc: ReturnType<typeof Bun.spawn> | undefined;
     let reloj: ReturnType<typeof setTimeout> | undefined;
@@ -139,26 +142,10 @@ export async function iniciarLoginCodex(): Promise<LoginCodex> {
 }
 
 export async function confirmarLoginCodex(): Promise<LoginCodex> {
-  if (await sesionCodexConectada(true)) {
+  // Una sesión anterior no completa un nuevo flujo de dispositivo todavía en curso.
+  if (await sesionCodexConectada(true) && sesion?.estado !== "esperando") {
     if (sesion) sesion.estado = "conectado";
     return estadoLoginCodex();
-  }
-  // Si el CLI está en ejecución, enviar Enter en caso de que esté esperando confirmación interactiva
-  if (sesion?.estado === "esperando" && sesion.proc) {
-    try {
-      const stdin = sesion.proc.stdin;
-      if (stdin && typeof stdin === "object" && "write" in stdin) {
-        // Enviar salto de línea
-        (stdin as { write: (d: Uint8Array) => void; flush?: () => void }).write(new TextEncoder().encode("\n"));
-        (stdin as { flush?: () => void }).flush?.();
-      }
-    } catch {
-      // Ignorar si el stdin no admite escritura
-    }
-    await Bun.sleep(1200);
-    if (await sesionCodexConectada(true)) {
-      sesion.estado = "conectado";
-    }
   }
   return estadoLoginCodex();
 }
