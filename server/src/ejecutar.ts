@@ -39,6 +39,42 @@ export type OpcionesAgente = {
 // `modelo` es el que realmente respondió (puede ser el de respaldo), para registrar el uso.
 export type ResultadoAgente = RunResult & { modelo: string };
 
+// Un único límite para chats y tareas, sin depender del proveedor elegido.
+const MAX_AGENTES_SIMULTANEOS = 10;
+let agentesActivos = 0;
+const colaAgentes: { signal?: AbortSignal; resolve: () => void; reject: (error: Error) => void; cancelar?: () => void }[] = [];
+
+function liberarAgente(): void {
+  const siguiente = colaAgentes.shift();
+  if (siguiente) {
+    if (siguiente.cancelar) siguiente.signal?.removeEventListener("abort", siguiente.cancelar);
+    siguiente.resolve();
+    return;
+  }
+  agentesActivos -= 1;
+}
+
+async function reservarAgente(signal?: AbortSignal): Promise<() => void> {
+  if (signal?.aborted) throw new Error("Ejecución cancelada.");
+  if (agentesActivos < MAX_AGENTES_SIMULTANEOS && colaAgentes.length === 0) {
+    agentesActivos += 1;
+    return liberarAgente;
+  }
+  await new Promise<void>((resolve, reject) => {
+    const espera: (typeof colaAgentes)[number] = { signal, resolve, reject };
+    if (signal) {
+      espera.cancelar = () => {
+        const indice = colaAgentes.indexOf(espera);
+        if (indice !== -1) colaAgentes.splice(indice, 1);
+        reject(new Error("Ejecución cancelada."));
+      };
+      signal.addEventListener("abort", espera.cancelar, { once: true });
+    }
+    colaAgentes.push(espera);
+  });
+  return liberarAgente;
+}
+
 // Cada paso se persiste al llegar: fallos, cancelaciones y respaldos conservan el consumo previo.
 export function registrarUsoAgente(
   modelo: string,
@@ -180,7 +216,7 @@ async function varianteSoportada(modelo: string, variante: string | null | undef
   }
 }
 
-export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAgente> {
+async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoAgente> {
   // Claves de proveedor (Ajustes) y secretos del proyecto. Si un nombre se repite, gana el del proyecto.
   const propias: Record<string, string> = {
     ...entornoProveedores(),
@@ -269,5 +305,14 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
     } catch (errRespaldo) {
       throw comoCuota(errRespaldo, respaldo);
     }
+  }
+}
+
+export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAgente> {
+  const liberar = await reservarAgente(opts.signal);
+  try {
+    return await ejecutarAgenteReservado(opts);
+  } finally {
+    liberar();
   }
 }

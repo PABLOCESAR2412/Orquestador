@@ -4,7 +4,7 @@ Este archivo describe cómo trabajan los agentes que Orquestador lanza para cada
 
 ## Flujo de una tarea
 
-1. **Cola.** La tarea entra como `queued`. Solo corre una a la vez; las demás esperan.
+1. **Cola.** La tarea entra como `queued`. Corren hasta diez tareas independientes; dos tareas del mismo proyecto se serializan.
 2. **Analizador.** Lee la tarea y su contexto, y produce un plan. No modifica archivos.
 3. **Aprobación.** Si el plan incluye commit, push, PR o cambios fuera del workspace, la tarea espera la aprobación del usuario en la app. Sin aprobación, esa parte no se ejecuta.
 4. **Obrero.** Ejecuta el plan aprobado dentro de su workspace, prueba lo que cambió y escribe un reporte.

@@ -30,13 +30,19 @@ beforeAll(() => {
   carpeta = mkdtempSync(join(tmpdir(), "telo-turnos-"));
   const bin = join(carpeta, "bin");
   mkdirSync(bin);
-  // Con LENTO tarda 1,5 s; con FALLO sale con error; en otro caso responde al instante.
+  // Con LENTO tarda 1,5 s; las pruebas concurrentes incluyen modelo y prompt en la respuesta.
   writeFileSync(
     join(bin, "opencode"),
     `#!/bin/sh
-for a in "$@"; do ultimo="$a"; done
+anterior=""
+for a in "$@"; do
+  if [ "$anterior" = "-m" ]; then modelo="$a"; fi
+  anterior="$a"
+  ultimo="$a"
+done
 case "$ultimo" in *LENTO*) sleep 1.5 ;; esac
 case "$ultimo" in *FALLO*) echo "error interno del agente" >&2; exit 1 ;; esac
+case "$ultimo" in *CONCURRENTE*) id=$(printf '%s' "$ultimo" | sed -n 's/.*CONCURRENTE-\\([0-9][0-9]*\\) LENTO.*/\\1/p'); printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"%s: %s"}}\\n' "$modelo" "$id"; exit 0 ;; esac
 echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"Respuesta lista."}}'
 `,
   );
@@ -53,9 +59,9 @@ afterAll(() => {
   rmSync(carpeta, { recursive: true, force: true });
 });
 
-function conversacion(): string {
+function conversacion(model = "opencode/prueba"): string {
   const id = crypto.randomUUID();
-  db.query("INSERT INTO conversations (id, title, model) VALUES (?, 'Chat de prueba', 'opencode/prueba')").run(id);
+  db.query("INSERT INTO conversations (id, title, model) VALUES (?, 'Chat de prueba', ?)").run(id, model);
   return id;
 }
 
@@ -82,7 +88,26 @@ function enviar(id: string, content: string) {
   });
 }
 
-describe("turno del chat en segundo plano", () => {
+// Estas pruebas lanzan grupos de procesos con `setsid`, igual que el servidor Linux.
+describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
+  test("diez conversaciones responden en paralelo y cada una conserva su modelo y su mensaje", async () => {
+    const lote = Array.from({ length: 10 }, (_, i) => ({
+      id: conversacion(`opencode/modelo-${i % 3}`),
+      prompt: `CONCURRENTE-${i} LENTO`,
+    }));
+    const inicio = Date.now();
+    const respuestas = await Promise.all(lote.map(({ id, prompt }) => enviar(id, prompt)));
+    expect(respuestas.map((respuesta) => respuesta.status)).toEqual(Array(10).fill(202));
+
+    await esperar(() => lote.every(({ id }) => mensajes(id).some((mensaje) => mensaje.role === "assistant")));
+    expect(Date.now() - inicio).toBeLessThan(8_000);
+    for (let i = 0; i < lote.length; i++) {
+      const { id, prompt } = lote[i]!;
+      const respuesta = mensajes(id).find((mensaje) => mensaje.role === "assistant");
+      expect(respuesta?.content).toBe(`opencode/modelo-${i % 3}: ${i}`);
+    }
+  }, 15_000);
+
   test("el POST responde 202 antes de que el agente termine, y la respuesta llega después", async () => {
     const id = conversacion();
     const inicio = Date.now();

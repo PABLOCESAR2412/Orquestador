@@ -37,6 +37,9 @@ try {
     let approvals = 0;
     let skillInstallRequests = 0;
     let sinDatos = false;
+    let anunciarEnvioA;
+    let liberarEnvioA;
+    const envioAIniciado = new Promise(resolve => { anunciarEnvioA = resolve; });
     await page.route("**/api/**", async route => {
       const path = new URL(route.request().url()).pathname;
       let data = [];
@@ -44,17 +47,24 @@ try {
       if (path === "/api/login") { authenticated = true; data = { ok: true }; }
       else if (path === "/api/conversations") data = [
         { id: "c1", title: "Prueba de flujo", model: "google/prueba", project_id: "p1", project_name: "Pruebas", created_at: now },
-        { id: "c2", title: "Chat de ayer", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 86_400_000).toISOString() },
+        { id: "c2", title: "Chat paralelo", model: "nvidia/nemotron-test", project_id: null, project_name: null, created_at: now },
         { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
         { id: "c4", title: "Chat anterior", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() },
       ];
       else if (path === "/api/conversations/c1/messages") {
         if (route.request().method() === "POST") {
           const body = route.request().postDataJSON();
+          if (body.content === "Envío del chat A") {
+            anunciarEnvioA();
+            await new Promise(resolve => { liberarEnvioA = resolve; });
+            messages.push({ id: "u-paralelo", role: "user", content: body.content, created_at: now }, { id: "a-paralelo", role: "assistant", content: "Respuesta del chat A", created_at: now });
+            return route.fulfill({ json: { messages: messages.slice(-2) } });
+          }
           messages.push({ id: "u3", role: "user", content: body.content, created_at: now }, { id: "a3", role: "assistant", content: "Mensaje recibido", created_at: now });
           data = { messages: messages.slice(-2) };
         } else data = messages;
       }
+      else if (path === "/api/conversations/c2/messages") data = [];
       else if (path === "/api/conversations/c1/acciones") data = actions;
       else if (path === "/api/conversations/c1/tasks" || path === "/api/tasks") data = [task];
       else if (path === "/api/tasks/t1/diff") data = { estado: "sin_cambios", archivos: [], hash: null, diff: "", remoto: true, aprobaciones: { commit: null, push: null } };
@@ -124,6 +134,19 @@ try {
     await page.getByText("Completada", { exact: true }).waitFor();
     assert.equal(approvals, 1);
     assert.equal(await page.locator('article[aria-label="Acción de Git"] [role="alert"]').count(), 0);
+    await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Envío del chat A");
+    const requestChatA = page.waitForRequest(request => request.url().endsWith("/api/conversations/c1/messages") && request.method() === "POST" && request.postDataJSON().content === "Envío del chat A");
+    await page.getByRole("button", { name: "Enviar", exact: true }).click();
+    await Promise.all([requestChatA, envioAIniciado]);
+    if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
+    await page.getByRole("button", { name: "Chat paralelo", exact: true }).click();
+    await page.getByRole("heading", { name: "Chat paralelo", exact: true }).waitFor();
+    assert.equal(await page.locator(".tl-pensando").count(), 0);
+    assert.equal((await page.locator(".tl-hilo-columna").textContent()).includes("Envío del chat A"), false);
+    liberarEnvioA();
+    if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
+    await page.getByRole("button", { name: "Prueba de flujo", exact: true }).click();
+    await page.getByText("Respuesta del chat A", { exact: true }).waitFor();
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Prueba de mensaje");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByText("Mensaje recibido", { exact: true }).waitFor();
