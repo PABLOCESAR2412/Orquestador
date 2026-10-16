@@ -92,8 +92,10 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
     }
     if (b.action === "push" && !diff?.remoto)
       return c.json({ error: "sin_remoto" }, 409);
+    const cfg = configGit(projectId);
+    const remotoDestino = diff?.remoto_url ?? cfg.remote ?? null;
     const autenticacion = b.action === "push" || b.action === "pr"
-      ? fuenteAutenticacionGithub(projectId, b.action)
+      ? fuenteAutenticacionGithub(projectId, b.action, remotoDestino)
       : {
           tipo: "ninguna" as const,
           origen: "ninguna" as const,
@@ -107,7 +109,6 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
         detail: "Vincula la GitHub App o revisa las credenciales anteriores antes de preparar esta autorización.",
       }, 409);
     }
-    const cfg = configGit(projectId);
     const payload = {
       autenticacion,
       autorGit: cfg.author_name,
@@ -375,7 +376,7 @@ async function validarAutenticacionYAcceso(
   if (!esperada || esperada.tipo === "ninguna") {
     throw new Error("Esta autorización no registró qué credencial usar. Prepara una nueva para revisar el acceso antes de aprobar.");
   }
-  const actual = fuenteAutenticacionGithub(projectId, accion);
+  const actual = fuenteAutenticacionGithub(projectId, accion, payload.remote);
   if (
     actual.origen !== esperada.origen ||
     actual.cuenta !== esperada.cuenta ||

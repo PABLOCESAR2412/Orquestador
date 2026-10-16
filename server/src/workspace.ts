@@ -66,13 +66,21 @@ const URL_GITHUB =
 
 // Patrones de nombre que parecen secretos. Se comparan con el nombre del archivo, en minúsculas.
 const PATRONES_SENSIBLES = [
-  /^\.env(\..*)?$/,
+  /^\.env(\.(local|production|prod|staging|dev|development))?$/,
   /\.(pem|key|p12|pfx)$/,
-  /^id_(rsa|ed25519)/,
-  /^credentials/,
-  // «secret» o «secrets» como palabra del nombre (client_secret.json, secrets.yaml), no dentro de otra
-  // palabra: así secretos.ts o proyecto-secretos.tsx son código normal y no bloquean el commit.
-  /(^|[._-])secrets?([._-]|$)/,
+  /^id_(rsa|ed25519)$/,
+  /^credentials(\.(json|yaml|yml|env|txt))?$/,
+  /(^|[._-])secrets?(\.(json|yaml|yml|env|txt))$/,
+];
+
+const SUFIJOS_EJEMPLO = [
+  ".example",
+  ".sample",
+  ".template",
+  ".dist",
+  ".default",
+  ".defaults",
+  ".schema",
 ];
 
 // Error con código para la interfaz. Los códigos se traducen en web/src/lib/model.ts.
@@ -187,6 +195,9 @@ export function urlGithubPermitida(url: string): string | null {
 
 export function esSensible(ruta: string): boolean {
   const nombre = (ruta.split("/").pop() ?? ruta).toLowerCase();
+  if (SUFIJOS_EJEMPLO.some((sufijo) => nombre.endsWith(sufijo))) return false;
+  if (/\.env\.(example|sample|template|dist|default|test)/.test(nombre)) return false;
+  if (/\.(ts|tsx|js|jsx|mjs|cjs|md|mdx|html|css|scss|less)$/.test(nombre)) return false;
   return PATRONES_SENSIBLES.some((patron) => patron.test(nombre));
 }
 

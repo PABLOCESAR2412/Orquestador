@@ -842,6 +842,8 @@ export type GitConfig = {
   inicializado: boolean;
   ocupado: boolean;
   token: boolean;
+  tokenProyecto?: boolean;
+  tokenGlobal?: boolean;
   prToken: boolean;
   ssh: boolean;
   github: GithubCuenta;

@@ -120,7 +120,9 @@ proyectoConfig.get("/projects/:id/git", async (c) => {
     github: cuentaGithubGlobal(),
     inicializado: repo?.inicializado ?? tieneGitReal(cwd),
     ocupado: repo === null,
-    token: !!valorSecreto(id, "GITHUB_TOKEN") || !!tokenGithubGlobal(),
+    token: !!valorSecreto(id, "GITHUB_TOKEN"),
+    tokenProyecto: !!valorSecreto(id, "GITHUB_TOKEN"),
+    tokenGlobal: !instalacionSeleccionadaGithubApp() && !!tokenGithubGlobal(),
     prToken: !!valorSecreto(id, "GITHUB_PR_TOKEN"),
     ssh: !!clavePublicaDe(id),
   });
@@ -168,9 +170,18 @@ export type FuenteAutenticacionGithub = {
   instalacion_id: number | null;
 };
 
-export function fuenteAutenticacionGithub(projectId: string, accion: AccionGithub): FuenteAutenticacionGithub {
+export function fuenteAutenticacionGithub(
+  projectId: string,
+  accion: AccionGithub,
+  remotoOpt?: string | null,
+): FuenteAutenticacionGithub {
+  const remoto = remotoOpt ?? configGit(projectId).remote;
+  const ownerMatch = remoto ? /github\.com\/([A-Za-z0-9-]+)\//i.exec(remoto) : null;
+  const ownerRepo = ownerMatch ? ownerMatch[1].toLowerCase() : null;
   const instalacion = instalacionSeleccionadaGithubApp();
-  if (instalacion) {
+
+  // Si hay GitHub App configurada y coincide con el dueño del repositorio (o no hay dueño conocido aún)
+  if (instalacion && (!ownerRepo || instalacion.login.toLowerCase() === ownerRepo)) {
     return {
       tipo: "github_app",
       origen: "app",
@@ -179,6 +190,8 @@ export function fuenteAutenticacionGithub(projectId: string, accion: AccionGithu
       instalacion_id: instalacion.id,
     };
   }
+
+  // Sesión global activa de GitHub (máxima precedencia tras la GitHub App para identificar la cuenta de usuario)
   if (tokenGithubGlobal()) {
     return {
       tipo: "credencial_anterior",
@@ -188,11 +201,13 @@ export function fuenteAutenticacionGithub(projectId: string, accion: AccionGithu
       instalacion_id: null,
     };
   }
-  if (accion === "pr" && valorSecreto(projectId, "GITHUB_PR_TOKEN")) {
+
+  // Si no hay sesión global activa ni App coincidente, usamos credenciales locales del proyecto
+  if (accion === "push" && clavePublicaDe(projectId)) {
     return {
-      tipo: "credencial_anterior",
-      origen: "token_pr_proyecto",
-      etiqueta: "Credencial anterior del proyecto",
+      tipo: "clave_ssh",
+      origen: "ssh",
+      etiqueta: "Clave SSH del proyecto",
       cuenta: null,
       instalacion_id: null,
     };
@@ -206,15 +221,27 @@ export function fuenteAutenticacionGithub(projectId: string, accion: AccionGithu
       instalacion_id: null,
     };
   }
-  if (accion === "push" && clavePublicaDe(projectId)) {
+  if (accion === "pr" && valorSecreto(projectId, "GITHUB_PR_TOKEN")) {
     return {
-      tipo: "clave_ssh",
-      origen: "ssh",
-      etiqueta: "Clave SSH del proyecto",
+      tipo: "credencial_anterior",
+      origen: "token_pr_proyecto",
+      etiqueta: "Credencial anterior del proyecto",
       cuenta: null,
       instalacion_id: null,
     };
   }
+
+  // Si no hay credenciales locales del proyecto, pero hay GitHub App conectada:
+  if (instalacion) {
+    return {
+      tipo: "github_app",
+      origen: "app",
+      etiqueta: "GitHub App",
+      cuenta: instalacion.login,
+      instalacion_id: instalacion.id,
+    };
+  }
+
   return {
     tipo: "ninguna",
     origen: "ninguna",
@@ -362,7 +389,7 @@ export async function comprobarAccesoGithub(
   projectId: string,
   remoto: string,
   accion: AccionGithub,
-  fuente = fuenteAutenticacionGithub(projectId, accion),
+  fuente = fuenteAutenticacionGithub(projectId, accion, remoto),
 ) {
   if (fuente.tipo === "ninguna") {
     throw new Error("No hay una credencial de GitHub disponible. Vincula la GitHub App o revisa las credenciales anteriores.");
