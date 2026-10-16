@@ -128,15 +128,15 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
       "-m",
       "base",
     ]);
-    if (model === "fixture/git") {
-      await git(["remote", "add", "origin", "https://github.com/ejemplo/worker-pruebas"]);
-      const { guardarSecreto } = await import("../src/secretos");
-      guardarSecreto(proyecto, "GITHUB_TOKEN", "ghp_credencialficticiaparapruebas123456789");
-    }
+    if (model === "fixture/git") await git(["remote", "add", "origin", "https://github.com/ejemplo/worker-pruebas"]);
     db.query("INSERT INTO projects(id,name,repo_path) VALUES (?,'Worker de prueba',?)").run(
       proyecto,
       repo,
     );
+    if (model === "fixture/git") {
+      const { guardarSecreto } = await import("../src/secretos");
+      guardarSecreto(proyecto, "GITHUB_TOKEN", "ghp_credencialficticiaparapruebas123456789");
+    }
     db.query("INSERT INTO conversations(id,project_id) VALUES (?,?)").run(conversacion, proyecto);
     const id = crearTarea({
       prompt: "Crear el archivo permitido",
