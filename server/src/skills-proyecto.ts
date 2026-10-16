@@ -285,6 +285,8 @@ const SKILLS_CONOCIDAS: Record<string, { owner: string; repo: string; name: stri
   caveman: { owner: "JuliusBrussee", repo: "caveman", name: "caveman" },
   impeccable: { owner: "pbakaus", repo: "impeccable", name: "impeccable" },
   "frontend-design": { owner: "vercel-labs", repo: "agent-skills", name: "frontend-design" },
+  context7: { owner: "upstash", repo: "context7", name: "context7" },
+  "context-7": { owner: "upstash", repo: "context7", name: "context7" },
 };
 
 // Interpreta el comando de Skills CLI como datos. Soporta comandos completos, abreviados y URLs.

@@ -194,8 +194,11 @@ const FORMA_PLAN = `{
 
 const REGLAS_PLAN = [
   "Reglas:",
+  "- Investiga antes de planificar: revisa la estructura del proyecto, los archivos relevantes y las skills instaladas (como context7 para frameworks o librerías). Razona paso a paso la arquitectura de la solución.",
+  "- Si la tarea requiere investigación especializada, pruebas o verificación intensiva, prevé el uso de subagentes o skills del proyecto.",
   "- De 3 a 8 pasos, concretos y comprobables. Nunca más de 12.",
   "- Cada paso nombra los archivos que toca, si ya los conoces, con rutas relativas dentro del workspace.",
+  "- Incluye criterios de aceptación claros y verificación de calidad (clean code, pruebas o chequeo de tipos).",
   "- Nunca incluyas rutas absolutas, rutas con .. ni archivos o carpetas dentro de .git. Las acciones Git se declaran en requiere_aprobacion; .git no es un archivo del plan.",
   '- "requiere_aprobacion": incluye "commit", "push" o "pr" solo si el plan necesita alguna de esas acciones. Si no, [].',
   "- Telo ejecuta commit, push y PR mediante tarjetas de autorización al terminar. No incluyas su ejecución como pasos del obrero; los pasos solo preparan y comprueban los cambios.",
@@ -241,6 +244,8 @@ export function promptObrero(plan: Plan): string {
     "Eres el obrero de Telo. Ejecuta solo el plan aprobado que aparece abajo, dentro de tu carpeta de trabajo.",
     "",
     "Reglas:",
+    "- Razonamiento y rigor: Antes de modificar cada archivo, revisa su contexto y convenciones. Aplica principios de clean code y modularidad.",
+    "- Skills y herramientas: Utiliza las skills del proyecto (como context7 para APIs/documentación de librerías, playwright para pruebas e interfaz) o subagentes cuando aporten valor a la tarea.",
     '- Haz únicamente los pasos del plan. Si necesitas algo que el plan no cubre, o algo fuera de tu carpeta de trabajo, no lo hagas: responde con "estado": "desviacion" y explica el motivo en "desviacion".',
     "- No hagas commit, push ni PR. Deja los cambios listos para revisión.",
     "- Si el plan menciona commit, push o PR, prepara y verifica los cambios: Telo ejecutará esas operaciones al autorizar el usuario. Esa separación no es una desviación del plan.",

@@ -202,6 +202,8 @@ export function ChatPage() {
   const modeloAgotadoChat = current?.cuota_modelo ?? (tareaChat?.status === "sin_cuota"
     ? tareaChat.modelo_agotado ?? tareaChat.model
     : null);
+  const esperandoPlan = tareaChat?.status === "waiting_approval";
+  const planPendiente = esperandoPlan && Boolean(tareaChat?.plan && tareaChat?.plan_hash);
   const accionesGit = useQuery({
     queryKey: ["repository-actions", selectedId],
     queryFn: () => api.repositoryActions(selectedId!),
@@ -397,6 +399,32 @@ export function ChatPage() {
     },
   });
 
+  const decidirPlanMutation = useMutation({
+    mutationFn: ({ decision, feedback }: { decision: "approve" | "revise"; feedback?: string }) => {
+      if (!tareaChat?.id || !tareaChat?.plan_hash) throw new Error("No hay plan pendiente de aprobación");
+      return api.decidePlan(tareaChat.id, {
+        decision,
+        plan_hash: tareaChat.plan_hash,
+        feedback: feedback?.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      cambiarBorrador("");
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
+      void qc.invalidateQueries({ queryKey: ["conversation-tasks"] });
+      if (tareaChat?.id) void qc.invalidateQueries({ queryKey: ["task", tareaChat.id] });
+    },
+  });
+
+  const cancelarPlanMutation = useMutation({
+    mutationFn: (taskId: string) => api.cancelTask(taskId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
+      void qc.invalidateQueries({ queryKey: ["conversation-tasks"] });
+      if (tareaChat?.id) void qc.invalidateQueries({ queryKey: ["task", tareaChat.id] });
+    },
+  });
+
   // Un solo control: el modelo y su nivel de esfuerzo se eligen juntos. null en esfuerzo es "Auto".
   const elegirModelo = (m: ModelInfo | null, esfuerzo: string | null = null) => {
     setPickerOpen(false);
@@ -416,6 +444,10 @@ export function ChatPage() {
     !!selectedId && !enviandoActual && !bloqueoEnvioCola && (draft.trim() !== "" || adjuntosListos.length > 0);
 
   const submit = () => {
+    if (planPendiente) {
+      decidirPlanMutation.mutate({ decision: "approve", feedback: draft.trim() || undefined });
+      return;
+    }
     if (!puedeEnviar || !selectedId) return;
     const content = componerMensaje(draft, adjuntosListos);
     if (!content) return;
@@ -596,12 +628,13 @@ export function ChatPage() {
   const settingsError = configure.isError ? errorText(configure.error) : null;
   const docError = crearDoc.isError ? errorText(crearDoc.error) : null;
   const anclarError = anclar.isError ? errorText(anclar.error) : null;
-  const error = sendError ?? settingsError ?? docError ?? anclarError;
+  const planError = decidirPlanMutation.isError ? errorText(decidirPlanMutation.error) : null;
+  const cancelarPlanError = cancelarPlanMutation.isError ? errorText(cancelarPlanMutation.error) : null;
+  const error = sendError ?? settingsError ?? docError ?? anclarError ?? planError ?? cancelarPlanError;
 
   // El mensaje que se envió desde este dispositivo ya puede estar en la lista (el sondeo lo trae antes de terminar).
   const ultimoMensaje = lista.at(-1);
   const yaGuardado = enviandoActual && ultimoMensaje?.role === "user" && ultimoMensaje.content === envioActual?.content;
-  const esperandoPlan = tareaChat?.status === "waiting_approval";
   const tareaActiva = !!tareaChat && ["queued", "analyzing", "running"].includes(tareaChat.status);
   const siguiendoActual = seguirChat.isPending && seguirChat.variables === selectedId;
   const pensando = enviandoActual || siguiendoActual || (tareaChat ? tareaActiva : !!current?.ocupada);
@@ -1397,13 +1430,15 @@ export function ChatPage() {
                 rows={2}
                 value={draft}
                 placeholder={
-                  agenteOcupado && colaActiva
+                  planPendiente
+                    ? "Responde a las preguntas del plan, indica qué cambiar o pulsa Aprobar plan…"
+                    : agenteOcupado && colaActiva
                     ? "El agente está respondiendo; tu mensaje se añadirá a la cola"
                     : sugerencia
                     ? `${sugerencia} (Tab) o escribe un mensaje, usa $ o / para skills y comandos`
                     : "Escribe un mensaje, usa $ o / para skills y comandos, o pega archivos"
                 }
-                aria-label="Mensaje"
+                aria-label={planPendiente ? "Aclaraciones o cambios al plan" : "Mensaje"}
                 aria-autocomplete={menuSkillsAbierto || menuAbierto ? "list" : sugerencia ? "inline" : undefined}
                 aria-activedescendant={
                   menuSkillsAbierto
@@ -1463,6 +1498,10 @@ export function ChatPage() {
                   }
                   if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
+                    if (planPendiente) {
+                      decidirPlanMutation.mutate({ decision: "approve", feedback: draft.trim() || undefined });
+                      return;
+                    }
                     submit();
                   }
                 }}
@@ -1556,16 +1595,56 @@ export function ChatPage() {
                 </div>
 
                 <div className="tl-composer-der">
-                  <button
-                    type="submit"
-                    className="tl-enviar"
-                    aria-label="Enviar"
-                    disabled={!puedeEnviar}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
+                  {planPendiente ? (
+                    <div className="tl-composer-decisiones">
+                      <button
+                        type="button"
+                        className="ghost tl-boton-plan-cancelar"
+                        disabled={cancelarPlanMutation.isPending || decidirPlanMutation.isPending}
+                        onClick={() => {
+                          if (tareaChat?.id) cancelarPlanMutation.mutate(tareaChat.id);
+                        }}
+                        title="Cancelar la tarea actual"
+                      >
+                        {cancelarPlanMutation.isPending ? "Cancelando…" : "Cancelar tarea"}
+                      </button>
+                      {draft.trim() && (
+                        <button
+                          type="button"
+                          className="ghost tl-boton-plan-reanalizar"
+                          disabled={decidirPlanMutation.isPending}
+                          onClick={() => {
+                            decidirPlanMutation.mutate({ decision: "revise", feedback: draft.trim() });
+                          }}
+                          title="Solicitar al analizador que elabore un nuevo plan con estas aclaraciones"
+                        >
+                          {decidirPlanMutation.isPending ? "Enviando…" : "Re-analizar plan"}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="primary tl-boton-plan-aprobar"
+                        disabled={decidirPlanMutation.isPending}
+                        onClick={() => {
+                          decidirPlanMutation.mutate({ decision: "approve", feedback: draft.trim() || undefined });
+                        }}
+                        title={draft.trim() ? "Aprobar el plan incluyendo tus notas" : "Aprobar el plan"}
+                      >
+                        {decidirPlanMutation.isPending ? "Aprobando…" : "Aprobar plan"}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="submit"
+                      className="tl-enviar"
+                      aria-label="Enviar"
+                      disabled={!puedeEnviar}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

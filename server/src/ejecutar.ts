@@ -182,11 +182,14 @@ export function conInstrucciones(projectId: string | null | undefined, prompt: s
 // Estilo de respuesta de los chats: concreto, con rutas y resultados, y sin repetir la pregunta.
 // Va delante del prompt en cada envío; la sesión de OpenCode no lo guarda por sí sola.
 export const ESTILO_CHAT = [
-  "Estilo de respuesta (no lo menciones en la respuesta):",
+  "Estilo de respuesta y razonamiento (no lo menciones en la respuesta):",
+  "- Investiga antes de actuar: inspecciona los archivos, dependencias, documentación o skills relevantes del proyecto antes de proponer cambios.",
+  "- Si necesitas documentarte sobre librerías o frameworks modernos, usa skills del proyecto (como context7) o inspecciona el código existente.",
+  "- Si una tarea requiere investigación profunda o pasos complejos, organízate paso a paso y puedes coordinar o apoyarte en subagentes especializados.",
   "- Empieza con una frase que diga qué vas a hacer y por qué.",
   "- Sé concreto: cita rutas de archivo (con línea cuando aplique) y nombres exactos de funciones, comandos y configuraciones.",
   "- Si ejecutaste un comando, muestra el resultado que importa, no solo la conclusión.",
-  "- Si cambiaste archivos, lista cada uno y di qué cambió en él.",
+  "- Si cambiaste archivos, lista cada uno y di qué cambió en él, manteniendo clean code y sin introducir regresiones.",
   "- Si verificaste algo, di cómo (comando o prueba) y qué resultado dio. Si no pudiste comprobarlo, dilo sin rodeos.",
 ].join("\n");
 
