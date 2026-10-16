@@ -267,11 +267,14 @@ function promptDeFase(ctx: Contexto, prompt: string): string {
 // Sin cuota: la tarea se detiene con el modelo que se quedó sin tokens, sin pasar por "fallida".
 // Si ya tenía sesión, el usuario cambia de modelo y la sigue (ver seguirTarea); si no, se vuelve a
 // ejecutar la fase desde el principio.
-function pausarPorCuota(id: string, err: ErrorCuota, reanudable: boolean) {
+function pausarPorCuota(id: string, err: ErrorCuota, reanudable: boolean, conversationId: string | null) {
   db.transaction(() => {
     db.query(
       "UPDATE tasks SET status = 'sin_cuota', modelo_agotado = ?, error = ?, continuar = ?, finished_at = NULL WHERE id = ?",
     ).run(err.modelo, err.message, reanudable ? 1 : 0, id);
+    if (conversationId) {
+      db.query("UPDATE conversations SET cuota_modelo = ? WHERE id = ?").run(err.modelo, conversationId);
+    }
     registrarEvento(id, "sin_cuota", `Modelo ${err.modelo}`);
   })();
   publicarEstado(id);
@@ -461,7 +464,7 @@ async function ejecutarTarea(task: QueuedTask) {
       finish(task.id, "cancelled", { error: "Cancelada por el usuario." });
       avisarChat(task.id, "La tarea fue cancelada.");
     } else if (err instanceof ErrorCuota) {
-      pausarPorCuota(task.id, err, task.provider_session_id !== null);
+      pausarPorCuota(task.id, err, task.provider_session_id !== null, task.conversation_id);
     } else if (err instanceof TiempoAgotado || err instanceof ErrorFase) {
       finish(task.id, "failed", { error: err.message });
       avisarChat(task.id, err.message);

@@ -117,7 +117,7 @@ chat.get("/conversations/:id/tasks", (c) => {
   const id = c.req.param("id");
   if (!leerConversacion(id)) return c.json({ error: "conversation_not_found" }, 404);
   const filas = db.query<{ plan: string | null; reporte: string | null; [key: string]: unknown }, [string]>(
-    "SELECT id,title,status,model,effort,plan,reporte,plan_aprobado_en,plan_hash,approved_hash,error,conversation_id,created_at,started_at,finished_at FROM tasks WHERE conversation_id=? ORDER BY created_at,rowid",
+    "SELECT id,title,status,model,modelo_agotado,effort,plan,reporte,plan_aprobado_en,plan_hash,approved_hash,error,conversation_id,created_at,started_at,finished_at FROM tasks WHERE conversation_id=? ORDER BY created_at,rowid",
   ).all(id);
   const json = (valor: string | null): unknown => {
     try { return valor ? JSON.parse(valor) : null; } catch { return null; }
@@ -153,8 +153,8 @@ function chatOcupado(id: string): boolean {
 }
 
 function tareaDelChat(id: string) {
-  return db.query<{ id: string; status: string }, [string]>(
-    "SELECT id,status FROM tasks WHERE conversation_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1",
+  return db.query<{ id: string; status: string; model: string; modelo_agotado: string | null }, [string]>(
+    "SELECT id,status,model,modelo_agotado FROM tasks WHERE conversation_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1",
   ).get(id);
 }
 
@@ -339,6 +339,11 @@ chat.post("/conversations/:id/messages", async (c) => {
   }
   const bloqueo = motivoDeBloqueo(conv);
   if (bloqueo) return c.json({ error: bloqueo }, 409);
+  const tareaActual = conv.project_id ? tareaDelChat(conversationId) : null;
+  const modeloAgotado = conv.cuota_modelo ?? (tareaActual?.status === "sin_cuota"
+    ? tareaActual.modelo_agotado ?? tareaActual.model
+    : null);
+  if (modeloAgotado) return c.json({ error: "chat_quota_pending" }, 409);
 
   // Las órdenes directas de Git crean una tarjeta de autorización, sin ejecutar al agente.
   const pedido = /^(?:(?:haz|hacer|ejecuta|realiza|crea|crear|prepara|reintenta|por favor)\s+)*(?:de nuevo\s+)?(?:(?:un|el)\s+)?(?:git\s+(init|commit|push)|(?:un\s+)?(commit|push|pr)|(?:gh\s+pr\s+create)|(pull request))(?:\s+.*)?[.!]?$/i.exec(content);
@@ -390,15 +395,18 @@ chat.post("/conversations/:id/seguir", async (c) => {
   const conversationId = c.req.param("id");
   const conv = leerConversacion(conversationId);
   if (!conv) return c.json({ error: "conversation_not_found" }, 404);
-  if (!conv.cuota_modelo) return c.json({ error: "chat_sin_cuota" }, 409);
+  const tarea = conv.project_id ? tareaDelChat(conversationId) : null;
+  const modeloAgotado = conv.cuota_modelo ?? (tarea?.status === "sin_cuota"
+    ? tarea.modelo_agotado ?? tarea.model
+    : null);
+  if (!modeloAgotado) return c.json({ error: "chat_sin_cuota" }, 409);
 
   const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
-  if (model === conv.cuota_modelo) return c.json({ error: "modelo_sin_cambio" }, 409);
+  if (model === modeloAgotado) return c.json({ error: "modelo_sin_cambio" }, 409);
   const bloqueo = motivoDeBloqueo(conv);
   if (bloqueo) return c.json({ error: bloqueo }, 409);
 
   if (conv.project_id) {
-    const tarea = tareaDelChat(conversationId);
     if (!tarea || tarea.status !== "sin_cuota") return c.json({ error: "chat_sin_cuota" }, 409);
     const turno = guardarMensajeUsuario(conversationId, SEGUIR_VISIBLE);
     db.transaction(() => {

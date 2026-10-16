@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "El chat muestra el agotamiento de cuota y evita enviar mensajes hasta cambiar de modelo", "pr": null },
     { "fecha": "2026-10-11", "tipo": "mediano", "titulo": "Seguridad del agente y tareas interrumpidas", "pr": 12 },
     { "fecha": "2026-10-11", "tipo": "grande", "titulo": "Gestión de chats, aislamiento de agentes con bubblewrap, eventos en vivo y respaldos", "pr": 13 },
     { "fecha": "2026-10-11", "tipo": "grande", "titulo": "Git por tarea, aprobaciones de commit y push, secretos por proyecto y tareas programadas", "pr": 14 },

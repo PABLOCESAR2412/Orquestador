@@ -276,6 +276,9 @@ export function ChatPage() {
     refetchInterval: 3_000,
   });
   const tareaChat = current?.project_id ? tareasChat.data?.at(-1) : undefined;
+  const modeloAgotadoChat = current?.cuota_modelo ?? (tareaChat?.status === "sin_cuota"
+    ? tareaChat.modelo_agotado ?? tareaChat.model
+    : null);
   const accionesGit = useQuery({
     queryKey: ["repository-actions", selectedId],
     queryFn: () => api.repositoryActions(selectedId!),
@@ -454,6 +457,7 @@ export function ChatPage() {
     onSettled: (_data, _error, id) => {
       qc.invalidateQueries({ queryKey: ["messages", id] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["conversation-tasks", id] });
     },
   });
 
@@ -480,7 +484,7 @@ export function ChatPage() {
   const adjuntosListos = pendientes.flatMap((p) => (p.lectura.tipo === "texto" ? [p.lectura.adjunto] : []));
   const envioActual = selectedId ? enviosPorChat[selectedId] : undefined;
   const enviandoActual = !!envioActual;
-  const bloqueoEnvioCola = !colaActiva && (agenteOcupado || cola.length > 0);
+  const bloqueoEnvioCola = !!modeloAgotadoChat || (!colaActiva && (agenteOcupado || cola.length > 0));
   const puedeEnviar =
     !!selectedId && !enviandoActual && !bloqueoEnvioCola && (draft.trim() !== "" || adjuntosListos.length > 0);
 
@@ -1101,10 +1105,10 @@ export function ChatPage() {
                 />
               )}
               {tareasChat.isError && current?.project_id && <p className="tl-alerta" role="alert">{errorText(tareasChat.error)}</p>}
-              {current?.cuota_modelo && !pensando && (
+              {modeloAgotadoChat && !pensando && (
                 <AvisoCuota
-                  modeloAgotado={modelList.find((m) => m.id === current.cuota_modelo)?.name ?? current.cuota_modelo}
-                  puedeSeguir={!!current.model && current.model !== current.cuota_modelo}
+                  modeloAgotado={modelList.find((m) => m.id === modeloAgotadoChat)?.name ?? modeloAgotadoChat}
+                  puedeSeguir={!!current?.model && current.model !== modeloAgotadoChat}
                   seguirPendiente={siguiendoActual}
                   onCambiarModelo={() => setPickerOpen(true)}
                   onSeguir={() => selectedId && seguirChat.mutate(selectedId)}
