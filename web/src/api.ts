@@ -369,8 +369,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (res.status === 401 && !path.startsWith("/api/login") && location.pathname !== "/entrar") {
       location.assign("/entrar");
     }
-    const body = (await res.json().catch(() => ({}))) as { error?: string; detail?: string };
-    throw new ApiError(res.status, body.error ?? `http_${res.status}`, body.detail);
+    const body = (await res.json().catch(() => ({}))) as { error?: string; detail?: string; mensaje?: string };
+    throw new ApiError(res.status, body.error ?? `http_${res.status}`, body.detail ?? body.mensaje);
   }
   return res.json() as Promise<T>;
 }
@@ -612,6 +612,14 @@ export const api = {
   confirmarCodexLogin: () => request<LoginCodex>("/api/providers/codex/confirmar", { method: "POST" }),
   // Cuenta global de GitHub (en Ajustes) para operar sin claves SSH por proyecto.
   githubCuenta: () => request<GithubCuenta>("/api/github/cuenta"),
+  githubAppInstalaciones: () => request<GithubAppEstado>("/api/github/app/instalaciones"),
+  vincularGithubApp: (id: number) =>
+    request<{ ok: boolean; instalacion: GithubAppInstalacion; cuenta: GithubCuenta }>("/api/github/app/instalacion", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    }),
+  desvincularGithubApp: () =>
+    request<{ ok: boolean }>("/api/github/app/instalacion", { method: "DELETE" }),
   conectarGithubCuenta: (token: string) =>
     request<GithubCuenta>("/api/github/cuenta", { method: "POST", body: JSON.stringify({ token }) }),
   desconectarGithubCuenta: () =>
@@ -707,6 +715,23 @@ export type GithubCuenta = {
   avatar_url?: string;
   scopes?: string[];
   actualizado_en?: string;
+  metodo?: "app" | "token";
+  sesion_anterior?: boolean;
+};
+
+export type GithubAppInstalacion = {
+  id: number;
+  login: string;
+  name: string;
+  avatar_url: string;
+  repository_selection: "all" | "selected";
+};
+
+export type GithubAppEstado = {
+  configurado: boolean;
+  faltantes: string[];
+  seleccionada: number | null;
+  instalaciones: GithubAppInstalacion[];
 };
 
 export type Preferences = {

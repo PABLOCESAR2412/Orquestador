@@ -32,15 +32,6 @@ function ProyectoGit({ id }: { id: string }) {
     mutationFn: () => api.requestRepositoryAction(id, { action: "init" }),
     onSuccess: setAccion,
   });
-  const [token, setToken] = useState("");
-  const guardarToken = useMutation({
-    mutationFn: () => api.setProjectSecret(id, "GITHUB_TOKEN", token),
-    onSuccess: () => {
-      setToken("");
-      void qc.invalidateQueries({ queryKey: ["project-git", id] });
-      void qc.invalidateQueries({ queryKey: ["project-secrets", id] });
-    },
-  });
   const data = edicion ?? cfg.data;
   const cambiar = (
     campo: "remote" | "author_name" | "base_branch",
@@ -58,11 +49,13 @@ function ProyectoGit({ id }: { id: string }) {
     <section className="panel approval-panel" aria-label="Git y GitHub">
       <h2>Git y GitHub</h2>
       <p className="hint">
-        La cuenta conectada se usa para revisar el repositorio y autorizar subidas y pull requests.
+        La GitHub App vinculada en Ajustes revisa este repositorio y autoriza subidas y pull requests con permisos temporales.
         El nombre identifica tus commits; la rama indica el destino de los pull requests.
       </p>
       {cfg.data?.github.conectado ? (
-        <p role="status">Sesión de GitHub iniciada como {cfg.data.github.name} (@{cfg.data.github.login}).</p>
+        <p role="status">
+          {cfg.data.github.metodo === "app" ? "GitHub App vinculada" : "Sesión de GitHub anterior"} en {cfg.data.github.name} (@{cfg.data.github.login}).
+        </p>
       ) : (
         <p>Sin sesión de GitHub. Puedes conectar una cuenta en Ajustes.</p>
       )}
@@ -132,46 +125,16 @@ function ProyectoGit({ id }: { id: string }) {
       )}
       <p>
         {cfg.data?.github.conectado
-          ? `Usando la sesión global de GitHub${cfg.data.github.login ? ` (@${cfg.data.github.login})` : ""}.`
+          ? cfg.data.github.metodo === "app"
+            ? `Usando la GitHub App; Telo limita cada credencial a ${cfg.data.repository ?? "este repositorio"}.`
+            : `Usando la sesión global anterior de GitHub${cfg.data.github.login ? ` (@${cfg.data.github.login})` : ""}.`
           : cfg.data?.token
             ? "Acceso mediante token guardado en este proyecto."
           : cfg.data?.ssh
             ? "Clave SSH del proyecto configurada."
-            : "No hay credenciales para subir cambios."}
+            : "Vincula la instalación de GitHub App en Ajustes para clonar repositorios privados y subir cambios."}
       </p>
-      {!cfg.data?.github.conectado && <form
-        className="project-config-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          guardarToken.mutate();
-        }}
-      >
-        <label>
-          Token de GitHub para este proyecto
-          <input
-            type="password"
-            autoComplete="new-password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder="Se guarda cifrado; no se entrega al agente"
-          />
-        </label>
-        <p className="hint">
-          Solo hace falta si no conectas una cuenta global en Ajustes. El token queda cifrado en este
-          proyecto y no se entrega al agente.
-        </p>
-        <div>
-          <button
-            type="submit"
-            className="ghost"
-            disabled={!token.trim() || guardarToken.isPending}
-          >
-            Guardar token cifrado
-          </button>
-        </div>
-      </form>}
       {guardar.isSuccess && <p role="status">Configuración guardada.</p>}
-      {guardarToken.isSuccess && <p role="status">Token guardado.</p>}
       {comprobar.data && (
         <p role="status">
           Acceso a {comprobar.data.repo}.{" "}
@@ -180,7 +143,7 @@ function ProyectoGit({ id }: { id: string }) {
             : "GitHub no confirmó permiso de escritura; revisa los permisos del token."}
         </p>
       )}
-      {[guardar.error, guardarToken.error, comprobar.error, iniciar.error]
+      {[guardar.error, comprobar.error, iniciar.error]
         .filter(Boolean)
         .map((e, i) => (
           <p className="error" role="alert" key={i}>

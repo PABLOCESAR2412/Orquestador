@@ -68,6 +68,27 @@ Sin ese permiso, la pestaña muestra un aviso en lugar de los registros. El gast
 - **Instalar OpenCode** usa `npm` del PATH de `orquestador.service`. Si no hay `npm`, el botón lo dice. Instala en `~/.opencode`, que el agente ya ve en solo lectura. El servidor añade esa carpeta a su PATH sin reiniciar. No hace falta sudo.
 - **Login de Codex** necesita el CLI `codex` en el servidor. Antes de usarlo, confirma con `codex login --help` que existe `--device-auth`, y mira qué archivo de sesión crea (la app espera `~/.codex/auth.json`; si es otro, hay que cambiarlo en `server/src/login-cli.ts`).
 
+## GitHub App para repositorios (una vez)
+
+Telo puede usar una GitHub App instalada en tu cuenta para clonar repositorios privados, subir ramas y crear Pull Requests. En GitHub, limita la instalación a los repositorios de Telo y concede `Contents: read and write` y `Pull requests: read and write` (el permiso de metadatos de repositorio es de solo lectura y viene incluido). Telo solicita credenciales de instalación limitadas a un único repositorio y a `Contents: read` al clonar, `Contents: write` al subir o `Pull requests: write` al abrir un PR.
+
+1. En GitHub, crea una clave privada nueva para la App y copia el archivo `.pem` al VM por un canal seguro. No la guardes en el repo ni la pegues en Telo. Déjala legible solo por el usuario del servicio:
+
+   ```bash
+   sudo install -o orquestador -g orquestador -m 600 /ruta/segura/descargada.pem /etc/orquestador/github-app.pem
+   ```
+
+2. Añade el App ID y la ruta al archivo de entorno de `orquestador.service` (`/etc/orquestador/orquestador.env`):
+
+   ```text
+   TELO_GITHUB_APP_ID=123456
+   TELO_GITHUB_APP_PRIVATE_KEY_PATH=/etc/orquestador/github-app.pem
+   ```
+
+3. Reinicia el servicio. En Telo, abre Ajustes > Cuenta de GitHub y elige la instalación. Si agregas o quitas repositorios, cambia la selección desde los ajustes de instalación de GitHub; Telo solo podrá operar en esos repositorios.
+
+La App debe tener instalados los permisos antes de emitir credenciales. Los tokens de instalación duran una hora como máximo y Telo no los almacena. La antigua sesión o clave SSH del proyecto sigue disponible como compatibilidad durante la transición; al vincular la App, sus credenciales tienen prioridad.
+
 ## Qué no cubre
 
 - No corre migraciones a mano: las aplica el servidor al arrancar.

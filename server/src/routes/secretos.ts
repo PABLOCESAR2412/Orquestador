@@ -11,6 +11,7 @@ import { leerCuerpoJson, projectRepoPath } from "./projects";
 
 // Los valores nunca salen por la API: solo nombres y fechas. El valor se escribe una vez.
 export const secretosRoute = new Hono();
+const CREDENCIALES_GITHUB_PROYECTO = new Set(["GITHUB_TOKEN", "GITHUB_PR_TOKEN"]);
 
 // GET /api/projects/:id/secretos -> { disponible, secretos: [{ nombre, actualizado_en }] }
 secretosRoute.get("/projects/:id/secretos", (c) => {
@@ -25,6 +26,7 @@ secretosRoute.put("/projects/:id/secretos/:nombre", async (c) => {
   const nombre = c.req.param("nombre");
   if (!projectRepoPath(id)) return c.json({ error: "project_not_found" }, 404);
   if (!nombreSecretoValido(nombre)) return c.json({ error: "invalid_secret_name" }, 400);
+  if (CREDENCIALES_GITHUB_PROYECTO.has(nombre)) return c.json({ error: "github_token_por_proyecto" }, 409);
 
   const body = await leerCuerpoJson<{ valor?: unknown }>(c);
   if (!body) return c.json({ error: "invalid_body" }, 400);

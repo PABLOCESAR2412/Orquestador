@@ -70,7 +70,7 @@ Lo que no se puede probar desde aquí o requiere una decisión tuya:
 
 - [ ] En el VM, agregar a `/etc/orquestador/orquestador.env`: `TELO_CLAVE_CIFRADO=$(openssl rand -base64 32)`. Guárdala fuera del repo. Sin ella los secretos no se guardan.
 - [ ] Instalar `opencode` en el VM y probar un agente real dentro de bubblewrap. Aquí no está instalado, así que solo se probó con un agente falso.
-- [ ] Probar un push real a GitHub con `GITHUB_TOKEN` como secreto del proyecto (token fine-grained, solo el repo, permiso de contenido). Aquí solo se probó contra un repo local y con un token falso.
+- [ ] Configurar la GitHub App en el VM (`TELO_GITHUB_APP_ID` y `TELO_GITHUB_APP_PRIVATE_KEY_PATH`), vincular la instalación en Ajustes y probar clonado privado, push aprobado y creación de PR en un repositorio de prueba.
 - [ ] Después del deploy, confirmar que `tailscale serve` sigue activo y que la app abre desde el teléfono (el servidor ahora escucha solo en 127.0.0.1).
 - [ ] Reiniciar el VM y comprobar que las migraciones 010–013 aplican y que la copia previa queda en `DATA_DIR/respaldos-migracion`.
 - [ ] Desactivar la expiración de la clave de `vm-1` en Tailscale.

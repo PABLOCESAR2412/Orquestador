@@ -5,9 +5,10 @@ import { errorText } from "../lib/model";
 
 const NOMBRE_VALIDO = /^[A-Z_][A-Z0-9_]{1,63}$/;
 const MAX_VALOR = 8_192;
+const CREDENCIALES_GITHUB = new Set(["GITHUB_TOKEN", "GITHUB_PR_TOKEN"]);
 
 export function nombreSecretoValido(nombre: string): boolean {
-  return NOMBRE_VALIDO.test(nombre) && !nombre.startsWith("TELO_");
+  return NOMBRE_VALIDO.test(nombre) && !nombre.startsWith("TELO_") && !CREDENCIALES_GITHUB.has(nombre);
 }
 
 export type ParSecreto = { nombre: string; valor: string };
@@ -136,19 +137,23 @@ export function ProyectoSecretos({ id }: { id: string }) {
               <span className="secret-key">{s.nombre}</span>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <span className="secret-masked">••••••••••••••••••••</span>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  style={{ padding: "4px 8px", fontSize: 12 }}
-                  disabled={!disponible}
-                  onClick={() => {
-                    setNombre(s.nombre);
-                    setValor("");
-                    valorRef.current?.focus();
-                  }}
-                >
-                  Reemplazar
-                </button>
+                {CREDENCIALES_GITHUB.has(s.nombre) ? (
+                  <span className="help-note">Credencial anterior; usa la GitHub App de Ajustes</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    style={{ padding: "4px 8px", fontSize: 12 }}
+                    disabled={!disponible}
+                    onClick={() => {
+                      setNombre(s.nombre);
+                      setValor("");
+                      valorRef.current?.focus();
+                    }}
+                  >
+                    Reemplazar
+                  </button>
+                )}
                 {confirmarNombre === s.nombre ? (
                   <div style={{ display: "flex", gap: 6 }}>
                     <button
@@ -225,7 +230,7 @@ export function ProyectoSecretos({ id }: { id: string }) {
           <input
             id="secreto-nombre"
             className="input-text"
-            placeholder="GITHUB_TOKEN"
+            placeholder="OPENAI_API_KEY"
             maxLength={64}
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}

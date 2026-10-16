@@ -345,6 +345,8 @@ export function errorText(err: unknown): string {
         return "Falta la clave de cifrado de secretos en el servidor. Los secretos no se pueden guardar.";
       case "invalid_secret_name":
         return "El nombre usa solo mayúsculas, números y guion bajo, y no empieza con TELO_.";
+      case "github_token_por_proyecto":
+        return "Conecta la GitHub App desde Ajustes; las credenciales de GitHub ya no se guardan por proyecto.";
       case "invalid_secret_value":
         return "El valor debe tener entre 1 y 8 192 caracteres.";
       case "secret_not_found":
@@ -470,6 +472,7 @@ export function errorText(err: unknown): string {
       case "google_fallido":
         return "Google no completó el inicio de sesión. Intenta de nuevo.";
     }
+    if (err.detail) return sanearDetalle(err.detail, 600);
   }
   return "Algo salió mal. Intenta de nuevo.";
 }

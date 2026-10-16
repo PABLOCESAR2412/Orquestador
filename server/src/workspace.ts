@@ -30,6 +30,9 @@ import {
 import { archivosConSecretos, redactar } from "./redaccion";
 import { valorSecreto, valoresDeProyecto } from "./secretos";
 import { tokenGithubGlobal } from "./github-auth";
+import { tokenGithubAppParaRepo } from "./github-app";
+import { opcionesDeCredenciales } from "./git-credenciales";
+export { opcionesDeCredenciales } from "./git-credenciales";
 
 // Copias de trabajo de las tareas de proyecto con Git. Cada tarea trabaja en su clon
 // (DATA_DIR/tasks/<id>/repo, rama telo/<id8>). Nada sale a GitHub sin aprobación del usuario:
@@ -39,7 +42,8 @@ import { tokenGithubGlobal } from "./github-auth";
 // cada operación de Git se sanea su configuración. La subida nunca usa el remoto del clon: usa la
 // URL que se guardó al crear el clon en remoto.txt (DATA_DIR/tasks/<id>, fuera del alcance del
 // agente), y solo se admite https://github.com/<dueño>/<repo>. Si el proyecto tiene clave SSH
-// (clave-ssh.ts), la subida va por SSH con esa clave; si no, por HTTPS con su GITHUB_TOKEN.
+// (clave-ssh.ts), la subida usa la App si está vinculada y da tokens acotados; conserva SSH y
+// tokens antiguos como compatibilidad durante la transición.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -618,25 +622,6 @@ export async function aprobarTarea(
   });
 }
 
-// Credenciales de la subida. Se anula cualquier helper global (de la máquina o del repo) y solo
-// github.com recibe el token, por un helper con alcance por URL. El token viaja como variable de
-// entorno del proceso de Git, nunca en la línea de comandos.
-export function opcionesDeCredenciales(token: string | null): {
-  args: string[];
-  env: Record<string, string>;
-} {
-  const args = ["-c", "credential.helper="];
-  const env: Record<string, string> = {};
-  if (token) {
-    args.push(
-      "-c",
-      'credential.https://github.com.helper=!f() { echo username=x-access-token; echo "password=$TELO_GIT_TOKEN"; }; f',
-    );
-    env.TELO_GIT_TOKEN = token;
-  }
-  return { args, env };
-}
-
 async function subirAprobado(
   taskId: string,
   ctx: Contexto,
@@ -649,7 +634,8 @@ async function subirAprobado(
   const remoto = urlGithubPermitida(guardado);
   if (!remoto) throw new ErrorTarea("remoto_no_permitido", 409);
 
-  const token = tokenGithubGlobal() || (ctx.projectId ? valorSecreto(ctx.projectId, "GITHUB_TOKEN") || null : null);
+  const tokenApp = await tokenGithubAppParaRepo(remoto, { contents: "write" });
+  const token = tokenApp || tokenGithubGlobal() || (ctx.projectId ? valorSecreto(ctx.projectId, "GITHUB_TOKEN") || null : null);
   const destinoSsh =
     !token && ctx.projectId && clavePublicaDe(ctx.projectId) ? urlSshDeGithub(remoto) : null;
   if (!token && !destinoSsh) throw new ErrorTarea("credenciales_git_faltantes", 409);

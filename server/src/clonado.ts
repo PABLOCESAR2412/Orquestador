@@ -5,12 +5,14 @@ import { db } from "./db";
 import { ErrorClaveSsh, conClaveSsh, urlSshDeGithub } from "./clave-ssh";
 import { git, gitSeguro, tieneGitReal } from "./git";
 import { redactar } from "./redaccion";
+import { tokenGithubGlobal } from "./github-auth";
+import { ErrorGithubApp, tokenGithubAppParaRepo } from "./github-app";
+import { opcionesDeCredenciales } from "./git-credenciales";
 
 // Clonado de repositorios de GitHub.
-// Flujo: primero se pregunta a GitHub sin credenciales si el repo es público (`ls-remote`). Si lo es,
-// se clona por HTTPS sin clave. Si pide credenciales, es privado y se clona por SSH con la deploy key
-// del proyecto. La clave se usa solo durante el comando (ver clave-ssh.ts): el agente nunca la recibe,
-// y el token de GitHub no interviene (un token daría acceso a todos los repos, la clave solo a uno).
+// Flujo: se comprueba primero si el repo es público (`ls-remote`). Para uno privado, la GitHub App
+// emite un token de Contents:read limitado al repo. La clave SSH por proyecto y la sesión antigua
+// siguen disponibles como alternativas compatibles durante la transición.
 // Cada comando que corre se entrega a quien llama (`alComando`) para mostrarlo en el chat.
 
 // Acepta https://github.com/<dueño>/<repo>(.git) y git@github.com:<dueño>/<repo>(.git). Devuelve la URL https normalizada.
@@ -63,6 +65,7 @@ export type AlComando = (comando: ComandoClonado) => void;
 
 export type ResultadoClonado = {
   visibilidad: Visibilidad;
+  credencial?: "app" | "token" | "ssh" | "publico";
   rama: string | null;
   ultimo_commit: string | null;
 };
@@ -165,37 +168,57 @@ export async function clonarRepositorio(
     const rutas = [destino, casa];
     const visibilidad = await sondear(origen.url, casa, rutas, alComando);
 
-    const ejecutar = (url: string, env: Record<string, string>) =>
-      git(["clone", "--no-recurse-submodules", "--", url, destino], {
+    const ejecutar = (url: string, env: Record<string, string>, token: string | null = null) => {
+      const credenciales = opcionesDeCredenciales(token);
+      return git([...credenciales.args, "clone", "--no-recurse-submodules", "--", url, destino], {
         cwd: dirname(destino),
         timeoutMs: TIEMPO_CLON_MS,
-        env: { ...env, ...entornoAislado(casa) },
+        env: { ...env, ...credenciales.env, ...entornoAislado(casa) },
       });
+    };
 
     let codigo = 1;
     let salida = "";
     let comando = "";
+    let credencial: ResultadoClonado["credencial"] = "publico";
     if (visibilidad === "publico") {
       comando = `git clone --no-recurse-submodules ${origen.url} .`;
       const r = await ejecutar(origen.url, {});
       codigo = r.code;
       salida = `${r.stderr}\n${r.stdout}`;
     } else {
-      const sshUrl = urlSshDeGithub(origen.url);
-      if (!sshUrl) throw new ErrorClonado("url_no_valida", 400);
-      comando = `git clone --no-recurse-submodules ${sshUrl} .`;
+      let tokenApp: string | null;
       try {
-        await conClaveSsh(projectId, async (entorno) => {
-          const r = await ejecutar(sshUrl, entorno);
-          codigo = r.code;
-          salida = `${r.stderr}\n${r.stdout}`;
-        });
-      } catch (err) {
-        if (err instanceof ErrorClaveSsh) {
-          // Sin clave todavía es un paso pendiente (409); sin cifrado en el servidor, el servicio no puede clonar (503).
-          throw new ErrorClonado(err.code, err.code === "clave_no_encontrada" ? 409 : 503);
+        tokenApp = await tokenGithubAppParaRepo(origen.url, { contents: "read" });
+      } catch (error) {
+        if (error instanceof ErrorGithubApp) throw new ErrorClonado(error.code, error.status === 403 ? 409 : 503);
+        throw error;
+      }
+      const token = tokenApp || tokenGithubGlobal();
+      if (token) {
+        comando = `git clone --no-recurse-submodules ${origen.url} .`;
+        credencial = tokenApp ? "app" : "token";
+        const r = await ejecutar(origen.url, {}, token);
+        codigo = r.code;
+        salida = `${r.stderr}\n${r.stdout}`;
+      } else {
+        const sshUrl = urlSshDeGithub(origen.url);
+        if (!sshUrl) throw new ErrorClonado("url_no_valida", 400);
+        comando = `git clone --no-recurse-submodules ${sshUrl} .`;
+        credencial = "ssh";
+        try {
+          await conClaveSsh(projectId, async (entorno) => {
+            const r = await ejecutar(sshUrl, entorno);
+            codigo = r.code;
+            salida = `${r.stderr}\n${r.stdout}`;
+          });
+        } catch (err) {
+          if (err instanceof ErrorClaveSsh) {
+            // Sin clave todavía es un paso pendiente (409); sin cifrado en el servidor, el servicio no puede clonar (503).
+            throw new ErrorClonado(err.code, err.code === "clave_no_encontrada" ? 409 : 503);
+          }
+          throw err;
         }
-        throw err;
       }
     }
 
@@ -213,7 +236,7 @@ export async function clonarRepositorio(
     const ultimo = await leer(["log", "-1", "--format=%h %s"]);
 
     db.query("UPDATE projects SET clonado_en = datetime('now') WHERE id = ?").run(projectId);
-    return { visibilidad, rama, ultimo_commit: ultimo };
+    return { visibilidad, credencial, rama, ultimo_commit: ultimo };
   } finally {
     enCurso.delete(projectId);
     rmSync(casa, { recursive: true, force: true });

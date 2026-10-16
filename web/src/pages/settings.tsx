@@ -935,32 +935,41 @@ function GooglePanel() {
 
 function GithubPanel() {
   const qc = useQueryClient();
-  const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
 
   const estado = useQuery({ queryKey: ["github-cuenta"], queryFn: api.githubCuenta });
-
-  const conectar = useMutation({
-    mutationFn: (t: string) => api.conectarGithubCuenta(t),
-    onSuccess: (datos) => {
-      setToken("");
+  const app = useQuery({ queryKey: ["github-app-installations"], queryFn: api.githubAppInstalaciones });
+  const vincular = useMutation({
+    mutationFn: api.vincularGithubApp,
+    onSuccess: ({ instalacion }) => {
       setError(null);
-      setAviso(`Conectado como @${datos.login}`);
+      setAviso(`GitHub App vinculada a @${instalacion.login}.`);
       void qc.invalidateQueries({ queryKey: ["github-cuenta"] });
+      void qc.invalidateQueries({ queryKey: ["github-app-installations"] });
       void qc.invalidateQueries({ queryKey: ["project-git"] });
     },
-    onError: (e) => {
-      setError(errorText(e));
+    onError: (e) => setError(errorText(e)),
+  });
+  const desvincularApp = useMutation({
+    mutationFn: api.desvincularGithubApp,
+    onSuccess: () => {
+      setError(null);
+      setAviso("Instalación desvinculada de Telo. La instalación de GitHub sigue intacta.");
+      void qc.invalidateQueries({ queryKey: ["github-cuenta"] });
+      void qc.invalidateQueries({ queryKey: ["github-app-installations"] });
+      void qc.invalidateQueries({ queryKey: ["project-git"] });
     },
+    onError: (e) => setError(errorText(e)),
   });
 
   const desconectar = useMutation({
     mutationFn: api.desconectarGithubCuenta,
     onSuccess: () => {
       setError(null);
-      setAviso("Cuenta de GitHub desconectada.");
+      setAviso("Credencial anterior eliminada de Telo. Si ya no la necesitas, revócala también en GitHub.");
       void qc.invalidateQueries({ queryKey: ["github-cuenta"] });
+      void qc.invalidateQueries({ queryKey: ["github-app-installations"] });
       void qc.invalidateQueries({ queryKey: ["project-git"] });
     },
     onError: (e) => setError(errorText(e)),
@@ -974,85 +983,103 @@ function GithubPanel() {
         Cuenta de GitHub
       </h3>
       <p className="aj-nota">
-        Inicia sesión con tu token de GitHub para que el servidor pueda clonar repositorios privados, realizar git push y crear Pull Requests en todos tus proyectos sin configurar claves SSH manuales.
+        Telo usa una GitHub App instalada en tu cuenta. Cada operación recibe una credencial temporal limitada al repositorio y al permiso que necesita.
       </p>
 
       {estado.isPending && <p className="aj-nota">Consultando estado de GitHub…</p>}
       {estado.isError && <p className="aj-error" role="alert">{errorText(estado.error)}</p>}
+      {app.isPending && <p className="aj-nota">Consultando instalaciones de la GitHub App…</p>}
+      {app.isError && <p className="aj-error" role="alert">{errorText(app.error)}</p>}
 
-      {datos?.conectado ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, margin: "12px 0" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            {datos.avatar_url && (
-              <img
-                src={datos.avatar_url}
-                alt={datos.login ?? "GitHub"}
-                style={{ width: 40, height: 40, borderRadius: "50%", border: "1px solid var(--line)" }}
-              />
-            )}
-            <div>
-              <p style={{ margin: 0, fontWeight: 600 }}>
-                {datos.name ? `${datos.name} ` : ""}
-                <span style={{ opacity: 0.8, fontWeight: 400 }}>@{datos.login}</span>
-              </p>
-              {datos.scopes && datos.scopes.length > 0 && (
-                <p className="aj-nota" style={{ margin: "2px 0 0 0", fontSize: 12 }}>
-                  Permisos: {datos.scopes.join(", ")}
+      {app.data && !app.data.configurado ? (
+        <div className="aj-nota" role="status">
+          <p>La App ya puede estar instalada en GitHub; falta configurar Telo para que el servidor firme credenciales temporales.</p>
+          <p>Faltan en el archivo de entorno del servidor: {app.data?.faltantes.join(", ") || "TELO_GITHUB_APP_ID y TELO_GITHUB_APP_PRIVATE_KEY_PATH"}.</p>
+        </div>
+      ) : app.data?.configurado ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+          {datos?.conectado && datos.metodo === "app" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {datos.avatar_url && (
+                <img
+                  src={datos.avatar_url}
+                  alt={datos.login ?? "GitHub"}
+                  style={{ width: 40, height: 40, borderRadius: "50%", border: "1px solid var(--line)" }}
+                />
+              )}
+              <div>
+                <p style={{ margin: 0, fontWeight: 600 }}>
+                  GitHub App instalada en <span style={{ opacity: 0.8, fontWeight: 400 }}>@{datos.login}</span>
                 </p>
+                <p className="aj-nota" style={{ margin: "2px 0 0 0", fontSize: 12 }}>
+                  La App necesita Contents y Pull requests. Telo pide tokens breves limitados al repo y a la acción.
+                </p>
+              </div>
+            </div>
+          )}
+          {datos?.conectado && datos.metodo === "token" && (
+            <p className="aj-nota" role="status">Hay una sesión de GitHub anterior como @{datos.login}. Al vincular la App, Telo la priorizará.</p>
+          )}
+          {!app.data.instalaciones.length ? (
+            <p className="aj-nota">
+              Telo no encontró instalaciones para esta App. Revisa la instalación en{" "}
+              <a href="https://github.com/settings/installations" target="_blank" rel="noopener noreferrer">GitHub</a>.
+            </p>
+          ) : (
+            <div className="aj-stack">
+              {app.data.instalaciones.map((instalacion) => {
+                const seleccionada = app.data?.seleccionada === instalacion.id;
+                return (
+                  <div key={instalacion.id} className="aj-fila-campo">
+                    <div>
+                      <strong>{instalacion.name}</strong> <span className="aj-nota">@{instalacion.login}</span>
+                      <p className="aj-nota" style={{ margin: "2px 0 0" }}>
+                        {instalacion.repository_selection === "selected" ? "Solo los repositorios seleccionados en GitHub" : "Todos los repositorios de esta cuenta"}
+                      </p>
+                      {instalacion.repository_selection === "all" && (
+                        <p className="aj-nota" role="status" style={{ margin: "4px 0 0" }}>
+                          Para limitar el acceso como recomendamos, cambia la instalación a repositorios seleccionados en{" "}
+                          <a href="https://github.com/settings/installations" target="_blank" rel="noopener noreferrer">GitHub</a>.
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className={seleccionada ? "aj-btn" : "aj-btn aj-btn-primario"}
+                      disabled={seleccionada || vincular.isPending}
+                      onClick={() => vincular.mutate(instalacion.id)}
+                    >
+                      {seleccionada ? "Usada por Telo" : "Usar esta instalación"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {datos?.metodo === "app" && (
+            <div className="aj-acciones">
+              <button type="button" className="aj-btn" onClick={() => desvincularApp.mutate()} disabled={desvincularApp.isPending}>
+                {desvincularApp.isPending ? "Desvinculando…" : "Desvincular de Telo"}
+              </button>
+              {datos.sesion_anterior && (
+                <button type="button" className="aj-btn" onClick={() => desconectar.mutate()} disabled={desconectar.isPending}>
+                  {desconectar.isPending ? "Eliminando…" : "Eliminar credencial anterior"}
+                </button>
               )}
             </div>
-          </div>
-          <div className="aj-acciones">
-            <button
-              type="button"
-              className="aj-btn"
-              onClick={() => desconectar.mutate()}
-              disabled={desconectar.isPending}
-            >
-              {desconectar.isPending ? "Desconectando…" : "Cerrar sesión de GitHub"}
-            </button>
-          </div>
+          )}
         </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
-          <label className="skills-etiqueta" htmlFor="github-token-input">
-            Personal Access Token (classic o fine-grained)
-          </label>
-          <input
-            id="github-token-input"
-            type="password"
-            autoComplete="new-password"
-            className="skills-entrada"
-            placeholder="ghp_… o github_pat_…"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-          />
-          <p className="aj-nota" style={{ margin: 0, fontSize: 12 }}>
-            Necesita permisos <strong>repo</strong> para repositorios privados y push, y <strong>pull_requests</strong> para crear PRs.{" "}
-            <a
-              href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=Telo+Orquestador"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "var(--accent)", textDecoration: "underline" }}
-            >
-              Generar token en GitHub
-            </a>
-          </p>
-          <div className="aj-acciones">
-            <button
-              type="button"
-              className="aj-btn aj-btn-primario"
-              disabled={!token.trim() || conectar.isPending}
-              onClick={() => conectar.mutate(token.trim())}
-            >
-              {conectar.isPending ? "Conectando con GitHub…" : "Iniciar sesión con GitHub"}
-            </button>
-          </div>
-        </div>
-      )}
+      ) : null}
 
       {aviso && <p className="aj-nota" role="status" style={{ marginTop: 8 }}>{aviso}</p>}
       {error && <p className="aj-error" role="alert" style={{ marginTop: 8 }}>{error}</p>}
+      {datos?.metodo === "token" && (
+        <div className="aj-acciones">
+          <button type="button" className="aj-btn" onClick={() => desconectar.mutate()} disabled={desconectar.isPending}>
+            {desconectar.isPending ? "Quitando…" : "Quitar sesión anterior"}
+          </button>
+        </div>
+      )}
     </article>
   );
 }

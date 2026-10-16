@@ -25,4 +25,11 @@ export const config = {
   get googleClientSecret() {
     return process.env.TELO_GOOGLE_CLIENT_SECRET?.trim() || null;
   },
+  // Identidad de la GitHub App. La clave privada vive en un archivo fuera del repo y solo la lee el servidor.
+  get githubAppId() {
+    return process.env.TELO_GITHUB_APP_ID?.trim() || null;
+  },
+  get githubAppPrivateKeyPath() {
+    return process.env.TELO_GITHUB_APP_PRIVATE_KEY_PATH?.trim() || null;
+  },
 };
