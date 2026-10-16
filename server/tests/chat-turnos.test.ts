@@ -180,3 +180,40 @@ describe("reinicio del servidor", () => {
     expect(mensajes(sinRespuesta).length).toBe(antes);
   });
 });
+
+describe("cuota agotada en chats de proyecto", () => {
+  test("muestra la tarea detenida y rechaza mensajes nuevos hasta cambiar de modelo", async () => {
+    const projectId = crypto.randomUUID();
+    const conversationId = crypto.randomUUID();
+    const taskId = crypto.randomUUID();
+    const modeloAgotado = "openai/gpt-6-luna";
+    db.query("INSERT INTO projects (id, name) VALUES (?, 'Proyecto con cuota agotada')").run(projectId);
+    db.query("INSERT INTO conversations (id, title, model, project_id) VALUES (?, 'Chat con cuota agotada', ?, ?)")
+      .run(conversationId, modeloAgotado, projectId);
+    db.query("INSERT INTO tasks (id, title, prompt, model, status, project_id, conversation_id, modelo_agotado) VALUES (?, 'Tarea detenida', 'pregunta original', ?, 'sin_cuota', ?, ?, ?)")
+      .run(taskId, "openai/gpt-6-luna", projectId, conversationId, modeloAgotado);
+
+    const tareas = await app.request(`/api/conversations/${conversationId}/tasks`);
+    expect((await tareas.json() as { modelo_agotado: string }[])[0]?.modelo_agotado).toBe(modeloAgotado);
+
+    const segundo = await enviar(conversationId, "otra pregunta");
+    expect(segundo.status).toBe(409);
+    expect(await segundo.json()).toEqual({ error: "chat_quota_pending" });
+    expect(mensajes(conversationId)).toHaveLength(0);
+
+    const mismoModelo = await app.request(`/api/conversations/${conversationId}/seguir`, { method: "POST" });
+    expect(mismoModelo.status).toBe(409);
+    expect(await mismoModelo.json()).toEqual({ error: "modelo_sin_cambio" });
+
+    const otroModelo = "google/gemini-test";
+    db.query("UPDATE conversations SET model = ? WHERE id = ?").run(otroModelo, conversationId);
+    const continuar = await app.request(`/api/conversations/${conversationId}/seguir`, { method: "POST" });
+    expect(continuar.status).toBe(202);
+    expect(await continuar.json()).toMatchObject({ taskId });
+    expect(db.query<{ status: string; model: string; continuar: number }, [string]>(
+      "SELECT status,model,continuar FROM tasks WHERE id = ?",
+    ).get(taskId)).toEqual({ status: "queued", model: otroModelo, continuar: 1 });
+    expect(db.query<{ cuota_modelo: string | null }, [string]>("SELECT cuota_modelo FROM conversations WHERE id = ?")
+      .get(conversationId)?.cuota_modelo).toBeNull();
+  });
+});
