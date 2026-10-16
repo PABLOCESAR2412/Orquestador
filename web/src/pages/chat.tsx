@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad } from "../api";
+import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad, type RepositoryAction } from "../api";
 import { useEventosVivos } from "../lib/eventos-vivos";
 import { ModelPicker } from "../components/model-picker";
 import { UsoPanel } from "../components/uso-panel";
@@ -14,7 +14,7 @@ import { VistaDocumento } from "../components/documentos";
 import { HistorialPrompts, type PromptEnviado } from "../components/chat-historial";
 import { MenuComandosChat, type ComandoChat } from "../components/chat-comandos";
 import { PlanRevision } from "../components/plan-revision";
-import { AccionRepositorioMensaje, AccionesRepositorioChat } from "../components/repository-approval";
+import { AccionRepositorioMensaje, AccionesAnteriores, AccionesRepositorioChat } from "../components/repository-approval";
 import { sugerenciasChat } from "../lib/sugerencias";
 import { duracionEntre } from "../lib/tiempo";
 import { effortLabel, errorText, formatWhen, tierBars } from "../lib/model";
@@ -288,6 +288,30 @@ export function ChatPage() {
   const modelList: ModelInfo[] = models.data?.models ?? [];
   const modelInfo = modelList.find((m) => m.id === current?.model) ?? null;
   const lista = messages.data ?? [];
+  const accionesTrasRespuesta = useMemo(() => {
+    const porRespuesta = new Map<string, Map<string, RepositoryAction[]>>();
+    const indices = new Map(lista.map((mensaje, indice) => [mensaje.id, indice] as const));
+    for (const accion of accionesGit.data ?? []) {
+      if (!accion.message_id) continue;
+      const indice = indices.get(accion.message_id);
+      if (indice === undefined) continue;
+      let respuestaId: string | undefined;
+      for (let i = indice + 1; i < lista.length; i++) {
+        if (lista[i]!.role === "user") break;
+        if (lista[i]!.role === "assistant") {
+          respuestaId = lista[i]!.id;
+          break;
+        }
+      }
+      if (!respuestaId) continue;
+      const porAccion = porRespuesta.get(respuestaId) ?? new Map<string, RepositoryAction[]>();
+      const intentos = porAccion.get(accion.action) ?? [];
+      intentos.push(accion);
+      porAccion.set(accion.action, intentos);
+      porRespuesta.set(respuestaId, porAccion);
+    }
+    return porRespuesta;
+  }, [accionesGit.data, lista]);
 
   const configure = useMutation({
     mutationFn: (patch: Patch) => api.updateConversation(selectedId!, patch),
@@ -975,30 +999,38 @@ export function ChatPage() {
                       cuando={m.created_at}
                       resaltado={resaltadoId === m.id}
                     />
-                    {current?.project_id && accionesGit.data?.filter((accion) => accion.message_id === m.id).map((accion) => (
-                      <AccionRepositorioMensaje key={accion.id} accion={accion} conversationId={selectedId!} projectId={current.project_id!} taskId={tareaChat?.id} />
-                    ))}
                   </Fragment>
                 ) : (
-                  <MensajeAgente
-                    key={m.id}
-                    texto={m.content}
-                    cuando={m.created_at}
-                    modelo={nombreAgente}
-                    duracion={duracionDeRespuesta(i)}
-                    proceso={
-                      selectedId && turnoDeRespuesta(i)
-                        ? { conversacionId: selectedId, turnoId: turnoDeRespuesta(i)! }
-                        : undefined
-                    }
-                    onReintentar={
-                      lista.slice(0, i).some((p) => p.role === "user") && !send.isPending
-                        ? () => reintentar(m.id)
-                        : undefined
-                    }
-                    onGuardar={(formato) => crearDoc.mutate({ mensajeId: m.id, formato })}
-                    guardando={crearDoc.isPending && crearDoc.variables?.mensajeId === m.id}
-                  />
+                  <Fragment key={m.id}>
+                    <MensajeAgente
+                      texto={m.content}
+                      cuando={m.created_at}
+                      modelo={nombreAgente}
+                      duracion={duracionDeRespuesta(i)}
+                      proceso={
+                        selectedId && turnoDeRespuesta(i)
+                          ? { conversacionId: selectedId, turnoId: turnoDeRespuesta(i)! }
+                          : undefined
+                      }
+                      onReintentar={
+                        lista.slice(0, i).some((p) => p.role === "user") && !send.isPending
+                          ? () => reintentar(m.id)
+                          : undefined
+                      }
+                      onGuardar={(formato) => crearDoc.mutate({ mensajeId: m.id, formato })}
+                      guardando={crearDoc.isPending && crearDoc.variables?.mensajeId === m.id}
+                    />
+                    {current?.project_id && Array.from(accionesTrasRespuesta.get(m.id)?.entries() ?? []).map(([action, intentos]) => {
+                      const ultima = intentos.at(-1)!;
+                      const anteriores = intentos.slice(0, -1);
+                      return (
+                        <Fragment key={`${ultima.message_id}-${action}`}>
+                          <AccionRepositorioMensaje accion={ultima} conversationId={selectedId!} projectId={current.project_id!} taskId={tareaChat?.id} />
+                          {anteriores.length > 0 && <AccionesAnteriores acciones={anteriores} />}
+                        </Fragment>
+                      );
+                    })}
+                  </Fragment>
                 ),
               )}
               {send.isPending && !yaGuardado && (

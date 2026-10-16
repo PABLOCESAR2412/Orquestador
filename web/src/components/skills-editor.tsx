@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { errorText } from "../lib/model";
@@ -15,6 +15,7 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
   const [comandoNuevo, setComandoNuevo] = useState("");
   const [borrador, setBorrador] = useState("");
   const [confirmandoQuitar, setConfirmandoQuitar] = useState(false);
+  const instalando = useRef(false);
 
   const lista = useQuery({ queryKey: ["skills", ambito], queryFn: () => api.listSkills(projectId) });
   const detalle = useQuery({
@@ -30,6 +31,7 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
       setComandoNuevo("");
       refrescar();
     },
+    onSettled: () => { instalando.current = false; },
   });
 
   // Al llegar el contenido guardado, el borrador empieza igual que el archivo.
@@ -67,7 +69,9 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
   }
 
   function empezarNueva() {
-    if (comandoNuevo.trim()) instalar.mutate();
+    if (!comandoNuevo.trim() || instalando.current) return;
+    instalando.current = true;
+    instalar.mutate();
   }
 
   function descartar() {
@@ -106,6 +110,7 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
             <input
               id={`skills-comando-${ambito}`}
               className="skills-entrada"
+              disabled={instalar.isPending}
               value={comandoNuevo}
               placeholder="npx skills add openai/skills --skill playwright"
               onChange={(e) => setComandoNuevo(e.target.value)}
@@ -136,6 +141,7 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
             <button
               type="button"
               className="aj-btn"
+              disabled={instalar.isPending}
               onClick={() => {
                 setCreando(false);
                 instalar.reset();

@@ -2930,8 +2930,13 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .conv-menu > button:hover { background: var(--surface-2); }
 .conv-menu > button.danger { color: var(--danger); }
-.conv-confirm { padding: 8px 10px; gap: 8px; }
-.conv-confirm p { margin: 0; }
+.conv-confirm { gap: 12px; margin-top: 6px; padding: 12px; border-color: var(--danger-line); border-radius: 10px; }
+.conv-confirm-cabecera { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: start; gap: 10px; }
+.conv-confirm-icono { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: var(--danger-soft); color: var(--danger); }
+.conv-confirm-titulo { display: block; color: var(--ink); font-size: 13px; font-weight: 600; }
+.conv-confirm p { margin: 4px 0 0; color: var(--ink-2); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.conv-confirm .conv-rename-acciones { justify-content: flex-end; gap: 8px; }
+.conv-confirm .task-mini-btn { min-height: 36px; padding: 7px 12px; font-size: 12px; }
 .danger-solid { background: var(--danger); color: var(--bg); border: 0; font-weight: 500; }
 .conv-rename { display: flex; flex-direction: column; gap: 6px; padding: 4px 2px; }
 .conv-rename-input {

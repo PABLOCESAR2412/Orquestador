@@ -90,6 +90,11 @@
 }
 
 .tl-msg { display: flex; flex-direction: column; min-width: 0; }
+.tl-git-intentos { width: 100%; color: var(--ink-2); font-size: 13px; }
+.tl-git-intentos > summary { display: flex; align-items: center; min-height: 40px; cursor: pointer; }
+.tl-git-intentos > ul { display: grid; gap: 6px; margin: 0; padding: 0 0 8px 20px; }
+.tl-git-intentos li { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: space-between; }
+.tl-git-intentos li > span:last-child { overflow-wrap: anywhere; }
 .tl-msg-meta {
   color: var(--ink-2);
   font-family: var(--font-mono);

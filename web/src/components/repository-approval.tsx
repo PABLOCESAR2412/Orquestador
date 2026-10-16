@@ -137,7 +137,7 @@ export function RepositoryApproval({
       {accion.result && (
         <p className="approval-files">{resultadoLegible(accion.result)}</p>
       )}
-      {decide.isError && (
+      {decide.isError && accion.state === "pending" && !(decide.error instanceof ApiError && decide.error.code === "action_already_decided") && (
         <p className="error" role="alert">
           {errorText(decide.error)}
         </p>
@@ -156,6 +156,22 @@ export function RepositoryApproval({
     <section className="panel approval-panel" aria-label={titulo}>
       {cuerpo}
     </section>
+  );
+}
+
+export function AccionesAnteriores({ acciones }: { acciones: RepositoryAction[] }) {
+  return (
+    <details className="tl-git-intentos">
+      <summary>{acciones.length === 1 ? "Ver 1 intento anterior" : `Ver ${acciones.length} intentos anteriores`}</summary>
+      <ul>
+        {acciones.map((accion) => (
+          <li key={accion.id}>
+            <span>{labels[accion.action] ?? accion.action} · {estados[accion.state] ?? accion.state}</span>
+            {accion.result && <span>{resultadoLegible(accion.result)}</span>}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
