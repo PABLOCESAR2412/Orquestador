@@ -154,7 +154,7 @@ try {
     const panelUso = page.getByRole("dialog", { name: "Uso del proveedor" });
     await panelUso.waitFor();
     const medidoresUso = panelUso.locator('[role="meter"]');
-    await medidoresUso.nth(1).waitFor();
+    await medidoresUso.nth(1).waitFor({ state: "visible" });
     assert.equal(await medidoresUso.count(), 2);
     assert.equal(await medidoresUso.nth(0).getAttribute("aria-valuenow"), "11.1");
     assert.equal(await medidoresUso.nth(1).getAttribute("aria-valuenow"), "20");
