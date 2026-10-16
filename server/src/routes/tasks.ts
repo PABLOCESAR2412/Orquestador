@@ -163,7 +163,7 @@ tasks.post("/tasks/:id/aprobar", async (c) => {
   if (body.accion === "push") {
     return c.json({
       error: "github_access",
-      detail: "Prepara la subida desde la tarjeta de autorización del repositorio para revisar la credencial y comprobar el acceso antes de aprobar.",
+      detail: "Las subidas a GitHub (push) requieren verificar credenciales de repositorio (GitHub App, SSH o token) y permisos de rama. Prepara la subida desde la tarjeta de repositorio o el panel de subida de la interfaz.",
     }, 409);
   }
 

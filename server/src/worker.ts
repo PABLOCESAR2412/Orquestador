@@ -15,6 +15,7 @@ import { redactar } from "./redaccion";
 import { clasificarTareaJev } from "./jev";
 import {
   extraerJson,
+  hashPlan,
   MAX_PLANES,
   promptAnalizador,
   promptObrero,
@@ -131,10 +132,6 @@ function finish(
   if (status === "cancelled") {
     limpiarCopiaCancelada(id).catch((err) => console.error("Limpieza de la copia cancelada:", mensajeSeguro(err)));
   }
-}
-
-function hashPlan(plan: Plan): string {
-  return createHash("sha256").update(JSON.stringify(plan)).digest("hex");
 }
 
 function formatearRespuestaTarea(reporte: Reporte, texto: string): string {

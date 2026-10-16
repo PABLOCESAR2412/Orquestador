@@ -1,10 +1,10 @@
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { extname, resolve } from "node:path";
 
 // Solo fixtures locales: estas pruebas nunca llaman a proveedores ni a repositorios reales.
-const root = resolve("dist");
+const root = existsSync("web/dist") ? resolve("web/dist") : resolve("dist");
 const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
   const path = resolve(root, "." + new URL(req.url).pathname);
   const file = Bun.file(path);

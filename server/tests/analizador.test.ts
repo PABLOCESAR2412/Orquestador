@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // El worker es único por proceso, así que el flujo completo corre en un proceso propio con un
-// `opencode` falso al frente del PATH (server/tests/fixtures/bin/opencode).
-describe("analizador y obrero, extremo a extremo", () => {
+// `opencode` falso al frente del PATH (server/tests/fixtures/bin/opencode). Requiere setsid (Linux).
+describe.skipIf(!Bun.which("setsid"))("analizador y obrero, extremo a extremo", () => {
   test(
     "planes, aprobaciones, desviaciones, reportes y tope de replanificación",
     async () => {

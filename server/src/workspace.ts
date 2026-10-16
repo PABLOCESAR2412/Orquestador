@@ -738,7 +738,13 @@ async function subirAprobado(
       });
     }
   } catch (err) {
-    const detalle = mensajeSeguro(err, token).slice(0, 600);
+    const raw = err instanceof Error ? err.message : String(err);
+    let detalle = mensajeSeguro(err, token).slice(0, 600);
+    if (/denied to deploy key|deploy key does not have write access|key does not have write access/i.test(raw)) {
+      detalle = "La clave Deploy Key de GitHub no tiene permisos de escritura. Ve a Settings > Deploy keys en el repositorio de GitHub y marca la casilla 'Allow write access'.";
+    } else if (/protected branch|GH006|pre-receive hook declined/i.test(raw)) {
+      detalle = `La rama remota '${ramaDestino}' está protegida en GitHub contra subidas directas. Prepara la subida en una rama propia o abre un Pull Request.`;
+    }
     registrarEvento(taskId, "push_fallido", detalle);
     throw new ErrorTarea("push_fallido", 502, detalle);
   }

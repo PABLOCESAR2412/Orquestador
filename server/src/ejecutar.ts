@@ -167,16 +167,51 @@ function etiquetaDelError(err: unknown): string {
   return codigo ? codigo[1] : "Error del proveedor";
 }
 
+// Obtiene un resumen conciso de los otros chats recientes del proyecto si compartir_contexto está activo.
+export function contextoCompartidoProyecto(projectId: string, omitirConversationId?: string | null): string {
+  const params: string[] = [projectId];
+  let filtroConv = "";
+  if (omitirConversationId) {
+    filtroConv = "AND c.id != ?";
+    params.push(omitirConversationId);
+  }
+  const filas = db
+    .query<{ id: string; title: string; ultimo_mensaje: string | null }, string[]>(
+      `SELECT c.id, c.title,
+         (SELECT m.content FROM messages m WHERE m.conversation_id = c.id AND m.role IN ('user', 'assistant') ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) AS ultimo_mensaje
+       FROM conversations c
+       WHERE c.project_id = ? ${filtroConv}
+       ORDER BY c.created_at DESC, c.rowid DESC
+       LIMIT 3`,
+    )
+    .all(...params);
+
+  if (filas.length === 0) return "";
+  const resumenes = filas
+    .filter((f) => f.title || f.ultimo_mensaje)
+    .map((f) => {
+      const extracto = f.ultimo_mensaje ? f.ultimo_mensaje.slice(0, 150).replace(/\s+/g, " ").trim() : "Sin actividad reciente";
+      return `- Chat "${f.title || "Sin título"}": ${extracto}`;
+    });
+  if (resumenes.length === 0) return "";
+  return `Contexto compartido de otros chats del proyecto:\n${resumenes.join("\n")}`;
+}
+
 // Instrucciones del proyecto: se anteponen al prompt de sus tareas y chats. No se guardan ni en
 // tasks.prompt ni en el mensaje del chat, así que cambiarlas afecta a los siguientes envíos.
-export function conInstrucciones(projectId: string | null | undefined, prompt: string): string {
+export function conInstrucciones(projectId: string | null | undefined, prompt: string, conversationId?: string | null): string {
   if (!projectId) return prompt;
   const fila = db
     .query<{ instrucciones: string | null; compartir_contexto: number }, [string]>("SELECT instrucciones, compartir_contexto FROM projects WHERE id = ?")
     .get(projectId);
   const texto = fila?.instrucciones?.trim();
-  if (!texto) return prompt;
-  return `Instrucciones del proyecto (escritas por el dueño):\n${texto}\n---\n${prompt}`;
+  const compartido = fila?.compartir_contexto ? contextoCompartidoProyecto(projectId, conversationId) : "";
+
+  if (!texto && !compartido) return prompt;
+  const partes: string[] = [];
+  if (texto) partes.push(`Instrucciones del proyecto (escritas por el dueño):\n${texto}`);
+  if (compartido) partes.push(compartido);
+  return `${partes.join("\n\n")}\n---\n${prompt}`;
 }
 
 // Estilo de respuesta de los chats: concreto, con rutas y resultados, y sin repetir la pregunta.
@@ -246,7 +281,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
   const base = {
     prompt: conEstilo(
       conMemoria(
-        conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(opts.prompt, opts.projectId).promptFinal),
+        conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(opts.prompt, opts.projectId).promptFinal, opts.conversationId),
         memoria,
         opts.aprender === true,
       ),

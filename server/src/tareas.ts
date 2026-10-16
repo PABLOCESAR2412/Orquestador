@@ -14,6 +14,7 @@ export type NuevaTarea = {
   // Tarea original cuando esta es un reintento.
   retryOf?: string | null;
   conversationId?: string | null;
+  providerSessionId?: string | null;
 };
 
 // Crea la tarea en cola, la publica y despierta al worker. Devuelve su id.
@@ -31,7 +32,7 @@ export function crearTarea(opts: NuevaTarea): string {
 
   db.transaction(() => {
     db.query(
-      "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id, retry_of, conversation_id) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?)",
+      "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id, retry_of, conversation_id, provider_session_id) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)",
     ).run(
       id,
       titulo,
@@ -41,6 +42,7 @@ export function crearTarea(opts: NuevaTarea): string {
       opts.projectId,
       retryOf,
       opts.conversationId ?? null,
+      opts.providerSessionId ?? null,
     );
     registrarEvento(id, "creada", detalle);
     if (retryOf) registrarEvento(retryOf, "reintento_creado", `Nueva tarea ${id.slice(0, 8)}`);

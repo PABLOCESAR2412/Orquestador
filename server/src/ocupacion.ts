@@ -49,7 +49,7 @@ export function proyectoOcupado(projectId: string): boolean {
   if (chats.some((c) => conversacionesEnCurso.has(c.id))) return true;
   return (
     db
-      .query("SELECT 1 FROM tasks WHERE project_id = ? AND status IN ('running','analyzing') LIMIT 1")
+      .query("SELECT 1 FROM tasks WHERE project_id = ? AND status IN ('running','analyzing','waiting_approval') LIMIT 1")
       .get(projectId) !== null
   );
 }

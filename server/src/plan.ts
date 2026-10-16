@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 // Planes y reportes de las tareas (AGENTS.md). El analizador lee la tarea y produce un plan en JSON.
 // El usuario lo aprueba si hace falta. El obrero ejecuta solo ese plan y entrega un reporte en JSON.
 // Aquí están los prompts y la validación; no hay estado ni acceso a la base.
@@ -180,6 +182,10 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
 export function sinNotas(plan: Plan): Omit<Plan, "notas"> {
   const { notas: _notas, ...resto } = plan;
   return resto;
+}
+
+export function hashPlan(plan: Plan): string {
+  return createHash("sha256").update(JSON.stringify(sinNotas(plan))).digest("hex");
 }
 
 const FORMA_PLAN = `{

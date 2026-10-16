@@ -9,17 +9,17 @@ const MARCA = "***";
 
 // Credenciales con formato reconocible. Sin bandera "g": se usan para probar o, con new RegExp, para reemplazar.
 const PATRONES_CREDENCIAL: RegExp[] = [
-  /AKIA[0-9A-Z]{16}/, // claves de acceso de AWS
-  /ghp_[A-Za-z0-9]{20,}/, // tokens personales de GitHub (clásicos)
-  /github_pat_[A-Za-z0-9_]{20,}/, // tokens de GitHub de grano fino
-  /gh[ousr]_[A-Za-z0-9]{20,}/, // tokens de OAuth, de usuario, de servidor y de refresco de GitHub
-  /apikey_[A-Za-z0-9_-]{20,}/, // claves API de TypeSafe / Jev
-  /gsk_[A-Za-z0-9_-]{20,}/, // claves API de Groq
-  /nvapi-[A-Za-z0-9_-]{20,}/, // claves API de NVIDIA
-  /sk-proj-[A-Za-z0-9_-]{40,}/, // claves de API modernas de OpenAI (proyecto)
-  /sk-svcacct-[A-Za-z0-9_-]{40,}/, // claves de servicio de OpenAI
-  /sk-[A-Za-z0-9]{20,48}/, // claves de API tradicionales de OpenAI (alfanuméricas sin guiones)
-  /AIza[0-9A-Za-z_-]{30,}/, // claves de API de Google
+  /(?<![A-Za-z0-9])AKIA[0-9A-Z]{16}(?![0-9A-Z])/, // claves de acceso de AWS
+  /(?<![A-Za-z0-9_])ghp_[A-Za-z0-9]{20,}(?![A-Za-z0-9_])/, // tokens personales de GitHub (clásicos)
+  /(?<![A-Za-z0-9_])github_pat_[A-Za-z0-9_]{20,}(?![A-Za-z0-9_])/, // tokens de GitHub de grano fino
+  /(?<![A-Za-z0-9_])gh[ousr]_[A-Za-z0-9]{20,}(?![A-Za-z0-9_])/, // tokens de OAuth, de usuario, de servidor y de refresco de GitHub
+  /(?<![A-Za-z0-9_-])apikey_[A-Za-z0-9_-]{20,}(?![A-Za-z0-9_-])/, // claves API de TypeSafe / Jev
+  /(?<![A-Za-z0-9_-])gsk_[A-Za-z0-9_-]{20,}(?![A-Za-z0-9_-])/, // claves API de Groq
+  /(?<![A-Za-z0-9_-])nvapi-[A-Za-z0-9_-]{20,}(?![A-Za-z0-9_-])/, // claves API de NVIDIA
+  /(?<![A-Za-z0-9_-])sk-proj-[A-Za-z0-9_-]{40,}(?![A-Za-z0-9_-])/, // claves de API modernas de OpenAI (proyecto)
+  /(?<![A-Za-z0-9_-])sk-svcacct-[A-Za-z0-9_-]{40,}(?![A-Za-z0-9_-])/, // claves de servicio de OpenAI
+  /(?<![A-Za-z0-9_-])sk-[A-Za-z0-9]{20,48}(?![A-Za-z0-9_-])/, // claves de API tradicionales de OpenAI (alfanuméricas sin guiones)
+  /(?<![A-Za-z0-9_-])AIza[0-9A-Za-z_-]{30,}(?![A-Za-z0-9_-])/, // claves de API de Google
 ];
 // Bloque de clave privada: del encabezado al pie, o hasta el final del texto si se corta.
 const BLOQUE_CLAVE_PRIVADA = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)/;
