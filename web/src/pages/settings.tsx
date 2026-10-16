@@ -927,24 +927,22 @@ function GithubPanel() {
           <p>Faltan en el archivo de entorno del servidor: {app.data?.faltantes.join(", ") || "TELO_GITHUB_APP_ID y TELO_GITHUB_APP_PRIVATE_KEY_PATH"}.</p>
         </div>
       ) : app.data?.configurado ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+        <div className="aj-github-contenido">
           {datos?.conectado && datos.metodo === "app" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div className="aj-github-cuenta">
               {datos.avatar_url && (
                 <img
                   src={datos.avatar_url}
                   alt={datos.login ?? "GitHub"}
-                  style={{ width: 40, height: 40, borderRadius: "50%", border: "1px solid var(--line)" }}
+                  className="aj-github-avatar"
                 />
               )}
-              <div>
-                <p style={{ margin: 0, fontWeight: 600 }}>
-                  GitHub App instalada en <span style={{ opacity: 0.8, fontWeight: 400 }}>@{datos.login}</span>
-                </p>
-                <p className="aj-nota" style={{ margin: "2px 0 0 0", fontSize: 12 }}>
-                  La App necesita Contents y Pull requests. Telo pide tokens breves limitados al repo y a la acción.
-                </p>
+              <div className="aj-github-cuenta-datos">
+                <strong>Cuenta conectada</strong>
+                <span className="aj-github-login">@{datos.login}</span>
+                <span className="aj-nota">Permisos de la App: Contents y Pull requests</span>
               </div>
+              <span className="aj-github-conectada"><span aria-hidden="true" />Conectada</span>
             </div>
           )}
           {datos?.conectado && datos.metodo === "token" && (
@@ -956,31 +954,42 @@ function GithubPanel() {
               <a href="https://github.com/settings/installations" target="_blank" rel="noopener noreferrer">GitHub</a>.
             </p>
           ) : (
-            <div className="aj-stack">
+            <div className="aj-github-instalaciones">
+              <h4 className="aj-github-subtitulo">Instalaciones disponibles</h4>
               {app.data.instalaciones.map((instalacion) => {
                 const seleccionada = app.data?.seleccionada === instalacion.id;
                 return (
-                  <div key={instalacion.id} className="aj-fila-campo">
-                    <div>
-                      <strong>{instalacion.name}</strong> <span className="aj-nota">@{instalacion.login}</span>
-                      <p className="aj-nota" style={{ margin: "2px 0 0" }}>
-                        {instalacion.repository_selection === "selected" ? "Solo los repositorios seleccionados en GitHub" : "Todos los repositorios de esta cuenta"}
+                  <div key={instalacion.id} className="aj-github-instalacion">
+                    <div className="aj-github-instalacion-datos">
+                      <div className="aj-github-identidad">
+                        <strong>{instalacion.name}</strong>
+                        <span className="aj-github-login">@{instalacion.login}</span>
+                      </div>
+                      <p className="aj-github-alcance">
+                        <span>Acceso a repositorios</span>
+                        <strong>{instalacion.repository_selection === "selected" ? "Solo los seleccionados" : "Todos los repositorios"}</strong>
                       </p>
                       {instalacion.repository_selection === "all" && (
-                        <p className="aj-nota" role="status" style={{ margin: "4px 0 0" }}>
-                          Para limitar el acceso como recomendamos, cambia la instalación a repositorios seleccionados en{" "}
+                        <p className="aj-github-recomendacion" role="status">
+                          Para limitar el acceso, cambia la instalación a repositorios seleccionados en{" "}
                           <a href="https://github.com/settings/installations" target="_blank" rel="noopener noreferrer">GitHub</a>.
                         </p>
                       )}
                     </div>
-                    <button
-                      type="button"
-                      className={seleccionada ? "aj-btn" : "aj-btn aj-btn-primario"}
-                      disabled={seleccionada || vincular.isPending}
-                      onClick={() => vincular.mutate(instalacion.id)}
-                    >
-                      {seleccionada ? "Usada por Telo" : "Usar esta instalación"}
-                    </button>
+                    <div className="aj-github-instalacion-accion">
+                      {seleccionada ? (
+                        <span className="aj-github-usada" role="status"><span aria-hidden="true" />Usada por Telo</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="aj-btn aj-btn-primario"
+                          disabled={vincular.isPending}
+                          onClick={() => vincular.mutate(instalacion.id)}
+                        >
+                          {vincular.isPending ? "Vinculando…" : "Usar esta instalación"}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}

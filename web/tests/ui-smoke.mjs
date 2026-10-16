@@ -87,8 +87,10 @@ try {
       else if (path === "/api/cuotas") data = { proveedores: [] };
       else if (path === "/api/skills") data = { skills: [] };
       else if (path.includes("/herramientas/")) data = { instalada: true, estado: "inactivo" };
-      else if (path.includes("github/app")) data = { configurado: false, faltantes: [], instalaciones: [] };
-      else if (path.includes("github/cuenta") || path.includes("google")) data = { conectado: false, configurado: false, faltantes: [] };
+      else if (path.includes("github/app")) data = { configurado: true, faltantes: [], seleccionada: 1, instalaciones: [
+        { id: 1, name: "PABLOCESAR2412", login: "PABLOCESAR2412", avatar_url: "", repository_selection: "all" },
+      ] };
+      else if (path.includes("github/cuenta") || path.includes("google")) data = { conectado: true, metodo: "app", login: "PABLOCESAR2412", sesion_anterior: false };
       else if (path === "/api/runner") data = { opencode: true, bwrap: true, aislamiento: true };
       else if (path === "/api/projects") data = [{ id: "p1", name: "Pruebas" }];
       else if (path === "/api/uso") data = { generado: now, proveedores: [{
@@ -179,6 +181,14 @@ try {
     await page.goto(`${base}/ajustes`);
     await page.getByRole("heading", { name: "Ajustes y Servidor", exact: true }).waitFor();
     assert.equal(await page.getByRole("heading", { name: "Cuenta de Google", exact: true }).count(), 0);
+    const tarjetaGithub = page.locator('.aj-tarjeta[aria-labelledby="ajustes-github"]');
+    await tarjetaGithub.scrollIntoViewIfNeeded();
+    await tarjetaGithub.getByText("Conectada", { exact: true }).waitFor();
+    assert.equal(await tarjetaGithub.locator(".aj-github-usada").textContent(), "Usada por Telo");
+    assert.equal(await tarjetaGithub.getByText("Todos los repositorios", { exact: true }).count(), 1);
+    assert.equal(await tarjetaGithub.getByRole("link", { name: "GitHub", exact: true }).count(), 1);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/github-ajustes-${width}.png` });
     await page.getByRole("button", { name: "Copiar código", exact: true }).click();
     await page.getByText("Código copiado.", { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "ABCD-EFGH");
