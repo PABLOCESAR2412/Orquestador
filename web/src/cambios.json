@@ -3,7 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
-    { "fecha": "2026-10-16", "tipo": "grande", "titulo": "TypeSafe Jev: recomendaciones, evaluación de memoria y clasificación con clave cifrada", "pr": null },
+    { "fecha": "2026-10-16", "tipo": "grande", "titulo": "TypeSafe Jev: recomendaciones, evaluación de memoria y clasificación con clave cifrada", "pr": 62 },
     { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Errores: explicación del fallo, detalle seguro y primer paso para resolverlo", "pr": 60 },
     { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "El chat muestra el agotamiento de cuota y evita enviar mensajes hasta cambiar de modelo", "pr": 59 },
     { "fecha": "2026-10-11", "tipo": "mediano", "titulo": "Seguridad del agente y tareas interrumpidas", "pr": 12 },
