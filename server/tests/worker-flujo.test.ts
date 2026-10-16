@@ -31,6 +31,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
   const homeAnterior = process.env.HOME;
   const pathAnterior = process.env.PATH;
   const aislamientoAnterior = process.env.TELO_AISLAMIENTO;
+  const claveCifradoAnterior = process.env.TELO_CLAVE_CIFRADO;
   const creados: { id: string; proyecto?: string; conversacion?: string }[] = [];
 
   beforeAll(async () => {
@@ -44,6 +45,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     process.env.DATA_DIR = join(raiz, "data");
     process.env.TELO_PROYECTOS_DIR = join(raiz, "proyectos");
     process.env.TELO_AISLAMIENTO = "activado";
+    process.env.TELO_CLAVE_CIFRADO = Buffer.alloc(32, 1).toString("base64");
     ({ db } = await import("../src/db"));
     const { config } = await import("../src/config");
     datos = config.dataDir;
@@ -72,7 +74,11 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
       db.query("DELETE FROM usage WHERE task_id=?").run(fila.id);
       db.query("DELETE FROM tasks WHERE id=?").run(fila.id);
       if (fila.conversacion) db.query("DELETE FROM conversations WHERE id=?").run(fila.conversacion);
-      if (fila.proyecto) db.query("DELETE FROM projects WHERE id=?").run(fila.proyecto);
+      if (fila.proyecto) {
+        db.query("DELETE FROM repository_actions WHERE project_id=?").run(fila.proyecto);
+        db.query("DELETE FROM project_secrets WHERE project_id=?").run(fila.proyecto);
+        db.query("DELETE FROM projects WHERE id=?").run(fila.proyecto);
+      }
     }
     if (homeAnterior === undefined) delete process.env.HOME;
     else process.env.HOME = homeAnterior;
@@ -80,6 +86,8 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     else process.env.PATH = pathAnterior;
     if (aislamientoAnterior === undefined) delete process.env.TELO_AISLAMIENTO;
     else process.env.TELO_AISLAMIENTO = aislamientoAnterior;
+    if (claveCifradoAnterior === undefined) delete process.env.TELO_CLAVE_CIFRADO;
+    else process.env.TELO_CLAVE_CIFRADO = claveCifradoAnterior;
     if (
       hogar &&
       resolve(hogar).startsWith(resolve(tmpdir()) + sep) &&
@@ -120,7 +128,11 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
       "-m",
       "base",
     ]);
-    if (model === "fixture/git") await git(["remote", "add", "origin", "https://github.com/ejemplo/worker-pruebas"]);
+    if (model === "fixture/git") {
+      await git(["remote", "add", "origin", "https://github.com/ejemplo/worker-pruebas"]);
+      const { guardarSecreto } = await import("../src/secretos");
+      guardarSecreto(proyecto, "GITHUB_TOKEN", "ghp_credencialficticiaparapruebas123456789");
+    }
     db.query("INSERT INTO projects(id,name,repo_path) VALUES (?,'Worker de prueba',?)").run(
       proyecto,
       repo,

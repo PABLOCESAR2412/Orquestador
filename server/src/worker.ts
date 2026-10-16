@@ -482,10 +482,18 @@ async function ejecutarTarea(task: QueuedTask) {
       avisarChat(task.id, formatearRespuestaTarea(reporte, texto));
       if (task.conversation_id && task.project_id) {
         const accion = ["push","commit","pr"].find(a => planGuardado(task.id)?.requiere_aprobacion.includes(a as "commit"|"push"|"pr"));
-        if (accion) await repositoryActions.request(`http://telo/projects/${task.project_id}/acciones`, {
-          method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({action:accion,conversationId:task.conversation_id,taskId:task.id,messageId}),
-        });
+        if (accion) {
+          const resAccion = await repositoryActions.request(`http://telo/projects/${task.project_id}/acciones`, {
+            method:"POST",headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({action:accion,conversationId:task.conversation_id,taskId:task.id,messageId}),
+          });
+          if (resAccion.status === 409 && accion === "push" && planGuardado(task.id)?.requiere_aprobacion.includes("commit")) {
+            await repositoryActions.request(`http://telo/projects/${task.project_id}/acciones`, {
+              method:"POST",headers:{"Content-Type":"application/json"},
+              body:JSON.stringify({action:"commit",conversationId:task.conversation_id,taskId:task.id,messageId}),
+            });
+          }
+        }
       }
     }
   } catch (err) {
