@@ -78,6 +78,6 @@
     { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Uso del proveedor: gasto y saldo estimado en porcentajes por ventana", "pr": 56 },
     { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Barra lateral: grupos recientes simplificados y atenuados", "pr": 57 },
     { "fecha": "2026-10-16", "tipo": "mediano", "titulo": "Chat: hasta diez ejecuciones concurrentes y estado aislado por conversación", "pr": 58 },
-    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Se retira la conexión OAuth de Google que no se utilizaba para modelos ni métricas", "pr": null }
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Se retira la conexión OAuth de Google que no se utilizaba para modelos ni métricas", "pr": 61 }
   ]
 }
