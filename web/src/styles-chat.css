@@ -525,11 +525,12 @@
   border-radius: 22px;
   background: var(--surface);
 }
-/* Foco del compositor: borde un tono más claro y un halo suave de 3 px; sin contorno grueso. */
+/* El compositor no usa el halo claro del foco del navegador. El teclado conserva un foco ámbar visible. */
 .tl-composer-caja:focus-within {
-  border-color: var(--ink-3);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 8%, transparent);
+  border-color: var(--line-strong);
+  box-shadow: none;
 }
+.tl-composer-caja:has(.tl-composer-input:focus-visible) { outline: 2px solid var(--signal); outline-offset: 2px; }
 .tl-composer-input {
   width: 100%;
   min-height: 44px;
