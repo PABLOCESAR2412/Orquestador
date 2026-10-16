@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { carpetaHome } from "./hogar";
 import { redactar, valoresDeConfiguracion } from "./redaccion";
 import { hallarEjecutable, lanzarEnGrupo, matarGrupo } from "./ejecutable";
@@ -80,15 +81,13 @@ function entornoMinimo(): Record<string, string> {
 }
 
 // Primera URL y primer código de dispositivo (cuatro caracteres, guion y al menos cuatro más).
-function extraer(texto: string): { url: string | null; codigo: string | null } {
+export function interpretarSalidaLoginCodex(texto: string): { url: string | null; codigo: string | null; salida: string } {
+  const salida = redactar(stripVTControlCharacters(texto), valoresDeConfiguracion()).slice(-SALIDA_MAXIMA);
   return {
-    url: /https?:\/\/[^\s"'<>)\]]+/.exec(texto)?.[0] ?? null,
-    codigo: /\b[A-Z0-9]{4}-[A-Z0-9]{4,}\b/.exec(texto)?.[0] ?? null,
+    url: /https?:\/\/[^\s"'<>)\]]+/.exec(salida)?.[0] ?? null,
+    codigo: /\b[A-Z0-9]{4}-[A-Z0-9]{4,}\b/.exec(salida)?.[0] ?? null,
+    salida,
   };
-}
-
-function limpiar(texto: string): string {
-  return redactar(texto, valoresDeConfiguracion()).slice(-SALIDA_MAXIMA);
 }
 
 export function estadoLoginCodex(): LoginCodex {
@@ -171,10 +170,10 @@ async function volcar(flujo: ReadableStream<Uint8Array>, actual: Sesion): Promis
     const { value, done } = await lector.read();
     if (done) break;
     acumulado += decodificador.decode(value, { stream: true });
-    actual.salida = limpiar(acumulado);
-    const { url, codigo } = extraer(actual.salida);
-    actual.url ??= url;
-    actual.codigo ??= codigo;
+    const { url, codigo, salida } = interpretarSalidaLoginCodex(acumulado);
+    actual.salida = salida;
+    actual.url = url ?? actual.url;
+    actual.codigo = codigo ?? actual.codigo;
   }
 }
 
