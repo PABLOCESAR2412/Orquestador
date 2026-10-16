@@ -33,6 +33,7 @@ try {
       { id: "git1", action: "push", task_id: "t1", message_id: "u2", state: "pending", result: null, payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
     ];
     let authenticated = false;
+    let codexSesionEnPicker = false;
     let approvals = 0;
     let skillInstallRequests = 0;
     let sinDatos = false;
@@ -53,11 +54,20 @@ try {
       else if (path === "/api/conversations/c1/tasks" || path === "/api/tasks") data = [task];
       else if (path === "/api/tasks/t1/diff") data = { estado: "sin_cambios", archivos: [], hash: null, diff: "", remoto: true, aprobaciones: { commit: null, push: null } };
       else if (path.endsWith("/decidir")) { approvals++; actions[1].state = "approved"; actions[1].result = JSON.stringify({ sha: "abcdef012345" }); return route.fulfill({ status: 409, json: { error: "action_already_decided" } }); }
-      else if (path === "/api/models") data = { models: [] };
+      else if (path === "/api/models") data = { models: [
+        { id: "opencode/claude-fable-5", provider: "opencode", name: "Claude Fable 5", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Claude", recommended: true },
+        { id: "nvidia/nemotron-test", provider: "nvidia", name: "Nemotron Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Nemotron", recommended: true },
+        { id: "groq/llama-test", provider: "groq", name: "Llama Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Llama", recommended: true },
+      ] };
       else if (path === "/api/preferences") data = { defaultModel: null, defaultEffort: null, monthlyBudgetUsd: null, budgetAlertPercent: 80 };
-      else if (path === "/api/providers") data = [{ id: "codex", name: "Codex", configured: false, variable: null, enAgente: false, guardable: false, sesion: false }];
+      else if (path === "/api/providers") data = [{ id: "codex", name: "Codex", configured: codexSesionEnPicker, variable: null, enAgente: false, guardable: false, sesion: codexSesionEnPicker }];
+      else if (path === "/api/providers/codex/models") data = { generado: now, models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", context: 100000, variants: ["high"] }] };
       else if (path === "/api/providers/codex/login") data = { estado: "esperando", conectada: false, url: "https://auth.openai.com/codex/device", codigo: "ABCD-EFGH", salida: "Salida de prueba\n" + "x".repeat(300) };
-      else if (path === "/api/skills/instalar") { skillInstallRequests++; return route.fulfill({ status: 409, json: { error: "skill_command_ambiguous" } }); }
+      else if (path === "/api/skills/instalar") {
+        skillInstallRequests++;
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return route.fulfill({ status: 409, json: { error: "skill_command_ambiguous" } });
+      }
       else if (path === "/api/servidor") data = null;
       else if (path === "/api/cuotas") data = { proveedores: [] };
       else if (path === "/api/skills") data = { skills: [] };
@@ -130,6 +140,17 @@ try {
     await comandoSkill.dispatchEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true });
     await page.getByText("El repositorio tiene más de una skill con ese nombre. Elige un repositorio que contenga una sola.", { exact: true }).waitFor();
     assert.equal(skillInstallRequests, 1);
+    codexSesionEnPicker = true;
+    await page.reload();
+    await page.locator(".model-chip").click();
+    await page.getByRole("heading", { name: "OpenCode", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "NVIDIA API", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Groq API", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Cuenta Codex", exact: true }).waitFor();
+    await page.locator(".picker").evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)));
+    assert.equal(await page.getByRole("button", { name: /GPT-5 Codex/ }).isDisabled(), true);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/modelos-${width}.png` });
     console.log(`${width}px: código de acceso comprobado`);
     await page.goto(`${base}/analiticas`);
     await page.getByRole("heading", { name: "Precisión de las métricas", exact: true }).waitFor();

@@ -17,15 +17,17 @@ export const EFFORT_LABELS: Record<string, string> = {
 
 export const effortLabel = (value: string) => EFFORT_LABELS[value] ?? value;
 
-// Nombre legible del proveedor (el id de la API viene de OpenCode, por ejemplo "opencode" o "anthropic").
+// El prefijo del modelo identifica el catálogo o la API que lo sirve.
 const PROVEEDOR_LABEL: Record<string, string> = {
-  opencode: "OpenCode Zen",
+  opencode: "OpenCode",
   anthropic: "Anthropic",
-  openai: "OpenAI",
-  google: "Google",
+  openai: "OpenAI API",
+  google: "Google API",
   deepseek: "DeepSeek",
   github: "GitHub Copilot",
   openrouter: "OpenRouter",
+  groq: "Groq API",
+  nvidia: "NVIDIA API",
 };
 
 export const nombreProveedor = (id: string) =>

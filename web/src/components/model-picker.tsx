@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
-import type { ModelInfo } from "../api";
+import { useQuery } from "@tanstack/react-query";
+import { api, type ModeloCodex, type ModelInfo } from "../api";
 import { formatPrice, nombreProveedor } from "../lib/model";
 import { CostMeter, EffortControl, useDialogo } from "./controls";
 import "../styles-picker.css";
@@ -47,6 +48,15 @@ export function ModelPicker({
   error = null,
   onReintentar,
 }: Props) {
+  const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders, staleTime: 5 * 60_000 });
+  const codexConectado = proveedores.data?.some((proveedor) => proveedor.id === "codex" && proveedor.sesion) ?? false;
+  const catalogoCodex = useQuery({
+    queryKey: ["codex-models"],
+    queryFn: api.codexModels,
+    enabled: codexConectado,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
   const [onlyFree, setOnlyFree] = useState(false);
   const [draftId, setDraftId] = useState(currentId);
   const [draftEffort, setDraftEffort] = useState(currentEffort);
@@ -217,6 +227,19 @@ export function ModelPicker({
                 ))}
               </section>
             ))}
+
+          {!cargando && !error && codexConectado && (
+            <section className="picker-proveedor" aria-labelledby="picker-codex-titulo">
+              <h3 id="picker-codex-titulo" className="group-title">Cuenta Codex</h3>
+              <p className="picker-proveedor-nota">
+                {catalogoCodex.isError
+                  ? "No se pudo consultar el catálogo de Codex. Revisa la sesión en Ajustes."
+                  : "Modelos de tu sesión. Telo todavía ejecuta agentes con OpenCode; esta lista es informativa."}
+              </p>
+              {catalogoCodex.isPending && <p className="picker-cargando" role="status">Consultando modelos de Codex…</p>}
+              {catalogoCodex.data?.models.map((modelo) => <FilaCodex key={modelo.id} modelo={modelo} />)}
+            </section>
+          )}
         </div>
         {conEsfuerzo && draftModel && draftModel.variants.length > 0 && (
           <div className="picker-configuracion">
@@ -236,5 +259,20 @@ export function ModelPicker({
         )}
       </div>
     </>
+  );
+}
+
+function FilaCodex({ modelo }: { modelo: ModeloCodex }) {
+  return (
+    <button type="button" className="picker-item picker-item-codex" disabled>
+      <span className="picker-main">
+        <span className="picker-name">{modelo.name}</span>
+        <span className="picker-id">{modelo.id}</span>
+      </span>
+      <span className="picker-meta">
+        <span className="picker-price">Solo catálogo</span>
+        {modelo.context > 0 && <span className="picker-codex-context">{modelo.context.toLocaleString("es")} tokens</span>}
+      </span>
+    </button>
   );
 }

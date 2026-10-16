@@ -9,6 +9,27 @@
   overscroll-behavior: contain;
 }
 
+.picker-proveedor-nota {
+  margin: 0 10px 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.picker-item-codex:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.picker-item-codex:disabled:hover {
+  background: transparent;
+}
+
+.picker-codex-context {
+  color: var(--ink-3);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
 .picker-configuracion {
   display: flex;
   flex-direction: column;
