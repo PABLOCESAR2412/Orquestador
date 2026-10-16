@@ -109,6 +109,27 @@ analytics.get("/analytics", (c) => {
     return { tipo, calls: row?.calls ?? 0, tokens: row?.tokens ?? 0, cost: row?.cost ?? 0, sinTokens: row?.sinTokens ?? 0, sinCoste: row?.sinCoste ?? 0 };
   });
 
+  // Jev es una capa auxiliar con cuota propia. Sus tokens se muestran aparte y no entran en el coste del agente.
+  const usoJevCond = ["created_at >= datetime('now', ?)"];
+  const usoJevParams: string[] = [since];
+  if (proyecto) {
+    usoJevCond.push("proyecto_id = ?");
+    usoJevParams.push(proyecto);
+  }
+  if (modelo) {
+    usoJevCond.push("modelo = ?");
+    usoJevParams.push(modelo);
+  }
+  const usoJev = db.query<{
+    tipo: "recomendaciones_chat" | "memoria_proyecto" | "clasificacion_tarea" | "prueba_conexion";
+    calls: number; inputTokens: number; outputTokens: number; tokens: number;
+  }, string[]>(`SELECT tipo, COUNT(*) AS calls,
+      COALESCE(SUM(tokens_entrada), 0) AS inputTokens,
+      COALESCE(SUM(tokens_salida), 0) AS outputTokens,
+      COALESCE(SUM(tokens_entrada + tokens_salida), 0) AS tokens
+    FROM uso_jev WHERE ${usoJevCond.join(" AND ")} GROUP BY tipo`,
+  ).all(...usoJevParams);
+
   // Un punto por día, incluidos los días sin uso, para que la gráfica no salte.
   const dayRows = db
     .query<DayRow, string[]>(
@@ -205,13 +226,15 @@ analytics.get("/analytics", (c) => {
   // Opciones de los filtros: todos los proyectos, y los modelos con uso o tareas en el periodo.
   const proyectos = db.query<{ id: string; name: string }, []>("SELECT id, name FROM projects ORDER BY name COLLATE NOCASE").all();
   const modelos = db
-    .query<{ model: string }, [string, string]>(
+    .query<{ model: string }, [string, string, string]>(
       `SELECT model FROM usage WHERE created_at >= datetime('now', ?)
        UNION
        SELECT model FROM tasks WHERE created_at >= datetime('now', ?)
+       UNION
+       SELECT modelo AS model FROM uso_jev WHERE created_at >= datetime('now', ?)
        ORDER BY model`,
     )
-    .all(since, since)
+    .all(since, since, since)
     .map((r) => r.model);
 
   return c.json({
@@ -224,6 +247,7 @@ analytics.get("/analytics", (c) => {
       cost: totals.cost,
     },
     byType,
+    usoJev,
     calidad,
     byTask,
     byDay,

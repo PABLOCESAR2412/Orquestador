@@ -678,8 +678,16 @@ export function ChatPage() {
   const tareaActiva = !!tareaChat && ["queued", "analyzing", "running"].includes(tareaChat.status);
   const siguiendoActual = seguirChat.isPending && seguirChat.variables === selectedId;
   const pensando = enviandoActual || siguiendoActual || (tareaChat ? tareaActiva : !!current?.ocupada);
+  const candidatasSugerencia = useMemo(() => sugerenciasChat(lista), [lista]);
+  const sugerenciasOrdenadas = useQuery({
+    queryKey: ["jev-recomendaciones", selectedId, lista.at(-1)?.id, candidatasSugerencia],
+    queryFn: () => api.rankChatRecommendations(selectedId!, candidatasSugerencia),
+    enabled: !!selectedId && !pensando && !esperandoPlan && !draft.startsWith("/") && candidatasSugerencia.length > 0,
+    staleTime: 24 * 60 * 60_000,
+  });
   const sugerencia = !sugerenciaOculta && !pensando && !draft.startsWith("/")
-    ? sugerenciasChat(lista).find((s) => !draft || (s.toLocaleLowerCase().startsWith(draft.toLocaleLowerCase()) && s.length > draft.length))
+    ? (sugerenciasOrdenadas.data?.recomendaciones ?? candidatasSugerencia)
+        .find((s) => !draft || (s.toLocaleLowerCase().startsWith(draft.toLocaleLowerCase()) && s.length > draft.length))
     : undefined;
   useEffect(() => setSugerenciaOculta(false), [selectedId, lista.length]);
 

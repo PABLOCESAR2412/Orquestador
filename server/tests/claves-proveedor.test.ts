@@ -17,13 +17,17 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 const { db } = await import("../src/db");
 const {
   borrarClaveProveedor,
+  claveJevActualizadaEn,
   claveProveedorValida,
   entornoProveedores,
   estadoClaves,
   guardarClaveProveedor,
+  valorClaveJev,
 } = await import("../src/claves-proveedor");
+const { clasificarTareaJev, conservarMemoriaSegunJev, ordenarSugerenciasJev, puntuarMemoriaJev, probarClaveJev } = await import("../src/jev");
 const { ocultarValores, valoresAOcultar } = await import("../src/ejecutar");
 const { clavesProveedor } = await import("../src/routes/claves-proveedor");
+const { jevRoute } = await import("../src/routes/jev");
 const { providers } = await import("../src/routes/providers");
 
 const CLAVE_VALIDA = randomBytes(32).toString("base64");
@@ -33,6 +37,7 @@ const VALOR = "gsk_valor_de_prueba_12345";
 beforeEach(() => {
   process.env.TELO_CLAVE_CIFRADO = CLAVE_VALIDA;
   db.query("DELETE FROM provider_keys").run();
+  db.query("DELETE FROM uso_jev").run();
   // Las variables del entorno del servidor también cuentan como "configurada": se quitan para aislar cada prueba.
   for (const variable of ["GROQ_API_KEY", "NVIDIA_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"]) {
     delete process.env[variable];
@@ -131,6 +136,124 @@ describe("redacción de la salida", () => {
     guardarClaveProveedor("groq", VALOR);
     const salida = ocultarValores(`Llamando con ${VALOR} al modelo`, valoresAOcultar(entornoProveedores()));
     expect(salida).not.toContain(VALOR);
+  });
+});
+
+describe("integración Jev", () => {
+  const CLAVE_JEV = "apikey_clave_jev_de_prueba_1234567890";
+
+  test("cifra la clave, la mantiene fuera del entorno de OpenCode y no la devuelve por Ajustes", async () => {
+    expect(guardarClaveProveedor("jev", CLAVE_JEV)).not.toBeNull();
+    expect(valorClaveJev()).toBe(CLAVE_JEV);
+    expect(claveJevActualizadaEn()).not.toBeNull();
+    expect(entornoProveedores()).toEqual({});
+    const fila = db.query("SELECT * FROM provider_keys WHERE proveedor = 'jev'").get();
+    expect(JSON.stringify(fila)).not.toContain(CLAVE_JEV);
+
+    const respuesta = await jevRoute.request("/jev");
+    const texto = await respuesta.text();
+    expect(texto).not.toContain(CLAVE_JEV);
+    expect(JSON.parse(texto)).toMatchObject({ disponible: true, configurada: true });
+  });
+
+  test("guarda y elimina la clave sin exponerla en las respuestas", async () => {
+    const guardar = await jevRoute.request("/jev", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ valor: CLAVE_JEV }),
+    });
+    const texto = await guardar.text();
+    expect(guardar.status).toBe(200);
+    expect(texto).not.toContain(CLAVE_JEV);
+    expect(JSON.parse(texto)).toMatchObject({ configurada: true });
+
+    const borrar = await jevRoute.request("/jev", { method: "DELETE" });
+    expect(await borrar.json()).toEqual({ ok: true });
+    expect(valorClaveJev()).toBeNull();
+  });
+
+  test("usa System One, redacta secretos del estado, registra uso aparte y ordena sugerencias", async () => {
+    guardarClaveProveedor("jev", CLAVE_JEV);
+    db.query("INSERT INTO projects (id, name) VALUES ('proyecto-a', 'Proyecto A')").run();
+    db.query("INSERT INTO conversations (id, project_id, title) VALUES ('chat-jev', 'proyecto-a', 'Chat Jev')").run();
+    const secretoEntorno = "secreto_api_personal_sin_prefijo_12345";
+    process.env.CUSTOM_API_KEY = secretoEntorno;
+    const fetchOriginal = globalThis.fetch;
+    const cuerpos: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe("https://api.typesafe.ai/v1/systemone");
+      expect(new Headers(init?.headers).get("Authorization")).toBe(`Bearer ${CLAVE_JEV}`);
+      cuerpos.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      const body = cuerpos.at(-1)!;
+      const questions = body.questions as Record<string, unknown>;
+      const answers = Object.fromEntries(Object.keys(questions).map((key, index) => [key, {
+        type: "score", score: index === 0 ? 0.2 : 1.8,
+      }]));
+      return Response.json({ model: "jev-test", answers, usage: { input_tokens: 12, output_tokens: 3 } });
+    }) as unknown as typeof fetch;
+    try {
+      const recomendaciones = await ordenarSugerenciasJev({
+        conversacionId: "chat-jev",
+        proyectoId: null,
+        mensajes: [{ role: "user", content: `Ayúdame con ${CLAVE_JEV} y ${secretoEntorno}` }],
+        candidatas: ["Seguir con otro tema", "Corregir el fallo actual"],
+      });
+      expect(recomendaciones).toEqual(["Corregir el fallo actual", "Seguir con otro tema"]);
+      const estadoEnviado = JSON.stringify(cuerpos[0].state);
+      expect(estadoEnviado).not.toContain(CLAVE_JEV);
+      expect(estadoEnviado).not.toContain(secretoEntorno);
+      expect(estadoEnviado).toContain("***");
+      expect(cuerpos[0]).toMatchObject({ model: "jev-latest" });
+
+      expect(await puntuarMemoriaJev({
+        proyectoId: "proyecto-a",
+        estado: { proyecto: "Proyecto", tarea: "Tarea", memoriaAnterior: null, propuesta: "Convención estable" },
+      })).toBe(0.2);
+      const uso = db.query<{ calls: number; tokens: number }, []>(
+        "SELECT COUNT(*) AS calls, SUM(tokens_entrada + tokens_salida) AS tokens FROM uso_jev",
+      ).get();
+      expect(uso).toEqual({ calls: 2, tokens: 30 });
+    } finally {
+      globalThis.fetch = fetchOriginal;
+      delete process.env.CUSTOM_API_KEY;
+    }
+  });
+
+  test("la prueba valida una respuesta Noul y memoria conserva su fallback si Jev falla", async () => {
+    guardarClaveProveedor("jev", CLAVE_JEV);
+    const fetchOriginal = globalThis.fetch;
+    globalThis.fetch = (async () => Response.json({
+      model: "jev-test", answers: { conectada: { type: "noul", noul: 0.99 } }, usage: { input_tokens: 1, output_tokens: 1 },
+    })) as unknown as typeof fetch;
+    try {
+      expect(await probarClaveJev()).toBe(true);
+    } finally {
+      globalThis.fetch = fetchOriginal;
+    }
+    expect(conservarMemoriaSegunJev(null)).toBeNull();
+    expect(conservarMemoriaSegunJev(1.99)).toBe(false);
+    expect(conservarMemoriaSegunJev(2)).toBe(true);
+    expect(conservarMemoriaSegunJev(3.1)).toBeNull();
+  });
+
+  test("la clasificación de tarea solo devuelve una categoría conocida como recomendación", async () => {
+    guardarClaveProveedor("jev", CLAVE_JEV);
+    const fetchOriginal = globalThis.fetch;
+    globalThis.fetch = (async () => Response.json({
+      model: "jev-test",
+      answers: { categoria: { type: "choice", choice: "interfaz", confidence: 0.84 } },
+      usage: { input_tokens: 2, output_tokens: 1 },
+    })) as unknown as typeof fetch;
+    try {
+      expect(await clasificarTareaJev({
+        tareaId: "tarea-a",
+        proyectoId: null,
+        prompt: "Mejora el panel de Ajustes",
+      })).toEqual({ categoria: "interfaz", confianza: 0.84 });
+    } finally {
+      globalThis.fetch = fetchOriginal;
+    }
+    expect(entornoProveedores()).toEqual({});
   });
 });
 

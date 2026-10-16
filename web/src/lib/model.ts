@@ -96,6 +96,8 @@ export const EVENT_LABEL: Record<TaskEventKind, string> = {
   turno_encolado: "Nuevo mensaje de la conversación",
   replanificada: "Replanificada por desviación",
   obrero_iniciado: "Obrero ejecutando el plan",
+  clasificacion_jev: "Clasificación sugerida por Jev",
+  memoria_evaluada: "Propuesta de memoria evaluada por Jev",
 };
 
 // Montos en dólares: centavos normales; cifras menores a un centavo con cuatro decimales.
@@ -447,6 +449,18 @@ export function errorText(err: unknown): string {
         return "Ese proveedor no existe en Telo.";
       case "clave_proveedor_invalida":
         return "La clave no tiene el formato esperado. Pégala completa, sin espacios ni saltos de línea.";
+      case "jev_sin_clave":
+        return "Guarda una clave de Jev en Ajustes antes de probar la conexión.";
+      case "jev_clave_invalida":
+        return "Jev rechazó la clave. Comprueba que esté activa y vuelve a guardarla.";
+      case "jev_temporalmente_no_disponible":
+        return "Jev está ocupado o limitó las solicitudes. Espera un momento y vuelve a probar.";
+      case "jev_sin_conexion":
+        return "Telo no pudo conectarse con Jev. Comprueba la conexión del servidor y vuelve a intentarlo.";
+      case "jev_respuesta_invalida":
+        return "Jev respondió en un formato inesperado. Intenta de nuevo más tarde.";
+      case "jev_error":
+        return "No se pudo completar la prueba de Jev. Revisa la clave y vuelve a intentarlo.";
       case "proveedor_sin_clave":
         return "Este proveedor no tiene una clave guardada en Telo.";
       case "clave_existente":

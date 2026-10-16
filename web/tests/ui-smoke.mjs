@@ -34,6 +34,7 @@ try {
     ];
     let authenticated = false;
     let codexSesionEnPicker = false;
+    let jevConfigurada = false;
     let approvals = 0;
     let skillInstallRequests = 0;
     let sinDatos = false;
@@ -78,6 +79,14 @@ try {
       else if (path === "/api/providers") data = [{ id: "codex", name: "Codex", configured: codexSesionEnPicker, variable: null, enAgente: false, guardable: false, sesion: codexSesionEnPicker }];
       else if (path === "/api/providers/codex/models") data = { generado: now, models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", context: 100000, variants: ["high"] }] };
       else if (path === "/api/providers/codex/login") data = { estado: "esperando", conectada: false, url: "https://auth.openai.com/codex/device", codigo: "ABCD-EFGH", salida: "Salida de prueba\n" + "x".repeat(300) };
+      else if (path === "/api/jev" && route.request().method() === "GET") data = { disponible: true, configurada: jevConfigurada, actualizada_en: jevConfigurada ? now : null };
+      else if (path === "/api/jev" && route.request().method() === "PUT") {
+        jevConfigurada = true;
+        data = { configurada: true, actualizada_en: now };
+      }
+      else if (path === "/api/jev" && route.request().method() === "DELETE") { jevConfigurada = false; data = { ok: true }; }
+      else if (path === "/api/jev/probar") data = { ok: true };
+      else if (path === "/api/jev/recomendaciones") data = { recomendaciones: route.request().postDataJSON().candidatas, ordenadas_con_jev: false };
       else if (path === "/api/skills/instalar") {
         skillInstallRequests++;
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -100,7 +109,7 @@ try {
         cuotaRestanteUsd: 4, precision: "medida_telo",
       }] };
       else if (path === "/api/analytics") data = {
-        days: 30, filtros: { proyecto: null, modelo: null }, proyectos: [], modelos: [], budget: null,
+        days: 30, filtros: { proyecto: null, modelo: null }, proyectos: [], modelos: [], budget: null, usoJev: [],
         totals: { calls: 1, inputTokens: sinDatos ? 0 : 8, outputTokens: sinDatos ? 0 : 2, cost: 0 }, byDay: [], byModel: [],
         byType: ["chat", "tarea", "otro"].map(tipo => ({ tipo, calls: tipo === "tarea" ? 1 : 0, tokens: tipo === "tarea" && !sinDatos ? 10 : 0, cost: 0, sinTokens: tipo === "tarea" && sinDatos ? 1 : 0, sinCoste: tipo === "tarea" && sinDatos ? 1 : 0 })),
         tasks: { done: 1 }, calidad: { tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 },
@@ -224,7 +233,23 @@ try {
     assert.equal(await tarjetaGithub.getByRole("link", { name: "GitHub", exact: true }).count(), 1);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/github-ajustes-${width}.png` });
-
+    const tarjetaJev = page.locator('article[aria-labelledby="aj-jev-titulo"]');
+    await tarjetaJev.scrollIntoViewIfNeeded();
+    await tarjetaJev.getByText("TypeSafe Jev", { exact: true }).waitFor();
+    const campoJev = tarjetaJev.getByLabel("Clave API");
+    assert.equal(await campoJev.getAttribute("type"), "password");
+    await tarjetaJev.getByRole("button", { name: "Mostrar", exact: true }).click();
+    assert.equal(await campoJev.getAttribute("type"), "text");
+    await tarjetaJev.getByRole("button", { name: "Ocultar", exact: true }).click();
+    assert.equal(await campoJev.getAttribute("type"), "password");
+    await campoJev.fill("apikey_prueba_de_interfaz_123456789012");
+    await tarjetaJev.getByRole("button", { name: "Guardar clave", exact: true }).click();
+    await tarjetaJev.getByText("Clave guardada cifrada; Telo no vuelve a mostrar su valor.", { exact: true }).waitFor();
+    assert.equal(await campoJev.inputValue(), "");
+    assert.equal((await tarjetaJev.textContent()).includes("apikey_prueba_de_interfaz_123456789012"), false);
+    assert.equal((await tarjetaJev.textContent()).includes("Telo decide qué guardar"), true);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/jev-ajustes-${width}.png` });
     await page.getByRole("button", { name: "Copiar código", exact: true }).click();
     await page.getByText("Código copiado.", { exact: true }).waitFor();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "ABCD-EFGH");

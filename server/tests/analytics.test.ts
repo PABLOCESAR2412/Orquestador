@@ -17,6 +17,7 @@ const { analytics } = await import("../src/routes/analytics");
 const app = new Hono().route("/", analytics);
 
 afterEach(() => {
+  db.query("DELETE FROM uso_jev").run();
   db.query("DELETE FROM usage").run();
   db.query("DELETE FROM tasks").run();
   db.query("DELETE FROM conversations").run();
@@ -64,4 +65,26 @@ test("separa llamadas de chat y tareas y aplica los filtros a cada origen", asyn
     { tipo: "tarea", calls: 1, tokens: 130, cost: 0.05 },
     { tipo: "otro", calls: 1, tokens: 5, cost: 0.02 },
   ]);
+});
+
+test("muestra Jev aparte sin sumarlo a las llamadas ni al coste del agente", async () => {
+  db.query("INSERT INTO projects (id, name) VALUES ('jev-proyecto', 'Proyecto Jev')").run();
+  db.query(`INSERT INTO uso_jev (tipo, proyecto_id, modelo, tokens_entrada, tokens_salida)
+    VALUES ('recomendaciones_chat', 'jev-proyecto', 'jev-latest', 12, 3),
+           ('memoria_proyecto', 'jev-proyecto', 'jev-latest', 20, 5),
+           ('clasificacion_tarea', NULL, 'jev-latest', 4, 2)`).run();
+
+  const respuesta = await app.request("/analytics?days=30&proyecto=jev-proyecto&modelo=jev-latest");
+  expect(respuesta.status).toBe(200);
+  const datos = (await respuesta.json()) as {
+    totals: { calls: number; inputTokens: number; outputTokens: number; cost: number };
+    usoJev: { tipo: string; calls: number; inputTokens: number; outputTokens: number; tokens: number }[];
+    modelos: string[];
+  };
+  expect(datos.totals).toEqual({ calls: 0, inputTokens: 0, outputTokens: 0, cost: 0 });
+  expect(datos.usoJev).toEqual([
+    { tipo: "memoria_proyecto", calls: 1, inputTokens: 20, outputTokens: 5, tokens: 25 },
+    { tipo: "recomendaciones_chat", calls: 1, inputTokens: 12, outputTokens: 3, tokens: 15 },
+  ]);
+  expect(datos.modelos).toContain("jev-latest");
 });

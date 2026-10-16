@@ -298,6 +298,11 @@ export function SettingsPage() {
                 ))}
               </section>
 
+              <section className="aj-seccion" aria-labelledby="aj-funciones-auxiliares-titulo">
+                <h2 id="aj-funciones-auxiliares-titulo" className="aj-titulo-seccion">Funciones auxiliares</h2>
+                <JevPanel />
+              </section>
+
               <section className="aj-seccion" aria-labelledby="aj-skills-titulo">
                 <h2 id="aj-skills-titulo" className="aj-titulo-seccion">
                   Skills
@@ -842,6 +847,128 @@ function CampoClave({ p }: { p: ProviderStatus }) {
       {aviso && <p className="aj-nota" role="status">{aviso}</p>}
       {error && <p className="aj-error" role="alert">{error}</p>}
     </div>
+  );
+}
+
+function JevPanel() {
+  const qc = useQueryClient();
+  const estado = useQuery({ queryKey: ["jev"], queryFn: api.getJev });
+  const [valor, setValor] = useState("");
+  const [visible, setVisible] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const guardar = useMutation({
+    mutationFn: api.setJevKey,
+    onSuccess: () => {
+      setValor("");
+      setError(null);
+      setAviso("Clave guardada cifrada en el servidor. Jev se activará en las próximas evaluaciones.");
+      qc.removeQueries({ queryKey: ["jev-recomendaciones"] });
+      void qc.invalidateQueries({ queryKey: ["jev"] });
+    },
+    onError: (err) => {
+      setAviso(null);
+      setError(errorText(err));
+    },
+  });
+  const quitar = useMutation({
+    mutationFn: api.deleteJevKey,
+    onSuccess: () => {
+      setError(null);
+      setAviso("Clave eliminada. Telo vuelve a usar sus sugerencias locales y guarda la memoria con sus reglas actuales.");
+      qc.removeQueries({ queryKey: ["jev-recomendaciones"] });
+      void qc.invalidateQueries({ queryKey: ["jev"] });
+    },
+    onError: (err) => {
+      setAviso(null);
+      setError(errorText(err));
+    },
+  });
+  const probar = useMutation({
+    mutationFn: api.testJev,
+    onSuccess: () => {
+      setError(null);
+      setAviso("Conexión correcta. La prueba realizó una evaluación mínima y puede consumir tokens.");
+      void qc.invalidateQueries({ queryKey: ["analytics"] });
+    },
+    onError: (err) => {
+      setAviso(null);
+      setError(errorText(err));
+    },
+  });
+  const ocupado = guardar.isPending || quitar.isPending || probar.isPending;
+  const enviar = () => {
+    if (!valor.trim() || ocupado || !estado.data?.disponible) return;
+    setAviso(null);
+    setError(null);
+    guardar.mutate(valor.trim());
+  };
+
+  return (
+    <article className="aj-tarjeta aj-jev" aria-labelledby="aj-jev-titulo">
+      <div>
+        <h3 id="aj-jev-titulo" className="aj-tarjeta-titulo-simple">TypeSafe Jev</h3>
+        <p className="aj-nota">
+          Jev ordenará sugerencias, puntuará propuestas de memoria y recomendará una categoría para tareas. Telo decide qué guardar; el modelo, los permisos y las aprobaciones de Git siguen bajo sus reglas.
+        </p>
+      </div>
+      <div className="aj-campo">
+        <div className="aj-campo-etiqueta">
+          <label htmlFor="aj-jev-clave">Clave API</label>
+          <button type="button" className="aj-texto-btn" onClick={() => setVisible((v) => !v)}>
+            {visible ? "Ocultar" : "Mostrar"}
+          </button>
+        </div>
+        <div className="aj-clave-fila">
+          <input
+            id="aj-jev-clave"
+            className="aj-input aj-mono"
+            type={visible ? "text" : "password"}
+            autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder={estado.data?.configurada ? "Pega una clave nueva para reemplazarla" : "Pega la clave apikey_…"}
+            value={valor}
+            disabled={ocupado || (estado.data !== undefined && !estado.data.disponible)}
+            onChange={(e) => setValor(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              enviar();
+            }}
+          />
+          <button type="button" className="aj-btn aj-btn-primario" onClick={enviar} disabled={!valor.trim() || ocupado || !estado.data?.disponible}>
+            {guardar.isPending ? "Guardando…" : "Guardar clave"}
+          </button>
+        </div>
+        <p className="aj-nota" role="status">
+          {estado.isPending ? "Consultando estado…" : estado.data?.configurada
+            ? "Clave guardada cifrada; Telo no vuelve a mostrar su valor."
+            : estado.data?.disponible
+              ? "Sin clave configurada."
+              : "Falta TELO_CLAVE_CIFRADO en el servidor para guardar secretos."}
+        </p>
+        {estado.data?.actualizada_en && <p className="aj-nota">Actualizada: {new Date(estado.data.actualizada_en).toLocaleString("es")}</p>}
+      </div>
+      <p className="aj-nota">
+        Si guardas la clave, Telo enviará a TypeSafe AI los últimos mensajes del chat, el texto de cada tarea y la propuesta de memoria necesaria para evaluarla. No enviará credenciales conocidas. Puedes quitar la clave aquí cuando quieras.
+      </p>
+      {estado.isError && <p className="aj-error" role="alert">{errorText(estado.error)}</p>}
+      {error && <p className="aj-error" role="alert">{error}</p>}
+      {aviso && <p className="aj-nota" role="status">{aviso}</p>}
+      <div className="aj-acciones">
+        <button type="button" className="aj-btn" onClick={() => probar.mutate()} disabled={!estado.data?.configurada || ocupado}>
+          {probar.isPending ? "Probando…" : "Probar conexión"}
+        </button>
+        {estado.data?.configurada && (
+          <button type="button" className="aj-btn" onClick={() => quitar.mutate()} disabled={ocupado}>
+            {quitar.isPending ? "Quitando…" : "Quitar clave"}
+          </button>
+        )}
+      </div>
+      <p className="aj-nota">La prueba envía una evaluación mínima y puede consumir tokens. El uso de Jev aparece separado en Analíticas.</p>
+    </article>
   );
 }
 
