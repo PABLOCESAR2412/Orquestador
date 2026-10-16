@@ -158,6 +158,63 @@ export function motivoTexto(motivo: string | null): string | null {
   }
 }
 
+function textoErrorConAyuda(
+  causa: string,
+  detalle: string | undefined,
+  siguientePaso: string,
+): string {
+  const detalleVisible = detalle ? sanearDetalle(detalle, 420).trim() : "";
+  return `${causa}${detalleVisible ? ` Detalle: ${detalleVisible}.` : ""} Por dónde empezar: ${siguientePaso}`;
+}
+
+function siguientePasoProveedor(detalle?: string): string | null {
+  const texto = detalle?.toLowerCase() ?? "";
+  if (/429|rate.?limit|quota|cuota|insufficient.?funds|credit balance/.test(texto)) {
+    return "comprueba la cuota del proveedor, cambia a otro modelo o espera a que se renueve el límite.";
+  }
+  if (/401|unauthorized|invalid api.?key|authentication|api key/.test(texto)) {
+    return "revisa en Ajustes que la sesión o clave del proveedor siga activa.";
+  }
+  if (/403|forbidden|permission|access denied/.test(texto)) {
+    return "comprueba que la cuenta conectada tenga permiso para usar ese modelo.";
+  }
+  if (/timeout|timed out|etimedout|econnreset/.test(texto)) {
+    return "vuelve a intentarlo y, si se repite, prueba otro modelo o proveedor.";
+  }
+  if (/failed to fetch|fetch failed|network|enotfound|econnrefused|connection/.test(texto)) {
+    return "comprueba que el servidor tenga conexión con el proveedor y vuelve a intentarlo.";
+  }
+  return null;
+}
+
+function explicacionHttp(status: number): { causa: string; siguientePaso: string } {
+  switch (status) {
+    case 401:
+      return { causa: "La sesión ya no es válida.", siguientePaso: "vuelve a iniciar sesión y repite la acción." };
+    case 403:
+      return { causa: "La cuenta conectada no tiene permiso para esta acción.", siguientePaso: "comprueba la cuenta, el repositorio y los permisos necesarios." };
+    case 404:
+      return { causa: "La pantalla o el elemento solicitado ya no existe.", siguientePaso: "recarga la página y vuelve a abrir el elemento." };
+    case 409:
+      return { causa: "El estado cambió y la acción ya no coincide con lo que está pendiente.", siguientePaso: "recarga la pantalla y revisa si la tarea o autorización ya se resolvió." };
+    case 413:
+      return { causa: "El contenido enviado supera el tamaño permitido.", siguientePaso: "reduce el texto o los archivos adjuntos e inténtalo otra vez." };
+    case 422:
+      return { causa: "El servidor recibió la solicitud, pero no pudo procesarla con esos datos.", siguientePaso: "revisa el detalle y confirma que la información siga vigente." };
+    case 429:
+      return { causa: "Se hicieron demasiadas solicitudes en poco tiempo.", siguientePaso: "espera un momento y vuelve a intentarlo." };
+    case 502:
+    case 503:
+    case 504:
+      return { causa: "Telo no pudo completar la solicitud porque falló un servicio del servidor o del proveedor.", siguientePaso: "comprueba el estado del proveedor o del servidor y vuelve a intentarlo." };
+    default:
+      if (status >= 500) {
+        return { causa: "El servidor encontró un error al procesar la solicitud.", siguientePaso: "vuelve a intentarlo; si persiste, comparte este detalle para revisar los registros del servidor." };
+      }
+      return { causa: "El servidor no aceptó la solicitud.", siguientePaso: "recarga la pantalla y comprueba los datos antes de repetir la acción." };
+  }
+}
+
 export function errorText(err: unknown): string {
   if (err instanceof ApiError) {
     switch (err.code) {
@@ -170,10 +227,25 @@ export function errorText(err: unknown): string {
       case "proyecto_ocupado":
         return "El proyecto está ocupado por una tarea. Intenta de nuevo cuando termine.";
       case "github_access":
+        return textoErrorConAyuda(
+          "GitHub no concedió acceso al repositorio.",
+          err.detail,
+          "confirma que la GitHub App esté instalada en ese repo y tenga el permiso requerido, y vuelve a autorizar la acción.",
+        );
       case "git_action":
-        return err.detail
-          ? sanearDetalle(err.detail, 600)
-          : "No se pudo completar la acción. Revisa la configuración de Git del proyecto.";
+        return textoErrorConAyuda(
+          "La acción de GitHub no se pudo completar.",
+          err.detail,
+          "revisa el repo, la rama y el estado de la autorización; si los cambios cambiaron, vuelve a revisarlos y prepara otra autorización.",
+        );
+      case "github_error":
+        return textoErrorConAyuda("GitHub rechazó la solicitud.", err.detail, "revisa el acceso de la cuenta y vuelve a comprobarlo en Ajustes.");
+      case "conexion_fallida":
+        return textoErrorConAyuda("Telo no pudo conectar con GitHub.", err.detail, "comprueba la conexión del servidor y vuelve a intentarlo.");
+      case "token_invalido":
+        return textoErrorConAyuda("GitHub rechazó la credencial guardada.", err.detail, "vuelve a conectar la cuenta con una credencial vigente en Ajustes.");
+      case "token_requerido":
+        return "Falta la credencial para conectar GitHub. Pega una credencial válida en Ajustes y vuelve a guardar.";
       case "action_already_decided":
         return "Esta autorización ya no está pendiente. Revisa el estado actualizado en el chat.";
       case "action_not_found":
@@ -205,9 +277,11 @@ export function errorText(err: unknown): string {
       case "insufficient_funds":
         return "Saldo insuficiente en el proveedor. Usa un modelo gratuito o recarga saldo.";
       case "runner_failed":
-        return err.detail
-          ? `El modelo no respondió: ${sanearDetalle(err.detail)}`
-          : "El modelo no respondió. Intenta de nuevo.";
+        return textoErrorConAyuda(
+          "El agente no pudo generar una respuesta.",
+          err.detail,
+          siguientePasoProveedor(err.detail) ?? "abre «Ver proceso» en el chat o la tarea y revisa el último paso y el proveedor elegido.",
+        );
       case "invalid_content":
       case "invalid_prompt":
         return "El texto está vacío o supera los 30 000 caracteres.";
@@ -271,6 +345,10 @@ export function errorText(err: unknown): string {
         return "Hay un campo que la app no reconoce. Recarga la página.";
       case "conversation_not_found":
         return "Este chat ya no existe.";
+      case "conversacion_requerida":
+        return "Elige un chat antes de crear un documento.";
+      case "mensaje_requerido":
+        return "Selecciona una respuesta del agente antes de crear un documento.";
       case "model_not_found":
         return "Ese modelo ya no está disponible.";
       case "effort_not_supported":
@@ -278,7 +356,15 @@ export function errorText(err: unknown): string {
       case "effort_requires_model":
         return "Elige un modelo antes de ajustar el esfuerzo.";
       case "models_unavailable":
-        return "No se pudo cargar la lista de modelos.";
+        return textoErrorConAyuda(
+          "Telo no pudo consultar la lista de modelos.",
+          err.detail,
+          siguientePasoProveedor(err.detail) ?? "comprueba la conexión del proveedor y vuelve a cargar la lista.",
+        );
+      case "codex_models_unavailable":
+        return "Telo no pudo cargar los modelos de Codex. Por dónde empezar: confirma la sesión de Codex en Ajustes y revisa la salida del inicio de sesión si el problema continúa.";
+      case "codex_no_conectado":
+        return "No hay una sesión de Codex activa en el servidor. Por dónde empezar: inicia sesión con Codex en Ajustes y vuelve a cargar los modelos.";
       case "projects_root_not_configured":
         return "Los proyectos aún no están configurados en el servidor.";
       case "invalid_project_path":
@@ -418,13 +504,19 @@ export function errorText(err: unknown): string {
       case "invalid_mensaje":
         return "El mensaje del commit debe tener entre 1 y 200 caracteres.";
       case "push_fallido":
-        return "No se pudo subir la rama al remoto. Revisa el detalle en la tarea.";
+        return textoErrorConAyuda(
+          "No se pudo subir la rama al remoto.",
+          err.detail,
+          "revisa el remoto y los permisos de GitHub en Ajustes; después vuelve a revisar los cambios de la tarea.",
+        );
       case "git_failed":
-        return err.detail
-          ? `Git no pudo completar la operación: ${sanearDetalle(err.detail)}`
-          : "Git no pudo completar la operación.";
+        return textoErrorConAyuda(
+          "Git no pudo completar la operación.",
+          err.detail,
+          "abre «Ver proceso» para revisar el comando que falló y comprueba el remoto, la rama y los permisos.",
+        );
       case "git_timeout":
-        return "Git tardó demasiado y se canceló.";
+        return "Git tardó demasiado y se canceló. Por dónde empezar: revisa la conexión al remoto y vuelve a intentar cuando termine cualquier otra operación de Git.";
       case "invalid_model":
         return "Ese modelo no es válido.";
       case "invalid_effort":
@@ -440,7 +532,11 @@ export function errorText(err: unknown): string {
       case "demasiadas_conexiones":
         return "Hay demasiadas pantallas abiertas en el servidor. Cierra algunas y vuelve a intentar.";
       case "tarea_error":
-        return "La tarea no pudo completarse. Revisa el detalle en la tarea.";
+        return textoErrorConAyuda(
+          "La tarea se detuvo antes de completarse.",
+          err.detail,
+          "abre «Ver proceso» en la tarea y localiza el último paso completado para decidir qué corregir o reintentar.",
+        );
       case "clave_no_configurada":
         return "El servidor no tiene configurada la clave de acceso. Revisa su archivo de entorno.";
       case "body_too_large":
@@ -476,9 +572,22 @@ export function errorText(err: unknown): string {
       case "google_sin_refresh":
         return "Google no dio permiso para mantener la conexión. Quita el acceso de Telo en tu cuenta de Google y vuelve a conectar.";
       case "google_fallido":
-        return "Google no completó el inicio de sesión. Intenta de nuevo.";
+        return "Google no completó el inicio de sesión. Por dónde empezar: vuelve a conectar la cuenta desde Ajustes; si se repite, comprueba la configuración OAuth del servidor.";
     }
-    if (err.detail) return sanearDetalle(err.detail, 600);
+    const { causa, siguientePaso } = explicacionHttp(err.status);
+    const siguientePasoConDetalle = siguientePasoProveedor(err.detail) ?? siguientePaso;
+    return textoErrorConAyuda(causa, err.detail, `${siguientePasoConDetalle} Referencia: HTTP ${err.status}.`);
   }
-  return "Algo salió mal. Intenta de nuevo.";
+  if (err instanceof Error && err.name === "AbortError") {
+    return "La solicitud se canceló antes de terminar. Por dónde empezar: repite la acción y espera a que termine.";
+  }
+  if (err instanceof TypeError && /failed to fetch|network|load failed/i.test(err.message)) {
+    return "Telo no pudo conectarse con el servidor. Por dónde empezar: comprueba la conexión y que el servidor siga activo; después vuelve a intentarlo.";
+  }
+  const detalle = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  return textoErrorConAyuda(
+    "La aplicación encontró un error inesperado al procesar esta acción.",
+    detalle || undefined,
+    "recarga la pantalla y repite la acción; si vuelve a fallar, comparte este mensaje para localizar el problema.",
+  );
 }
