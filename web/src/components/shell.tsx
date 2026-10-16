@@ -15,7 +15,7 @@ import { useShell } from "./shell-context";
 import { ShellTopbar } from "./shell-topbar";
 import "../styles-shell.css";
 
-type DateGroupTitle = "ANCLADOS" | "HOY" | "AYER" | "ÚLTIMOS 7 DÍAS" | "ANTERIORES";
+type DateGroupTitle = "ANCLADOS" | "RECIENTES" | "ÚLTIMOS 7 DÍAS" | "ANTERIORES";
 
 function getGroupForDate(dateStr: string | null | undefined): DateGroupTitle {
   if (!dateStr) return "ANTERIORES";
@@ -26,8 +26,7 @@ function getGroupForDate(dateStr: string | null | undefined): DateGroupTitle {
   const startOf7Days = startOfToday - 6 * 86_400_000;
   const time = d.getTime();
 
-  if (time >= startOfToday) return "HOY";
-  if (time >= startOfYesterday) return "AYER";
+  if (time >= startOfYesterday) return "RECIENTES";
   if (time >= startOf7Days) return "ÚLTIMOS 7 DÍAS";
   return "ANTERIORES";
 }
@@ -97,8 +96,7 @@ export function Shell({ children }: { children: ReactNode }) {
     if (!conversations.data) return [];
     const groups: { title: DateGroupTitle; items: Conversation[] }[] = [
       { title: "ANCLADOS", items: [] },
-      { title: "HOY", items: [] },
-      { title: "AYER", items: [] },
+      { title: "RECIENTES", items: [] },
       { title: "ÚLTIMOS 7 DÍAS", items: [] },
       { title: "ANTERIORES", items: [] },
     ];

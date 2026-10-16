@@ -42,7 +42,12 @@ try {
       let data = [];
       if (path === "/api/sesion") return route.fulfill({ status: authenticated ? 200 : 401, json: { ok: authenticated } });
       if (path === "/api/login") { authenticated = true; data = { ok: true }; }
-      else if (path === "/api/conversations") data = [{ id: "c1", title: "Prueba de flujo", model: "google/prueba", project_id: "p1", project_name: "Pruebas", created_at: now }];
+      else if (path === "/api/conversations") data = [
+        { id: "c1", title: "Prueba de flujo", model: "google/prueba", project_id: "p1", project_name: "Pruebas", created_at: now },
+        { id: "c2", title: "Chat de ayer", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 86_400_000).toISOString() },
+        { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
+        { id: "c4", title: "Chat anterior", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() },
+      ];
       else if (path === "/api/conversations/c1/messages") {
         if (route.request().method() === "POST") {
           const body = route.request().postDataJSON();
@@ -97,6 +102,13 @@ try {
     await page.getByRole("button", { name: "Entrar", exact: true }).click();
     await page.waitForURL("**/chat");
     console.log(`${width}px: sesión local de prueba iniciada`);
+    await page.getByText("ANTERIORES", { exact: true }).waitFor();
+    assert.deepEqual(await page.locator(".tl-grupo-titulo").allTextContents(), ["RECIENTES", "ÚLTIMOS 7 DÍAS", "ANTERIORES"]);
+    assert.equal(await page.getByText("HOY", { exact: true }).count(), 0);
+    assert.equal(await page.getByText("AYER", { exact: true }).count(), 0);
+    const contrasteGrupo = await page.locator(".tl-grupo-titulo").first().evaluate(el => getComputedStyle(el).color);
+    const contrasteChat = await page.locator(".sidebar-conv-title").first().evaluate(el => getComputedStyle(el).color);
+    assert.notEqual(contrasteGrupo, contrasteChat);
     await page.getByText("Faltan dependencias", { exact: true }).waitFor();
     assert.equal(await page.getByRole("article", { name: "Acción de Git" }).count(), 1);
     await page.getByText("Ver 1 intento anterior", { exact: true }).waitFor();
