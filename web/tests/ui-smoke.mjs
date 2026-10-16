@@ -26,7 +26,7 @@ try {
       { id: "u1", role: "user", content: "git commit y push", created_at: now },
       { id: "a1", role: "assistant", content: '{"estado":"fallo","resumen":"Faltan dependencias","desviacion":"Instala antes de probar","pendientes":["x".replace("x","y")]}<telo-memoria>MEMORIA_INTERNA</telo-memoria>', created_at: now },
       { id: "u2", role: "user", content: "prepara de nuevo el git commit y push", created_at: now },
-      { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.", created_at: now },
+      { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", created_at: now },
     ];
     const actions = [
       { id: "git-old", action: "push", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ mensaje: "Falló el intento anterior" }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
@@ -124,6 +124,30 @@ try {
     await page.waitForURL("**/chat");
     console.log(`${width}px: sesión local de prueba iniciada`);
     await page.getByText("ANTERIORES", { exact: true }).waitFor();
+    await page.locator(".tl-diagrama-visual svg").waitFor();
+    const comprobarTemaDiagrama = async tema => {
+      await page.evaluate(valor => { document.documentElement.dataset.theme = valor; }, tema);
+      await page.waitForFunction(valor => {
+        const root = document.documentElement;
+        const figura = document.querySelector(".tl-diagrama-visual svg .node rect");
+        const muestra = document.createElement("span");
+        muestra.style.color = "var(--surface-2)";
+        document.body.append(muestra);
+        const colorEsperado = getComputedStyle(muestra).color;
+        muestra.remove();
+        return figura && getComputedStyle(root).colorScheme === (valor === "claro" ? "light" : "dark")
+          && getComputedStyle(figura).fill === colorEsperado;
+      }, tema);
+    };
+    await comprobarTemaDiagrama("oscuro");
+    await comprobarTemaDiagrama("claro");
+    await comprobarTemaDiagrama("oscuro");
+    assert.equal(await page.locator(".tl-diagrama-visual svg .node").count(), 3);
+    assert.equal(await page.locator(".tl-diagrama-fuente summary").textContent(), "Ver código Mermaid");
+    assert.equal(await page.locator(".tl-tabla-wrap table tbody tr").count(), 1);
+    assert.ok((await page.locator(".tl-md pre code").allTextContents()).some(codigo => codigo.includes("└── src/")));
+    const arbolArchivos = page.locator(".tl-codigo").filter({ hasText: "└── src/" });
+    assert.equal(await arbolArchivos.getByRole("button", { name: "Aplicar", exact: true }).count(), 0);
     assert.deepEqual(await page.locator(".tl-grupo-titulo").allTextContents(), ["RECIENTES", "ÚLTIMOS 7 DÍAS", "ANTERIORES"]);
     assert.equal(await page.getByText("HOY", { exact: true }).count(), 0);
     assert.equal(await page.getByText("AYER", { exact: true }).count(), 0);

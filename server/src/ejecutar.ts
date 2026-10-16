@@ -189,8 +189,15 @@ export const ESTILO_CHAT = [
   "- Si verificaste algo, di cómo (comando o prueba) y qué resultado dio. Si no pudiste comprobarlo, dilo sin rodeos.",
 ].join("\n");
 
-export function conEstilo(prompt: string, estilo?: "chat"): string {
-  return estilo === "chat" ? `${ESTILO_CHAT}\n---\n${prompt}` : prompt;
+export function conEstilo(prompt: string, estilo?: "chat", esChatDeProyecto = false): string {
+  if (estilo !== "chat") return prompt;
+  const formatoVisual = esChatDeProyecto
+    ? [
+        "- Al explicar la arquitectura o relaciones de este proyecto, incluye un bloque ```mermaid con un flowchart válido cuando el gráfico ayude a entenderlo; evita diagramas en respuestas simples o cuando falte información.",
+        "- Para comparar opciones o componentes usa una tabla Markdown; para mostrar la estructura de carpetas usa un bloque ```text con un árbol legible. No inventes archivos ni relaciones.",
+      ].join("\n")
+    : "";
+  return `${ESTILO_CHAT}${formatoVisual ? `\n${formatoVisual}` : ""}\n---\n${prompt}`;
 }
 
 // Primer prompt tras una cuota agotada: retoma la sesión del agente en vez de empezar de nuevo.
@@ -233,7 +240,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
   };
   const memoria = opts.projectId ? memoriaDelProyecto(opts.projectId).texto : null;
   const base = {
-    prompt: conEstilo(conMemoria(conInstrucciones(opts.projectId, opts.prompt), memoria, opts.aprender === true), opts.estilo),
+    prompt: conEstilo(conMemoria(conInstrucciones(opts.projectId, opts.prompt), memoria, opts.aprender === true), opts.estilo, opts.estilo === "chat" && Boolean(opts.projectId)),
     cwd: opts.cwd,
     timeoutMs: opts.timeoutMs,
     signal: opts.signal,
