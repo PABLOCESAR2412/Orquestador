@@ -171,7 +171,7 @@ export function errorText(err: unknown): string {
           ? sanearDetalle(err.detail, 600)
           : "No se pudo completar la acción. Revisa la configuración de Git del proyecto.";
       case "action_already_decided":
-        return "Esta autorización ya fue atendida. Actualiza el chat.";
+        return "Esta autorización ya no está pendiente. Revisa el estado actualizado en el chat.";
       case "action_not_found":
         return "Esta autorización ya no está disponible.";
       case "plan_con_preguntas":
@@ -402,7 +402,7 @@ export function errorText(err: unknown): string {
       case "cambios_cambiaron":
         return "Los cambios cambiaron desde que los revisaste. Revísalos de nuevo antes de aprobar.";
       case "commit_requerido":
-        return "Primero aprueba el commit de estos cambios.";
+        return "No hay un commit aprobado para esta tarea. Revisa sus cambios y prepara una nueva autorización.";
       case "archivo_sensible":
         return "Hay archivos que parecen secretos (claves o variables .env). Quítalos de la tarea antes de guardar el commit.";
       case "sin_remoto":

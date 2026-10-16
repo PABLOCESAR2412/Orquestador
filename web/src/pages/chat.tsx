@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad } from "../api";
@@ -14,7 +14,7 @@ import { VistaDocumento } from "../components/documentos";
 import { HistorialPrompts, type PromptEnviado } from "../components/chat-historial";
 import { MenuComandosChat, type ComandoChat } from "../components/chat-comandos";
 import { PlanRevision } from "../components/plan-revision";
-import { AccionesRepositorioChat } from "../components/repository-approval";
+import { AccionRepositorioMensaje, AccionesRepositorioChat } from "../components/repository-approval";
 import { sugerenciasChat } from "../lib/sugerencias";
 import { duracionEntre } from "../lib/tiempo";
 import { effortLabel, errorText, formatWhen, tierBars } from "../lib/model";
@@ -273,6 +273,12 @@ export function ChatPage() {
     refetchInterval: 3_000,
   });
   const tareaChat = current?.project_id ? tareasChat.data?.at(-1) : undefined;
+  const accionesGit = useQuery({
+    queryKey: ["repository-actions", selectedId],
+    queryFn: () => api.repositoryActions(selectedId!),
+    enabled: !!selectedId && !!current?.project_id,
+    refetchInterval: 3000,
+  });
   const agenteOcupado =
     !!current?.ocupada || ["queued", "analyzing", "running", "waiting_approval"].includes(tareaChat?.status ?? "");
   const cola = selectedId ? colasPorChat[selectedId] ?? [] : [];
@@ -959,13 +965,17 @@ export function ChatPage() {
                     {m.content}
                   </p>
                 ) : m.role === "user" ? (
-                  <MensajeUsuario
-                    key={m.id}
-                    id={`mensaje-${m.id}`}
-                    texto={m.content}
-                    cuando={m.created_at}
-                    resaltado={resaltadoId === m.id}
-                  />
+                  <Fragment key={m.id}>
+                    <MensajeUsuario
+                      id={`mensaje-${m.id}`}
+                      texto={m.content}
+                      cuando={m.created_at}
+                      resaltado={resaltadoId === m.id}
+                    />
+                    {current?.project_id && accionesGit.data?.filter((accion) => accion.message_id === m.id).map((accion) => (
+                      <AccionRepositorioMensaje key={accion.id} accion={accion} conversationId={selectedId!} projectId={current.project_id!} taskId={tareaChat?.id} />
+                    ))}
+                  </Fragment>
                 ) : (
                   <MensajeAgente
                     key={m.id}

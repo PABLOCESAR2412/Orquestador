@@ -130,7 +130,7 @@ test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama
   expect(llamadas).toBe(1);
   expect(texto).not.toContain(TOKEN_PR);
   expect(JSON.parse(texto).result).toEqual({ url: "https://github.com/dueno/prueba/pull/1" });
-  expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: true })).status).toBe(409);
+  expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: true })).status).toBe(200);
   expect(llamadas).toBe(1);
 });
 
@@ -150,6 +150,8 @@ test("push muestra remoto fijado en clon y no el nuevo remoto de configuración"
   const accion = (await respuesta.json()) as any;
   expect(JSON.parse(accion.payload).remote).toBe(REMOTO);
   expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: false })).status).toBe(200);
+  expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: false })).status).toBe(200);
+  expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: true })).status).toBe(409);
   expect(llamadas).toBe(0);
 });
 
@@ -226,9 +228,95 @@ test("una autorización ejecuta commit antes de push y usa la cuenta del servido
     const diff=await diffDeTarea(p.taskId);
     expect(diff.aprobaciones.push?.sha).toBe(diff.commit);
     expect(diff.aprobaciones.push?.rama).toBe(diff.rama);
-    expect((await pedir(`/acciones/${accion.id}/decidir`,{approve:true})).status).toBe(409);
+    expect((await pedir(`/acciones/${accion.id}/decidir`,{approve:true})).status).toBe(200);
     expect(subidas).toBe(1);
   } finally { espia.mockRestore(); borrarCuentaGithubGlobal(); }
+});
+
+test("no prepara autorizaciones de commit o push sin cambios respecto a la base", async () => {
+  const p = await tareaConCommit();
+  await gitOk(["reset", "--hard", p.diff.base_commit!], { cwd: p.clon });
+  for (const action of ["commit", "push"]) {
+    const respuesta = await pedir(`/projects/${p.id}/acciones`, { action, taskId: p.taskId });
+    expect(respuesta.status).toBe(409);
+    expect((await respuesta.json() as any).error).toBe("sin_cambios");
+  }
+  expect(db.query("SELECT 1 FROM repository_actions WHERE task_id=?").get(p.taskId)).toBeNull();
+});
+
+test("no prepara un push cuando falta el remoto guardado", async () => {
+  const p = await tareaConCommit();
+  rmSync(join(config.dataDir, "tasks", p.taskId, "remoto.txt"));
+  const respuesta = await pedir(`/projects/${p.id}/acciones`, { action: "push", taskId: p.taskId });
+  expect(respuesta.status).toBe(409);
+  expect((await respuesta.json() as any).error).toBe("sin_remoto");
+  expect(db.query("SELECT 1 FROM repository_actions WHERE task_id=?").get(p.taskId)).toBeNull();
+});
+
+test("cada petición conserva su mensaje aunque se reutilice la tarea del chat", async () => {
+  const p = await tareaConCommit();
+  const conversationId = randomUUID();
+  db.query("INSERT INTO conversations(id,title,project_id) VALUES (?,'Git',?)").run(conversationId, p.id);
+  db.query("UPDATE tasks SET conversation_id=? WHERE id=?").run(conversationId, p.taskId);
+  try {
+    const mensajes = [randomUUID(), randomUUID()];
+    const acciones: string[] = [];
+    for (const id of mensajes) {
+      db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES (?,?,'user','commit y push')").run(id, conversationId);
+      const respuesta = await pedir(`/projects/${p.id}/acciones`, { action: "push", taskId: p.taskId, conversationId });
+      expect(respuesta.status).toBe(201);
+      const accion = await respuesta.json() as any;
+      expect(JSON.parse(accion.payload).messageId).toBe(id);
+      acciones.push(accion.id);
+    }
+    expect(acciones[0]).not.toBe(acciones[1]);
+    const historial = await (await repositoryActions.request(`/conversations/${conversationId}/acciones`)).json() as any[];
+    expect(historial.map(a => a.message_id)).toEqual(mensajes);
+    expect(historial.map(a => a.state)).toEqual(["superseded", "pending"]);
+    expect((await pedir(`/acciones/${acciones[0]}/decidir`, { approve: true })).status).toBe(409);
+    const invalida = await pedir(`/projects/${p.id}/acciones`, { action: "push", taskId: p.taskId, conversationId, messageId: randomUUID() });
+    expect(invalida.status).toBe(400);
+  } finally {
+    db.query("DELETE FROM conversations WHERE id=?").run(conversationId);
+  }
+});
+
+test("el chat prepara commit y push juntos y vincula la tarjeta al nuevo mensaje", async () => {
+  const p = await tareaConCommit();
+  const { chat } = await import("../src/routes/chat");
+  const conversationId = randomUUID();
+  db.query("INSERT INTO conversations(id,title,project_id) VALUES (?,'Git',?)").run(conversationId, p.id);
+  db.query("UPDATE tasks SET conversation_id=? WHERE id=?").run(conversationId, p.taskId);
+  try {
+    const respuesta = await chat.request(`/conversations/${conversationId}/messages`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "prepara de nuevo el git commit y push" }),
+    });
+    expect(respuesta.status).toBe(202);
+    const cuerpo = await respuesta.json() as any;
+    expect(cuerpo.action.action).toBe("push");
+    expect(JSON.parse(cuerpo.action.payload).messageId).toBe(cuerpo.messages[0].id);
+    expect(db.query<{ status: string }, [string]>("SELECT status FROM tasks WHERE id=?").get(p.taskId)?.status).toBe("done");
+    const soloCommit = await chat.request(`/conversations/${conversationId}/messages`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "git commit sin push" }),
+    });
+    expect(soloCommit.status).toBe(202);
+    const sinPush = await soloCommit.json() as any;
+    expect(sinPush.action.action).toBe("commit");
+    await gitOk(["reset", "--hard", p.diff.base_commit!], { cwd: p.clon });
+    const fallida = await chat.request(`/conversations/${conversationId}/messages`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "git push" }),
+    });
+    expect(fallida.status).toBe(202);
+    const sinCambios = await fallida.json() as any;
+    expect(sinCambios.messages[1].content).toContain("No hay cambios nuevos");
+    expect(db.query<{ state: string }, [string]>("SELECT state FROM repository_actions WHERE id=?").get(sinPush.action.id)?.state).toBe("superseded");
+    expect(db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM messages WHERE conversation_id=?").get(conversationId)?.n).toBe(4);
+  } finally {
+    db.query("DELETE FROM conversations WHERE id=?").run(conversationId);
+  }
 });
 
 test("merge y push_main ya no se aceptan, y una acción antigua de merge pendiente no se ejecuta", async () => {

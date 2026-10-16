@@ -481,6 +481,7 @@ export const api = {
       action: string;
       conversationId?: string;
       taskId?: string;
+      messageId?: string;
       message?: string;
       title?: string;
     },
@@ -785,6 +786,7 @@ export type GitConfig = {
   github: GithubCuenta;
 };
 export type RepositoryAction = {
+  message_id: string | null;
   id: string;
   action: string;
   payload: string;

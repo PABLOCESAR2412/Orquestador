@@ -198,6 +198,8 @@ const REGLAS_PLAN = [
   "- Cada paso nombra los archivos que toca, si ya los conoces, con rutas relativas dentro del workspace.",
   "- Nunca incluyas rutas absolutas, rutas con .. ni archivos o carpetas dentro de .git. Las acciones Git se declaran en requiere_aprobacion; .git no es un archivo del plan.",
   '- "requiere_aprobacion": incluye "commit", "push" o "pr" solo si el plan necesita alguna de esas acciones. Si no, [].',
+  "- Telo ejecuta commit, push y PR mediante tarjetas de autorización al terminar. No incluyas su ejecución como pasos del obrero; los pasos solo preparan y comprueban los cambios.",
+  "- Telo conserva el remoto fuera del clon por seguridad. Que git remote esté vacío no prueba que falte configuración: Telo valida el destino al preparar la autorización.",
   '- Si falta información crítica, ponla en "preguntas". No la inventes.',
   "- Responde en español.",
 ].join("\n");
@@ -241,6 +243,8 @@ export function promptObrero(plan: Plan): string {
     "Reglas:",
     '- Haz únicamente los pasos del plan. Si necesitas algo que el plan no cubre, o algo fuera de tu carpeta de trabajo, no lo hagas: responde con "estado": "desviacion" y explica el motivo en "desviacion".',
     "- No hagas commit, push ni PR. Deja los cambios listos para revisión.",
+    "- Si el plan menciona commit, push o PR, prepara y verifica los cambios: Telo ejecutará esas operaciones al autorizar el usuario. Esa separación no es una desviación del plan.",
+    "- El clon puede no tener origin: Telo conserva el remoto fuera del workspace. No declares una desviación solo porque git remote esté vacío.",
     "- Ejecuta las pruebas del proyecto. Si no hay pruebas, dilo en el reporte.",
     '- Si algo falla y no puedes terminar, responde con "estado": "fallo" y explica qué pasó y qué intentaste.',
     "- Responde en español.",

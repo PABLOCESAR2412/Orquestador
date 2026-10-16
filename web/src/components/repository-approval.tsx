@@ -159,6 +159,37 @@ export function RepositoryApproval({
   );
 }
 
+export function AccionRepositorioMensaje({ accion, conversationId, projectId, taskId }: {
+  accion: RepositoryAction;
+  conversationId: string;
+  projectId: string;
+  taskId?: string;
+}) {
+  const qc = useQueryClient();
+  const refrescar = () => {
+    void qc.invalidateQueries({ queryKey: ["repository-actions", conversationId] });
+    void qc.invalidateQueries({ queryKey: ["task-diff", accion.task_id] });
+  };
+  const pedir = useMutation({
+    mutationFn: () => api.requestRepositoryAction(projectId, {
+      action: accion.action, conversationId, taskId: accion.task_id!,
+      messageId: accion.message_id ?? undefined,
+    }),
+    onSettled: refrescar,
+  });
+  return (
+    <article className="tl-msg tl-msg-agente tl-msg-git" aria-label="Acción de Git">
+      <RepositoryApproval accion={accion} onChange={refrescar} />
+      {accion.state === "failed" && accion.task_id === taskId && (
+        <button type="button" className="ghost" disabled={pedir.isPending} onClick={() => pedir.mutate()}>
+          Preparar nueva autorización
+        </button>
+      )}
+      {pedir.isError && <p className="error" role="alert">{errorText(pedir.error)}</p>}
+    </article>
+  );
+}
+
 export function AccionesRepositorioChat({
   conversationId,
   projectId,
@@ -203,10 +234,6 @@ export function AccionesRepositorioChat({
   const pendiente = lista.find(
     (a) => a.state === "pending" || a.state === "executing",
   );
-  const anteriores = lista.filter((a) => a.id !== pendiente?.id);
-  const ultima = lista.at(-1);
-  const fallida =
-    ultima?.state === "failed" && ultima.task_id === taskId ? ultima : null;
   const diff = diffQuery.data;
   const archivos = diff?.archivos ?? [];
   const adiciones = archivos.reduce((total, archivo) => total + archivo.adiciones, 0);
@@ -294,46 +321,6 @@ export function AccionesRepositorioChat({
           )}
         </section>
       )}
-      {pendiente && (
-        <RepositoryApproval
-          key={pendiente.id}
-          accion={pendiente}
-          onChange={refrescar}
-        />
-      )}
-      {fallida && !pendiente && (
-        <div className="approval-failure">
-          <p role="alert">
-            {fallida.result
-              ? resultadoLegible(fallida.result)
-              : "No se pudo completar la acción."}
-          </p>
-          <button
-            type="button"
-            className="ghost"
-            disabled={pedir.isPending}
-            onClick={() => pedir.mutate(fallida.action)}
-          >
-            Preparar nueva autorización
-          </button>
-        </div>
-      )}
-      {anteriores.length > 0 && (
-        <details className="approval-history">
-          <summary>
-            Historial de Git{" "}
-            <span className="approval-files">{anteriores.length} acciones</span>
-          </summary>
-          {[...anteriores].reverse().map((a) => (
-            <RepositoryApproval
-              key={a.id}
-              accion={a}
-              onChange={refrescar}
-              compacta
-            />
-          ))}
-        </details>
-      )}
       {projectId && terminada && taskId && diff && !pendiente && (
         <div className="approval-buttons" aria-label="Acciones del repositorio">
           {tieneCambios && !pushVigente && (
@@ -369,9 +356,6 @@ export function AccionesRepositorioChat({
             <span className="approval-files" role="status">
               Cambios subidos a {ramaSubida}.
             </span>
-          )}
-          {!tieneCambios && (
-            <span className="approval-files">Sin cambios pendientes.</span>
           )}
         </div>
       )}
