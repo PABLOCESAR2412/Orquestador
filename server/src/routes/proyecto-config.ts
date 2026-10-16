@@ -201,7 +201,32 @@ async function githubLlamar(token: string, path: string, body?: unknown) {
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok)
+  if (!res.ok) {
+    // GitHub usa 422 tanto para validaciones concretas como para límites anti-spam. Conservamos
+    // su mensaje y errores estructurados para que la tarjeta de autorización explique el motivo.
+    if (res.status === 422) {
+      const respuesta = await res.json().catch(() => null) as {
+        message?: unknown;
+        errors?: unknown;
+      } | null;
+      const mensajes = [
+        typeof respuesta?.message === "string" ? respuesta.message : "",
+        ...(Array.isArray(respuesta?.errors)
+          ? respuesta.errors.map((error) => {
+              if (typeof error === "string") return error;
+              if (!error || typeof error !== "object") return "";
+              const detalle = error as { field?: unknown; code?: unknown; message?: unknown };
+              const campo = typeof detalle.field === "string" ? `${detalle.field}: ` : "";
+              const texto = typeof detalle.message === "string"
+                ? detalle.message
+                : typeof detalle.code === "string" ? detalle.code : "";
+              return `${campo}${texto}`;
+            })
+          : []),
+      ].filter(Boolean);
+      const detalle = mensajes.join("; ").slice(0, 500);
+      throw new Error(`GitHub no pudo completar la acción (422)${detalle ? `: ${detalle}` : "."}`);
+    }
     throw new Error(
       res.status === 401
         ? "GitHub rechazó el token. Revísalo en los secretos del proyecto."
@@ -209,6 +234,7 @@ async function githubLlamar(token: string, path: string, body?: unknown) {
           ? "El token no tiene acceso a ese repositorio o le faltan permisos."
           : `GitHub no pudo completar la acción (${res.status}).`,
     );
+  }
   return res.json();
 }
 proyectoConfig.post("/projects/:id/git/comprobar", async (c) => {

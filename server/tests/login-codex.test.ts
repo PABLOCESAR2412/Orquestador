@@ -21,7 +21,7 @@ const ARCHIVO_SESION = join(HOME_PRUEBA, ".codex", "auth.json");
 // Muestra URL y código y el token. El modo lento espera hasta que lo cancelen; el rápido escribe la sesión.
 function cliFalso(dir: string, cuerpo: string) {
   const ruta = join(dir, "codex");
-  writeFileSync(ruta, `#!/bin/sh\necho "Abre https://auth.ejemplo.test/device e introduce el código WXYZ-12345"\necho "token ${TOKEN}"\n${cuerpo}\n`);
+  writeFileSync(ruta, `#!/bin/sh\nif [ "$2" = "status" ]; then test -f "$HOME/.codex/auth.json"; exit $?; fi\necho "Abre https://auth.ejemplo.test/device e introduce el código WXYZ-12345"\necho "token ${TOKEN}"\n${cuerpo}\n`);
   chmodSync(ruta, 0o755);
 }
 cliFalso(BIN_LENTO, "sleep 30");

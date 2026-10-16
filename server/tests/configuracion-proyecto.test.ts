@@ -177,7 +177,7 @@ describe("aprobaciones del repositorio", () => {
     ).toBe("rejected");
   });
 
-  test("aprobar init crea commit vacío, conserva archivos y rechaza segunda aprobación", async () => {
+  test("aprobar init crea commit vacío, conserva archivos y no repite una segunda aprobación", async () => {
     const p = proyecto();
     writeFileSync(join(p.cwd, "pendiente.txt"), "Trabajo local");
     const accion = (await (await pedir(`/projects/${p.id}/acciones`, { action: "init" })).json()) as any;
@@ -186,7 +186,7 @@ describe("aprobaciones del repositorio", () => {
     const primerCommit = await gitOk(["rev-parse", "HEAD"], { cwd: p.cwd });
     expect(await gitOk(["ls-tree", "--name-only", "HEAD"], { cwd: p.cwd })).toBe("");
     expect(readFileSync(join(p.cwd, "pendiente.txt"), "utf8")).toBe("Trabajo local");
-    expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: true })).status).toBe(409);
+    expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: true })).status).toBe(200);
     expect(await gitOk(["rev-parse", "HEAD"], { cwd: p.cwd })).toBe(primerCommit);
     expect(
       db

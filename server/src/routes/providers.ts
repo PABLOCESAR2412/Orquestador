@@ -54,8 +54,9 @@ function proveedorGuardable(id: string, name: string, hint: string, enAgente: Se
 }
 
 // Solo dice si cada proveedor está listo en el servidor. Nunca devuelve el valor de una clave.
-function estadoProveedores(): ProviderStatus[] {
+async function estadoProveedores(): Promise<ProviderStatus[]> {
   const enAgente = variablesDeAgente();
+  const sesionCodex = await sesionCodexConectada();
   return [
     {
       id: "opencode",
@@ -72,14 +73,14 @@ function estadoProveedores(): ProviderStatus[] {
     {
       id: "codex",
       name: "Codex",
-      configured: Boolean(process.env.OPENAI_API_KEY) || sesionCodexConectada(),
+      configured: sesionCodex,
       implemented: false,
       hint: "Inicio de sesión con la cuenta de ChatGPT desde esta página. Los agentes todavía no usan Codex.",
       variable: "OPENAI_API_KEY",
       enAgente: enAgente.has("OPENAI_API_KEY"),
       guardable: false,
       guardada: false,
-      sesion: sesionCodexConectada(),
+      sesion: sesionCodex,
     },
     proveedorGuardable(
       "google",
@@ -105,25 +106,25 @@ function estadoProveedores(): ProviderStatus[] {
 export const providers = new Hono();
 
 // GET /api/providers
-providers.get("/providers", (c) => c.json(estadoProveedores()));
+providers.get("/providers", async (c) => c.json(await estadoProveedores()));
 
 // Inicio de sesión de Codex por código de dispositivo (ver login-cli.ts). Solo Codex tiene este flujo.
-providers.get("/providers/codex/login", (c) => c.json(estadoLoginCodex()));
+providers.get("/providers/codex/login", async (c) => c.json(await estadoLoginCodex()));
 providers.get("/providers/codex/models", async (c) => {
-  if (!sesionCodexConectada()) return c.json({ error: "codex_no_conectado" }, 409);
+  if (!await sesionCodexConectada()) return c.json({ error: "codex_no_conectado" }, 409);
   try {
     return c.json(await listarModelosCodex());
   } catch {
     return c.json({ error: "codex_models_unavailable" }, 503);
   }
 });
-providers.post("/providers/codex/login", (c) => {
+providers.post("/providers/codex/login", async (c) => {
   try {
-    return c.json(iniciarLoginCodex(), 202);
+    return c.json(await iniciarLoginCodex(), 202);
   } catch (err) {
     if (err instanceof LoginError) return c.json({ error: err.code }, err.status);
     throw err;
   }
 });
-providers.delete("/providers/codex/login", (c) => c.json(cancelarLoginCodex()));
+providers.delete("/providers/codex/login", async (c) => c.json(await cancelarLoginCodex()));
 providers.post("/providers/codex/confirmar", async (c) => c.json(await confirmarLoginCodex()));

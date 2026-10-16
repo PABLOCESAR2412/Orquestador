@@ -45,8 +45,8 @@ export function LoginCodexPanel() {
     mutationFn: api.confirmarCodexLogin,
     onSuccess: (datos: LoginCodex) => {
       qc.setQueryData(clave, datos);
-      if (datos.conectada) {
-        setMensajeConfirmacion("¡Sesión detectada y confirmada en el servidor!");
+      if (datos.conectada && datos.estado !== "esperando") {
+        setMensajeConfirmacion("Codex CLI detectó la sesión en el servidor.");
       } else {
         setMensajeConfirmacion(
           "Aún no detectamos la sesión en el servidor. Si ya completaste la autorización en tu navegador, espera unos segundos y vuelve a pulsar «Ya lo hice»."
@@ -71,7 +71,7 @@ export function LoginCodexPanel() {
 
       {conectada && (
         <p className="aj-nota" role="status" style={{ color: "var(--accent)" }}>
-          Sesión iniciada en el servidor.
+          Sesión detectada por Codex CLI en el servidor.
         </p>
       )}
 

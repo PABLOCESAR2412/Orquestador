@@ -9,7 +9,7 @@ import { copiarTexto } from "./chat-contenido";
 
 // Ventana «Nuevo proyecto». Sin repo, se crea el proyecto y se abre su configuración.
 // Con un repo de GitHub, Telo lo revisa antes de crear nada: si es público, clona en el chat del proyecto;
-// si es privado, muestra en esta misma ventana la clave del proyecto y cómo agregarla en GitHub.
+// si es privado y la GitHub App tiene acceso, la usa; si no, ofrece la clave SSH como alternativa.
 export function NuevoProyectoDialog({ onCerrar }: { onCerrar: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useDialogo(ref, onCerrar);
@@ -67,8 +67,8 @@ export function NuevoProyectoDialog({ onCerrar }: { onCerrar: () => void }) {
       nuevo = await api.createProject({ name: n, url: revision.url });
       setCreado(nuevo);
 
-      if (revision.visibilidad === "publico") {
-        setProgreso("Empezando el clonado…");
+      if (revision.visibilidad === "publico" || revision.credencial === "app") {
+        setProgreso(revision.credencial === "app" ? "Clonando con la GitHub App…" : "Empezando el clonado…");
         const inicio = await api.cloneProject(nuevo.id);
         irAlProyecto(nuevo, inicio.conversacion_id);
         return;
@@ -173,7 +173,7 @@ export function NuevoProyectoDialog({ onCerrar }: { onCerrar: () => void }) {
                     aria-describedby="proyecto-nuevo-github"
                   />
                   <span id="proyecto-nuevo-github" className="tl-campo-ayuda">
-                    Telo revisa primero si el repo es público. Si es privado, aquí mismo te digo cómo darle acceso con una clave.
+                    Telo usa la GitHub App vinculada para clonar repositorios privados a los que tenga acceso. Si no puede usarla, te ofrecerá una clave SSH.
                   </span>
                 </label>
               )}

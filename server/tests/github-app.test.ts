@@ -151,3 +151,27 @@ test("crear un PR prioriza el token temporal aunque exista una sesión anterior"
   expect(respuesta).toEqual({ html_url: "https://github.com/Pablo/Orquestador/pull/8" });
   expect(llamada).toBe(3);
 });
+
+test("al crear un PR, GitHub expone el detalle de una respuesta 422", async () => {
+  globalThis.fetch = (async (url: any) => {
+    if (String(url).endsWith("/app/installations?per_page=100")) {
+      return Response.json([{ id: 456, account: { login: "Pablo" }, repository_selection: "selected" }]);
+    }
+    if (String(url).endsWith("/app/installations/456/access_tokens")) {
+      return Response.json({ token: "ghs-pr-temporal" });
+    }
+    return new Response(JSON.stringify({
+      message: "Validation Failed",
+      errors: [{ resource: "PullRequest", field: "head", code: "custom", message: "A pull request already exists for this head and base." }],
+    }), { status: 422, headers: { "Content-Type": "application/json" } });
+  }) as unknown as typeof fetch;
+
+  await seleccionarInstalacionGithubApp(456);
+  await expect(githubApiPr("sin-proyecto", "/repos/Pablo/Orquestador/pulls", {
+    title: "Cambios",
+    head: "feat/prueba",
+    base: "main",
+  })).rejects.toThrow(
+    "GitHub no pudo completar la acción (422): Validation Failed; head: A pull request already exists for this head and base.",
+  );
+});

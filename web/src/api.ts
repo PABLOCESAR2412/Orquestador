@@ -44,7 +44,12 @@ export type Project = {
 };
 
 // Revisión de un repo de GitHub sin clave: público o privado (un nombre mal escrito también parece privado).
-export type VerificacionGithub = { url: string; repo: string; visibilidad: "publico" | "privado" };
+export type VerificacionGithub = {
+  url: string;
+  repo: string;
+  visibilidad: "publico" | "privado";
+  credencial?: "app";
+};
 
 // Clonado iniciado en el chat del proyecto: el mensaje de la instrucción y el chat donde se ve el avance.
 export type ClonadoIniciado = { conversacion_id: string; turno_id: string };
@@ -296,6 +301,8 @@ export type TaskEventKind =
   | "plan_rechazado"
   | "replanificada"
   | "obrero_iniciado"
+  | "comprobacion_fallida"
+  | "comprobacion_aviso"
   | "plan_revision"
   | "sin_cuota"
   | "turno_encolado"
@@ -745,13 +752,16 @@ export type Preferences = {
   compartirContextoChats?: boolean;
 };
 
+export type CalidadUso = { tokensMedidos: number; costesEstimados: number; sinTokens: number; sinCoste: number; historicos: number };
 export type Analytics = {
+  calidad?: CalidadUso;
+  byTask?: (CalidadUso & { taskId: string; calls: number; tokens: number; cost: number })[];
   days: number;
   filtros: { proyecto: string | null; modelo: string | null };
   proyectos: { id: string; name: string }[];
   modelos: string[];
   totals: { calls: number; inputTokens: number; outputTokens: number; cost: number };
-  byType: { tipo: "chat" | "tarea" | "otro"; calls: number; tokens: number; cost: number }[];
+  byType: { tipo: "chat" | "tarea" | "otro"; calls: number; tokens: number; cost: number; sinTokens?: number; sinCoste?: number }[];
   byDay: { day: string; cost: number; tokens: number; calls: number }[];
   byModel: {
     model: string;

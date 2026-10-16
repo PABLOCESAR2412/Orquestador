@@ -179,7 +179,7 @@ export function AnalyticsPage() {
             <section className="an-kpis" aria-label="Resumen de consumo">
               <Kpi
                 etiqueta="Gasto estimado"
-                valor={usd(data.totals.cost)}
+                valor={data.totals.calls > 0 && data.calidad?.sinCoste === data.totals.calls ? "No disponible" : usd(data.totals.cost)}
                 pie={`Últimos ${data.days} días`}
                 icono={
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -190,8 +190,8 @@ export function AnalyticsPage() {
               />
               <Kpi
                 etiqueta="Tokens procesados"
-                valor={compact(data.totals.inputTokens + data.totals.outputTokens)}
-                pie={`Prompt ${compact(data.totals.inputTokens)} · Completion ${compact(data.totals.outputTokens)}`}
+                valor={data.totals.calls > 0 && data.calidad?.sinTokens === data.totals.calls ? "No disponible" : compact(data.totals.inputTokens + data.totals.outputTokens)}
+                pie={data.totals.calls > 0 && data.calidad?.sinTokens === data.totals.calls ? "El proveedor no informó tokens" : `Prompt ${compact(data.totals.inputTokens)} · Completion ${compact(data.totals.outputTokens)}`}
                 icono={
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
@@ -217,6 +217,14 @@ export function AnalyticsPage() {
               />
             </section>
 
+            {data.calidad && (
+              <section className="an-panel" aria-label="Precisión de las métricas">
+                <h2 className="an-panel-titulo">Precisión de las métricas</h2>
+                <p className="an-panel-sub">{data.calidad.tokensMedidos} registros con tokens medidos · {data.calidad.costesEstimados} con coste estimado por OpenCode.</p>
+                <p className="an-panel-sub">{data.calidad.sinTokens} sin tokens disponibles · {data.calidad.sinCoste} sin coste disponible · {data.calidad.historicos} históricos sin precisión identificada.</p>
+                <p className="an-panel-sub">Los totales pueden ser parciales. No son facturas del proveedor; un dato ausente se muestra como «—», no como consumo cero.</p>
+              </section>
+            )}
             <section className="an-panel" aria-labelledby="an-uso-funcion-titulo">
               <div className="an-panel-cabeza">
                 <div className="an-panel-texto">
@@ -245,8 +253,8 @@ export function AnalyticsPage() {
                             <span className="an-uso-detalle">{TIPO_USO[r.tipo].detalle}</span>
                           </th>
                           <td data-etiqueta="Llamadas IA" className="an-numero">{compact(r.calls)}</td>
-                          <td data-etiqueta="Tokens" className="an-numero">{compact(r.tokens)}</td>
-                          <td data-etiqueta="Coste IA" className="an-numero">{usd(r.cost)}</td>
+                          <td data-etiqueta="Tokens" className="an-numero">{r.calls > 0 && r.sinTokens === r.calls ? "—" : compact(r.tokens)}</td>
+                          <td data-etiqueta="Coste IA" className="an-numero">{r.calls > 0 && r.sinCoste === r.calls ? "—" : usd(r.cost)}</td>
                         </tr>
                       ))}
                     <tr>
@@ -418,14 +426,20 @@ export function AnalyticsPage() {
                             <span className="an-modelo-nombre">{nombreModelo(t.model)}</span>
                             <span className="an-chip">{nombreAgente(agenteDeTarea(t))}</span>
                           </td>
-                          <td data-etiqueta="Tokens" className="an-numero an-sin-dato" title="El servidor no guarda el uso por tarea">
-                            —
+                          <td data-etiqueta="Tokens" className="an-numero" title="Tokens informados por el proveedor; los registros antiguos no tienen precisión identificada">
+                            {(() => {
+                              const uso = data.byTask?.find(u => u.taskId === t.id);
+                              return uso && uso.calls > uso.sinTokens ? <>{compact(uso.tokens)}<small> {uso.historicos ? "histórico" : uso.sinTokens ? "parcial" : "medidos"}</small></> : "—";
+                            })()}
                           </td>
                           <td data-etiqueta="Duración" className="an-numero">
                             {duracionTexto}
                           </td>
-                          <td data-etiqueta="Coste estimado" className="an-numero an-sin-dato" title="El servidor no guarda el coste por tarea">
-                            —
+                          <td data-etiqueta="Coste estimado" className="an-numero" title="Coste informado por OpenCode; no es una factura de OpenAI o del proveedor">
+                            {(() => {
+                              const uso = data.byTask?.find(u => u.taskId === t.id);
+                              return uso && uso.calls > uso.sinCoste ? <>{usd(uso.cost)}<small> {uso.historicos ? "histórico" : uso.sinCoste ? "parcial" : "estimado"}</small></> : "—";
+                            })()}
                           </td>
                         </tr>
                       );

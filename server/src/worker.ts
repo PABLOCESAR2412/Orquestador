@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { comprobarHerramientas, revisarDependencias } from "./comprobaciones-tarea";
 import { itemDeLinea, registrarActividad } from "./actividad";
 import { repositoryActions } from "./routes/repository-actions";
 import { proyectoOcupado, reservarProyecto, soltarProyecto } from "./ocupacion";
@@ -76,6 +77,7 @@ type QueuedTask = {
 
 // Lo que cada fase necesita de la ejecución en curso.
 type Contexto = {
+  avisos?: string[];
   task: QueuedTask;
   cwd: string;
   controller: AbortController;
@@ -209,7 +211,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
   }, TASK_TIMEOUT_MS);
   try {
     const result = await ejecutarAgente({
-      prompt,
+      prompt: ctx.avisos?.length ? `${prompt}\n\nComprobaciones previas de Telo (incorpora su resolución al plan antes de ejecutar pruebas):\n${ctx.avisos.join("\n")}` : prompt,
       model: task.model,
       variant: task.effort,
       sessionId: task.provider_session_id,
@@ -359,6 +361,14 @@ async function runTask(task: QueuedTask) {
 }
 
 async function ejecutarTarea(task: QueuedTask) {
+  const errores = comprobarHerramientas(Boolean(task.project_id));
+  if (errores.length) {
+    const mensaje = errores.join("\n");
+    registrarEvento(task.id, "comprobacion_fallida", mensaje);
+    finish(task.id, "failed", { error: mensaje });
+    avisarChat(task.id, mensaje);
+    return;
+  }
   // Con proyecto de Git, la tarea trabaja en su clon; con proyecto sin Git, en la carpeta del proyecto;
   // sin proyecto, en su carpeta temporal.
   let cwd: string;
@@ -402,7 +412,9 @@ async function ejecutarTarea(task: QueuedTask) {
     // Sin registro en disco la tarea sigue; solo se pierde el historial de salida.
     salida = { linea() {}, cerrar() {} };
   }
-  const ctx: Contexto = { task, cwd, controller, salida, continuar: task.continuar === 1 };
+  const avisos = revisarDependencias(cwd);
+  for (const aviso of avisos) registrarEvento(task.id, "comprobacion_aviso", aviso);
+  const ctx: Contexto = { task, cwd, controller, salida, continuar: task.continuar === 1, avisos };
 
   try {
     if (!aprobado) {

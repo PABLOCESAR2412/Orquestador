@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { haceTexto, tiempoTranscurrido } from "../lib/tiempo";
+import { interpretarRespuestaTarea } from "../lib/respuesta-tarea";
 import { partirMensaje } from "../lib/adjuntos";
 import type { FormatoDocumento } from "../api";
 import { Contenido, copiarTexto } from "./chat-contenido";
@@ -140,6 +141,7 @@ export function MensajeAgente({
   proceso?: { conversacionId: string; turnoId: string };
 }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const reporte = interpretarRespuestaTarea(texto);
   const [leyendo, setLeyendo] = useState(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const montadoRef = useRef(false);
@@ -170,7 +172,7 @@ export function MensajeAgente({
       setLeyendo(false);
       return;
     }
-    const contenido = textoParaVoz(texto);
+    const contenido = textoParaVoz(reporte ? `${reporte.resumen}\n${reporte.causa ?? ""}` : texto);
     if (!contenido) return;
     if (utteranceActiva) {
       window.speechSynthesis.cancel();
@@ -208,7 +210,7 @@ export function MensajeAgente({
           {modelo} · {haceTexto(cuando)}{duracion ? <span className="tl-msg-duracion"> · Respondió en {duracion}</span> : null}
         </span>
         <div className="tl-msg-acciones">
-          <BotonCopiar texto={texto} etiqueta="Copiar respuesta" />
+          <BotonCopiar texto={reporte ? `${reporte.resumen}\n${reporte.causa ?? ""}`.trim() : texto} etiqueta="Copiar respuesta" />
           {"speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined" && (
             <button
               type="button"
@@ -293,7 +295,14 @@ export function MensajeAgente({
         <ProcesoGuardado conversacionId={proceso.conversacionId} turnoId={proceso.turnoId} textoFinal={texto} />
       )}
       <div className="tl-msg-texto">
-        <Contenido texto={texto} />
+        <Contenido texto={reporte?.resumen ?? texto} />
+        {reporte?.causa && <p className="tl-alerta">{reporte.causa}</p>}
+        {reporte && (
+          <details className="tl-detalles-reporte">
+            <summary>Ver detalles técnicos</summary>
+            <pre>{reporte.detalles}</pre>
+          </details>
+        )}
       </div>
     </article>
   );

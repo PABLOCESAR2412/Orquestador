@@ -961,9 +961,12 @@ export function ChatPage() {
               )}
               {lista.map((m, i) =>
                 m.role === "system" ? (
-                  <p key={m.id} className="tl-alerta" role="status">
-                    {m.content}
-                  </p>
+                  <article key={m.id} className="tl-msg" aria-label="Aviso del sistema">
+                    <p className="tl-alerta" role="status">{m.content}</p>
+                    {!agenteOcupado && lista.slice(0, i).some(p => p.role === "user") && (
+                      <button type="button" className="tl-boton" onClick={() => reintentar(m.id)}>Reintentar solicitud</button>
+                    )}
+                  </article>
                 ) : m.role === "user" ? (
                   <Fragment key={m.id}>
                     <MensajeUsuario

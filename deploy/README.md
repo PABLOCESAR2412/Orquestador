@@ -1,5 +1,19 @@
 # Despliegue automático en el VM
 
+## Migración 023: precisión del uso
+
+La migración agrega columnas e índice sin modificar tokens, costes ni filas existentes. Los registros anteriores quedan con precisión `desconocida`; los nuevos distinguen datos medidos, estimados y ausentes. El arranque crea una copia previa consistente y registra la migración para no repetirla.
+
+Para revertir el código, vuelve al commit anterior y conserva las columnas nuevas: los lectores y escritores anteriores siguen funcionando con sus valores por defecto. No borres registros ni elimines columnas para volver atrás. Si fuera necesaria una recuperación completa, usa el procedimiento de respaldos con el servicio detenido y la copia anterior a `023_precision_uso`.
+
+## Prueba de GitHub App
+
+La instalación en GitHub y la configuración del servicio son pasos distintos. Si Ajustes muestra `TELO_GITHUB_APP_ID` o `TELO_GITHUB_APP_PRIVATE_KEY_PATH` ausentes, la prueba con App está pendiente aunque una sesión de GitHub anterior pueda publicar.
+
+Repositorio de prueba autorizado: `PABLOCESAR2412/Test` (privado). Si está vacío, crea primero un README en la rama base: un pull request necesita una base con commits. Después incluye el repo en la instalación de la App, configura el servicio como se indica en la sección de GitHub App y vincula la instalación en Ajustes.
+
+Desde Telo: clona Test, pide un cambio mínimo en un archivo de prueba, revisa el diff y autoriza commit/push y PR. Comprueba que aparecen el commit y el PR en Test y registra URL, SHA y método de autenticación. No tomes una subida mediante credenciales heredadas como prueba de la App. La prueba no requiere fusionar el PR ni modificar Cubo.
+
 Un timer de systemd revisa `main` cada 5 minutos. Si hay commits nuevos, el script `actualizar.sh` trae el código, compila la interfaz y reinicia `orquestador` solo cuando cambió `server/`.
 
 ## Reglas

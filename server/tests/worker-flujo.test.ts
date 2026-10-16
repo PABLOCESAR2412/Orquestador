@@ -120,6 +120,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
       "-m",
       "base",
     ]);
+    if (model === "fixture/git") await git(["remote", "add", "origin", "https://github.com/ejemplo/worker-pruebas"]);
     db.query("INSERT INTO projects(id,name,repo_path) VALUES (?,'Worker de prueba',?)").run(
       proyecto,
       repo,

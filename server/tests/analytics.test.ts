@@ -23,6 +23,19 @@ afterEach(() => {
   db.query("DELETE FROM projects").run();
 });
 
+test("separa precisión de datos nuevos y históricos sin inventar consumo cero", async () => {
+  db.query("INSERT INTO tasks(id,title,prompt,model,status) VALUES ('precision-tarea','Precisión','Prueba','test','done')").run();
+  db.query(`INSERT INTO usage(id,provider,model,task_id,input_tokens,output_tokens,cost,tokens_precision,cost_precision)
+    VALUES ('medido','test','test','precision-tarea',12,3,0,'medida','estimado'),
+           ('ausente','test','test','precision-tarea',0,0,0,'no_disponible','no_disponible')`).run();
+  db.query("INSERT INTO usage(id,provider,model,cost) VALUES ('historico','test','test',0.2)").run();
+  const datos = await (await app.request('/analytics?days=30')).json() as any;
+  expect(datos.calidad).toEqual({ tokensMedidos: 1, costesEstimados: 1, sinTokens: 1, sinCoste: 1, historicos: 1 });
+  expect(datos.byTask[0]).toMatchObject({ taskId: 'precision-tarea', calls: 2, tokens: 15, cost: 0, sinTokens: 1, sinCoste: 1 });
+  expect(datos.byType.find((fila: any) => fila.tipo === 'tarea')).toMatchObject({ sinTokens: 1, sinCoste: 1 });
+  expect(datos.totals.cost).toBe(0.2);
+});
+
 test("separa llamadas de chat y tareas y aplica los filtros a cada origen", async () => {
   db.query("INSERT INTO projects (id, name) VALUES ('proyecto-a', 'Proyecto A'), ('proyecto-b', 'Proyecto B')").run();
   db.query("INSERT INTO conversations (id, project_id, title) VALUES ('chat-a', 'proyecto-a', 'Chat A'), ('chat-b', 'proyecto-b', 'Chat B')").run();
@@ -46,7 +59,7 @@ test("separa llamadas de chat y tareas y aplica los filtros a cada origen", asyn
     byType: { tipo: "chat" | "tarea" | "otro"; calls: number; tokens: number; cost: number }[];
   };
   expect(datos.totals.calls).toBe(3);
-  expect(datos.byType).toEqual([
+  expect(datos.byType.map(({tipo,calls,tokens,cost}) => ({tipo,calls,tokens,cost}))).toEqual([
     { tipo: "chat", calls: 1, tokens: 15, cost: 0.01 },
     { tipo: "tarea", calls: 1, tokens: 130, cost: 0.05 },
     { tipo: "otro", calls: 1, tokens: 5, cost: 0.02 },
