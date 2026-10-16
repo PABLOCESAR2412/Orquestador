@@ -47,10 +47,8 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - **Criterio:** el token nunca aparece en logs ni en respuestas de la API. No hay push sin aprobación registrada.
 
 ### 7. Login de proveedores desde la app
-- Estado: pendiente. Hoy la app muestra si cada clave existe y si llega a los agentes (sin valores). Google y Codex necesitan un flujo de inicio de sesión que requiere crear credenciales OAuth en la cuenta de Google y decisión del usuario.
-- Flujo guiado: la app inicia el login del CLI en el VM (OpenCode, Google, Codex), muestra el enlace y el código, y espera la confirmación. Estado por proveedor.
-- Incluye Google aunque la cuenta gratuita no sirva para el servidor.
-- Estado de Google (mergeada en PR #15): preparado con OAuth web y PKCE en lugar del login del CLI de la línea anterior. La app guarda la conexión (token de actualización cifrado) y puede desconectarla con revocación. Solo pide `openid email`. Pendiente de probar con las credenciales de Pablo; el permiso y la API de cuota se confirman en ese paso.
+- Codex inicia sesión mediante el flujo de dispositivo. Gemini usa la clave de AI Studio configurada como proveedor.
+- La conexión OAuth de cuenta Google se retiró: solo almacenaba una autorización y no alimentaba el uso de modelos ni sus métricas.
 - **Criterio:** al terminar el flujo, el proveedor aparece como conectado. Ninguna clave se pega en la interfaz.
 - **Antes de implementar:** investigar los comandos de login de cada CLI en el VM.
 

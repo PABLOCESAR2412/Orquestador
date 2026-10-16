@@ -465,6 +465,13 @@ const migrations: Migration[] = [
       CREATE INDEX usage_task ON usage(task_id);
     `,
   },
+  {
+    name: "024_quitar_oauth_google",
+    sql: `
+      DROP TABLE IF EXISTS oauth_conexiones;
+      DROP TABLE IF EXISTS oauth_estados;
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

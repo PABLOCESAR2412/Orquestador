@@ -257,7 +257,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 **Decisiones.**
 - **(a) Codex:** aprobado el login de dispositivo, ejecutado en el VM.
 - **(b) Claude gratis:** investigado en octubre de 2026. **Decisión del usuario: no añadir Claude por ahora.** Solo tiene el plan gratis; la única vía compatible (clave de API) es de pago. No se implementa ningún acceso con cuenta de Claude.
-- **Gemini:** se usa la clave de AI Studio (tarea 3). El inicio de sesión con Google de Telo (`oauth-google.ts`) no sirve para OpenCode.
+- **Gemini:** se usa la clave de AI Studio (tarea 3). Telo no ofrece inicio OAuth con una cuenta Google, porque esa autorización no sirve para OpenCode ni se usa para obtener métricas.
 
 **Qué dice la documentación oficial (Claude Code, «Legal and compliance»).**
 - El OAuth de cuenta de consumo está pensado «exclusivamente» para quien compra Free, Pro, Max, Team o Enterprise y para las aplicaciones nativas de Anthropic.

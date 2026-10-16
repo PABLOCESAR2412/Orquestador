@@ -333,6 +333,117 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+.aj-github-contenido {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.aj-github-cuenta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 0;
+  border-block: 1px solid var(--line);
+}
+.aj-github-avatar {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  object-fit: cover;
+}
+.aj-github-cuenta-datos {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.aj-github-login {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.aj-github-conectada,
+.aj-github-usada {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.aj-github-conectada > span,
+.aj-github-usada > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--signal);
+}
+.aj-github-instalaciones {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.aj-github-subtitulo {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.aj-github-instalacion {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 16px;
+  min-width: 0;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.aj-github-instalacion-datos { min-width: 0; }
+.aj-github-identidad {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.aj-github-identidad > strong { overflow-wrap: anywhere; }
+.aj-github-alcance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 6px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.aj-github-alcance > strong { color: var(--ink); font-weight: 500; }
+.aj-github-recomendacion {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.aj-github-instalacion-accion { justify-self: end; }
+.aj-github-instalacion-accion .aj-btn { min-height: 40px; }
+@media (max-width: 560px) {
+  .aj-github-instalacion { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .aj-github-instalacion-accion { justify-self: start; }
+}
 
 /* Tarjetas */
 .aj-tarjeta {

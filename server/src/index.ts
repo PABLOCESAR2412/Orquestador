@@ -25,7 +25,6 @@ import { repositoryActions } from "./routes/repository-actions";
 import { skillsRoute } from "./routes/skills";
 import { asegurarRutaInstalada } from "./instalacion";
 import { prepararCarpetaGlobal } from "./skills";
-import { googleRoute } from "./routes/google";
 import { github } from "./routes/github";
 import { uso } from "./routes/uso";
 import { startScheduler } from "./programadas";
@@ -103,14 +102,12 @@ app.get("/api/health", (c) => {
   return c.json({ ok: row?.ok === 1, time: new Date().toISOString() });
 });
 
-// Todo /api exige sesión, salvo el estado del servidor, las rutas de entrada y salida y el regreso de Google
-// (Google llama desde otro sitio, así que la cookie de sesión no viaja; el estado de un solo uso lo protege).
+// Todo /api exige sesión, salvo el estado del servidor y las rutas de entrada y salida.
 const PUBLICAS = new Set([
   "/api/health",
   "/api/login",
   "/api/logout",
   "/api/sesion",
-  "/api/google/callback",
 ]);
 app.use("/api/*", async (c, next) => {
   if (PUBLICAS.has(c.req.path)) return next();
@@ -141,7 +138,6 @@ app.route("/api", skillsRoute);
 app.route("/api", proyectoConfig);
 app.route("/api", repositoryActions);
 app.route("/api", uso);
-app.route("/api", googleRoute);
 app.route("/api", github);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
 

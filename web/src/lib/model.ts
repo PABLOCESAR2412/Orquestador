@@ -563,16 +563,6 @@ export function errorText(err: unknown): string {
         return "Demasiados intentos. Espera 15 minutos antes de volver a intentar.";
       case "login_required":
         return "Tu sesión terminó. Vuelve a entrar.";
-      case "google_no_configurado":
-        return "Google no está configurado en el servidor. Revisa las variables que faltan en esta pantalla.";
-      case "google_estado_invalido":
-        return "El inicio de sesión con Google caducó o ya se usó. Vuelve a conectar la cuenta.";
-      case "google_cancelado":
-        return "Cancelaste el inicio de sesión con Google.";
-      case "google_sin_refresh":
-        return "Google no dio permiso para mantener la conexión. Quita el acceso de Telo en tu cuenta de Google y vuelve a conectar.";
-      case "google_fallido":
-        return "Google no completó el inicio de sesión. Por dónde empezar: vuelve a conectar la cuenta desde Ajustes; si se repite, comprueba la configuración OAuth del servidor.";
     }
     const { causa, siguientePaso } = explicacionHttp(err.status);
     const siguientePasoConDetalle = siguientePasoProveedor(err.detail) ?? siguientePaso;

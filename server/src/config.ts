@@ -13,18 +13,6 @@ export const config = {
   claveCifrado: process.env.TELO_CLAVE_CIFRADO?.trim() || null,
   // Solo para desarrollo local: deja la API abierta. En el VM no se usa.
   sinClave: process.env.TELO_SIN_CLAVE === "1",
-  // Dirección pública por la que se entra a Telo (https://…). Google vuelve a <dirección>/api/google/callback,
-  // así que debe ser exactamente la que se registra en Google Cloud. Se lee en cada uso (sin caché).
-  get publicUrl() {
-    return process.env.TELO_PUBLIC_URL?.trim() || null;
-  },
-  // Cliente OAuth web de Google Cloud. El secreto va en el archivo de entorno del VM, nunca en el repo.
-  get googleClientId() {
-    return process.env.TELO_GOOGLE_CLIENT_ID?.trim() || null;
-  },
-  get googleClientSecret() {
-    return process.env.TELO_GOOGLE_CLIENT_SECRET?.trim() || null;
-  },
   // Identidad de la GitHub App. La clave privada vive en un archivo fuera del repo y solo la lee el servidor.
   get githubAppId() {
     return process.env.TELO_GITHUB_APP_ID?.trim() || null;
