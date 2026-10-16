@@ -765,6 +765,48 @@
 }
 .tl-md th { background: var(--surface); color: var(--ink-2); font-weight: 500; font-size: 13px; }
 .tl-md tr:last-child td { border-bottom: 0; }
+.tl-diagrama {
+  min-width: 0;
+  max-width: 100%;
+  margin: 4px 0 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.tl-diagrama-titulo {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+.tl-diagrama-visual {
+  max-width: 100%;
+  padding: 16px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+.tl-diagrama-visual svg {
+  display: block;
+  max-width: none !important;
+  height: auto;
+  margin-inline: auto;
+}
+.tl-diagrama-estado {
+  margin: 0;
+  padding: 16px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.tl-diagrama-fuente { border-top: 1px solid var(--line); }
+.tl-diagrama-fuente > summary {
+  padding: 9px 12px;
+  color: var(--ink-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.tl-diagrama-fuente[open] > .tl-codigo { margin: 0 8px 8px; }
 
 /* Adjuntos en el compositor */
 /* Arrastrar archivos: borde punteado y capa de aviso encima del compositor */

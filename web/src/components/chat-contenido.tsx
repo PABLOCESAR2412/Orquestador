@@ -1,4 +1,4 @@
-import { Children, isValidElement, useState, type ReactNode } from "react";
+import { Children, isValidElement, useEffect, useId, useState, type ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -17,6 +17,7 @@ export async function copiarTexto(texto: string): Promise<boolean> {
 
 export function BloqueCodigo({ etiqueta, codigo }: { etiqueta: string; codigo: string }) {
   const [estado, setEstado] = useState<"reposo" | "copiado" | "fallo">("reposo");
+  const soloLectura = ["text", "plaintext", "txt", "mermaid"].includes(etiqueta.toLowerCase());
 
   const copiar = async () => {
     const ok = await copiarTexto(codigo);
@@ -32,20 +33,118 @@ export function BloqueCodigo({ etiqueta, codigo }: { etiqueta: string; codigo: s
           <button type="button" className="tl-accion" onClick={() => void copiar()}>
             {estado === "copiado" ? "Copiado" : estado === "fallo" ? "No se pudo copiar" : "Copiar"}
           </button>
-          <button
-            type="button"
-            className="tl-accion tl-accion-principal"
-            disabled
-            title="Aplicar cambios al repositorio todavía no está disponible desde el chat"
-          >
-            Aplicar
-          </button>
+          {!soloLectura && (
+            <button
+              type="button"
+              className="tl-accion tl-accion-principal"
+              disabled
+              title="Aplicar cambios al repositorio todavía no está disponible desde el chat"
+            >
+              Aplicar
+            </button>
+          )}
         </div>
       </div>
       <pre className="tl-codigo-cuerpo">
         <code>{codigo}</code>
       </pre>
     </div>
+  );
+}
+
+const LIMITE_DIAGRAMA = 12_000;
+
+function valorTema(nombre: string, respaldo: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(nombre).trim() || respaldo;
+}
+
+function Diagrama({ codigo }: { codigo: string }) {
+  const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const [revisionTema, setRevisionTema] = useState(0);
+  const [svg, setSvg] = useState("");
+  const [fallo, setFallo] = useState(false);
+
+  useEffect(() => {
+    const actualizar = () => setRevisionTema(revision => revision + 1);
+    const observer = new MutationObserver(actualizar);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    const sistema = window.matchMedia("(prefers-color-scheme: light)");
+    sistema.addEventListener("change", actualizar);
+    return () => {
+      observer.disconnect();
+      sistema.removeEventListener("change", actualizar);
+    };
+  }, []);
+
+  useEffect(() => {
+    let vigente = true;
+    setSvg("");
+    setFallo(codigo.length > LIMITE_DIAGRAMA);
+    if (codigo.length <= LIMITE_DIAGRAMA) {
+      void (async () => {
+        try {
+          const { default: mermaid } = await import("mermaid");
+          const oscuro = getComputedStyle(document.documentElement).colorScheme !== "light";
+          mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: "strict",
+            secure: ["secure", "securityLevel", "startOnLoad", "maxTextSize", "maxEdges", "htmlLabels", "suppressErrorRendering", "flowchart", "theme", "themeVariables"],
+            suppressErrorRendering: true,
+            maxTextSize: LIMITE_DIAGRAMA,
+            maxEdges: 150,
+            htmlLabels: false,
+            theme: "base",
+            flowchart: { useMaxWidth: false, htmlLabels: false, curve: "linear" },
+            themeVariables: {
+              darkMode: oscuro,
+              nodeShadow: false,
+              dropShadow: "none",
+              background: valorTema("--surface", "#121316"),
+              primaryColor: valorTema("--surface-2", "#1b1b1f"),
+              primaryTextColor: valorTema("--ink", "#f5f5f7"),
+              primaryBorderColor: valorTema("--line-strong", "#44474a"),
+              secondaryColor: valorTema("--surface", "#121316"),
+              secondaryTextColor: valorTema("--ink", "#f5f5f7"),
+              secondaryBorderColor: valorTema("--line", "#292a2d"),
+              tertiaryColor: valorTema("--surface-lowest", "#0d0e11"),
+              tertiaryTextColor: valorTema("--ink", "#f5f5f7"),
+              tertiaryBorderColor: valorTema("--line", "#292a2d"),
+              lineColor: valorTema("--ink-2", "#9ca3af"),
+              edgeLabelBackground: valorTema("--surface", "#121316"),
+              mainBkg: valorTema("--surface-2", "#1b1b1f"),
+              nodeBorder: valorTema("--line-strong", "#44474a"),
+              clusterBkg: valorTema("--surface", "#121316"),
+              clusterBorder: valorTema("--line", "#292a2d"),
+              titleColor: valorTema("--ink", "#f5f5f7"),
+              textColor: valorTema("--ink", "#f5f5f7"),
+              fontFamily: valorTema("--font", "Geist, sans-serif"),
+            },
+          });
+          const resultado = await mermaid.render(`tl-diagrama-${id}`, codigo);
+          if (vigente) setSvg(resultado.svg);
+        } catch {
+          if (vigente) setFallo(true);
+        }
+      })();
+    }
+    return () => { vigente = false; };
+  }, [codigo, id, revisionTema]);
+
+  return (
+    <figure className="tl-diagrama">
+      <figcaption className="tl-diagrama-titulo">Diagrama</figcaption>
+      {svg ? (
+        <div className="tl-diagrama-visual" role="img" aria-label="Diagrama generado desde la respuesta del chat" dangerouslySetInnerHTML={{ __html: svg }} />
+      ) : (
+        <p className="tl-diagrama-estado" role={fallo ? "alert" : "status"}>
+          {fallo ? "No se pudo dibujar este diagrama. Puedes revisar o copiar su código." : "Generando diagrama…"}
+        </p>
+      )}
+      <details className="tl-diagrama-fuente">
+        <summary>Ver código Mermaid</summary>
+        <BloqueCodigo etiqueta="mermaid" codigo={codigo} />
+      </details>
+    </figure>
   );
 }
 
@@ -64,7 +163,9 @@ const COMPONENTES: Components = {
     const hijo = Children.toArray(children)[0];
     if (isValidElement<{ className?: string; children?: ReactNode }>(hijo)) {
       const etiqueta = /language-(\S+)/.exec(hijo.props.className ?? "")?.[1] ?? "";
-      return <BloqueCodigo etiqueta={etiqueta} codigo={textoDe(hijo.props.children).replace(/\n$/, "")} />;
+      const codigo = textoDe(hijo.props.children).replace(/\n$/, "");
+      if (etiqueta.toLowerCase() === "mermaid") return <Diagrama codigo={codigo} />;
+      return <BloqueCodigo etiqueta={etiqueta} codigo={codigo} />;
     }
     return <pre>{children}</pre>;
   },
