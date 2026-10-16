@@ -119,6 +119,9 @@ export function validarContenido(texto: string, nombre: string): { descripcion: 
 }
 
 function leerArchivo(ruta: string): { texto: string; bytes: number; modificada: string } {
+  const stLink = lstatORNull(ruta);
+  if (!stLink) throw new SkillError("skill_no_encontrada", 404);
+  if (stLink.isSymbolicLink()) throw new SkillError("skill_ruta_no_permitida", 400);
   let fd: number;
   try {
     fd = openSync(ruta, fc.O_RDONLY | fc.O_NOFOLLOW);
@@ -243,6 +246,29 @@ export function guardarSkill(ambito: AmbitoSkills, nombre: string, contenido: st
     unlinkSync(temporal);
     throw new SkillError("skill_no_guardada", 400);
   }
+  if (ambito.ambito === "proyecto") {
+    try {
+      const skillsDir = carpetaSegura(ambito.carpeta, ["skills"], true);
+      if (skillsDir) {
+        const sub = join(skillsDir, nombre);
+        if (!lstatORNull(sub)) mkdirSync(sub, { recursive: true });
+        const destVisible = join(sub, ARCHIVO);
+        const tmpVisible = join(sub, `.${ARCHIVO}.${randomUUID()}.tmp`);
+        const fdVis = openSync(tmpVisible, fc.O_WRONLY | fc.O_CREAT | fc.O_EXCL | fc.O_NOFOLLOW, 0o644);
+        try {
+          const b = Buffer.from(contenido, "utf8");
+          let esc = 0;
+          while (esc < b.length) esc += writeSync(fdVis, b, esc, b.length - esc);
+          fsyncSync(fdVis);
+        } finally {
+          closeSync(fdVis);
+        }
+        renameSync(tmpVisible, destVisible);
+      }
+    } catch {
+      // Si la carpeta skills/ no se puede escribir, no falla la operación principal (.opencode/skills).
+    }
+  }
   return { creada };
 }
 
@@ -264,6 +290,22 @@ export function borrarSkill(ambito: AmbitoSkills, nombre: string): void {
   if (entradas.some((e) => e !== ARCHIVO)) throw new SkillError("skill_con_archivos", 409);
   if (entradas.length === 1) unlinkSync(join(carpeta, ARCHIVO));
   rmdirSync(carpeta);
+
+  if (ambito.ambito === "proyecto") {
+    try {
+      const dirVis = carpetaSegura(ambito.carpeta, ["skills"], false);
+      if (dirVis) {
+        const subVis = join(dirVis, nombre);
+        if (lstatORNull(subVis)?.isDirectory()) {
+          const destVis = join(subVis, ARCHIVO);
+          if (lstatORNull(destVis)?.isFile()) unlinkSync(destVis);
+          rmdirSync(subVis);
+        }
+      }
+    } catch {
+      // Ignorar fallo secundario en la carpeta visible
+    }
+  }
 }
 
 // Crea la carpeta de skills globales si falta. Se llama al arrancar: así bubblewrap siempre puede montarla en

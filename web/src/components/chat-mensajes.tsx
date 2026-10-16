@@ -77,6 +77,25 @@ function vozEspanola(): SpeechSynthesisVoice | undefined {
 let utteranceActiva: SpeechSynthesisUtterance | null = null;
 let limpiarLecturaActiva: (() => void) | null = null;
 
+function renderizarTextoConSkills(texto: string) {
+  const partes = texto.split(/(?:^|(?<=[\s([{"'`]))([$/][a-z][a-z0-9]*(?:-[a-z0-9]+)*)(?=$|[\s)\]}"'`,:;.!?])/gi);
+  if (partes.length === 1) return texto;
+
+  return partes.map((parte, index) => {
+    if (parte && (parte.startsWith("$") || parte.startsWith("/"))) {
+      const nombre = parte.slice(1);
+      if (/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/i.test(nombre)) {
+        return (
+          <span key={index} className="tl-skill-badge" title={`Skill: ${nombre}`}>
+            {parte}
+          </span>
+        );
+      }
+    }
+    return parte;
+  });
+}
+
 // id: ancla para ir a este mensaje desde el historial de prompts. resaltado: destaca el mensaje un momento.
 export function MensajeUsuario({
   texto,
@@ -98,7 +117,7 @@ export function MensajeUsuario({
           <BotonCopiar texto={texto} etiqueta="Copiar mensaje" />
         </div>
       </div>
-      {prosa && <div className="tl-msg-burbuja">{prosa}</div>}
+      {prosa && <div className="tl-msg-burbuja">{renderizarTextoConSkills(prosa)}</div>}
       {adjuntos.length > 0 && (
         <ul className="tl-adjuntos-enviados" aria-label="Archivos adjuntos">
           {adjuntos.map((a, i) => (

@@ -9,6 +9,7 @@ import { AislamientoError } from "./runners/aislamiento";
 import { ErrorAgente, runOpenCode, type RunResult, type Usage } from "./runners/opencode";
 import { conMemoria, extraerMemoria, guardarMemoria, guardarPropuestaMemoria, memoriaDelProyecto, quitarBloqueMemoria } from "./memoria";
 import { conservarMemoriaSegunJev, puntuarMemoriaJev } from "./jev";
+import { inyectarSkillsEnPrompt } from "./resolucion-skills";
 
 // Longitud mínima de un valor de secreto para ocultarlo en la salida. Más corto, aparecería en texto normal.
 const MINIMO_OCULTAR = 4;
@@ -240,7 +241,15 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
   };
   const memoria = opts.projectId ? memoriaDelProyecto(opts.projectId).texto : null;
   const base = {
-    prompt: conEstilo(conMemoria(conInstrucciones(opts.projectId, opts.prompt), memoria, opts.aprender === true), opts.estilo, opts.estilo === "chat" && Boolean(opts.projectId)),
+    prompt: conEstilo(
+      conMemoria(
+        conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(opts.prompt, opts.projectId).promptFinal),
+        memoria,
+        opts.aprender === true,
+      ),
+      opts.estilo,
+      opts.estilo === "chat" && Boolean(opts.projectId),
+    ),
     cwd: opts.cwd,
     timeoutMs: opts.timeoutMs,
     signal: opts.signal,

@@ -13,6 +13,7 @@ import { AvisoCuota } from "../components/cuota-aviso";
 import { VistaDocumento } from "../components/documentos";
 import { HistorialPrompts, type PromptEnviado } from "../components/chat-historial";
 import { MenuComandosChat, type ComandoChat } from "../components/chat-comandos";
+import { MenuSkillsChat, type SkillOpcion } from "../components/chat-skills-picker";
 import { PlanRevision } from "../components/plan-revision";
 import { AccionRepositorioMensaje, AccionesAnteriores, AccionesRepositorioChat } from "../components/repository-approval";
 import { sugerenciasChat } from "../lib/sugerencias";
@@ -730,6 +731,79 @@ export function ChatPage() {
     );
   };
 
+  // Skills disponibles para el chat (del proyecto y globales)
+  const skillsProyecto = useQuery({
+    queryKey: ["skills", current?.project_id],
+    queryFn: () => (current?.project_id ? api.listSkills(current.project_id) : Promise.resolve({ skills: [] })),
+    enabled: Boolean(current?.project_id),
+  });
+  const skillsGlobales = useQuery({
+    queryKey: ["skills", "global"],
+    queryFn: () => api.listSkills(),
+  });
+
+  const skillsDisponibles: SkillOpcion[] = useMemo(() => {
+    const mapa = new Map<string, SkillOpcion>();
+    for (const s of skillsProyecto.data?.skills ?? []) {
+      mapa.set(s.nombre, { nombre: s.nombre, descripcion: s.descripcion, ambito: "proyecto" });
+    }
+    for (const s of skillsGlobales.data?.skills ?? []) {
+      if (!mapa.has(s.nombre)) {
+        mapa.set(s.nombre, { nombre: s.nombre, descripcion: s.descripcion, ambito: "global" });
+      }
+    }
+    return Array.from(mapa.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [skillsProyecto.data, skillsGlobales.data]);
+
+  const [skillIndex, setSkillIndex] = useState(0);
+  const [skillPickerOculto, setSkillPickerOculto] = useState(false);
+
+  // Analiza si el cursor o el final del borrador está redactando un token de skill ($ o /)
+  const tokenSkill = useMemo(() => {
+    if (!draft) return null;
+    const cursor = inputRef.current ? inputRef.current.selectionStart : draft.length;
+    const antesCursor = draft.slice(0, cursor);
+    const m = /(?:^|\s)([$/])([a-zA-Z0-9-]*)$/.exec(antesCursor);
+    if (!m) return null;
+    const prefijo = m[1] as "$" | "/";
+    const query = m[2]!.toLowerCase();
+    const inicio = antesCursor.length - m[0].length + (m[0].startsWith(" ") ? 1 : 0);
+    return { prefijo, query, inicio, fin: cursor };
+  }, [draft]);
+
+  const skillsFiltradas = useMemo(() => {
+    if (!tokenSkill) return [];
+    if (tokenSkill.prefijo === "/" && draft.startsWith("/") && !draft.includes(" ")) {
+      return [];
+    }
+    return skillsDisponibles.filter((s) => s.nombre.toLowerCase().includes(tokenSkill.query));
+  }, [tokenSkill, skillsDisponibles, draft]);
+
+  const menuSkillsAbierto = Boolean(tokenSkill && skillsFiltradas.length > 0 && !skillPickerOculto);
+  const indiceSkillActivo = Math.min(skillIndex, Math.max(skillsFiltradas.length - 1, 0));
+
+  useEffect(() => {
+    if (menuSkillsAbierto) {
+      document.getElementById(`skill-opcion-${skillsFiltradas[indiceSkillActivo]?.nombre}`)?.scrollIntoView({ block: "nearest" });
+    }
+  }, [indiceSkillActivo, menuSkillsAbierto, skillsFiltradas]);
+
+  const elegirSkill = (skill: SkillOpcion) => {
+    if (!tokenSkill) return;
+    const prefijo = tokenSkill.prefijo;
+    const reemplazo = `${prefijo}${skill.nombre} `;
+    const nuevoBorrador = draft.slice(0, tokenSkill.inicio) + reemplazo + draft.slice(tokenSkill.fin);
+    cambiarBorrador(nuevoBorrador);
+    setSkillPickerOculto(false);
+    window.setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        const pos = tokenSkill.inicio + reemplazo.length;
+        inputRef.current.setSelectionRange(pos, pos);
+      }
+    }, 0);
+  };
+
   // Comandos que se ven al escribir "/" en el compositor.
   const anclado = Boolean(current?.pinned_at);
   const comandosChat: ComandoChat[] = [
@@ -802,6 +876,15 @@ export function ChatPage() {
           },
         ]
       : []),
+    ...skillsDisponibles.map((s) => ({
+      id: `skill-${s.nombre}`,
+      etiqueta: `/${s.nombre}`,
+      descripcion: s.descripcion ? `[Skill ${s.ambito}] ${s.descripcion}` : `Skill ${s.ambito} de ${s.nombre}`,
+      ejecutar: () => {
+        cambiarBorrador(`/${s.nombre} `);
+        window.setTimeout(() => inputRef.current?.focus(), 0);
+      },
+    })),
   ];
 
   // El menú aparece solo si el mensaje empieza por "/" y hay comandos que coinciden.
@@ -1295,7 +1378,16 @@ export function ChatPage() {
                 </p>
               )}
 
-              {menuAbierto && (
+              {menuSkillsAbierto && (
+                <MenuSkillsChat
+                  skills={skillsFiltradas}
+                  prefijo={tokenSkill!.prefijo}
+                  activo={indiceSkillActivo}
+                  onElegir={elegirSkill}
+                />
+              )}
+
+              {menuAbierto && !menuSkillsAbierto && (
                 <MenuComandosChat comandos={comandosFiltrados} activo={indiceSlash} onElegir={elegirComando} />
               )}
 
@@ -1308,16 +1400,40 @@ export function ChatPage() {
                   agenteOcupado && colaActiva
                     ? "El agente está respondiendo; tu mensaje se añadirá a la cola"
                     : sugerencia
-                    ? `${sugerencia} (Tab) o escribe un mensaje, pega o arrastra archivos, o usa / para comandos`
-                    : "Escribe un mensaje, pega o arrastra archivos, o usa / para comandos"
+                    ? `${sugerencia} (Tab) o escribe un mensaje, usa $ o / para skills y comandos`
+                    : "Escribe un mensaje, usa $ o / para skills y comandos, o pega archivos"
                 }
                 aria-label="Mensaje"
-                aria-autocomplete={menuAbierto ? "list" : sugerencia ? "inline" : undefined}
-                aria-activedescendant={menuAbierto ? `comando-chat-${comandosFiltrados[indiceSlash]?.id}` : undefined}
+                aria-autocomplete={menuSkillsAbierto || menuAbierto ? "list" : sugerencia ? "inline" : undefined}
+                aria-activedescendant={
+                  menuSkillsAbierto
+                    ? `skill-opcion-${skillsFiltradas[indiceSkillActivo]?.nombre}`
+                    : menuAbierto
+                    ? `comando-chat-${comandosFiltrados[indiceSlash]?.id}`
+                    : undefined
+                }
                 onChange={(e) => cambiarBorrador(e.target.value)}
                 onPaste={alPegar}
                 onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
                   if (e.nativeEvent.isComposing) return;
+                  if (menuSkillsAbierto) {
+                    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                      e.preventDefault();
+                      const paso = e.key === "ArrowDown" ? 1 : -1;
+                      setSkillIndex((indiceSkillActivo + paso + skillsFiltradas.length) % skillsFiltradas.length);
+                      return;
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      setSkillPickerOculto(true);
+                      return;
+                    }
+                    if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      elegirSkill(skillsFiltradas[indiceSkillActivo]!);
+                      return;
+                    }
+                  }
                   if (menuAbierto) {
                     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                       e.preventDefault();
@@ -1340,7 +1456,7 @@ export function ChatPage() {
                     setSugerenciaOculta(true);
                     return;
                   }
-                  if (e.key === "Tab" && !e.shiftKey && !menuAbierto && sugerencia) {
+                  if (e.key === "Tab" && !e.shiftKey && !menuAbierto && !menuSkillsAbierto && sugerencia) {
                     e.preventDefault();
                     cambiarBorrador(sugerencia);
                     return;
