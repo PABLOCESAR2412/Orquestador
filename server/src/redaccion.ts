@@ -13,6 +13,9 @@ const PATRONES_CREDENCIAL: RegExp[] = [
   /ghp_[A-Za-z0-9]{20,}/, // tokens personales de GitHub (clásicos)
   /github_pat_[A-Za-z0-9_]{20,}/, // tokens de GitHub de grano fino
   /gh[ousr]_[A-Za-z0-9]{20,}/, // tokens de OAuth, de usuario, de servidor y de refresco de GitHub
+  /apikey_[A-Za-z0-9_-]{20,}/, // claves API de TypeSafe / Jev
+  /gsk_[A-Za-z0-9_-]{20,}/, // claves API de Groq
+  /nvapi-[A-Za-z0-9_-]{20,}/, // claves API de NVIDIA
   /sk-[A-Za-z0-9_-]{20,}/, // claves de API de estilo OpenAI
   /AIza[0-9A-Za-z_-]{30,}/, // claves de API de Google
 ];

@@ -8,6 +8,7 @@ import { redactar } from "./redaccion";
 import { AislamientoError } from "./runners/aislamiento";
 import { ErrorAgente, runOpenCode, type RunResult, type Usage } from "./runners/opencode";
 import { conMemoria, extraerMemoria, guardarMemoria, memoriaDelProyecto, quitarBloqueMemoria } from "./memoria";
+import { conservarMemoriaSegunJev, puntuarMemoriaJev } from "./jev";
 
 // Longitud mínima de un valor de secreto para ocultarlo en la salida. Más corto, aparecería en texto normal.
 const MINIMO_OCULTAR = 4;
@@ -258,11 +259,49 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     if (opts.aprender && opts.projectId) {
       const nueva = extraerMemoria(texto);
       if (nueva) {
-        try {
-          guardarMemoria(opts.projectId, nueva);
-        } catch (err) {
-          console.error("Guardar la memoria del proyecto:", mensajeDe(err));
-        }
+        const projectId = opts.projectId;
+        // La memoria es auxiliar: no retiene un turno del agente mientras Jev responde.
+        void (async () => {
+          try {
+            const memoriaAnterior = memoriaDelProyecto(projectId).texto;
+            const proyecto = db.query<{ name: string }, [string]>("SELECT name FROM projects WHERE id = ?").get(projectId)?.name ?? "Proyecto";
+            let guardar = true;
+            let puntuacion: number | null = null;
+            try {
+              puntuacion = await puntuarMemoriaJev({
+                proyectoId: projectId,
+                tareaId: opts.taskId,
+                signal: opts.signal,
+                estado: {
+                  proyecto,
+                  tarea: opts.prompt.slice(0, 10_000),
+                  memoriaAnterior,
+                  propuesta: nueva,
+                },
+              });
+            } catch {
+              // La memoria conserva su flujo anterior si Jev no está disponible.
+            }
+            const decisionJev = conservarMemoriaSegunJev(puntuacion);
+            if (decisionJev !== null && puntuacion !== null) {
+              guardar = decisionJev;
+              if (opts.taskId) {
+                try {
+                  registrarEvento(
+                    opts.taskId,
+                    "memoria_evaluada",
+                    `Jev puntuó la propuesta ${puntuacion.toFixed(2)} de 3. Telo ${guardar ? "la guardó" : "la dejó fuera"} por su relevancia para futuras tareas.`,
+                  );
+                } catch {
+                  // Si la tarea se borró antes de la evaluación, la decisión aún se puede aplicar al proyecto.
+                }
+              }
+            }
+            if (guardar) guardarMemoria(projectId, nueva);
+          } catch (err) {
+            console.error("Guardar la memoria del proyecto:", mensajeDe(err));
+          }
+        })();
       }
     }
     return { ...r, text: opts.aprender ? quitarBloqueMemoria(texto) : texto, textoFinal: opts.aprender ? quitarBloqueMemoria(textoFinal) : textoFinal, modelo };
