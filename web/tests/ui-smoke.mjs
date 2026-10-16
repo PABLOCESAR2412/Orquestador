@@ -78,7 +78,7 @@ try {
       else if (path === "/api/providers") data = [{ id: "codex", name: "Codex", configured: codexSesionEnPicker, variable: null, enAgente: false, guardable: false, sesion: codexSesionEnPicker }];
       else if (path === "/api/providers/codex/models") data = { generado: now, models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", context: 100000, variants: ["high"] }] };
       else if (path === "/api/providers/codex/login") data = { estado: "esperando", conectada: false, url: "https://auth.openai.com/codex/device", codigo: "ABCD-EFGH", salida: "Salida de prueba\n" + "x".repeat(300) };
-      else if (path === "/api/skills/instalar" {
+      else if (path === "/api/skills/instalar") {
         skillInstallRequests++;
         await new Promise(resolve => setTimeout(resolve, 100));
         return route.fulfill({ status: 409, json: { error: "skill_command_ambiguous" } });
