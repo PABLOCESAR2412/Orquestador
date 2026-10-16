@@ -472,6 +472,24 @@ const migrations: Migration[] = [
       DROP TABLE IF EXISTS oauth_estados;
     `,
   },
+  {
+    name: "025_uso_jev_interno",
+    sql: `
+      CREATE TABLE uso_jev (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tipo TEXT NOT NULL CHECK (tipo IN ('recomendaciones_chat', 'memoria_proyecto', 'clasificacion_tarea', 'prueba_conexion')),
+        proyecto_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+        conversacion_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+        tarea_id TEXT REFERENCES tasks(id) ON DELETE SET NULL,
+        modelo TEXT NOT NULL,
+        tokens_entrada INTEGER NOT NULL DEFAULT 0,
+        tokens_salida INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX uso_jev_fecha ON uso_jev(created_at);
+      CREATE INDEX uso_jev_proyecto ON uso_jev(proyecto_id, created_at);
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

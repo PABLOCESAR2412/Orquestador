@@ -306,6 +306,8 @@ export type TaskEventKind =
   | "plan_revision"
   | "sin_cuota"
   | "turno_encolado"
+  | "clasificacion_jev"
+  | "memoria_evaluada"
   | "seguida";
 
 // Evento en vivo del canal /api/eventos-vivos (SSE).
@@ -692,6 +694,16 @@ export const api = {
     ),
   deleteProviderKey: (id: string) =>
     request<{ ok: boolean }>(`/api/claves-proveedor/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  getJev: () => request<JevStatus>("/api/jev"),
+  setJevKey: (valor: string) => request<{ configurada: boolean; actualizada_en: string }>("/api/jev", {
+    method: "PUT", body: JSON.stringify({ valor }),
+  }),
+  deleteJevKey: () => request<{ ok: boolean }>("/api/jev", { method: "DELETE" }),
+  testJev: () => request<{ ok: boolean }>("/api/jev/probar", { method: "POST", body: "{}" }),
+  rankChatRecommendations: (conversacionId: string, candidatas: string[]) =>
+    request<{ recomendaciones: string[]; ordenadas_con_jev: boolean }>("/api/jev/recomendaciones", {
+      method: "POST", body: JSON.stringify({ conversacionId, candidatas }),
+    }),
   getPreferences: () => request<Preferences>("/api/preferences"),
   savePreferences: (patch: Partial<Preferences>) =>
     request<Preferences>("/api/preferences", { method: "PUT", body: JSON.stringify(patch) }),
@@ -702,6 +714,8 @@ export const api = {
     return request<Analytics>(`/api/analytics?${q.toString()}`);
   },
 };
+
+export type JevStatus = { disponible: boolean; configurada: boolean; actualizada_en: string | null };
 
 export type GithubCuenta = {
   conectado: boolean;
@@ -749,6 +763,7 @@ export type Analytics = {
   modelos: string[];
   totals: { calls: number; inputTokens: number; outputTokens: number; cost: number };
   byType: { tipo: "chat" | "tarea" | "otro"; calls: number; tokens: number; cost: number; sinTokens?: number; sinCoste?: number }[];
+  usoJev?: { tipo: "recomendaciones_chat" | "memoria_proyecto" | "clasificacion_tarea" | "prueba_conexion"; calls: number; inputTokens: number; outputTokens: number; tokens: number }[];
   byDay: { day: string; cost: number; tokens: number; calls: number }[];
   byModel: {
     model: string;

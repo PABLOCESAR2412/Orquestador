@@ -32,6 +32,8 @@ export type TipoEvento =
   | "obrero_iniciado"
   | "sin_cuota"
   | "turno_encolado"
+  | "clasificacion_jev"
+  | "memoria_evaluada"
   | "seguida";
 
 export type EventoTarea = {

@@ -59,6 +59,25 @@ export function borrarClaveProveedor(id: string): boolean {
   return db.query("DELETE FROM provider_keys WHERE proveedor = ?").run(id).changes > 0;
 }
 
+// Jev es una integración interna del servidor; su clave no se añade a PROVEEDORES_CON_CLAVE y
+// nunca se incorpora al entorno de OpenCode.
+export function claveJevActualizadaEn(): string | null {
+  return db.query<{ updated_at: string }, []>("SELECT updated_at FROM provider_keys WHERE proveedor = 'jev'").get()?.updated_at ?? null;
+}
+
+export function valorClaveJev(): string | null {
+  try {
+    const clave = claveMaestra();
+    if (!clave) return null;
+    const fila = db
+      .query<FilaClave, []>("SELECT iv, tag, value_enc FROM provider_keys WHERE proveedor = 'jev'")
+      .get();
+    return fila ? descifrar(clave, fila, textoAsociado("jev")) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function estadoClaves(): {
   id: string;
   etiqueta: string;
