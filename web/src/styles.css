@@ -3574,6 +3574,8 @@ button:disabled { opacity: 0.4; cursor: default; }
   letter-spacing: 0.08em;
   color: var(--ink);
 }
+.login-codex-paso, .login-codex-paso > * { min-width: 0; }
+.login-codex-paso pre { max-width: 100%; box-sizing: border-box; }
 .skills-cabecera {
   display: flex;
   flex-wrap: nowrap;

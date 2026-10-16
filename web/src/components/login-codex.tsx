@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type LoginCodex } from "../api";
 import { errorText, motivoTexto } from "../lib/model";
+import { copiarTexto } from "./chat-contenido";
 
 // Inicio de sesión de Codex con la cuenta de ChatGPT. Lo ejecuta el servidor: aquí solo se ven el enlace y el
 // código que imprime el CLI. El token nunca llega a la app, y la sesión solo se comprueba por su existencia.
@@ -10,6 +11,7 @@ export function LoginCodexPanel() {
   const clave = ["codex-login"];
   const [mensajeConfirmacion, setMensajeConfirmacion] = useState<string | null>(null);
   const [mostrarDetalles, setMostrarDetalles] = useState(false);
+  const [copia, setCopia] = useState<string | null>(null);
 
   const estado = useQuery({
     queryKey: clave,
@@ -28,6 +30,7 @@ export function LoginCodexPanel() {
     mutationFn: api.iniciarCodexLogin,
     onSuccess: (datos: LoginCodex) => {
       setMensajeConfirmacion(null);
+      setCopia(null);
       qc.setQueryData(clave, datos);
     },
   });
@@ -112,11 +115,15 @@ export function LoginCodexPanel() {
           ) : (
             <p className="aj-nota">Esperando el enlace del CLI…</p>
           )}
-          {datos?.codigo && (
-            <p className="aj-nota">
-              Código: <span className="login-codex-codigo">{datos.codigo}</span>
-            </p>
-          )}
+          {datos?.codigo ? (
+            <div className="instalar-acciones">
+              <p className="aj-nota">Código de un solo uso: <code className="login-codex-codigo">{datos.codigo}</code></p>
+              <button type="button" className="aj-btn" onClick={async () => {
+                setCopia(await copiarTexto(datos.codigo!) ? "Código copiado." : "No se pudo copiar. Selecciona el código y cópialo.");
+              }}>Copiar código</button>
+            </div>
+          ) : <p className="aj-nota">Esperando el código del CLI…</p>}
+          {copia && <p className="aj-nota" role="status">{copia}</p>}
           <div className="instalar-acciones">
             <button
               type="button"
