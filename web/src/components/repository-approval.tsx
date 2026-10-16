@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, type RepositoryAction } from "../api";
+import { api, ApiError, type FuenteAutenticacionGithub, type RepositoryAction } from "../api";
 import { errorText } from "../lib/model";
 
 // merge y push_main ya no se crean; quedan aquí solo para mostrar el historial de acciones antiguas.
@@ -13,6 +13,10 @@ const labels: Record<string, string> = {
   merge: "Commit y merge local",
 };
 function resultadoLegible(valor: string): string {
+  const sinCommits = valor.match(/No commits between\s+([^\s;]+)\s+and\s+([^\s;]+)/i);
+  if (sinCommits) {
+    return `GitHub no ve commits nuevos entre ${sinCommits[1]} y ${sinCommits[2]}. Comprueba que la rama de origen se haya subido y que sea la rama que contiene el cambio.`;
+  }
   try {
     const r = JSON.parse(valor) as {
       mensaje?: string;
@@ -36,14 +40,30 @@ const estados: Record<string, string> = {
   executing: "Ejecutando",
   superseded: "Reemplazada",
 };
+function autenticacionDe(accion: RepositoryAction): FuenteAutenticacionGithub | null {
+  try {
+    const payload = JSON.parse(accion.payload) as { autenticacion?: FuenteAutenticacionGithub };
+    return payload.autenticacion ?? null;
+  } catch {
+    return null;
+  }
+}
+function etiquetaAutenticacion(accion: RepositoryAction): string | null {
+  if (accion.action !== "push" && accion.action !== "pr") return null;
+  const autenticacion = autenticacionDe(accion);
+  if (!autenticacion) return "Credencial: método no registrado";
+  return `Credencial: ${autenticacion.etiqueta}${autenticacion.cuenta ? ` · @${autenticacion.cuenta}` : ""}`;
+}
 export function RepositoryApproval({
   accion,
   onChange,
   compacta = false,
+  projectId,
 }: {
   accion: RepositoryAction;
-  onChange: () => void;
+  onChange: (resultado?: unknown, aprobada?: boolean, error?: string) => void;
   compacta?: boolean;
+  projectId?: string;
 }) {
   const p = JSON.parse(accion.payload) as {
     diff?: string;
@@ -55,11 +75,46 @@ export function RepositoryApproval({
     title?: string;
     archivos?: string[];
     truncado?: boolean;
+    autorGit?: string;
+    autenticacion?: FuenteAutenticacionGithub;
   };
+  const requiereGitHub = accion.action === "push" || accion.action === "pr";
+  const credencialObsoleta = requiereGitHub && !p.autenticacion;
+  const [confirmarAccesoNoVerificado, setConfirmarAccesoNoVerificado] = useState(false);
+  const [avisoAcceso, setAvisoAcceso] = useState<string | null>(null);
   const decide = useMutation({
-    mutationFn: (approve: boolean) =>
-      api.decideRepositoryAction(accion.id, approve),
-    onSettled: onChange,
+    mutationFn: async (approve: boolean) => {
+      if (!approve) return api.decideRepositoryAction(accion.id, false);
+      if (requiereGitHub) {
+        if (!projectId || !p.autenticacion) {
+          throw new ApiError(409, "github_access", "Esta autorización no tiene una credencial registrada. Prepara una nueva para comprobar el acceso antes de aprobar.");
+        }
+        const acceso = await api.checkProjectGit(projectId, accion.action as "push" | "pr");
+        const esperada = p.autenticacion;
+        if (
+          acceso.autenticacion.tipo !== esperada.tipo ||
+          acceso.autenticacion.origen !== esperada.origen ||
+          acceso.autenticacion.cuenta !== esperada.cuenta ||
+          acceso.autenticacion.instalacion_id !== esperada.instalacion_id
+        ) {
+          throw new ApiError(409, "github_access", "La credencial seleccionada cambió desde que preparaste la autorización. Prepara otra para revisar qué cuenta hará la acción.");
+        }
+        if (acceso.verificacion === "no_verificada" && !confirmarAccesoNoVerificado) {
+          return { requiereConfirmacion: true as const, aviso: acceso.aviso ?? "No se pudo confirmar el permiso de escritura antes de la acción." };
+        }
+      }
+      return api.decideRepositoryAction(accion.id, true);
+    },
+    onSuccess: (resultado, approve) => {
+      if ("requiereConfirmacion" in resultado && resultado.requiereConfirmacion) {
+        setConfirmarAccesoNoVerificado(true);
+        setAvisoAcceso(resultado.aviso);
+        return;
+      }
+      setAvisoAcceso(null);
+      onChange("result" in resultado ? resultado.result : undefined, approve);
+    },
+    onError: (error) => onChange(undefined, false, errorText(error)),
   });
   const titulo = labels[accion.action] ?? accion.action;
   const subida = accion.action === "push";
@@ -94,7 +149,29 @@ export function RepositoryApproval({
         p.descripcion && <p>{p.descripcion}</p>
       )}
       {accion.action === "commit" && <p>Mensaje: {p.message}</p>}
+      {(accion.action === "commit" || subida) && (
+        <p className="approval-auth">Commit local · identidad de Git: {p.autorGit ?? "la configurada en el proyecto"}.{subida ? " La subida usa la credencial indicada abajo." : " GitHub no participa en este paso."}</p>
+      )}
       {accion.action === "pr" && <p>Título: {p.title}</p>}
+      {requiereGitHub && p.autenticacion && (
+        <div className={`approval-auth${p.autenticacion.tipo === "credencial_anterior" ? " approval-auth-warning" : ""}`} role={p.autenticacion.tipo === "credencial_anterior" ? "alert" : "status"}>
+          <strong>Credencial para esta acción: {p.autenticacion.etiqueta}</strong>
+          {p.autenticacion.cuenta && <span>Cuenta: @{p.autenticacion.cuenta}</span>}
+          {p.autenticacion.tipo === "credencial_anterior" && (
+            <span>Esta acción usará la credencial anterior indicada. Confirma que reconoces esta cuenta antes de autorizar.</span>
+          )}
+        </div>
+      )}
+      {credencialObsoleta && accion.state === "pending" && (
+        <p className="approval-auth approval-auth-warning" role="alert">
+          Esta autorización es antigua y no indica qué credencial usar. Prepara una nueva para comprobar el acceso y mostrar la cuenta antes de aprobar.
+        </p>
+      )}
+      {credencialObsoleta && accion.state !== "pending" && requiereGitHub && (
+        <p className="approval-auth approval-auth-warning" role="status">
+          Esta acción anterior no guardó el método de autenticación; Telo no puede confirmar qué credencial usó.
+        </p>
+      )}
       {p.diff && (
         <details className="approval-changes">
           <summary>Ver cambios · {p.archivos?.length ?? 0} archivos</summary>
@@ -115,14 +192,16 @@ export function RepositoryApproval({
           <button
             type="button"
             className="primary"
-            disabled={decide.isPending}
+            disabled={decide.isPending || credencialObsoleta}
             onClick={() => decide.mutate(true)}
           >
             {decide.isPending
-              ? "Ejecutando…"
+              ? requiereGitHub ? "Comprobando acceso…" : "Ejecutando…"
               : subida
                 ? "Autorizar commit y push"
-                : `Autorizar ${titulo.toLowerCase()}`}
+                : confirmarAccesoNoVerificado
+                  ? "Confirmar y autorizar"
+                  : `Autorizar ${titulo.toLowerCase()}`}
           </button>
           <button
             type="button"
@@ -142,6 +221,7 @@ export function RepositoryApproval({
           {errorText(decide.error)}
         </p>
       )}
+      {avisoAcceso && <p className="approval-auth approval-auth-warning" role="alert">{avisoAcceso}</p>}
     </>
   );
   return compacta ? (
@@ -166,7 +246,10 @@ export function AccionesAnteriores({ acciones }: { acciones: RepositoryAction[] 
       <ul>
         {acciones.map((accion) => (
           <li key={accion.id}>
-            <span>{labels[accion.action] ?? accion.action} · {estados[accion.state] ?? accion.state}</span>
+            <span>
+              {labels[accion.action] ?? accion.action} · {estados[accion.state] ?? accion.state}
+              {etiquetaAutenticacion(accion) && <small className="approval-history-auth">{etiquetaAutenticacion(accion)}</small>}
+            </span>
             {accion.result && <span>{resultadoLegible(accion.result)}</span>}
           </li>
         ))}
@@ -193,12 +276,15 @@ export function AccionRepositorioMensaje({ accion, conversationId, projectId, ta
     }),
     onSettled: refrescar,
   });
+  const payload = JSON.parse(accion.payload) as { autenticacion?: FuenteAutenticacionGithub };
+  const actualizarAutorizacion = (accion.state === "failed" || accion.state === "pending") &&
+    (accion.action === "push" || accion.action === "pr") && !payload.autenticacion;
   return (
     <article className="tl-msg tl-msg-agente tl-msg-git" aria-label="Acción de Git">
-      <RepositoryApproval accion={accion} onChange={refrescar} />
-      {accion.state === "failed" && accion.task_id === taskId && (
+      <RepositoryApproval accion={accion} projectId={projectId} onChange={refrescar} />
+      {actualizarAutorizacion && accion.task_id === taskId && (
         <button type="button" className="ghost" disabled={pedir.isPending} onClick={() => pedir.mutate()}>
-          Preparar nueva autorización
+          {pedir.isPending ? "Comprobando…" : "Preparar autorización nueva"}
         </button>
       )}
       {pedir.isError && <p className="error" role="alert">{errorText(pedir.error)}</p>}
@@ -230,6 +316,7 @@ export function AccionesRepositorioChat({
     queryFn: () => api.taskDiff(taskId!),
     enabled: Boolean(taskId && terminada),
     refetchInterval: 4000,
+    retry: false,
   });
   const refrescar = () => {
     void qc.invalidateQueries({
@@ -250,7 +337,10 @@ export function AccionesRepositorioChat({
   const pendiente = lista.find(
     (a) => a.state === "pending" || a.state === "executing",
   );
-  const diff = diffQuery.data;
+  const accionesDeTarea = taskId
+    ? [...new Map(lista.filter((accion) => accion.task_id === taskId).map((accion) => [accion.action, accion])).values()]
+    : [];
+  const diff = diffQuery.data?.estado === "en_curso" ? undefined : diffQuery.data;
   const archivos = diff?.archivos ?? [];
   const adiciones = archivos.reduce((total, archivo) => total + archivo.adiciones, 0);
   const eliminaciones = archivos.reduce((total, archivo) => total + archivo.eliminaciones, 0);
@@ -272,7 +362,21 @@ export function AccionesRepositorioChat({
   const prUrl = prCreado?.result
     ? (JSON.parse(prCreado.result) as { url?: string }).url
     : null;
-  const puedeCrearPr = pushVigente && ramaSubida === diff?.rama && !prCreado;
+  const prSinCommits = lista.some((accion) => {
+    if (
+      accion.task_id !== taskId ||
+      accion.action !== "pr" ||
+      accion.state !== "failed" ||
+      !diff?.commit ||
+      !/no commits between/i.test(accion.result ?? "")
+    ) return false;
+    try {
+      return (JSON.parse(accion.payload) as { commit?: string }).commit === diff.commit;
+    } catch {
+      return false;
+    }
+  });
+  const puedeCrearPr = pushVigente && ramaSubida === diff?.rama && !prCreado && !prSinCommits;
   const tieneCambios = Boolean(diff?.archivos.length);
   const ocupado = Boolean(pendiente) || pedir.isPending || diffQuery.isPending;
   return (
@@ -337,6 +441,15 @@ export function AccionesRepositorioChat({
           )}
         </section>
       )}
+      {projectId && taskId && accionesDeTarea.map((accion) => (
+        <AccionRepositorioMensaje
+          key={accion.id}
+          accion={accion}
+          conversationId={conversationId}
+          projectId={projectId}
+          taskId={taskId}
+        />
+      ))}
       {projectId && terminada && taskId && diff && !pendiente && (
         <div className="approval-buttons" aria-label="Acciones del repositorio">
           {tieneCambios && !pushVigente && (
@@ -360,8 +473,13 @@ export function AccionesRepositorioChat({
               disabled={ocupado}
               onClick={() => pedir.mutate("pr")}
             >
-              Crear pull request
+              Crear PR desde {ramaSubida}
             </button>
+          )}
+          {prSinCommits && (
+            <p className="approval-auth approval-auth-warning" role="alert">
+              GitHub no ve commits nuevos en {ramaSubida}. Revisa la tarea que contiene el commit; no prepares otra autorización desde esta rama.
+            </p>
           )}
           {prUrl && /^https:\/\/github\.com\//.test(prUrl) && (
             <a href={prUrl} target="_blank" rel="noreferrer">

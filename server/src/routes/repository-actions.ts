@@ -12,7 +12,12 @@ import {
 } from "../workspace";
 import { conProyectoRevisado } from "../ocupacion";
 import { gitOk, gitOkSeguro, prepararRepoSeguro, tieneGitReal } from "../git";
-import { configGit, githubApiPr } from "./proyecto-config";
+import {
+  comprobarAccesoGithub,
+  configGit,
+  fuenteAutenticacionGithub,
+  githubApiPr,
+} from "./proyecto-config";
 import { redactar } from "../redaccion";
 
 export const repositoryActions = new Hono();
@@ -87,8 +92,25 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
     }
     if (b.action === "push" && !diff?.remoto)
       return c.json({ error: "sin_remoto" }, 409);
+    const autenticacion = b.action === "push" || b.action === "pr"
+      ? fuenteAutenticacionGithub(projectId, b.action)
+      : {
+          tipo: "ninguna" as const,
+          origen: "ninguna" as const,
+          etiqueta: "No usa credenciales de GitHub",
+          cuenta: null,
+          instalacion_id: null,
+        };
+    if ((b.action === "push" || b.action === "pr") && autenticacion.tipo === "ninguna") {
+      return c.json({
+        error: "credenciales_git_faltantes",
+        detail: "Vincula la GitHub App o revisa las credenciales anteriores antes de preparar esta autorización.",
+      }, 409);
+    }
     const cfg = configGit(projectId);
     const payload = {
+      autenticacion,
+      autorGit: cfg.author_name,
       messageId,
       hash: diff?.hash ?? null,
       diff: diff?.diff ?? "",
@@ -248,6 +270,9 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         throw new Error(
           "Los cambios o el remoto cambiaron desde que los revisaste. Solicita otra autorización.",
         );
+      if (row.action === "push") {
+        await validarAutenticacionYAcceso(row.project_id, p, "push");
+      }
       const destinoRama = p.rama || undefined;
       result = await aprobarTarea(row.task_id!, {
         accion: row.action === "commit" ? "commit" : "push",
@@ -255,6 +280,7 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         mensaje: p.message,
         destinoRama,
         commitEsperado: p.commit,
+        autenticacion: row.action === "push" ? p.autenticacion : undefined,
       });
     } else if (row.action === "pr") {
       const diff = await diffDeTarea(row.task_id!);
@@ -273,9 +299,11 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
       const cfg = configGit(row.project_id);
       if (p.base !== cfg.base_branch || p.remote !== remoto)
         throw new Error("La configuración del repositorio cambió. Solicita otra aprobación.");
+      await validarAutenticacionYAcceso(row.project_id, p, "pr");
       result = await githubApiPr(
         row.project_id,
         "/repos/" + remoto.replace("https://github.com/", "") + "/pulls",
+        p.autenticacion,
         {
           title: p.title,
           head: p.rama,
@@ -337,3 +365,24 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
       : c.json({ error: "git_action", detail }, 409);
   }
 });
+
+async function validarAutenticacionYAcceso(
+  projectId: string,
+  payload: { autenticacion?: ReturnType<typeof fuenteAutenticacionGithub>; remote?: string },
+  accion: "push" | "pr",
+): Promise<void> {
+  const esperada = payload.autenticacion;
+  if (!esperada || esperada.tipo === "ninguna") {
+    throw new Error("Esta autorización no registró qué credencial usar. Prepara una nueva para revisar el acceso antes de aprobar.");
+  }
+  const actual = fuenteAutenticacionGithub(projectId, accion);
+  if (
+    actual.origen !== esperada.origen ||
+    actual.cuenta !== esperada.cuenta ||
+    actual.instalacion_id !== esperada.instalacion_id
+  ) {
+    throw new Error("La credencial de GitHub cambió desde que revisaste la autorización. Prepara otra para confirmar qué cuenta hará la acción.");
+  }
+  if (!payload.remote) throw new Error("Falta el repositorio remoto de esta autorización.");
+  await comprobarAccesoGithub(projectId, payload.remote, accion);
+}

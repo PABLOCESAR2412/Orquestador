@@ -37,6 +37,7 @@ try {
     let jevConfigurada = false;
     let approvals = 0;
     let skillInstallRequests = 0;
+    let diffRequests = 0;
     let sinDatos = false;
     let anunciarEnvioA;
     let liberarEnvioA;
@@ -68,7 +69,12 @@ try {
       else if (path === "/api/conversations/c2/messages") data = [];
       else if (path === "/api/conversations/c1/acciones") data = actions;
       else if (path === "/api/conversations/c1/tasks" || path === "/api/tasks") data = [task];
-      else if (path === "/api/tasks/t1/diff") data = { estado: "sin_cambios", archivos: [], hash: null, diff: "", remoto: true, aprobaciones: { commit: null, push: null } };
+      else if (path === "/api/tasks/t1/diff") {
+        diffRequests++;
+        data = diffRequests === 1
+          ? { estado: "en_curso" }
+          : { estado: "con_cambios", rama: "telo/prueba", base_commit: null, commit: "abcdef012345", archivos: [{ ruta: "src/app.ts", estado: "modificado", adiciones: 2, eliminaciones: 1, binario: false, sensible: false }], hash: "0123456789abcdef", diff: "diff de prueba", truncado: false, remoto: true, aprobaciones: { commit: null, push: null } };
+      }
       else if (path.endsWith("/decidir")) { approvals++; actions[1].state = "approved"; actions[1].result = JSON.stringify({ sha: "abcdef012345" }); return route.fulfill({ status: 409, json: { error: "action_already_decided" } }); }
       else if (path === "/api/models") data = { models: [
         { id: "opencode/claude-fable-5", provider: "opencode", name: "Claude Fable 5", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Claude", recommended: true },
@@ -118,12 +124,14 @@ try {
       else if (path.includes("eventos-vivos")) return route.fulfill({ contentType: "text/event-stream", body: ": alive\n\n" });
       return route.fulfill({ json: data });
     });
+    const respuestaDiffTransitoria = page.waitForResponse(response => response.url().endsWith("/api/tasks/t1/diff"));
     await page.goto(`${base}/entrar`);
     await page.getByLabel("Clave de acceso").fill("clave-ficticia-de-prueba");
     await page.getByRole("button", { name: "Entrar", exact: true }).click();
     await page.waitForURL("**/chat");
     console.log(`${width}px: sesión local de prueba iniciada`);
     await page.getByText("ANTERIORES", { exact: true }).waitFor();
+    assert.equal((await (await respuestaDiffTransitoria).json()).estado, "en_curso");
     await page.locator(".tl-diagrama-visual svg").waitFor();
     const comprobarTemaDiagrama = async tema => {
       await page.evaluate(valor => { document.documentElement.dataset.theme = valor; }, tema);
@@ -169,16 +177,21 @@ try {
     await page.getByText("Faltan dependencias", { exact: true }).waitFor();
     assert.equal(await page.getByRole("article", { name: "Acción de Git" }).count(), 1);
     await page.getByText("Ver 1 intento anterior", { exact: true }).waitFor();
-    const accionDespuesDeRespuesta = await page.locator(".tl-hilo-columna").evaluate(root => {
-      const respuesta = [...root.querySelectorAll(".tl-msg-agente:not(.tl-msg-git)")].at(-1);
+    await page.locator(".tl-resumen-cambios").waitFor();
+    const cambiosAntesDeAccion = await page.locator(".tl-hilo-columna").evaluate(root => {
+      const cambios = root.querySelector(".tl-resumen-cambios");
       const accion = root.querySelector('article[aria-label="Acción de Git"]');
-      return Boolean(respuesta && accion && (respuesta.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING));
+      return Boolean(cambios && accion && (cambios.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING));
     });
-    assert.equal(accionDespuesDeRespuesta, true);
+    assert.equal(cambiosAntesDeAccion, true);
     assert.equal(await page.locator(".tl-detalles-reporte pre").isVisible(), false);
     assert.equal((await page.locator("body").textContent()).includes("MEMORIA_INTERNA"), false);
     await page.getByRole("button", { name: "Autorizar commit y push", exact: true }).click();
     await page.getByText("Completada", { exact: true }).waitFor();
+    assert.equal(await page.locator(".tl-resumen-cambios").evaluate(cambios => {
+      const accion = document.querySelector('article[aria-label="Acción de Git"]');
+      return Boolean(accion && (cambios.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING));
+    }), true);
     assert.equal(approvals, 1);
     assert.equal(await page.locator('article[aria-label="Acción de Git"] [role="alert"]').count(), 0);
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Envío del chat A");

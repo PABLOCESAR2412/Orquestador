@@ -17,7 +17,9 @@ const { registrarUsoAgente } = await import("../src/ejecutar");
 const projectId = crypto.randomUUID();
 const conversationId = crypto.randomUUID();
 const taskId = crypto.randomUUID();
-db.query("INSERT INTO projects (id, name) VALUES (?, 'Uso de prueba')").run(projectId);
+const projectPath = join(process.env.TELO_PROYECTOS_DIR!, `uso-${projectId}`);
+mkdirSync(projectPath, { recursive: true });
+db.query("INSERT INTO projects (id, name, repo_path) VALUES (?, 'Uso de prueba', ?)").run(projectId, projectPath);
 db.query("INSERT INTO conversations (id, project_id) VALUES (?, ?)").run(conversationId, projectId);
 db.query(
   "INSERT INTO tasks (id, title, prompt, model, status, project_id) VALUES (?, 'Uso', 'Prueba', 'google/prueba', 'failed', ?)",
@@ -28,6 +30,7 @@ afterAll(() => {
   db.query("DELETE FROM tasks WHERE id = ?").run(taskId);
   db.query("DELETE FROM conversations WHERE id = ?").run(conversationId);
   db.query("DELETE FROM projects WHERE id = ?").run(projectId);
+  rmSync(projectPath, { recursive: true, force: true });
 });
 
 describe("registro inmediato del uso del agente", () => {

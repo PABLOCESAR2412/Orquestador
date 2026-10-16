@@ -1,20 +1,54 @@
 import { type Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { claveCorrecta, COOKIE_SESION, sesionValida, tokenSesion } from "../auth";
+import {
+  cerrarSesionPorToken,
+  claveCorrecta,
+  COOKIE_SESION,
+  crearSesionDispositivo,
+  listarSesiones,
+  revocarOtrasSesiones,
+  revocarSesion,
+  sesionValida,
+} from "../auth";
 import { config } from "../config";
 
-// Límite de intentos: la app es de un solo usuario, así que el contador es global.
+// Límite de intentos fallidos por IP para evitar ataques de fuerza bruta
+// sin provocar denegación de servicio a clientes legítimos en otras redes.
 const VENTANA_MS = 15 * 60_000;
-const MAX_FALLOS = 10;
-const fallos: number[] = [];
+const MAX_FALLOS_POR_IP = 10;
+const fallosPorIp = new Map<string, number[]>();
+
+function obtenerIpCliente(c: Context): string {
+  const ip =
+    c.req.header("cf-connecting-ip") ||
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    c.req.header("x-real-ip");
+  return ip && ip.length > 0 ? ip : "desconocida";
+}
+
+function demasiadosIntentos(ip: string): boolean {
+  const desde = Date.now() - VENTANA_MS;
+  const intentos = fallosPorIp.get(ip) ?? [];
+  const validos = intentos.filter((t) => t >= desde);
+  if (validos.length > 0) {
+    fallosPorIp.set(ip, validos);
+  } else {
+    fallosPorIp.delete(ip);
+  }
+  return validos.length >= MAX_FALLOS_POR_IP;
+}
+
+function registrarFallo(ip: string): void {
+  const intentos = fallosPorIp.get(ip) ?? [];
+  intentos.push(Date.now());
+  fallosPorIp.set(ip, intentos);
+}
+
+function limpiarFallos(ip: string): void {
+  fallosPorIp.delete(ip);
+}
 
 const DURACION_SESION_S = 60 * 60 * 24 * 30;
-
-function demasiadosIntentos(): boolean {
-  const desde = Date.now() - VENTANA_MS;
-  while (fallos.length > 0 && fallos[0] < desde) fallos.shift();
-  return fallos.length >= MAX_FALLOS;
-}
 
 // El túnel de Cloudflare termina el HTTPS antes de llegar al servidor; por eso se mira la cabecera.
 function esHttps(c: Context): boolean {
@@ -48,18 +82,23 @@ auth.get("/sesion", (c) =>
 // POST /api/login  body: { clave }
 auth.post("/login", async (c) => {
   if (config.sinClave) return c.json({ ok: true });
-  if (demasiadosIntentos()) return c.json({ error: "demasiados_intentos" }, 429);
+  const ip = obtenerIpCliente(c);
+  if (demasiadosIntentos(ip)) return c.json({ error: "demasiados_intentos" }, 429);
 
   const body = await c.req.json<{ clave?: string }>().catch(() => ({}) as { clave?: string });
   // Solo texto: un número o una lista en el cuerpo cuenta como intento fallido, no como error del servidor.
   if (typeof body.clave !== "string" || !claveCorrecta(body.clave)) {
-    fallos.push(Date.now());
+    registrarFallo(ip);
     return c.json({ error: "clave_incorrecta" }, 401);
   }
 
-  const token = tokenSesion();
-  if (!token) return c.json({ error: "clave_no_configurada" }, 500);
-  setCookie(c, COOKIE_SESION, token, {
+  // Éxito: limpiar fallos registrados para esta IP
+  limpiarFallos(ip);
+
+  const userAgent = c.req.header("user-agent");
+  const sesion = crearSesionDispositivo({ userAgent, ip: ip !== "desconocida" ? ip : undefined });
+
+  setCookie(c, COOKIE_SESION, sesion.token, {
     httpOnly: true,
     sameSite: "Strict",
     path: "/",
@@ -71,6 +110,29 @@ auth.post("/login", async (c) => {
 
 // POST /api/logout
 auth.post("/logout", (c) => {
+  const actual = getCookie(c, COOKIE_SESION);
+  if (actual) cerrarSesionPorToken(actual);
   deleteCookie(c, COOKIE_SESION, { path: "/" });
   return c.json({ ok: true });
+});
+
+// GET /api/sesiones -> lista de sesiones activas por dispositivo
+auth.get("/sesiones", (c) => {
+  const actual = getCookie(c, COOKIE_SESION);
+  return c.json(listarSesiones(actual));
+});
+
+// DELETE /api/sesiones/:id -> revoca una sesión específica
+auth.delete("/sesiones/:id", (c) => {
+  const id = c.req.param("id");
+  const ok = revocarSesion(id);
+  if (!ok) return c.json({ error: "sesion_no_encontrada" }, 404);
+  return c.json({ ok: true });
+});
+
+// POST /api/sesiones/cerrar-otras -> revoca todas las sesiones excepto la del dispositivo actual
+auth.post("/sesiones/cerrar-otras", (c) => {
+  const actual = getCookie(c, COOKIE_SESION);
+  const revocadas = revocarOtrasSesiones(actual);
+  return c.json({ ok: true, revocadas });
 });

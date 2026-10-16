@@ -34,6 +34,7 @@ export type TipoEvento =
   | "turno_encolado"
   | "clasificacion_jev"
   | "memoria_evaluada"
+  | "memoria_propuesta"
   | "seguida";
 
 export type EventoTarea = {

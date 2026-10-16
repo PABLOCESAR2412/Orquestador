@@ -57,14 +57,14 @@ test("la App enumera solo instalaciones verificadas y guarda metadatos sin crede
     expect(String(url)).toBe("https://api.github.com/app/installations?per_page=100");
     revisarJwt(new Headers(init.headers).get("Authorization"));
     return Response.json([
-      { id: 456, account: { login: "Pablo", name: "Pablo C", avatar_url: "https://avatars.githubusercontent.com/u/1" }, repository_selection: "selected" },
+      { id: 456, account: { login: "Pablo", name: "Pablo C", avatar_url: "https://avatars.githubusercontent.com/u/1" }, repository_selection: "selected", permissions: { contents: "write", pull_requests: "write" }, html_url: "https://github.com/settings/installations/456" },
       { id: 0, account: { login: "omitido" }, repository_selection: "all" },
     ]);
   }) as unknown as typeof fetch;
 
   const instalaciones = await listarInstalacionesGithubApp();
   expect(instalaciones).toEqual([
-    { id: 456, login: "Pablo", name: "Pablo C", avatar_url: "https://avatars.githubusercontent.com/u/1", repository_selection: "selected" },
+    { id: 456, login: "Pablo", name: "Pablo C", avatar_url: "https://avatars.githubusercontent.com/u/1", repository_selection: "selected", permissions: { contents: "write", pull_requests: "write" }, configuration_url: "https://github.com/settings/installations/456" },
   ]);
   const guardada = await seleccionarInstalacionGithubApp(456);
   expect(guardada.id).toBe(456);
@@ -144,6 +144,8 @@ test("crear un PR prioriza el token temporal aunque exista una sesión anterior"
   });
   await seleccionarInstalacionGithubApp(456);
   const respuesta = await githubApiPr("sin-proyecto", "/repos/Pablo/Orquestador/pulls", {
+    tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "Pablo", instalacion_id: 456,
+  }, {
     title: "Cambios",
     head: "feat/prueba",
     base: "main",
@@ -168,10 +170,38 @@ test("al crear un PR, GitHub expone el detalle de una respuesta 422", async () =
 
   await seleccionarInstalacionGithubApp(456);
   await expect(githubApiPr("sin-proyecto", "/repos/Pablo/Orquestador/pulls", {
+    tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "Pablo", instalacion_id: 456,
+  }, {
     title: "Cambios",
     head: "feat/prueba",
     base: "main",
   })).rejects.toThrow(
     "GitHub no pudo completar la acción (422): Validation Failed; head: A pull request already exists for this head and base.",
+  );
+});
+
+test("un 422 sin commits explica que hay que subir cambios a la rama origen", async () => {
+  globalThis.fetch = (async (url: any) => {
+    if (String(url).endsWith("/app/installations?per_page=100")) {
+      return Response.json([{ id: 456, account: { login: "Pablo" }, repository_selection: "selected" }]);
+    }
+    if (String(url).endsWith("/app/installations/456/access_tokens")) {
+      return Response.json({ token: "ghs-pr-temporal" });
+    }
+    return new Response(JSON.stringify({
+      message: "Validation Failed",
+      errors: [{ resource: "PullRequest", field: "head", code: "invalid", message: "No commits between main and telo/0e680496; not all refs are readable" }],
+    }), { status: 422, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  await seleccionarInstalacionGithubApp(456);
+  await expect(githubApiPr("sin-proyecto", "/repos/Pablo/Orquestador/pulls", {
+    tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "Pablo", instalacion_id: 456,
+  }, {
+    title: "Cambios",
+    head: "telo/0e680496",
+    base: "main",
+  })).rejects.toThrow(
+    "GitHub no ve commits nuevos entre la rama de Telo y la rama base. Comprueba que el commit se haya subido a la rama indicada y que la rama base sea correcta; después prepara una nueva autorización de PR.",
   );
 });

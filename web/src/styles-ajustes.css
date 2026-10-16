@@ -438,6 +438,7 @@
   font-size: 12px;
   line-height: 1.5;
 }
+.aj-github-aviso { color: var(--danger, #ff6b6b); }
 .aj-github-instalacion-accion { justify-self: end; }
 .aj-github-instalacion-accion .aj-btn { min-height: 40px; }
 @media (max-width: 560px) {

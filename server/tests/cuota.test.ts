@@ -16,7 +16,7 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 
 const { db } = await import("../src/db");
 const { ErrorCuota, esErrorDeCuota, esErrorDeProveedor } = await import("../src/ejecutar");
-const { ErrorAgente, detalleDelProveedor } = await import("../src/runners/opencode");
+const { ErrorAgente, detalleDelProveedor, explicarErrorProveedor } = await import("../src/runners/opencode");
 const { tasks } = await import("../src/routes/tasks");
 const { chat } = await import("../src/routes/chat");
 
@@ -49,6 +49,21 @@ const post = (ruta: string, cuerpo: unknown = {}) =>
     body: JSON.stringify(cuerpo),
   });
 
+describe("diff de una tarea activa", () => {
+  test("devuelve un estado transitorio mientras el workspace está ocupado", async () => {
+    for (const status of ["queued", "analyzing", "waiting_approval", "running"]) {
+      const id = tarea(status);
+      try {
+        const response = await app.request(`/api/tasks/${id}/diff`);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ estado: "en_curso" });
+      } finally {
+        db.query("DELETE FROM tasks WHERE id=?").run(id);
+      }
+    }
+  });
+});
+
 describe("clasificación de cuota agotada", () => {
   test("un 429, un límite de uso o un saldo agotado cuentan como cuota", () => {
     expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"message":"Rate limit exceeded (429)"}}'))).toBe(true);
@@ -79,6 +94,30 @@ describe("clasificación de cuota agotada", () => {
   test("un error del servidor o una salida vacía no cuentan como cuota", () => {
     expect(esErrorDeCuota(new Error("opencode salió con código 1: 500 Internal Server Error"))).toBe(false);
     expect(esErrorDeCuota(new Error("opencode no devolvió texto: sin salida"))).toBe(false);
+  });
+
+  test("explica el presupuesto insuficiente de OpenRouter sin exponer el evento interno ni llamarlo cuota agotada", () => {
+    const evento = {
+      type: "error",
+      sessionID: "sesion-interna",
+      error: {
+        name: "APIError",
+        data: {
+          statusCode: 402,
+          message: "This request requires more credits, or fewer max_tokens. You requested up to 32000 tokens, but can only afford 10533.",
+          responseHeaders: { "cf-ray": "dato-interno" },
+        },
+      },
+    };
+    const mensaje = explicarErrorProveedor(evento);
+    expect(mensaje).toContain("presupuesto insuficiente");
+    expect(mensaje).toContain("10533 tokens");
+    expect(mensaje).toContain("32000");
+    expect(mensaje).toContain("Telo no permite ajustar max_tokens directamente");
+    expect(mensaje).not.toContain("sesion-interna");
+    expect(mensaje).not.toContain("cf-ray");
+    const detalle = detalleDelProveedor("", "", [evento as never]);
+    expect(esErrorDeCuota(new ErrorAgente(mensaje, detalle))).toBe(false);
   });
 
   test("ErrorCuota nombra el modelo y ya es cuota", () => {

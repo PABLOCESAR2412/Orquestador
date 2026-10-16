@@ -7,7 +7,7 @@ import { gitOk, gitSeguro, esRepositorio, GitError, prepararRepoSeguro, tieneGit
 import { ArchivoError, leerArchivo, listarCarpeta, medirCarpeta, normalizarRuta } from "../archivos-proyecto";
 import { redactar } from "../redaccion";
 import { conProyectoRevisado } from "../ocupacion";
-import { ARCHIVOS_GUIA, MAX_MEMORIA, componerInstrucciones, guardarMemoria, memoriaDelProyecto } from "../memoria";
+import { ARCHIVOS_GUIA, MAX_MEMORIA, componerInstrucciones, guardarMemoria, memoriaDelProyecto, aprobarMemoriaPropuesta, descartarMemoriaPropuesta } from "../memoria";
 import { ErrorClonado, urlGithubNormalizada } from "../clonado";
 import { iniciarClonadoEnChat } from "../clonado-chat";
 
@@ -17,7 +17,7 @@ import { iniciarClonadoEnChat } from "../clonado-chat";
 export type ProjectRow = {
   id: string;
   name: string;
-  repo_path: string;
+  repo_path: string | null;
   pinned_at: string | null;
   created_at: string;
   instrucciones: string | null;
@@ -119,10 +119,12 @@ function raizReal(): string | null {
 // La API no expone rutas absolutas: repo_path es la ruta dentro de la carpeta de proyectos.
 function aProyecto(row: ProjectRow) {
   const raiz = raizReal();
-  const repo_path =
-    raiz && row.repo_path.startsWith(raiz + sep)
-      ? relative(raiz, row.repo_path).split(sep).join("/")
-      : basename(row.repo_path);
+  const ruta = row.repo_path;
+  const repo_path = ruta
+    ? raiz && ruta.startsWith(raiz + sep)
+      ? relative(raiz, ruta).split(sep).join("/")
+      : basename(ruta)
+    : "";
   return {
     id: row.id,
     name: row.name,
@@ -132,7 +134,7 @@ function aProyecto(row: ProjectRow) {
     instrucciones: row.instrucciones,
     origen_url: row.origen_url,
     clonado_en: row.clonado_en,
-    carpeta: basename(row.repo_path),
+    carpeta: ruta ? basename(ruta) : "",
   };
 }
 
@@ -381,16 +383,22 @@ projects.get("/projects/:id", async (c) => {
     .query<{ id: string }, [string]>("SELECT id FROM tasks WHERE project_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1")
     .get(id);
 
-  const [datos, medida] = await Promise.all([datosGit(row.repo_path, id), medirCarpeta(row.repo_path)]);
+  let git: Awaited<ReturnType<typeof datosGit>> = null;
+  let tamanoBytes = 0;
+  if (row.repo_path) {
+    const [datos, medida] = await Promise.all([datosGit(row.repo_path, id), medirCarpeta(row.repo_path)]);
+    git = datos;
+    tamanoBytes = medida.bytes;
+  }
 
   return c.json({
     project: aProyecto(row),
     chats,
     tareas,
     ultima_tarea: ultima ? leerTareaApi(ultima.id) : null,
-    git: datos,
-    tamano_bytes: medida.bytes,
-    memoria: { texto: row.memoria, actualizada_en: row.memoria_actualizada_en },
+    git,
+    tamano_bytes: tamanoBytes,
+    memoria: memoriaDelProyecto(row.id),
   });
 });
 
@@ -451,6 +459,7 @@ function errorArchivo(c: Context, err: unknown) {
 projects.get("/projects/:id/archivos", (c) => {
   const row = leerProyecto(c.req.param("id"));
   if (!row) return c.json({ error: "project_not_found" }, 404);
+  if (!row.repo_path) return c.json({ error: "project_path_not_found" }, 404);
   try {
     const segmentos = normalizarRuta(c.req.query("ruta"));
     return c.json({ ruta: segmentos.join("/"), entradas: listarCarpeta(row.repo_path, segmentos) });
@@ -463,6 +472,7 @@ projects.get("/projects/:id/archivos", (c) => {
 projects.get("/projects/:id/archivo", (c) => {
   const row = leerProyecto(c.req.param("id"));
   if (!row) return c.json({ error: "project_not_found" }, 404);
+  if (!row.repo_path) return c.json({ error: "project_path_not_found" }, 404);
   try {
     const segmentos = normalizarRuta(c.req.query("ruta"));
     return c.json(leerArchivo(row.repo_path, segmentos));
@@ -476,6 +486,7 @@ projects.get("/projects/:id/archivo", (c) => {
 projects.get("/projects/:id/instrucciones/sugeridas", (c) => {
   const row = leerProyecto(c.req.param("id"));
   if (!row) return c.json({ error: "project_not_found" }, 404);
+  if (!row.repo_path) return c.json({ error: "project_path_not_found" }, 404);
 
   const docs: { nombre: string; texto: string }[] = [];
   for (const nombre of ARCHIVOS_GUIA) {
@@ -510,5 +521,20 @@ projects.put("/projects/:id/memoria", async (c) => {
   const limpio = redactar(body.texto).trim();
   if (limpio.length > MAX_MEMORIA) return c.json({ error: "memoria_demasiado_larga" }, 400);
   guardarMemoria(id, limpio === "" ? null : limpio);
+  return c.json(memoriaDelProyecto(id));
+});
+
+// POST /api/projects/:id/memoria/aprobar -> aprueba la propuesta de memoria pendiente
+projects.post("/projects/:id/memoria/aprobar", (c) => {
+  const id = c.req.param("id");
+  if (!leerProyecto(id)) return c.json({ error: "project_not_found" }, 404);
+  return c.json(aprobarMemoriaPropuesta(id));
+});
+
+// POST /api/projects/:id/memoria/descartar -> descarta la propuesta de memoria pendiente
+projects.post("/projects/:id/memoria/descartar", (c) => {
+  const id = c.req.param("id");
+  if (!leerProyecto(id)) return c.json({ error: "project_not_found" }, 404);
+  descartarMemoriaPropuesta(id);
   return c.json(memoriaDelProyecto(id));
 });

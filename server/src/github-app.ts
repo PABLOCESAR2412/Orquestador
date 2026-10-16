@@ -16,12 +16,16 @@ export type InstalacionGithubApp = {
   name: string;
   avatar_url: string;
   repository_selection: "all" | "selected";
+  permissions: Record<string, "read" | "write">;
+  configuration_url: string | null;
 };
 
 type InstalacionApi = {
   id: number;
   account?: { login?: string; name?: string | null; avatar_url?: string } | null;
   repository_selection?: "all" | "selected";
+  permissions?: Record<string, "read" | "write">;
+  html_url?: string;
 };
 
 export class ErrorGithubApp extends Error {
@@ -95,11 +99,26 @@ async function llamarGithub<T>(ruta: string, token: string, body?: unknown): Pro
     throw new ErrorGithubApp("github_sin_conexion", "No se pudo conectar con api.github.com.", 503);
   }
   if (!respuesta.ok) {
+    if ([403, 404, 422].includes(respuesta.status) && ruta.includes("/access_tokens")) {
+      const cuerpo = bodyComoRegistro(body);
+      const permiso = cuerpo?.permissions && typeof cuerpo.permissions === "object"
+        ? Object.keys(cuerpo.permissions as Record<string, unknown>)[0]
+        : null;
+      const nombrePermiso = permiso === "pull_requests" ? "Pull requests" : "Contents";
+      throw new ErrorGithubApp(
+        "github_app_sin_acceso",
+        `La GitHub App no puede usar ${nombrePermiso} en este repositorio. Comprueba que el repo esté incluido en la instalación y que la App tenga ese permiso de escritura en GitHub.`,
+        403,
+      );
+    }
     if (respuesta.status === 404 || respuesta.status === 422) {
       throw new ErrorGithubApp("github_app_sin_acceso", "La GitHub App no tiene acceso a ese repositorio o le falta el permiso solicitado. Revisa la instalación y los permisos de la App en GitHub.", 403);
     }
     if (respuesta.status === 401) {
       throw new ErrorGithubApp("github_app_credencial_rechazada", "GitHub rechazó la configuración de la App. Revisa el App ID y la clave privada del servidor.", 503);
+    }
+    if (respuesta.status === 403) {
+      throw new ErrorGithubApp("github_app_error", "GitHub rechazó la consulta de instalaciones. Revisa el App ID y la clave privada configurados en el servidor.", 502);
     }
     throw new ErrorGithubApp("github_app_error", `GitHub respondió con error ${respuesta.status}.`, 502);
   }
@@ -120,7 +139,26 @@ export async function listarInstalacionesGithubApp(): Promise<InstalacionGithubA
       name: i.account!.name?.trim() || i.account!.login!,
       avatar_url: i.account!.avatar_url || "",
       repository_selection: i.repository_selection === "all" ? "all" : "selected",
+      permissions: Object.fromEntries(
+        Object.entries(i.permissions ?? {}).filter(([, permiso]) => permiso === "read" || permiso === "write"),
+      ) as Record<string, "read" | "write">,
+      configuration_url: urlConfiguracionGithub(i.html_url),
     }));
+}
+
+function bodyComoRegistro(body: unknown): Record<string, unknown> | null {
+  return body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
+}
+
+function urlConfiguracionGithub(valor: string | undefined): string | null {
+  try {
+    const url = new URL(valor ?? "");
+    return url.protocol === "https:" && url.hostname === "github.com" && !url.username && !url.password
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function seleccionarInstalacionGithubApp(id: number): Promise<InstalacionGithubApp> {

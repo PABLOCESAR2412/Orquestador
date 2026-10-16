@@ -98,6 +98,7 @@ export const EVENT_LABEL: Record<TaskEventKind, string> = {
   obrero_iniciado: "Obrero ejecutando el plan",
   clasificacion_jev: "Clasificación sugerida por Jev",
   memoria_evaluada: "Propuesta de memoria evaluada por Jev",
+  memoria_propuesta: "Propuesta de memoria guardada para revisión",
 };
 
 // Montos en dólares: centavos normales; cifras menores a un centavo con cuatro decimales.

@@ -27,78 +27,25 @@ import {
   type ArchivoLeido,
 } from "../lib/adjuntos";
 import { useShell } from "../components/shell-context";
+import {
+  type MensajeEnCola,
+  leerColas,
+  guardarCola,
+  colaActivaPara,
+  claveColaActiva,
+} from "../lib/chat-cola";
+import { leerBorrador, guardarBorrador } from "../lib/chat-borrador";
+import { type ReconocimientoVoz, ctorVoz, mensajeVoz } from "../lib/chat-dictado";
 import "../styles-chat.css";
 import "../styles-flujo.css";
 
 type Patch = { model?: string | null; effort?: string | null; title?: string; pinned?: boolean };
-type MensajeEnCola = { id: string; texto: string; creado: number };
-
-const PREFIJO_COLA = "telo:cola:";
-const claveColaActiva = (id: string) => `telo:cola-activa:${id}`;
-
-function leerColas(): Record<string, MensajeEnCola[]> {
-  const colas: Record<string, MensajeEnCola[]> = {};
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const clave = localStorage.key(i);
-      if (!clave?.startsWith(PREFIJO_COLA)) continue;
-      const id = clave.slice(PREFIJO_COLA.length);
-      const valor: unknown = JSON.parse(localStorage.getItem(clave) ?? "null");
-      if (!Array.isArray(valor)) continue;
-      colas[id] = valor.filter(
-        (item): item is MensajeEnCola =>
-          !!item && typeof item.id === "string" && typeof item.texto === "string" && typeof item.creado === "number",
-      );
-    }
-  } catch {
-    // Si el navegador no permite leer el almacenamiento, la cola vive en memoria.
-  }
-  return colas;
-}
-
-function guardarCola(id: string, mensajes: MensajeEnCola[]) {
-  try {
-    const clave = `${PREFIJO_COLA}${id}`;
-    if (mensajes.length) localStorage.setItem(clave, JSON.stringify(mensajes));
-    else localStorage.removeItem(clave);
-  } catch {
-    // La cola sigue disponible hasta cerrar esta pantalla.
-  }
-}
-
-function colaActivaPara(id: string | null): boolean {
-  if (!id) return true;
-  try {
-    return localStorage.getItem(claveColaActiva(id)) !== "false";
-  } catch {
-    return true;
-  }
-}
 
 // Un archivo adjunto en el compositor, antes de enviar el mensaje.
 type Pendiente = { key: string; lectura: ArchivoLeido };
 
 // Lo que había en el compositor al enviar: vuelve si el envío no se guarda en el servidor.
 type Restaurar = { texto: string; pendientes: Pendiente[] };
-
-// Borrador por chat, guardado en este navegador: sobrevive a cambiar de pantalla o a una señal caída.
-// Si el navegador no deja guardar, el borrador solo vive en la pantalla.
-const claveBorrador = (id: string) => `telo:borrador:${id}`;
-function leerBorrador(id: string): string {
-  try {
-    return localStorage.getItem(claveBorrador(id)) ?? "";
-  } catch {
-    return "";
-  }
-}
-function guardarBorrador(id: string, texto: string) {
-  try {
-    if (texto) localStorage.setItem(claveBorrador(id), texto);
-    else localStorage.removeItem(claveBorrador(id));
-  } catch {
-    // Sin almacenamiento disponible: se ignora.
-  }
-}
 
 // Quita tildes y pasa a minúsculas para buscar comandos: "analiticas" encuentra "Analíticas".
 const sinTildes = (texto: string) => texto.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
@@ -108,31 +55,6 @@ function etiquetaContexto(tokens: number | undefined): string | null {
   if (!tokens) return null;
   if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}M`;
   return `${Math.round(tokens / 1000)}k`;
-}
-
-// Dictado: la API de voz del navegador (Chrome y Edge; necesita contexto seguro).
-type ReconocimientoVoz = {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  start: () => void;
-  stop: () => void;
-  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  onerror: ((e: { error: string }) => void) | null;
-  onend: (() => void) | null;
-};
-function ctorVoz(): (new () => ReconocimientoVoz) | null {
-  const w = window as unknown as {
-    SpeechRecognition?: new () => ReconocimientoVoz;
-    webkitSpeechRecognition?: new () => ReconocimientoVoz;
-  };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
-}
-function mensajeVoz(codigo: string): string {
-  if (codigo === "not-allowed" || codigo === "service-not-allowed") return "Permite el micrófono en el navegador para dictar.";
-  if (codigo === "no-speech") return "No se escuchó nada. Intenta de nuevo.";
-  if (codigo === "network") return "El dictado necesita conexión y una dirección https.";
-  return "No se pudo dictar el mensaje.";
 }
 
 const ICONO_ARCHIVO = (
@@ -359,6 +281,9 @@ export function ChatPage() {
       void qc.invalidateQueries({ queryKey: ["conversation-tasks", selectedId] });
       void qc.invalidateQueries({ queryKey: ["messages", selectedId] });
       void qc.invalidateQueries({ queryKey: ["conversations"] });
+      if (evento.tipo === "tarea" && !["queued", "analyzing", "waiting_approval", "running"].includes(evento.status)) {
+        void qc.invalidateQueries({ queryKey: ["uso"] });
+      }
       return;
     }
     // Un turno empezó o terminó, aquí o en otro dispositivo: la lista y los mensajes se piden de nuevo.
@@ -367,6 +292,7 @@ export function ChatPage() {
       void qc.invalidateQueries({ queryKey: ["messages", evento.conversacion_id] });
       void qc.invalidateQueries({ queryKey: ["conversation-tasks", evento.conversacion_id] });
       void qc.invalidateQueries({ queryKey: ["repository-actions", evento.conversacion_id] });
+      if (evento.estado === "terminado") void qc.invalidateQueries({ queryKey: ["uso"] });
       return;
     }
     if (evento.tipo !== "actividad") return;
@@ -1068,9 +994,10 @@ export function ChatPage() {
                     {current?.project_id && Array.from(accionesTrasRespuesta.get(m.id)?.entries() ?? []).map(([action, intentos]) => {
                       const ultima = intentos.at(-1)!;
                       const anteriores = intentos.slice(0, -1);
+                      const accionAlFinal = ultima.task_id === tareaChat?.id;
                       return (
                         <Fragment key={`${ultima.message_id}-${action}`}>
-                          <AccionRepositorioMensaje accion={ultima} conversationId={selectedId!} projectId={current.project_id!} taskId={tareaChat?.id} />
+                          {!accionAlFinal && <AccionRepositorioMensaje accion={ultima} conversationId={selectedId!} projectId={current.project_id!} taskId={tareaChat?.id} />}
                           {anteriores.length > 0 && <AccionesAnteriores acciones={anteriores} />}
                         </Fragment>
                       );

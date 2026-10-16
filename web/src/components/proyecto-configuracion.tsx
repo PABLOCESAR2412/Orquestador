@@ -153,6 +153,7 @@ function ProyectoGit({ id }: { id: string }) {
       {accion && (
         <RepositoryApproval
           accion={accion}
+          projectId={id}
           onChange={() => {
             setAccion(null);
             void qc.invalidateQueries({ queryKey: ["project-git", id] });

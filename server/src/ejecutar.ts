@@ -7,7 +7,7 @@ import { entornoProveedores } from "./claves-proveedor";
 import { redactar } from "./redaccion";
 import { AislamientoError } from "./runners/aislamiento";
 import { ErrorAgente, runOpenCode, type RunResult, type Usage } from "./runners/opencode";
-import { conMemoria, extraerMemoria, guardarMemoria, memoriaDelProyecto, quitarBloqueMemoria } from "./memoria";
+import { conMemoria, extraerMemoria, guardarMemoria, guardarPropuestaMemoria, memoriaDelProyecto, quitarBloqueMemoria } from "./memoria";
 import { conservarMemoriaSegunJev, puntuarMemoriaJev } from "./jev";
 
 // Longitud mínima de un valor de secreto para ocultarlo en la salida. Más corto, aparecería en texto normal.
@@ -272,8 +272,8 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
           try {
             const memoriaAnterior = memoriaDelProyecto(projectId).texto;
             const proyecto = db.query<{ name: string }, [string]>("SELECT name FROM projects WHERE id = ?").get(projectId)?.name ?? "Proyecto";
-            let guardar = true;
             let puntuacion: number | null = null;
+            let evaluadaPorJev = false;
             try {
               puntuacion = await puntuarMemoriaJev({
                 proyectoId: projectId,
@@ -286,12 +286,13 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
                   propuesta: nueva,
                 },
               });
+              evaluadaPorJev = puntuacion !== null;
             } catch {
-              // La memoria conserva su flujo anterior si Jev no está disponible.
+              evaluadaPorJev = false;
             }
-            const decisionJev = conservarMemoriaSegunJev(puntuacion);
-            if (decisionJev !== null && puntuacion !== null) {
-              guardar = decisionJev;
+
+            if (evaluadaPorJev && puntuacion !== null) {
+              const guardar = conservarMemoriaSegunJev(puntuacion) === true;
               if (opts.taskId) {
                 try {
                   registrarEvento(
@@ -303,8 +304,22 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
                   // Si la tarea se borró antes de la evaluación, la decisión aún se puede aplicar al proyecto.
                 }
               }
+              if (guardar) guardarMemoria(projectId, nueva);
+            } else {
+              // Jev no estuvo disponible o no pudo evaluar: se guarda como propuesta pendiente de revisión por el usuario
+              guardarPropuestaMemoria(projectId, nueva, opts.taskId);
+              if (opts.taskId) {
+                try {
+                  registrarEvento(
+                    opts.taskId,
+                    "memoria_propuesta",
+                    "La memoria no pudo ser evaluada por Jev; quedó guardada como propuesta pendiente de revisión por el usuario.",
+                  );
+                } catch {
+                  // Se ignora si la tarea ya no existe
+                }
+              }
             }
-            if (guardar) guardarMemoria(projectId, nueva);
           } catch (err) {
             console.error("Guardar la memoria del proyecto:", mensajeDe(err));
           }
