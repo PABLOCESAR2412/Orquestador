@@ -5,6 +5,7 @@
   "cambios": [
     {"fecha":"2026-10-16","tipo":"minimo","titulo":"Versión del sistema: historial de cambios al hacer clic","pr":64},
     {"fecha":"2026-10-16","tipo":"minimo","titulo":"Usos: porcentajes restantes por ventana con gasto y saldo estimado","pr":64},
+    {"fecha":"2026-10-16","tipo":"mediano","titulo":"Chat: gráficos Mermaid seguros para explicar proyectos","pr":63},
     {"fecha":"2026-10-16","tipo":"grande","titulo":"TypeSafe Jev: recomendaciones, evaluación de memoria y clasificación con clave cifrada","pr":62},
     {"fecha":"2026-10-16","tipo":"minimo","titulo":"Errores: explicación del fallo, detalle seguro y primer paso para resolverlo","pr":60},
     {"fecha":"2026-10-16","tipo":"minimo","titulo":"El chat muestra el agotamiento de cuota y evita enviar mensajes hasta cambiar de modelo","pr":59},
@@ -84,7 +85,6 @@
     {"fecha":"2026-10-16","tipo":"minimo","titulo":"Barra lateral: grupos recientes simplificados y atenuados","pr":57},
     {"fecha":"2026-10-16","tipo":"mediano","titulo":"Chat: hasta diez ejecuciones concurrentes y estado aislado por conversación","pr":58},
     {"fecha":"2026-10-16","tipo":"minimo","titulo":"Se retira la conexión OAuth de Google que no se utilizaba para modelos ni métricas","pr":61},
-    {"fecha":"2026-10-16","tipo":"minimo","titulo":"Ajustes: muestra el estado de GitHub y el alcance de cada instalación con más claridad","pr":61},
-    {"fecha":"2026-10-16","tipo":"mediano","titulo":"Chat: gráficos Mermaid seguros para explicar proyectos","pr":63}
+    {"fecha":"2026-10-16","tipo":"minimo","titulo":"Ajustes: muestra el estado de GitHub y el alcance de cada instalación con más claridad","pr":61}
   ]
 }
