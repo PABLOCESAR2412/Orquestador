@@ -20,9 +20,11 @@ const PATRONES_CREDENCIAL: RegExp[] = [
 const BLOQUE_CLAVE_PRIVADA = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)/;
 const ENCABEZADO_CLAVE_PRIVADA = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
 
-// Valores de TELO_CLAVE y TELO_CLAVE_CIFRADO. Siempre se ocultan, en cualquier texto.
+// Conserva la redacción del secreto OAuth antiguo mientras pueda seguir en el entorno del VM.
 export function valoresDeConfiguracion(): string[] {
-  return [config.clave, config.claveCifrado].filter((v): v is string => !!v);
+  return [config.clave, config.claveCifrado, process.env.TELO_GOOGLE_CLIENT_SECRET?.trim() || null].filter(
+    (v): v is string => !!v,
+  );
 }
 
 // Reemplaza por *** cada valor de `valores` de al menos `minimo` caracteres (más largos primero),

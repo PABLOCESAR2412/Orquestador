@@ -28,6 +28,18 @@ describe("redacción de salida", () => {
     expect(redactar("x=abc", ["abc"])).toBe("x=abc");
   });
 
+  test("sigue ocultando el secreto OAuth antiguo si continúa en el entorno", () => {
+    const anterior = process.env.TELO_GOOGLE_CLIENT_SECRET;
+    const secreto = `cliente-${"x".repeat(24)}`;
+    process.env.TELO_GOOGLE_CLIENT_SECRET = secreto;
+    try {
+      expect(redactar(`valor=${secreto}`)).toBe("valor=***");
+    } finally {
+      if (anterior === undefined) delete process.env.TELO_GOOGLE_CLIENT_SECRET;
+      else process.env.TELO_GOOGLE_CLIENT_SECRET = anterior;
+    }
+  });
+
   test("oculta credenciales con formato conocido", () => {
     expect(redactar("token ghp_" + "a".repeat(36) + " fin")).toBe("token *** fin");
     // Clave falsa armada en tiempo de ejecución: el archivo no contiene la forma completa.
