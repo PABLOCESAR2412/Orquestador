@@ -190,8 +190,8 @@ export function AnalyticsPage() {
               />
               <Kpi
                 etiqueta="Tokens procesados"
-                valor={compact(data.totals.inputTokens + data.totals.outputTokens)}
-                pie={`Prompt ${compact(data.totals.inputTokens)} · Completion ${compact(data.totals.outputTokens)}`}
+                valor={data.totals.calls > 0 && data.calidad?.sinTokens === data.totals.calls ? "No disponible" : compact(data.totals.inputTokens + data.totals.outputTokens)}
+                pie={data.totals.calls > 0 && data.calidad?.sinTokens === data.totals.calls ? "El proveedor no informó tokens" : `Prompt ${compact(data.totals.inputTokens)} · Completion ${compact(data.totals.outputTokens)}`}
                 icono={
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
@@ -253,8 +253,8 @@ export function AnalyticsPage() {
                             <span className="an-uso-detalle">{TIPO_USO[r.tipo].detalle}</span>
                           </th>
                           <td data-etiqueta="Llamadas IA" className="an-numero">{compact(r.calls)}</td>
-                          <td data-etiqueta="Tokens" className="an-numero">{compact(r.tokens)}</td>
-                          <td data-etiqueta="Coste IA" className="an-numero">{usd(r.cost)}</td>
+                          <td data-etiqueta="Tokens" className="an-numero">{r.calls > 0 && r.sinTokens === r.calls ? "—" : compact(r.tokens)}</td>
+                          <td data-etiqueta="Coste IA" className="an-numero">{r.calls > 0 && r.sinCoste === r.calls ? "—" : usd(r.cost)}</td>
                         </tr>
                       ))}
                     <tr>

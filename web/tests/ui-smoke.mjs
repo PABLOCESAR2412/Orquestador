@@ -30,6 +30,7 @@ try {
     const actions = ["u1", "u2"].map((id, i) => ({ id: `git${i}`, action: "push", task_id: "t1", message_id: id, state: i ? "pending" : "superseded", result: null, payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: id }) }));
     let authenticated = false;
     let approvals = 0;
+    let sinDatos = false;
     await page.route("**/api/**", async route => {
       const path = new URL(route.request().url()).pathname;
       let data = [];
@@ -61,10 +62,10 @@ try {
       else if (path === "/api/projects") data = [{ id: "p1", name: "Pruebas" }];
       else if (path === "/api/analytics") data = {
         days: 30, filtros: { proyecto: null, modelo: null }, proyectos: [], modelos: [], budget: null,
-        totals: { calls: 1, inputTokens: 8, outputTokens: 2, cost: 0 }, byDay: [], byModel: [],
-        byType: ["chat", "tarea", "otro"].map(tipo => ({ tipo, calls: 0, tokens: 0, cost: 0 })),
-        tasks: { done: 1 }, calidad: { tokensMedidos: 1, costesEstimados: 1, sinTokens: 0, sinCoste: 0, historicos: 0 },
-        byTask: [{ taskId: "t1", calls: 1, tokens: 10, cost: 0, tokensMedidos: 1, costesEstimados: 1, sinTokens: 0, sinCoste: 0, historicos: 0 }],
+        totals: { calls: 1, inputTokens: sinDatos ? 0 : 8, outputTokens: sinDatos ? 0 : 2, cost: 0 }, byDay: [], byModel: [],
+        byType: ["chat", "tarea", "otro"].map(tipo => ({ tipo, calls: tipo === "tarea" ? 1 : 0, tokens: tipo === "tarea" && !sinDatos ? 10 : 0, cost: 0, sinTokens: tipo === "tarea" && sinDatos ? 1 : 0, sinCoste: tipo === "tarea" && sinDatos ? 1 : 0 })),
+        tasks: { done: 1 }, calidad: { tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 },
+        byTask: [{ taskId: "t1", calls: 1, tokens: sinDatos ? 0 : 10, cost: 0, tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 }],
       };
       else if (path.includes("eventos-vivos")) return route.fulfill({ contentType: "text/event-stream", body: ": alive\n\n" });
       return route.fulfill({ json: data });
@@ -102,6 +103,12 @@ try {
     await page.getByRole("cell", { name: /10\s+medidos/ }).waitFor();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/analiticas-${width}.png` });
+    sinDatos = true;
+    await page.reload();
+    await page.getByText("No disponible", { exact: true }).first().waitFor();
+    assert.equal(await page.getByText("No disponible", { exact: true }).count(), 2);
+    const origenTarea = page.getByRole("table", { name: "Uso de IA por origen" }).getByRole("row").filter({ hasText: "Tareas del agente" });
+    assert.equal(await origenTarea.getByRole("cell").nth(1).textContent(), "—");
     assert.deepEqual(errors, []);
     await context.close();
     console.log(`PASS ${width}px: login, mensajes, aprobación Git, código copiable y métricas.`);

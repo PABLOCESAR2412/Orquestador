@@ -6,7 +6,7 @@ type Totals = { calls: number; input: number; output: number; cost: number };
 type DayRow = { day: string; cost: number; tokens: number; calls: number };
 type StatusRow = { status: string; n: number };
 type UsoModeloRow = { model: string; cost: number; tokens: number; calls: number };
-type UsoTipoRow = { tipo: "chat" | "tarea" | "otro"; calls: number; tokens: number; cost: number };
+type UsoTipoRow = { tipo: "chat" | "tarea" | "otro"; calls: number; tokens: number; cost: number; sinTokens: number; sinCoste: number };
 type TareaModeloRow = { model: string; tareas: number; duracion: number | null };
 
 const TASK_STATUSES = ["queued", "analyzing", "waiting_approval", "running", "interrupted", "sin_cuota", "done", "failed", "cancelled"] as const;
@@ -96,7 +96,9 @@ analytics.get("/analytics", (c) => {
               END AS tipo,
               COUNT(*) AS calls,
               COALESCE(SUM(u.input_tokens + u.output_tokens), 0) AS tokens,
-              COALESCE(SUM(u.cost), 0) AS cost
+              COALESCE(SUM(u.cost), 0) AS cost,
+              COALESCE(SUM(u.tokens_precision='no_disponible'),0) AS sinTokens,
+              COALESCE(SUM(u.cost_precision='no_disponible'),0) AS sinCoste
          FROM usage u ${usoWhere}
         GROUP BY tipo`,
     )
@@ -104,7 +106,7 @@ analytics.get("/analytics", (c) => {
   const usoPorTipoMap = new Map(usosPorTipo.map((row) => [row.tipo, row]));
   const byType = (["chat", "tarea", "otro"] as const).map((tipo) => {
     const row = usoPorTipoMap.get(tipo);
-    return { tipo, calls: row?.calls ?? 0, tokens: row?.tokens ?? 0, cost: row?.cost ?? 0 };
+    return { tipo, calls: row?.calls ?? 0, tokens: row?.tokens ?? 0, cost: row?.cost ?? 0, sinTokens: row?.sinTokens ?? 0, sinCoste: row?.sinCoste ?? 0 };
   });
 
   // Un punto por día, incluidos los días sin uso, para que la gráfica no salte.

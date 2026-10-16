@@ -16,7 +16,8 @@ Revisión: 15 de octubre de 2026. Una casilla marcada indica la comprobación de
 
 - [x] Repositorio desechable autorizado: `https://github.com/PABLOCESAR2412/Test.git`; confirmado privado y vacío por GitHub.
 - [ ] Configurar `TELO_GITHUB_APP_ID` y `TELO_GITHUB_APP_PRIVATE_KEY_PATH` en el servicio y vincular la instalación en Ajustes. La revisión de la interfaz mostró ambas variables ausentes; no equivale a tener la App instalada en GitHub.
-- [ ] Incluir Test en los repositorios permitidos de la App. Inicializar una rama base con README si sigue vacío: un PR necesita una base con commits.
+- [x] Inicializar la rama base de Test con README, commit `e0cafee891fcc20c4f369faebf5067041aa54aa0`. Preparación mediante la cuenta de GitHub; no demuestra autenticación con la App de Telo.
+- [ ] Incluir Test en los repositorios permitidos de la App.
 - [ ] Desde Telo, clonar Test, pedir un cambio mínimo, revisar y autorizar commit/push, crear PR y verificar su commit y autor. No usar credenciales heredadas como prueba de GitHub App.
 - [ ] Registrar URL del PR, SHA y resultado; no fusionar ni tocar Cubo para esta comprobación.
 

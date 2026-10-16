@@ -32,6 +32,7 @@ test("separa precisión de datos nuevos y históricos sin inventar consumo cero"
   const datos = await (await app.request('/analytics?days=30')).json() as any;
   expect(datos.calidad).toEqual({ tokensMedidos: 1, costesEstimados: 1, sinTokens: 1, sinCoste: 1, historicos: 1 });
   expect(datos.byTask[0]).toMatchObject({ taskId: 'precision-tarea', calls: 2, tokens: 15, cost: 0, sinTokens: 1, sinCoste: 1 });
+  expect(datos.byType.find((fila: any) => fila.tipo === 'tarea')).toMatchObject({ sinTokens: 1, sinCoste: 1 });
   expect(datos.totals.cost).toBe(0.2);
 });
 
@@ -58,7 +59,7 @@ test("separa llamadas de chat y tareas y aplica los filtros a cada origen", asyn
     byType: { tipo: "chat" | "tarea" | "otro"; calls: number; tokens: number; cost: number }[];
   };
   expect(datos.totals.calls).toBe(3);
-  expect(datos.byType).toEqual([
+  expect(datos.byType.map(({tipo,calls,tokens,cost}) => ({tipo,calls,tokens,cost}))).toEqual([
     { tipo: "chat", calls: 1, tokens: 15, cost: 0.01 },
     { tipo: "tarea", calls: 1, tokens: 130, cost: 0.05 },
     { tipo: "otro", calls: 1, tokens: 5, cost: 0.02 },
