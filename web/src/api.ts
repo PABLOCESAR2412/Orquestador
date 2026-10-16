@@ -44,7 +44,12 @@ export type Project = {
 };
 
 // Revisión de un repo de GitHub sin clave: público o privado (un nombre mal escrito también parece privado).
-export type VerificacionGithub = { url: string; repo: string; visibilidad: "publico" | "privado" };
+export type VerificacionGithub = {
+  url: string;
+  repo: string;
+  visibilidad: "publico" | "privado";
+  credencial?: "app";
+};
 
 // Clonado iniciado en el chat del proyecto: el mensaje de la instrucción y el chat donde se ve el avance.
 export type ClonadoIniciado = { conversacion_id: string; turno_id: string };

@@ -1,6 +1,6 @@
 # Pendientes y verificación
 
-Revisión: 15 de octubre de 2026. Una casilla marcada indica la comprobación descrita, no una validación implícita en producción. El historial anterior está en Git.
+Revisión: 16 de octubre de 2026. Una casilla marcada indica la comprobación descrita, no una validación implícita en producción. El historial anterior está en Git.
 
 ## Fiabilidad de la aplicación
 
@@ -15,11 +15,10 @@ Revisión: 15 de octubre de 2026. Una casilla marcada indica la comprobación de
 ## Prueba real de GitHub App en el VM
 
 - [x] Repositorio desechable autorizado: `https://github.com/PABLOCESAR2412/Test.git`; confirmado privado y vacío por GitHub.
-- [ ] Configurar `TELO_GITHUB_APP_ID` y `TELO_GITHUB_APP_PRIVATE_KEY_PATH` en el servicio y vincular la instalación en Ajustes. La revisión de la interfaz mostró ambas variables ausentes; no equivale a tener la App instalada en GitHub.
+- [x] Configurar `TELO_GITHUB_APP_ID` y `TELO_GITHUB_APP_PRIVATE_KEY_PATH` en el servicio, vincular la instalación en Ajustes e incluir Test en su alcance.
 - [x] Inicializar la rama base de Test con README, commit `e0cafee891fcc20c4f369faebf5067041aa54aa0`. Preparación mediante la cuenta de GitHub; no demuestra autenticación con la App de Telo.
-- [ ] Incluir Test en los repositorios permitidos de la App.
-- [ ] Desde Telo, clonar Test, pedir un cambio mínimo, revisar y autorizar commit/push, crear PR y verificar su commit y autor. No usar credenciales heredadas como prueba de GitHub App.
-- [ ] Registrar URL del PR, SHA y resultado; no fusionar ni tocar Cubo para esta comprobación.
+- [x] Desde Telo, clonar Test privado con la GitHub App, crear el cambio mínimo y autorizar commit/push. GitHub confirma la rama `telo/0e680496`, el commit `325247bef1fee13ef793813f1f924d2de744984e` y el autor `telo-orquestador[bot]`.
+- [ ] Crear un PR de Test. GitHub respondió 422 en la versión desplegada y Telo ocultó el cuerpo de validación; el código de este PR ahora conserva ese detalle. No se fusionó ni se tocó Cubo. Reintentar una vez que el PR #53 esté desplegado; no repetir solicitudes mientras el motivo siga sin diagnóstico.
 
 ## Verificación operativa después del despliegue
 
@@ -33,4 +32,4 @@ Revisión: 15 de octubre de 2026. Una casilla marcada indica la comprobación de
 
 ## Acceso de desarrollo
 
-El intento de SSH de esta revisión fue rechazado por `publickey`; no se modificó la configuración del VM. La prueba de GitHub App puede hacerse por la interfaz autenticada cuando su configuración esté lista. No compartir claves privadas, tokens ni archivos de sesión en el chat.
+La prueba de acceso de GitHub App en Test se completó para clonado, commit y push. Falta que el flujo desplegado muestre el motivo del rechazo 422 para completar la creación del PR. No compartir claves privadas, tokens ni archivos de sesión en el chat.

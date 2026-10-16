@@ -120,10 +120,21 @@ function codigoDeSonda(salida: string): ErrorClonado {
   return new ErrorClonado(codigo, codigo === "sin_red_github" ? 503 : 502);
 }
 
-// Pregunta a GitHub sin credenciales. No escribe nada en disco.
-async function sondear(url: string, casa: string, rutas: string[], alComando?: AlComando): Promise<Visibilidad> {
+// Pregunta a GitHub sin credenciales o con un token de instalación limitado a lectura. No escribe nada en disco.
+async function sondear(
+  url: string,
+  casa: string,
+  rutas: string[],
+  alComando?: AlComando,
+  token: string | null = null,
+): Promise<Visibilidad> {
   const args = ["ls-remote", "--heads", url];
-  const r = await git(args, { cwd: casa, timeoutMs: TIEMPO_SONDA_MS, env: entornoAislado(casa) });
+  const credenciales = opcionesDeCredenciales(token);
+  const r = await git([...credenciales.args, ...args], {
+    cwd: casa,
+    timeoutMs: TIEMPO_SONDA_MS,
+    env: { ...entornoAislado(casa), ...credenciales.env },
+  });
   const salida = `${r.stderr}\n${r.stdout}`;
   alComando?.({
     comando: `git ${args.join(" ")}`,
@@ -138,12 +149,23 @@ async function sondear(url: string, casa: string, rutas: string[], alComando?: A
 // Revisa si un repo de GitHub es público o privado sin usar ninguna clave. Pensado para el formulario de proyecto nuevo.
 export async function verificarRepositorio(
   entrada: string,
-): Promise<{ url: string; repo: string; visibilidad: Visibilidad }> {
+): Promise<{ url: string; repo: string; visibilidad: Visibilidad; credencial?: "app" }> {
   const origen = urlGithubNormalizada(entrada);
   if (!origen) throw new ErrorClonado("invalid_github_url", 400);
   const casa = casaTemporal();
   try {
     const visibilidad = await sondear(origen.url, casa, [casa]);
+    if (visibilidad === "privado") {
+      try {
+        const token = await tokenGithubAppParaRepo(origen.url, { contents: "read" });
+        if (token && (await sondear(origen.url, casa, [casa], undefined, token)) === "publico") {
+          return { url: origen.url, repo: origen.repo, visibilidad, credencial: "app" };
+        }
+      } catch (error) {
+        // Si la App no está vinculada o no tiene este repo, se conserva el flujo SSH anterior.
+        if (!(error instanceof ErrorGithubApp)) throw error;
+      }
+    }
     return { url: origen.url, repo: origen.repo, visibilidad };
   } finally {
     rmSync(casa, { recursive: true, force: true });
