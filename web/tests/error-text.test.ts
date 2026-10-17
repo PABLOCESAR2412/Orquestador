@@ -16,10 +16,12 @@ describe("mensajes de error", () => {
   test("recomienda el paso adecuado ante cuota y credenciales de proveedor", () => {
     const cuota = errorText(new ApiError(502, "runner_failed", "HTTP 429: quota exceeded"));
     const credencial = errorText(new ApiError(502, "runner_failed", "401 invalid api key: sk-abcdefgh12345678"));
+    const serverErr = errorText(new ApiError(502, "runner_failed", "Unexpected server error. Check server logs for details."));
 
     expect(cuota).toContain("comprueba la cuota del proveedor");
     expect(credencial).toContain("revisa en Ajustes");
     expect(credencial).not.toContain("sk-abcdefgh12345678");
+    expect(serverErr).toContain("el proveedor tuvo un error temporal en sus servidores");
   });
 
   test("traduce errores de GitHub que antes no tenían mensaje propio", () => {

@@ -187,6 +187,9 @@ function siguientePasoProveedor(detalle?: string): string | null {
   if (/failed to fetch|fetch failed|network|enotfound|econnrefused|connection/.test(texto)) {
     return "comprueba que el servidor tenga conexión con el proveedor y vuelve a intentarlo.";
   }
+  if (/server error|internal error|service unavailable|bad gateway|unexpected server/.test(texto)) {
+    return "el proveedor tuvo un error temporal en sus servidores; espera unos momentos o cambia a otro modelo.";
+  }
   return null;
 }
 
