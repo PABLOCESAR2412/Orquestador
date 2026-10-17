@@ -37,11 +37,15 @@ beforeAll(() => {
 anterior=""
 for a in "$@"; do
   if [ "$anterior" = "-m" ]; then modelo="$a"; fi
+  if [ "$anterior" = "-s" ]; then sesion="$a"; fi
+  if [ "$anterior" = "--variant" ]; then variante="$a"; fi
+  case "$a" in *HISTORIA-ANTERIOR*) historial="si" ;; esac
   anterior="$a"
   ultimo="$a"
 done
 case "$ultimo" in *LENTO*) sleep 1.5 ;; esac
 case "$ultimo" in *FALLO*) echo "error interno del agente" >&2; exit 1 ;; esac
+case "$ultimo" in *CAMBIO-MODELO*) printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"modelo=%s;sesion=%s;variante=%s;historial=%s"}}\\n' "$modelo" "\${sesion:-nueva}" "\${variante:-auto}" "\${historial:-no}"; exit 0 ;; esac
 case "$ultimo" in *CONCURRENTE*) id=$(printf '%s' "$ultimo" | sed -n 's/.*CONCURRENTE-\\([0-9][0-9]*\\) LENTO.*/\\1/p'); printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"%s: %s"}}\\n' "$modelo" "$id"; exit 0 ;; esac
 echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"Respuesta lista."}}'
 `,
@@ -148,6 +152,32 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     const aviso = mensajes(id).find((m) => m.role === "system");
     expect(aviso?.content.startsWith("No se pudo responder.")).toBe(true);
     expect(mensajes(id).some((m) => m.role === "assistant")).toBe(false);
+  });
+
+  test("al cambiar de modelo no reutiliza la sesión anterior y recupera el historial; cambiar esfuerzo conserva la sesión", async () => {
+    const id = conversacion("opencode/modelo-a");
+    db.query("UPDATE conversations SET runner_session_id='ses_turno01', runner_session_model='opencode/modelo-a' WHERE id=?").run(id);
+    db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,'user','Pregunta anterior')")
+      .run(crypto.randomUUID(), id);
+    db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,'assistant','HISTORIA-ANTERIOR')")
+      .run(crypto.randomUUID(), id);
+
+    db.query("UPDATE conversations SET model='opencode/modelo-b', effort='high' WHERE id=?").run(id);
+    expect((await enviar(id, "CAMBIO-MODELO")).status).toBe(202);
+    await esperar(() => mensajes(id).some((m) => m.role === "assistant"));
+    expect(mensajes(id).find((m) => m.role === "assistant")?.content).toContain(
+      "modelo=opencode/modelo-b;sesion=nueva;variante=high;historial=si",
+    );
+    expect(db.query<{ runner_session_model: string }, [string]>(
+      "SELECT runner_session_model FROM conversations WHERE id=?",
+    ).get(id)?.runner_session_model).toBe("opencode/modelo-b");
+
+    db.query("UPDATE conversations SET effort='low' WHERE id=?").run(id);
+    expect((await enviar(id, "CAMBIO-MODELO")).status).toBe(202);
+    await esperar(() => mensajes(id).filter((m) => m.role === "assistant").length === 2);
+    expect(mensajes(id).filter((m) => m.role === "assistant")[1]?.content).toContain(
+      "modelo=opencode/modelo-b;sesion=ses_turno01;variante=low;historial=no",
+    );
   });
 });
 

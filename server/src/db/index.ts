@@ -557,6 +557,13 @@ const migrations: Migration[] = [
       END;
     `,
   },
+  {
+    name: "031_sesion_de_agente_por_modelo",
+    sql: `
+      ALTER TABLE conversations ADD COLUMN runner_session_model TEXT;
+      ALTER TABLE tasks ADD COLUMN provider_session_model TEXT;
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

@@ -6,6 +6,7 @@ import { db } from "../db";
 import { publicar } from "../bus";
 import { AislamientoError } from "../runners/aislamiento";
 import { ejecutarAgente, ErrorCuota, promptContinuacion, type ResultadoAgente } from "../ejecutar";
+import { sesionCompatible } from "../conversacion-contexto";
 import { getPreferences } from "../preferences";
 import { projectRepoPath } from "./projects";
 import { mensajeSeguro } from "../workspace";
@@ -34,6 +35,7 @@ type ConversationRow = {
   model: string | null;
   effort: string | null;
   runner_session_id: string | null;
+  runner_session_model: string | null;
   project_id: string | null;
   repo_path: string | null;
   // Modelo que se quedó sin cuota en el último turno; null si el chat puede seguir.
@@ -168,7 +170,7 @@ function leerConversacion(id: string): ConversationRow | null {
   return (
     db
       .query<ConversationRow, [string]>(
-        "SELECT c.id, c.model, c.effort, c.runner_session_id, c.project_id, c.cuota_modelo, p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id = c.project_id WHERE c.id = ?",
+        "SELECT c.id, c.model, c.effort, c.runner_session_id, c.runner_session_model, c.project_id, c.cuota_modelo, p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id = c.project_id WHERE c.id = ?",
       )
       .get(id) ?? null
   );
@@ -207,6 +209,7 @@ function encolarTurno(conv: ConversationRow, prompt: string, model: string): str
     projectId: conv.project_id,
     conversationId: conv.id,
     providerSessionId: conv.runner_session_id || null,
+    providerSessionModel: conv.runner_session_model,
   });
 }
 
@@ -260,6 +263,7 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       model,
       variant: conv.effort,
       sessionId: conv.runner_session_id,
+      sessionModel: conv.runner_session_model,
       cwd,
       timeoutMs: TIEMPO_TURNO_MS,
       projectId: conv.project_id,
@@ -275,8 +279,8 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
     if (err instanceof ErrorCuota) {
       // La sesión que sí llegó a abrirse se guarda, para seguirla con otro modelo. El aviso de cuota lo muestra el chat.
       db.query(
-        "UPDATE conversations SET cuota_modelo = ?, runner_session_id = COALESCE(?, runner_session_id) WHERE id = ?",
-      ).run(err.modelo, err.sessionId, conversationId);
+        "UPDATE conversations SET cuota_modelo = ?, runner_session_id = ?, runner_session_model = ? WHERE id = ?",
+      ).run(err.modelo, err.sessionId, err.sessionId ? err.modelo : null, conversationId);
       return;
     }
     if (err instanceof AislamientoError) {
@@ -315,18 +319,19 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
     db.query("UPDATE conversations SET cuota_modelo = NULL WHERE id = ?").run(conversationId);
 
     const modeloEfectivo = result.modelo || model;
-    if (result.sessionId) {
-      db.query("UPDATE conversations SET runner_session_id = ?, model = ? WHERE id = ?").run(
-        result.sessionId,
-        modeloEfectivo,
-        conversationId,
-      );
-    } else {
-      db.query("UPDATE conversations SET model = ? WHERE id = ?").run(
-        modeloEfectivo,
-        conversationId,
-      );
-    }
+    db.query("UPDATE conversations SET runner_session_id = ?, runner_session_model = ? WHERE id = ?").run(
+      result.sessionId,
+      result.sessionId ? modeloEfectivo : null,
+      conversationId,
+    );
+    // Si el usuario cambió el modelo mientras corría el turno, conserva su selección para el próximo mensaje.
+    db.query("UPDATE conversations SET model = ?, effort = ? WHERE id = ? AND model IS ? AND effort IS ?").run(
+      modeloEfectivo,
+      result.variante,
+      conversationId,
+      conv.model,
+      conv.effort,
+    );
 
   })();
 }
@@ -469,7 +474,10 @@ chat.post("/conversations/:id/seguir", async (c) => {
     : undefined;
   const turno = guardarMensajeUsuario(conversationId, SEGUIR_VISIBLE);
   const prompt = conv.runner_session_id !== null
-    ? promptContinuacion(SEGUIR_INSTRUCCION)
+    ? promptContinuacion(
+        SEGUIR_INSTRUCCION,
+        sesionCompatible(conv.runner_session_id, conv.runner_session_model, model),
+      )
     : (ultimoMensaje ?? SEGUIR_INSTRUCCION);
   iniciarTurno(conv, turno, prompt, model);
   return c.json({ messages: [turno] }, 202);

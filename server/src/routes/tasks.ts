@@ -305,7 +305,8 @@ tasks.post("/tasks/:id/cancel", (c) => {
 });
 
 // POST /api/tasks/:id/reanudar
-// Vuelve a la cola y continúa la misma sesión del agente, en la misma carpeta (y el mismo clon).
+// Vuelve a la cola y continúa en la misma carpeta (y el mismo clon). El worker reutiliza la sesión
+// solo si conoce que pertenece al modelo seleccionado; si no, guía al agente desde el estado guardado.
 tasks.post("/tasks/:id/reanudar", (c) => {
   const id = c.req.param("id");
   const row = leerTarea(id);
@@ -315,7 +316,7 @@ tasks.post("/tasks/:id/reanudar", (c) => {
 
   db.transaction(() => {
     db.query(
-      "UPDATE tasks SET status = 'queued', result = NULL, error = NULL, finished_at = NULL WHERE id = ?",
+      "UPDATE tasks SET status = 'queued', result = NULL, error = NULL, finished_at = NULL, continuar = 1 WHERE id = ?",
     ).run(id);
     registrarEvento(id, "reanudada", `Estaba ${row.status === "interrupted" ? "interrumpida" : "fallida"}`);
   })();

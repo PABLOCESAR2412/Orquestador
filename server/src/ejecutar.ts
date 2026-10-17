@@ -8,6 +8,7 @@ import { redactar } from "./redaccion";
 import { AislamientoError } from "./runners/aislamiento";
 import { ErrorAgente, runOpenCode, type RunResult, type Usage } from "./runners/opencode";
 import { runCodex } from "./runners/codex";
+import { promptConHistorial, sesionCompatible } from "./conversacion-contexto";
 import { conMemoria, extraerMemoria, guardarMemoria, guardarPropuestaMemoria, memoriaDelProyecto, quitarBloqueMemoria } from "./memoria";
 import { conservarMemoriaSegunJev, puntuarMemoriaJev } from "./jev";
 import { inyectarSkillsEnPrompt } from "./resolucion-skills";
@@ -23,10 +24,11 @@ export type OpcionesAgente = {
   model: string;
   variant?: string | null;
   sessionId?: string | null;
+  sessionModel?: string | null;
   cwd: string;
   timeoutMs?: number;
   signal?: AbortSignal;
-  onSesion?: (sessionId: string) => void;
+  onSesion?: (sessionId: string | null, model: string | null) => void;
   onLinea?: (linea: string) => void;
   // Solo para la tarea: registra el cambio de modelo en su historial.
   taskId?: string;
@@ -40,7 +42,7 @@ export type OpcionesAgente = {
 };
 
 // `modelo` es el que realmente respondió (puede ser el de respaldo), para registrar el uso.
-export type ResultadoAgente = RunResult & { modelo: string };
+export type ResultadoAgente = RunResult & { modelo: string; variante: string | null };
 
 // Un único límite para chats y tareas, sin depender del proveedor elegido.
 const MAX_AGENTES_SIMULTANEOS = 10;
@@ -157,9 +159,8 @@ export function registrarUsoAgente(
 const PATRON_PROVEEDOR = /\b(429|5\d\d)\b|rate limit|too many requests|overloaded|quota|server error|internal error|service unavailable|bad gateway|gateway timeout|temporarily unavailable/i;
 // Saldo insuficiente: otro modelo no lo arregla, así que nunca se reintenta.
 const PATRON_SALDO = /insufficient|saldo|funds|balance/i;
-// Cuota agotada: el modelo ya no da más tokens (límite de uso, saldo o 429). Se distingue de un fallo
-// genérico para que la tarea o el chat se detengan y el usuario elija otro modelo antes de seguir.
-const PATRON_CUOTA = /\b429\b|rate.?limit|too many requests|quota|cuota|insufficient|saldo|funds|balance|usage limit|free usage|exhaust|agotad/i;
+// Solo límites definitivos (no cualquier 429): la tarea o el chat se detienen para que el usuario elija otro modelo.
+const PATRON_CUOTA = /(?:\b(?:quota|cuota)\b.*\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|reach(?:ed)?|agotad[ao]|consumid[ao])\b|\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|agotad[ao]|consumid[ao])\b.*\b(?:quota|cuota)\b|\busage limit\b.*\b(?:reach(?:ed)?|exceed(?:ed)?|exhaust(?:ed)?)\b|\bfree usage\b.*\b(?:exhaust(?:ed)?|reach(?:ed)?|exceed(?:ed)?)\b|\bresource[_ ]exhausted\b|\binsufficient[_ ]quota\b|\binsufficient\s+(?:account\s+)?(?:funds|balance|credits?)\b|\b(?:sin|no hay)\s+(?:saldo|cr[eé]ditos)\b)/i;
 
 // Se lanza cuando el modelo se quedó sin cuota. `modelo` es el último que se intentó; `sessionId`, la
 // sesión del agente (si llegó a abrirse), para continuarla después con otro modelo.
@@ -308,14 +309,21 @@ export function conEstilo(prompt: string, estilo?: "chat", esChatDeProyecto = fa
   return `${ESTILO_CHAT}${formatoVisual ? `\n${formatoVisual}` : ""}\n---\n${prompt}`;
 }
 
-// Primer prompt tras una cuota agotada: retoma la sesión del agente en vez de empezar de nuevo.
-// Pide no repetir lo hecho y responder con el mismo formato que el prompt original.
-export function promptContinuacion(prompt: string): string {
+// Primera llamada tras retomar una tarea: evita repetir trabajo y conserva el formato solicitado.
+export function promptContinuacion(prompt: string, tieneSesion = true): string {
+  const contexto = tieneSesion
+    ? [
+        "Continúa donde te quedaste. La ejecución anterior se detuvo antes de completar la tarea.",
+        "Ya tienes el contexto de lo que hiciste: no repitas pasos completados ni empieces de cero.",
+      ]
+    : [
+        "Continúa la petición con el historial y el estado del workspace disponibles. La sesión anterior no se puede reutilizar, así que no asumas que conoces su razonamiento.",
+        "Antes de actuar, revisa los cambios y artefactos actuales para distinguir lo completado de lo pendiente. No repitas cambios terminados.",
+      ];
   return [
-    "Continúa donde te quedaste. La ejecución anterior se detuvo porque se agotó la cuota del modelo que la llevaba.",
-    "Ya tienes el contexto de lo que hiciste: no repitas pasos completados ni empieces de cero.",
     "Si una acción no llegó a terminar, revísala antes de repetirla. Después termina lo que falta.",
     "Responde con el mismo formato que pide la instrucción de abajo.",
+    ...contexto,
     "---",
     prompt,
   ].join("\n");
@@ -340,30 +348,49 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
   };
   const ocultos = valoresAOcultar(propias);
 
-  // La sesión se recuerda aunque el primer intento falle, para continuarla con el respaldo.
-  let sesion = opts.sessionId ?? null;
-  const alSesion = (id: string) => {
+  // Una sesión solo conserva contexto si pertenece exactamente al modelo que se va a ejecutar.
+  let sesion = sesionCompatible(opts.sessionId, opts.sessionModel, opts.model) ? opts.sessionId! : null;
+  let modeloSesion: string | null = sesion ? opts.sessionModel! : null;
+  const alSesion = (id: string | null, modelo: string | null) => {
     sesion = id;
-    opts.onSesion?.(id);
+    modeloSesion = id ? modelo : null;
+    opts.onSesion?.(id, id ? modelo : null);
   };
+  if (opts.sessionId && !sesion) alSesion(null, null);
   const memoria = opts.projectId ? memoriaDelProyecto(opts.projectId).texto : null;
-  const base = {
-    prompt: conEstilo(
-      conMemoria(
-        conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(opts.prompt, opts.projectId).promptFinal, opts.conversationId),
-        memoria,
-        opts.aprender === true,
-      ),
-      opts.estilo,
-      opts.estilo === "chat" && Boolean(opts.projectId),
-    ),
+  const comunes = {
     cwd: opts.cwd,
     timeoutMs: opts.timeoutMs,
     signal: opts.signal,
     onLinea: opts.onLinea ? (linea: string) => opts.onLinea?.(ocultarValores(linea, ocultos)) : undefined,
     extraEnv: propias,
-    onSesion: alSesion,
     soloLectura: opts.soloLectura,
+  };
+
+  const baseParaModelo = (modelo: string, variante?: string) => {
+    if (sesion && modeloSesion !== modelo) alSesion(null, null);
+    const prompt = sesion
+      ? opts.prompt
+      : opts.conversationId
+        ? promptConHistorial(opts.conversationId, opts.prompt)
+        : opts.prompt;
+    return {
+      ...comunes,
+      prompt: conEstilo(
+        conMemoria(
+          conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(prompt, opts.projectId).promptFinal, opts.conversationId),
+          memoria,
+          opts.aprender === true,
+        ),
+        opts.estilo,
+        opts.estilo === "chat" && Boolean(opts.projectId),
+      ),
+      model: modelo,
+      variant: variante,
+      sessionId: sesion,
+      onSesion: (id: string) => alSesion(id, modelo),
+      onUso: (uso: Usage) => registrarUsoAgente(modelo, uso, opts),
+    };
   };
 
   // Un error puede traer fragmentos de la salida del agente: también se limpia.
@@ -376,7 +403,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
 
   // El resultado sale con los secretos ocultos. Si la tarea aprende, el bloque de memoria se guarda
   // (ya limpio de secretos) y no se muestra en el resultado.
-  const terminar = (r: RunResult, modelo: string): ResultadoAgente => {
+  const terminar = (r: RunResult, modelo: string, variante: string | null): ResultadoAgente => {
     const texto = ocultarValores(r.text, ocultos);
     const textoFinal = ocultarValores(r.textoFinal, ocultos);
     if (opts.aprender && opts.projectId) {
@@ -442,7 +469,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
         })();
       }
     }
-    return { ...r, text: opts.aprender ? quitarBloqueMemoria(texto) : texto, textoFinal: opts.aprender ? quitarBloqueMemoria(textoFinal) : textoFinal, modelo };
+    return { ...r, text: opts.aprender ? quitarBloqueMemoria(texto) : texto, textoFinal: opts.aprender ? quitarBloqueMemoria(textoFinal) : textoFinal, modelo, variante };
   };
 
   async function ejecutarConRunner(modelo: string, params: Parameters<typeof runOpenCode>[0]): Promise<RunResult> {
@@ -453,15 +480,10 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
   }
 
   const inicio = Date.now();
+  const varianteInicial = opts.variant ?? undefined;
   try {
-    const r = await ejecutarConRunner(opts.model, {
-      ...base,
-      model: opts.model,
-      variant: opts.variant ?? undefined,
-      sessionId: opts.sessionId ?? null,
-      onUso: (uso) => registrarUsoAgente(opts.model, uso, opts),
-    });
-    return terminar(r, opts.model);
+    const r = await ejecutarConRunner(opts.model, baseParaModelo(opts.model, varianteInicial));
+    return terminar(r, opts.model, opts.variant ?? null);
   } catch (err) {
     // Si el tiempo se agotó o se canceló, no se reintenta ni se trata como cuota.
     const agotado = opts.timeoutMs !== undefined && Date.now() - inicio >= opts.timeoutMs;
@@ -475,20 +497,14 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     const esErrorServidor = /server error|internal error|5\d\d|service unavailable|bad gateway/i.test(textoProv);
     const esRateLimitTransitorio =
       /\b429\b|rate.?limit|too many requests/i.test(textoProv) &&
-      !/insufficient|funds|balance|credit|exceeded your current quota/i.test(textoProv);
+      !esErrorDeCuota(err);
 
     if (esErrorDeProveedor(err, opts.signal) && (esErrorServidor || esRateLimitTransitorio)) {
       await Bun.sleep(esRateLimitTransitorio ? 2500 : 1200);
       if (!opts.signal?.aborted) {
         try {
-          const r = await ejecutarConRunner(opts.model, {
-            ...base,
-            model: opts.model,
-            variant: opts.variant ?? undefined,
-            sessionId: sesion,
-            onUso: (uso) => registrarUsoAgente(opts.model, uso, opts),
-          });
-          return terminar(r, opts.model);
+          const r = await ejecutarConRunner(opts.model, baseParaModelo(opts.model, varianteInicial));
+          return terminar(r, opts.model, opts.variant ?? null);
         } catch (reintentoErr) {
           err = reintentoErr;
         }
@@ -502,14 +518,9 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       registrarEvento(opts.taskId, "modelo_respaldo", `${etiquetaDelError(err)} en ${opts.model}; usando ${respaldo}`);
     }
     try {
-      const r = await ejecutarConRunner(respaldo, {
-        ...base,
-        model: respaldo,
-        variant: await varianteSoportada(respaldo, opts.variant),
-        sessionId: sesion,
-        onUso: (uso) => registrarUsoAgente(respaldo, uso, opts),
-      });
-      return terminar(r, respaldo);
+      const varianteRespaldo = await varianteSoportada(respaldo, opts.variant);
+      const r = await ejecutarConRunner(respaldo, baseParaModelo(respaldo, varianteRespaldo));
+      return terminar(r, respaldo, varianteRespaldo ?? null);
     } catch (errRespaldo) {
       throw comoCuota(errRespaldo, respaldo);
     }

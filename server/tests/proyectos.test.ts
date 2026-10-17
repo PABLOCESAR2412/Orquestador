@@ -75,11 +75,22 @@ writeFileSync(join(PROYECTO, "binario.bin"), Buffer.from([0x61, 0x00, 0x62]));
 writeFileSync(join(PROYECTO, "invalido.txt"), Buffer.from([0xff, 0xfe, 0x41]));
 writeFileSync(join(PROYECTO, "grande.txt"), "a".repeat(300 * 1024));
 writeFileSync(FUERA, "fuera");
-symlinkSync(FUERA, join(PROYECTO, "fuera"));
-symlinkSync(join(PROYECTO, "sub"), join(PROYECTO, "dentro-link"));
+const ENLACE_FUERA = join(PROYECTO, "fuera");
+const ENLACE_DENTRO = join(PROYECTO, "dentro-link");
+let enlacesDisponibles = true;
+try {
+  symlinkSync(FUERA, ENLACE_FUERA);
+  symlinkSync(join(PROYECTO, "sub"), ENLACE_DENTRO, "dir");
+} catch (err) {
+  // Windows puede no permitir symlinks sin Developer Mode o privilegios; el resto de la suite sigue siendo portable.
+  if (process.platform !== "win32") throw err;
+  enlacesDisponibles = false;
+  rmSync(ENLACE_FUERA, { force: true });
+  rmSync(ENLACE_DENTRO, { force: true });
+}
 
 describe("archivos del proyecto", () => {
-  test("un enlace que sale de la raíz se rechaza", () => {
+  test.skipIf(!enlacesDisponibles)("un enlace que sale de la raíz se rechaza", () => {
     expect(codigoDe(() => resolverEnProyecto(PROYECTO, ["fuera"]))).toBe("project_path_outside_root");
     expect(codigoDe(() => leerArchivo(PROYECTO, ["fuera"]))).toBe("project_path_outside_root");
   });
@@ -117,10 +128,12 @@ describe("archivos del proyecto", () => {
     expect(nombres).not.toContain(".git");
     expect(entradas[0].tipo).toBe("carpeta");
     expect(nombres.indexOf("sub")).toBeLessThan(nombres.indexOf("a.txt"));
-    expect(entradas.find((e) => e.nombre === "dentro-link")?.tipo).toBe("carpeta");
-    const fuera = entradas.find((e) => e.nombre === "fuera");
-    expect(fuera?.tipo).toBe("archivo");
-    expect(fuera?.tamano).toBeNull();
+    if (enlacesDisponibles) {
+      expect(entradas.find((e) => e.nombre === "dentro-link")?.tipo).toBe("carpeta");
+      const fuera = entradas.find((e) => e.nombre === "fuera");
+      expect(fuera?.tipo).toBe("archivo");
+      expect(fuera?.tamano).toBeNull();
+    }
   });
 
   test("no se puede leer .git aunque se pida directamente", () => {
@@ -175,6 +188,24 @@ describe("API de proyectos", () => {
     const res = await projects.request("/projects", json({ name: "Prueba Creación" }));
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "project_folder_exists" });
+  });
+
+  test("detecta una carpeta huérfana y permite vincularla sin borrar sus archivos", async () => {
+    const carpeta = join(process.env.TELO_PROYECTOS_DIR!, "carpeta-huerfana");
+    mkdirSync(carpeta, { recursive: true });
+    writeFileSync(join(carpeta, "trabajo.txt"), "conservar");
+
+    const conflicto = await projects.request("/projects", json({ name: "Carpeta Huérfana" }));
+    expect(conflicto.status).toBe(409);
+    expect(await conflicto.json()).toEqual({
+      error: "project_folder_exists",
+      huerfana: true,
+      carpeta: "carpeta-huerfana",
+    });
+
+    const vinculada = await projects.request("/projects", json({ name: "Carpeta Huérfana", vincular: true }));
+    expect(vinculada.status).toBe(201);
+    expect(await Bun.file(join(carpeta, "trabajo.txt")).text()).toBe("conservar");
   });
 
   test("un nombre sin caracteres válidos da 400", async () => {
