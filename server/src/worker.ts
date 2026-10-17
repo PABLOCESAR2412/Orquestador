@@ -655,23 +655,34 @@ export type ResultadoPlan = "ok" | "not_found" | "not_waiting" | "stale";
 
 // El usuario aprueba el plan: la tarea vuelve a la cola y el obrero lo ejecuta.
 // Las notas se guardan en el plan y el obrero las recibe junto a él.
-export function aprobarPlan(id: string, notas: string | null, hash?: string): ResultadoPlan {
+export function aprobarPlan(id: string, notas: string | null, hash: string): ResultadoPlan {
   const fila = db
     .query<{ status: string; plan: string | null; plan_hash:string|null }, [string]>("SELECT status, plan, plan_hash FROM tasks WHERE id = ?")
     .get(id);
   if (!fila) return "not_found";
   if (fila.status !== "waiting_approval" || !fila.plan) return "not_waiting";
 
-  if (hash !== undefined && hash !== fila.plan_hash) return "stale";
+  if (!hash || hash !== fila.plan_hash) return "stale";
   const plan = JSON.parse(fila.plan) as Plan;
   if (notas) plan.notas = redactar(notas).slice(0, MAX_NOTAS);
+  let resultado: ResultadoPlan = "ok";
   db.transaction(() => {
-    db.query("UPDATE tasks SET status = 'queued', plan = ?, plan_aprobado_en = datetime('now'), approved_hash = plan_hash WHERE id = ?").run(
+    const actualizado = db.query(
+      "UPDATE tasks SET status = 'queued', plan = ?, plan_aprobado_en = datetime('now'), approved_hash = ? WHERE id = ? AND status = 'waiting_approval' AND plan_hash = ? AND plan IS NOT NULL",
+    ).run(
       JSON.stringify(plan),
+      hash,
       id,
+      hash,
     );
+    if (actualizado.changes !== 1) {
+      const actual = db.query<{ status: string; plan: string | null }, [string]>("SELECT status, plan FROM tasks WHERE id = ?").get(id);
+      resultado = !actual ? "not_found" : actual.status !== "waiting_approval" || !actual.plan ? "not_waiting" : "stale";
+      return;
+    }
     registrarEvento(id, "plan_aprobado", notas ? "Con notas para el obrero" : null);
   })();
+  if (resultado !== "ok") return resultado;
   publicarEstado(id);
   notifyWorker();
   return "ok";

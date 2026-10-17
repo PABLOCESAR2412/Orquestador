@@ -109,7 +109,7 @@ Variables del VM que se agregan con esta fase (en `/etc/orquestador/orquestador.
 - El push solo va a `github.com` por HTTPS. El token sale solo por variable de entorno al helper de credenciales, nunca por argumentos ni por la URL.
 - Variables que el agente no puede sobrescribir: `PATH`, `HOME`, `LD_*`, `GIT_*`, `TELO_*`, `NODE_*`, `PYTHON*`, `BASH_ENV`, `ENV`, `IFS`, `TERM`, `LANG`, `SSL_CERT_FILE`, proxies y `OPENCODE_*`.
 - Un secreto inyectado sí lo ve el agente de ese proyecto (lo necesita para trabajar). Guarda solo lo que el agente necesita.
-- El servidor escucha en `127.0.0.1` (`TELO_ESCUCHAR` lo cambia). Cabeceras: CSP estricta sin scripts en línea, `X-Frame-Options: DENY`, `nosniff`. Cuerpos de petición de máximo 64 KB. El SSE tiene límite de conexiones.
+- El servidor escucha en `127.0.0.1` (`TELO_ESCUCHAR` lo cambia). La IP de conexión viene del socket; `CF-Connecting-IP`, `X-Forwarded-For` y `X-Real-IP` solo se aceptan si el peer figura en `TELO_PROXIES_CONFIABLES` (IPs exactas, separadas por coma) y el proxy sobrescribe esas cabeceras. Cabeceras: CSP estricta sin scripts en línea, `X-Frame-Options: DENY`, `nosniff`. Cuerpos de petición de máximo 64 KB. El SSE tiene límite de conexiones y memoria por cliente.
 - Pruebas de seguridad: `server/tests/seguridad.test.ts`. Ver también la sección de comandos.
 
 ## Respaldos

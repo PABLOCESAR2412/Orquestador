@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { bloquearIntento, LimitadorLogin, validarIp } from "../src/seguridad-login";
+import { bloquearIntento, LimitadorLogin, resolverIpCliente, validarIp } from "../src/seguridad-login";
 
 describe("protección del inicio de sesión", () => {
   test("valida IPv4 e IPv6 con el parser de red del sistema", () => {
@@ -8,6 +8,19 @@ describe("protección del inicio de sesión", () => {
     expect(validarIp("999.999.999.999")).toBeNull();
     expect(validarIp("::::")).toBeNull();
     expect(validarIp(undefined)).toBeNull();
+  });
+
+  test("ignora cabeceras IP falsificadas salvo que el peer sea un proxy de confianza", () => {
+    const cabeceras = {
+      cfConnectingIp: "198.51.100.90",
+      forwardedFor: "203.0.113.8, 198.51.100.91",
+      realIp: "203.0.113.9",
+    };
+    expect(resolverIpCliente("192.0.2.10", cabeceras, new Set())).toBe("192.0.2.10");
+    expect(resolverIpCliente("192.0.2.10", cabeceras, new Set(["192.0.2.10"]))).toBe("198.51.100.90");
+    expect(resolverIpCliente("192.0.2.10", { forwardedFor: "inválida, 203.0.113.8" }, new Set(["192.0.2.10"])))
+      .toBe("203.0.113.8");
+    expect(resolverIpCliente(undefined, cabeceras, new Set(["192.0.2.10"]))).toBe("desconocida");
   });
 
   test("el límite distribuido bloquea claves incorrectas, pero deja entrar al dueño con la clave correcta", () => {

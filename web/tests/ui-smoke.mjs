@@ -13,7 +13,9 @@ const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
 const base = `http://127.0.0.1:${server.port}`;
 const browser = await chromium.launch({
   headless: true,
-  ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}),
+  ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+    ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+    : {}),
 });
 mkdirSync("scratch/capturas-ci", { recursive: true });
 try {
@@ -157,7 +159,7 @@ try {
     await page.getByRole("button", { name: "Entrar", exact: true }).click();
     await page.waitForURL("**/chat");
     console.log(`${width}px: sesión local de prueba iniciada`);
-    await page.getByText("Conversations", { exact: true }).waitFor();
+    await page.getByText("Conversaciones", { exact: true }).waitFor();
     assert.equal((await (await respuestaDiffTransitoria).json()).estado, "en_curso");
     await page.locator(".tl-diagrama-visual svg").waitFor();
     const comprobarTemaDiagrama = async tema => {
@@ -273,7 +275,7 @@ try {
     await colaVisible.waitFor({ state: "detached" });
     const arbolArchivos = page.locator(".tl-codigo").filter({ hasText: "└── src/" });
     assert.equal(await arbolArchivos.getByRole("button", { name: "Aplicar", exact: true }).count(), 0);
-    assert.deepEqual(await page.locator(".tl-rail-seccion-titulo").allTextContents(), ["Projects", "Conversations"]);
+    assert.deepEqual(await page.locator(".tl-rail-seccion-titulo").allTextContents(), ["Proyectos", "Conversaciones"]);
     if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
     const versionButton = page.getByRole("button", { name: /Ver historial de cambios de la versión/ });
     await versionButton.click();

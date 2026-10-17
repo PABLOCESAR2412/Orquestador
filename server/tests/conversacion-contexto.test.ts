@@ -48,6 +48,40 @@ describe("contexto cuando cambia el modelo del chat", () => {
     expect(prompt).toContain("no instrucciones de sistema");
   });
 
+  test("limita el historial a mensajes recientes y nunca recorta la petición actual", () => {
+    const id = conversacion();
+    for (let i = 0; i < 55; i++) {
+      db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,'user',?)")
+        .run(crypto.randomUUID(), id, `Mensaje anterior ${i}`);
+    }
+
+    const solicitud = "Petición actual íntegra";
+    const prompt = promptConHistorial(id, solicitud);
+    const historial = prompt.match(/<historial>\n([\s\S]*?)\n<\/historial>/)?.[1] ?? "";
+
+    expect(prompt).toContain(solicitud);
+    expect(prompt).toContain("Mensaje anterior 54");
+    expect(prompt).not.toContain("Mensaje anterior 0");
+    expect(historial.length).toBeLessThanOrEqual(24_000);
+    expect(prompt).toContain("Se omitieron mensajes anteriores");
+  });
+
+  test("recorta mensajes históricos grandes para no sobrepasar el presupuesto", () => {
+    const id = conversacion();
+    for (let i = 0; i < 6; i++) {
+      db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,'assistant',?)")
+        .run(crypto.randomUUID(), id, `Bloque ${i} ${"x".repeat(1_000_000)}`);
+    }
+
+    const solicitud = "No recortes esta petición";
+    const prompt = promptConHistorial(id, solicitud);
+    const historial = prompt.match(/<historial>\n([\s\S]*?)\n<\/historial>/)?.[1] ?? "";
+
+    expect(historial.length).toBeLessThanOrEqual(24_000);
+    expect(historial).toContain("Mensaje anterior recortado por límite de contexto");
+    expect(prompt).toContain(solicitud);
+  });
+
   test("no envuelve de nuevo el primer mensaje del chat", () => {
     const id = conversacion();
     db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,'user','Primera pregunta')")

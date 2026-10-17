@@ -11,7 +11,7 @@ import {
   sesionValida,
 } from "../auth";
 import { config } from "../config";
-import { bloquearIntento, LimitadorLogin, validarIp } from "../seguridad-login";
+import { bloquearIntento, LimitadorLogin, resolverIpCliente, validarIp } from "../seguridad-login";
 
 // Límite de intentos fallidos por IP y global para evitar ataques de fuerza bruta
 // sin provocar denegación de servicio a clientes legítimos en otras redes.
@@ -21,22 +21,18 @@ const MAX_FALLOS_TOTALES = 50;
 const limitadorLogin = new LimitadorLogin(VENTANA_MS, MAX_FALLOS_POR_IP, MAX_FALLOS_TOTALES);
 
 function obtenerIpCliente(c: Context): string {
-  const cf = validarIp(c.req.header("cf-connecting-ip"));
-  if (cf) return cf;
-
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) {
-    const partes = xff.split(",");
-    for (let i = partes.length - 1; i >= 0; i--) {
-      const v = validarIp(partes[i]);
-      if (v) return v;
-    }
-  }
-
-  const real = validarIp(c.req.header("x-real-ip"));
-  if (real) return real;
-
-  return "desconocida";
+  const ipConexion = (c.env as { clientIp?: string } | undefined)?.clientIp;
+  const proxiesConfiables = new Set(
+    (process.env.TELO_PROXIES_CONFIABLES ?? "")
+      .split(",")
+      .map((ip) => validarIp(ip))
+      .filter((ip): ip is string => ip !== null),
+  );
+  return resolverIpCliente(ipConexion, {
+    cfConnectingIp: c.req.header("cf-connecting-ip"),
+    forwardedFor: c.req.header("x-forwarded-for"),
+    realIp: c.req.header("x-real-ip"),
+  }, proxiesConfiables);
 }
 
 const DURACION_SESION_S = 60 * 60 * 24 * 30;
