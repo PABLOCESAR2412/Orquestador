@@ -24,9 +24,12 @@ let contadorSecuencia = 0;
 export function publicar(evento: EventoVivo): number {
   contadorSecuencia += 1;
   const conSecuencia: EventoConSecuencia = { id: contadorSecuencia, evento };
-  bufferEventos.push(conSecuencia);
-  if (bufferEventos.length > CAPACIDAD_BUFFER) {
-    bufferEventos.shift();
+  // No desplazar eventos críticos de estado (tarea, chat, evento, actividad) con ráfagas de stdout de terminal
+  if (evento.tipo !== "salida") {
+    bufferEventos.push(conSecuencia);
+    if (bufferEventos.length > CAPACIDAD_BUFFER) {
+      bufferEventos.shift();
+    }
   }
 
   // Copia antes de recorrer: un suscriptor puede darse de baja mientras se notifica.

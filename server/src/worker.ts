@@ -56,6 +56,7 @@ export const MAX_NOTAS = 2000;
 const controllers = new Map<string, AbortController>();
 const cancelRequested = new Set<string>();
 const tareasEnEjecucion = new Set<string>();
+const proyectosEnEjecucion = new Set<string>();
 const MAX_TAREAS_SIMULTANEAS = 10;
 let wake: (() => void) | null = null;
 
@@ -101,9 +102,16 @@ function nextQueued(): QueuedTask | null {
       "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, t.conversation_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado, t.continuar FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC",
     )
     .all();
-  return pendientes.find((task) =>
-    !tareasEnEjecucion.has(task.id) && (!task.project_id || !proyectoOcupado(task.project_id)),
-  ) ?? null;
+  const candidata = pendientes.find((task) =>
+    !tareasEnEjecucion.has(task.id) &&
+    (!task.project_id || (!proyectosEnEjecucion.has(task.project_id) && !proyectoOcupado(task.project_id))),
+  );
+  if (!candidata) return null;
+  if (candidata.project_id) {
+    proyectosEnEjecucion.add(candidata.project_id);
+    reservarProyecto(candidata.project_id);
+  }
+  return candidata;
 }
 
 function estadoActual(id: string): string | null {
@@ -355,14 +363,13 @@ function pedirReplanificacion(id: string, motivo: string) {
 }
 
 async function runTask(task: QueuedTask) {
-  if (task.project_id && (proyectoOcupado(task.project_id) || !reservarProyecto(task.project_id))) {
-    await Bun.sleep(500);
-    return;
-  }
   try {
     await ejecutarTarea(task);
   } finally {
-    if (task.project_id) soltarProyecto(task.project_id);
+    if (task.project_id) {
+      proyectosEnEjecucion.delete(task.project_id);
+      soltarProyecto(task.project_id);
+    }
   }
 }
 
@@ -531,6 +538,10 @@ async function ejecutarSlot(task: QueuedTask): Promise<void> {
     }
   } finally {
     tareasEnEjecucion.delete(task.id);
+    if (task.project_id) {
+      proyectosEnEjecucion.delete(task.project_id);
+      soltarProyecto(task.project_id);
+    }
     notifyWorker();
   }
 }

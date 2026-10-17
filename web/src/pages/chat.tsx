@@ -446,7 +446,11 @@ export function ChatPage() {
 
   const submit = () => {
     if (planPendiente) {
-      decidirPlanMutation.mutate({ decision: "approve", feedback: draft.trim() || undefined });
+      const feedback = draft.trim();
+      if (feedback) {
+        decidirPlanMutation.mutate({ decision: "revise", feedback });
+        cambiarBorrador("");
+      }
       return;
     }
     if (!puedeEnviar || !selectedId) return;
@@ -1546,10 +1550,6 @@ export function ChatPage() {
                   }
                   if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
-                    if (planPendiente) {
-                      decidirPlanMutation.mutate({ decision: "approve", feedback: draft.trim() || undefined });
-                      return;
-                    }
                     submit();
                   }
                 }}

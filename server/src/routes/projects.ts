@@ -230,13 +230,25 @@ projects.get("/projects", (c) => {
 // POST /api/projects  body: { name } crea una carpeta nueva con Git y un README.
 // Con { name, url } crea una carpeta vacía para clonar ese repo de GitHub (ver crearDesdeGithub).
 // Compatibilidad: { path, name? } registra una carpeta que ya existe dentro de la raíz.
+// Si existe una carpeta huérfana (sin proyecto registrado): sobrescribir: true la limpia y crea de nuevo; vincular: true la asocia.
 projects.post("/projects", async (c) => {
-  const body = await leerCuerpoJson<{ name?: unknown; path?: unknown; url?: unknown }>(c);
+  const body = await leerCuerpoJson<{
+    name?: unknown;
+    path?: unknown;
+    url?: unknown;
+    sobrescribir?: unknown;
+    vincular?: unknown;
+  }>(c);
   if (!body) return c.json({ error: "invalid_body" }, 400);
 
   if (typeof body.path === "string") return registrarExistente(c, body.path, body.name);
-  if (typeof body.url === "string" && body.url.trim() !== "") return crearDesdeGithub(c, body.name, body.url);
-  return crearProyecto(c, body.name);
+  if (typeof body.url === "string" && body.url.trim() !== "") {
+    return crearDesdeGithub(c, body.name, body.url, Boolean(body.sobrescribir));
+  }
+  return crearProyecto(c, body.name, {
+    sobrescribir: Boolean(body.sobrescribir),
+    vincular: Boolean(body.vincular),
+  });
 });
 
 function registrarExistente(c: Context, path: string, name: unknown) {
@@ -263,7 +275,11 @@ function registrarExistente(c: Context, path: string, name: unknown) {
 }
 
 // Reserva la carpeta de un proyecto nuevo: una carpeta vacía dentro de la raíz, sin repetir una existente.
-function reservarCarpeta(nombre: string): { destino: string; rootReal: string } | { error: string; status: 400 | 409 | 503 } {
+// Si existe en disco pero no en la BD (huérfana) y sobrescribir es false, devuelve huerfana: true para que el usuario elija vincular o vaciar.
+function reservarCarpeta(
+  nombre: string,
+  sobrescribir = false,
+): { destino: string; rootReal: string } | { error: string; status: 400 | 409 | 503; huerfana?: boolean; carpeta?: string } {
   const carpeta = slugProyecto(nombre);
   if (!carpeta) return { error: "invalid_project_name", status: 400 };
 
@@ -279,25 +295,45 @@ function reservarCarpeta(nombre: string): { destino: string; rootReal: string } 
   }
 
   const destino = join(rootReal, carpeta);
-  if (existsSync(destino)) return { error: "project_folder_exists", status: 409 };
-  if (db.query("SELECT id FROM projects WHERE repo_path = ?").get(destino)) {
-    return { error: "project_exists", status: 409 };
+  const estaEnUso = db.query<{ id: string }, [string]>("SELECT id FROM projects WHERE repo_path = ?").get(destino);
+  if (estaEnUso) {
+    return { error: "project_folder_exists", status: 409 };
+  }
+
+  if (existsSync(destino)) {
+    if (!sobrescribir) {
+      return { error: "project_folder_exists", status: 409, huerfana: true, carpeta };
+    }
+    try {
+      rmSync(destino, { recursive: true, force: true });
+    } catch {
+      return { error: "project_folder_exists", status: 409, huerfana: true, carpeta };
+    }
   }
 
   try {
-    mkdirSync(destino);
+    mkdirSync(destino, { recursive: true });
   } catch {
     return { error: "project_folder_exists", status: 409 };
   }
   return { destino, rootReal };
 }
 
-async function crearProyecto(c: Context, name: unknown) {
+async function crearProyecto(c: Context, name: unknown, opts?: { sobrescribir?: boolean; vincular?: boolean }) {
   const nombre = typeof name === "string" ? name.trim() : "";
   if (!nombre || nombre.length > MAX_NOMBRE) return c.json({ error: "invalid_project_name" }, 400);
 
-  const reserva = reservarCarpeta(nombre);
-  if ("error" in reserva) return c.json({ error: reserva.error }, reserva.status);
+  if (opts?.vincular) {
+    return registrarExistente(c, slugProyecto(nombre), nombre);
+  }
+
+  const reserva = reservarCarpeta(nombre, opts?.sobrescribir);
+  if ("error" in reserva) {
+    return c.json(
+      { error: reserva.error, ...(reserva.huerfana ? { huerfana: true, carpeta: reserva.carpeta } : {}) },
+      reserva.status,
+    );
+  }
   const { destino, rootReal } = reserva;
 
   // A partir de aquí, si algo falla se borra la carpeta que acabamos de crear.
@@ -332,7 +368,7 @@ async function crearProyecto(c: Context, name: unknown) {
 
 // Proyecto desde un repo de GitHub: carpeta vacía (el clonado la llena) y el origen guardado.
 // No pide la clave: el servidor revisa si el repo es público o privado, y la clave se crea solo si hace falta.
-function crearDesdeGithub(c: Context, name: unknown, url: string) {
+function crearDesdeGithub(c: Context, name: unknown, url: string, sobrescribir = false) {
   const origen = urlGithubNormalizada(url);
   if (!origen) return c.json({ error: "invalid_github_url" }, 400);
 
@@ -340,8 +376,13 @@ function crearDesdeGithub(c: Context, name: unknown, url: string) {
   const nombre = pedido || origen.repo;
   if (nombre.length > MAX_NOMBRE) return c.json({ error: "invalid_project_name" }, 400);
 
-  const reserva = reservarCarpeta(nombre);
-  if ("error" in reserva) return c.json({ error: reserva.error }, reserva.status);
+  const reserva = reservarCarpeta(nombre, sobrescribir);
+  if ("error" in reserva) {
+    return c.json(
+      { error: reserva.error, ...(reserva.huerfana ? { huerfana: true, carpeta: reserva.carpeta } : {}) },
+      reserva.status,
+    );
+  }
 
   const id = crypto.randomUUID();
   try {
@@ -412,9 +453,25 @@ projects.get("/projects/:id", async (c) => {
   });
 });
 
-// DELETE /api/projects/:id  -> quita el registro; la carpeta en el servidor no se toca.
+// DELETE /api/projects/:id  -> quita el registro. Con ?borrar_carpeta=true también elimina la carpeta en el servidor.
 projects.delete("/projects/:id", (c) => {
-  const result = db.query("DELETE FROM projects WHERE id = ?").run(c.req.param("id"));
+  const id = c.req.param("id");
+  const row = leerProyecto(id);
+  if (!row) return c.json({ error: "project_not_found" }, 404);
+
+  const borrarCarpeta = c.req.query("borrar_carpeta") === "true";
+  if (borrarCarpeta && row.repo_path) {
+    const raiz = raizReal();
+    if (raiz && row.repo_path !== raiz && row.repo_path.startsWith(raiz + sep)) {
+      try {
+        rmSync(row.repo_path, { recursive: true, force: true });
+      } catch (err) {
+        console.error("No se pudo borrar la carpeta física del proyecto:", err);
+      }
+    }
+  }
+
+  const result = db.query("DELETE FROM projects WHERE id = ?").run(id);
   if (result.changes === 0) return c.json({ error: "project_not_found" }, 404);
   return c.json({ ok: true });
 });

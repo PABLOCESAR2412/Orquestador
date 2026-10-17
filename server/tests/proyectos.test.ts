@@ -127,7 +127,7 @@ describe("archivos del proyecto", () => {
     expect(codigoDe(() => normalizarRuta(".git/config"))).toBe("invalid_project_path");
   });
 
-  test("un FIFO no se lee (bloquearía la petición)", () => {
+  test.skipIf(process.platform === "win32")("un FIFO no se lee (bloquearía la petición)", () => {
     Bun.spawnSync(["mkfifo", join(PROYECTO, "tuberia")]);
     expect(codigoDe(() => leerArchivo(PROYECTO, ["tuberia"]))).toBe("project_path_not_file");
   });

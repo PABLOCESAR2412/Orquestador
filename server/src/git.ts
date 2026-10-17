@@ -26,12 +26,15 @@ export type GitResultado = { code: number; stdout: string; stderr: string };
 
 const TIEMPO_MAX_MS = 120_000;
 
+const DISPOSITIVO_NULO = process.platform === "win32" ? "NUL" : "/dev/null";
+const ASK_PASS_FALSO = process.platform === "win32" ? "" : "/bin/false";
+
 // Flags que van antes de cualquier subcomando. Anulan lo que pueda haber en .git/config del repo.
 const FLAGS_SEGURAS = [
-  "-c", "core.hooksPath=/dev/null",
+  "-c", `core.hooksPath=${DISPOSITIVO_NULO}`,
   "-c", "core.fsmonitor=false",
   "-c", "core.pager=cat",
-  "-c", "core.askPass=/bin/false",
+  "-c", `core.askPass=${ASK_PASS_FALSO}`,
   "-c", "credential.helper=",
 ];
 

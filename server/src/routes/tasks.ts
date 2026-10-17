@@ -360,7 +360,7 @@ tasks.post("/tasks/:id/seguir", async (c) => {
   const encolada = db.transaction(() => {
     const r = db
       .query(
-        "UPDATE tasks SET status = 'queued', model = ?, effort = ?, modelo_agotado = NULL, error = NULL, finished_at = NULL WHERE id = ? AND status = ?",
+        "UPDATE tasks SET status = 'queued', model = ?, effort = ?, modelo_agotado = NULL, error = NULL, finished_at = NULL, continuar = 1 WHERE id = ? AND status = ?",
       )
       .run(model, effort, id, ESTADO_SEGUIBLE);
     if (r.changes === 0) return false;

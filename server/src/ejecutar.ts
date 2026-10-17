@@ -469,20 +469,23 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     // Un modelo sin cuota se marca como tal (ver ErrorCuota); cualquier otro error sigue como antes.
     const comoCuota = (e: unknown, modelo: string): unknown =>
       esErrorDeCuota(e) ? new ErrorCuota(modelo, sesion) : limpiarError(e);
-    // Ante fallo transitorio del servidor (HTTP 5xx o error inesperado del proveedor),
-    // intentamos un reintento breve antes de recurrir al respaldo o detener la tarea.
-    if (
-      esErrorDeProveedor(err, opts.signal) &&
-      /server error|internal error|5\d\d|service unavailable/i.test(textoDelProveedor(err))
-    ) {
-      await Bun.sleep(1200);
+    // Ante fallo transitorio del servidor (HTTP 5xx) o rate limit transitorio (429 por RPM/TPM),
+    // intentamos un reintento breve con backoff antes de recurrir al respaldo o detener la tarea.
+    const textoProv = textoDelProveedor(err);
+    const esErrorServidor = /server error|internal error|5\d\d|service unavailable|bad gateway/i.test(textoProv);
+    const esRateLimitTransitorio =
+      /\b429\b|rate.?limit|too many requests/i.test(textoProv) &&
+      !/insufficient|funds|balance|credit|exceeded your current quota/i.test(textoProv);
+
+    if (esErrorDeProveedor(err, opts.signal) && (esErrorServidor || esRateLimitTransitorio)) {
+      await Bun.sleep(esRateLimitTransitorio ? 2500 : 1200);
       if (!opts.signal?.aborted) {
         try {
           const r = await ejecutarConRunner(opts.model, {
             ...base,
             model: opts.model,
             variant: opts.variant ?? undefined,
-            sessionId: opts.sessionId ?? null,
+            sessionId: sesion,
             onUso: (uso) => registrarUsoAgente(opts.model, uso, opts),
           });
           return terminar(r, opts.model);

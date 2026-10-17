@@ -537,6 +537,26 @@ const migrations: Migration[] = [
       WHERE provider = 'google' AND cost = 0 AND (input_tokens > 0 OR output_tokens > 0);
     `,
   },
+  {
+    name: "030_integridad_referencial_tareas",
+    sql: `
+      UPDATE usage SET task_id = NULL WHERE task_id IS NOT NULL AND task_id NOT IN (SELECT id FROM tasks);
+      UPDATE programadas SET ultima_tarea_id = NULL WHERE ultima_tarea_id IS NOT NULL AND ultima_tarea_id NOT IN (SELECT id FROM tasks);
+      UPDATE tasks SET retry_of = NULL WHERE retry_of IS NOT NULL AND retry_of NOT IN (SELECT id FROM tasks);
+
+      CREATE INDEX IF NOT EXISTS programadas_ultima_tarea ON programadas(ultima_tarea_id);
+      CREATE INDEX IF NOT EXISTS tasks_retry_of ON tasks(retry_of);
+
+      CREATE TRIGGER IF NOT EXISTS trg_tasks_delete_referencias
+      AFTER DELETE ON tasks
+      FOR EACH ROW
+      BEGIN
+        UPDATE usage SET task_id = NULL WHERE task_id = OLD.id;
+        UPDATE programadas SET ultima_tarea_id = NULL WHERE ultima_tarea_id = OLD.id;
+        UPDATE tasks SET retry_of = NULL WHERE retry_of = OLD.id;
+      END;
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

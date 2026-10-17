@@ -12,22 +12,47 @@ import {
 } from "../auth";
 import { config } from "../config";
 
-// Límite de intentos fallidos por IP para evitar ataques de fuerza bruta
+// Límite de intentos fallidos por IP y global para evitar ataques de fuerza bruta
 // sin provocar denegación de servicio a clientes legítimos en otras redes.
 const VENTANA_MS = 15 * 60_000;
 const MAX_FALLOS_POR_IP = 10;
+const MAX_FALLOS_TOTALES = 50;
 const fallosPorIp = new Map<string, number[]>();
+let fallosGlobales: number[] = [];
+
+function validarIp(candidato: string | undefined): string | null {
+  if (!candidato) return null;
+  const limpio = candidato.trim();
+  if (/^(?:\d{1,3}\.){3}\d{1,3}$|^[a-fA-F0-9:]+$/.test(limpio)) {
+    return limpio;
+  }
+  return null;
+}
 
 function obtenerIpCliente(c: Context): string {
-  const ip =
-    c.req.header("cf-connecting-ip") ||
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    c.req.header("x-real-ip");
-  return ip && ip.length > 0 ? ip : "desconocida";
+  const cf = validarIp(c.req.header("cf-connecting-ip"));
+  if (cf) return cf;
+
+  const xff = c.req.header("x-forwarded-for");
+  if (xff) {
+    const partes = xff.split(",");
+    for (let i = partes.length - 1; i >= 0; i--) {
+      const v = validarIp(partes[i]);
+      if (v) return v;
+    }
+  }
+
+  const real = validarIp(c.req.header("x-real-ip"));
+  if (real) return real;
+
+  return "desconocida";
 }
 
 function demasiadosIntentos(ip: string): boolean {
   const desde = Date.now() - VENTANA_MS;
+  fallosGlobales = fallosGlobales.filter((t) => t >= desde);
+  if (fallosGlobales.length >= MAX_FALLOS_TOTALES) return true;
+
   const intentos = fallosPorIp.get(ip) ?? [];
   const validos = intentos.filter((t) => t >= desde);
   if (validos.length > 0) {
@@ -39,8 +64,10 @@ function demasiadosIntentos(ip: string): boolean {
 }
 
 function registrarFallo(ip: string): void {
+  const ahora = Date.now();
+  fallosGlobales.push(ahora);
   const intentos = fallosPorIp.get(ip) ?? [];
-  intentos.push(Date.now());
+  intentos.push(ahora);
   fallosPorIp.set(ip, intentos);
 }
 

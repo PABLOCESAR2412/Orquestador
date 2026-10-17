@@ -177,7 +177,7 @@ function variablesExtra(): Set<string> {
 
 // `propias` son variables de esta ejecución (p. ej. secretos del proyecto). Se fusionan encima
 // de las permitidas y, como todo lo demás, nunca pueden llamarse TELO_*.
-function entornoDelAgente(propias?: Record<string, string>): Record<string, string> {
+export function entornoDelAgente(propias?: Record<string, string>): Record<string, string> {
   const extra = variablesExtra();
   const env: Record<string, string> = {};
   for (const [clave, valor] of Object.entries(process.env)) {

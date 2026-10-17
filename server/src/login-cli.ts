@@ -142,9 +142,11 @@ export async function iniciarLoginCodex(): Promise<LoginCodex> {
 }
 
 export async function confirmarLoginCodex(): Promise<LoginCodex> {
-  // Una sesión anterior no completa un nuevo flujo de dispositivo todavía en curso.
-  if (await sesionCodexConectada(true) && sesion?.estado !== "esperando") {
-    if (sesion) sesion.estado = "conectado";
+  if (await sesionCodexConectada(true)) {
+    if (sesion) {
+      sesion.estado = "conectado";
+      sesion.motivo = null;
+    }
     return estadoLoginCodex();
   }
   return estadoLoginCodex();
