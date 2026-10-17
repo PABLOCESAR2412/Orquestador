@@ -46,8 +46,10 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
     messageId?: string;
     message?: string;
     title?: string;
+    pr_number?: number;
+    pr_url?: string;
   }>(c);
-  if (!b || !["init", "commit", "push", "pr"].includes(b.action))
+  if (!b || !["init", "commit", "push", "pr", "merge"].includes(b.action))
     return c.json({ error: "invalid_accion" }, 400);
   if (
     (b.conversationId !== undefined &&
@@ -85,7 +87,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
     const messageId = b.messageId ?? (b.conversationId
       ? db.query<{ id: string }, [string]>("SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(b.conversationId)?.id ?? null
       : null);
-    const diff = b.action === "init" ? null : await diffDeTarea(tarea!.id);
+    const diff = (b.action === "init" || b.action === "merge") ? null : await diffDeTarea(tarea!.id);
     if ((b.action === "commit" || b.action === "push") && diff && diff.archivos.length === 0) {
       db.query("UPDATE repository_actions SET state='superseded' WHERE task_id=? AND action IN ('commit','push') AND state='pending'").run(tarea!.id);
       return c.json({ error: "sin_cambios", detail: "No hay archivos modificados para crear un commit." }, 409);
@@ -93,9 +95,10 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
     if (b.action === "push" && !diff?.remoto)
       return c.json({ error: "sin_remoto" }, 409);
     const cfg = configGit(projectId);
-    const remotoDestino = diff?.remoto_url ?? cfg.remote ?? null;
-    const autenticacion = b.action === "push" || b.action === "pr"
-      ? fuenteAutenticacionGithub(projectId, b.action, remotoDestino)
+    const remotoDePr = b.pr_url ? urlGithubPermitida(b.pr_url.replace(/\/pull\/\d+.*$/, "")) : null;
+    const remotoDestino = diff?.remoto_url ?? remotoDePr ?? cfg.remote ?? null;
+    const autenticacion = b.action === "push" || b.action === "pr" || b.action === "merge"
+      ? fuenteAutenticacionGithub(projectId, b.action === "merge" ? "pr" : b.action, remotoDestino)
       : {
           tipo: "ninguna" as const,
           origen: "ninguna" as const,
@@ -103,7 +106,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
           cuenta: null,
           instalacion_id: null,
         };
-    if ((b.action === "push" || b.action === "pr") && autenticacion.tipo === "ninguna") {
+    if ((b.action === "push" || b.action === "pr" || b.action === "merge") && autenticacion.tipo === "ninguna") {
       return c.json({
         error: "credenciales_git_faltantes",
         detail: "Vincula la GitHub App o revisa las credenciales anteriores antes de preparar esta autorización.",
@@ -119,14 +122,18 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
       commit: diff?.commit ?? null,
       archivos: diff?.archivos.map((a) => a.ruta) ?? [],
       truncado: diff?.truncado ?? false,
-      remote: diff ? diff.remoto_url : cfg.remote,
+      remote: remotoDestino,
       base: cfg.base_branch,
-      message: redactar(b.message || "Cambios revisados en Telo"),
-      title: redactar(b.title || "Cambios revisados en Telo"),
+      message: redactar(b.message || (b.action === "merge" ? "Fusionar Pull Request" : "Cambios revisados en Telo")),
+      title: redactar(b.title || (b.action === "merge" ? `Fusionar Pull Request #${b.pr_number ?? ""} en ${cfg.base_branch}` : "Cambios revisados en Telo")),
+      pr_number: b.pr_number ?? null,
+      pr_url: b.pr_url ?? null,
       descripcion:
         b.action === "init"
           ? "Inicializar Git y crear un primer commit vacío para habilitar los espacios de trabajo. No añade tus archivos."
-          : null,
+          : b.action === "merge"
+            ? `Fusionar el Pull Request #${b.pr_number ?? ""} en la rama base (${cfg.base_branch}) directamente desde Telo.`
+            : null,
     };
     const id = crypto.randomUUID();
     const existente = db
@@ -312,19 +319,42 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
           body: "Cambios revisados y aprobados en Telo.",
         },
       );
+    } else if (row.action === "merge") {
+      const cfg = configGit(row.project_id);
+      const remoto = urlGithubPermitida(p.remote || cfg.remote || "");
+      if (!remoto) throw new Error("Falta un remoto permitido.");
+      if (p.remote && p.remote !== remoto)
+        throw new Error("La configuración del repositorio cambió. Solicita otra aprobación.");
+      await validarAutenticacionYAcceso(row.project_id, p, "pr");
+      const pullNumber = p.pr_number || (p.pr_url ? p.pr_url.split("/").pop() : null);
+      if (!pullNumber) throw new Error("No se encontró el número del Pull Request para hacer merge.");
+      result = await githubApiPr(
+        row.project_id,
+        "/repos/" + remoto.replace("https://github.com/", "") + `/pulls/${pullNumber}/merge`,
+        p.autenticacion,
+        {
+          commit_title: p.title || `Merge pull request #${pullNumber} desde Telo`,
+          merge_method: "squash",
+        },
+        "PUT",
+      );
     } else {
-      // Una acción antigua (merge o push_main) pendiente de antes no se ejecuta: no debe caer en el PR.
+      // Una acción antigua pendiente de antes no se ejecuta.
       throw new Error("Esta acción ya no está disponible. Solicita una autorización nueva.");
     }
     const seguro = JSON.stringify(
-      row.action === "pr" ? { url: (result as { html_url: string }).html_url } : result,
+      row.action === "pr"
+        ? { url: (result as { html_url: string }).html_url, number: (result as { number: number }).number }
+        : row.action === "merge"
+          ? { merged: (result as { merged?: boolean }).merged ?? true, message: (result as { message?: string }).message ?? "Pull Request fusionado con éxito" }
+          : result,
     );
     db.query("UPDATE repository_actions SET state='approved', result=? WHERE id=?").run(
       seguro,
       row.id,
     );
     // Cada acción conserva su propia autorización; completar una solo prepara la siguiente.
-    if (row.task_id && (row.action === "commit" || row.action === "push")) {
+    if (row.task_id && (row.action === "commit" || row.action === "push" || row.action === "pr")) {
       const t = db
         .query<
           { plan: string | null; conversation_id: string | null; status: string },
@@ -338,10 +368,15 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
             ? acciones.includes("push")
               ? "push"
               : null
-            : acciones.includes("pr")
-              ? "pr"
-              : null;
-        if (siguiente)
+            : row.action === "push"
+              ? acciones.includes("pr")
+                ? "pr"
+                : null
+              : row.action === "pr"
+                ? "merge"
+                : null;
+        if (siguiente) {
+          const prRes = row.action === "pr" ? (result as { html_url: string; number: number }) : null;
           await repositoryActions.request(`http://telo/projects/${row.project_id}/acciones`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -350,8 +385,12 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
               conversationId: t.conversation_id,
               taskId: row.task_id,
               messageId: p.messageId ?? undefined,
+              pr_number: prRes?.number,
+              pr_url: prRes?.html_url,
+              title: `Merge pull request #${prRes?.number ?? ""} en ${p.base}`,
             }),
           });
+        }
       }
     }
     return c.json({ ok: true, result: JSON.parse(seguro) });

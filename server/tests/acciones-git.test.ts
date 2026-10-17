@@ -358,25 +358,39 @@ test("el chat prepara commit y push juntos y vincula la tarjeta al nuevo mensaje
   }
 });
 
-test("merge y push_main ya no se aceptan, y una acción antigua de merge pendiente no se ejecuta", async () => {
+test("push_main ya no se acepta, y merge se puede preparar y autorizar directamente", { timeout: 20000 }, async () => {
   const p = await tareaConCommit();
-  expect((await pedir(`/projects/${p.id}/acciones`, { action: "merge", taskId: p.taskId })).status).toBe(400);
   expect((await pedir(`/projects/${p.id}/acciones`, { action: "push_main", taskId: p.taskId })).status).toBe(400);
-  const antigua = randomUUID();
-  db.query("INSERT INTO repository_actions(id,project_id,conversation_id,task_id,action,payload) VALUES (?,?,?,?,?,?)").run(
-    antigua,
-    p.id,
-    null,
-    p.taskId,
-    "merge",
-    JSON.stringify({ hash: null, commit: null, rama: null, base: "main" }),
-  );
-  const respuesta = await pedir(`/acciones/${antigua}/decidir`, { approve: true });
-  expect(respuesta.status).toBe(409);
-  expect(((await respuesta.json()) as { detail: string }).detail).toContain("ya no está disponible");
+
+  guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
+  const res = await pedir(`/projects/${p.id}/acciones`, {
+    action: "merge",
+    taskId: p.taskId,
+    pr_number: 1,
+    pr_url: "https://github.com/dueno/prueba/pull/1",
+  });
+  expect(res.status).toBe(201);
+  const accion = (await res.json()) as any;
+  expect(accion.action).toBe("merge");
+
+  let urlLlamada = "";
+  let metodoLlamada = "";
+  globalThis.fetch = (async (url: any, init: any) => {
+    urlLlamada = String(url);
+    metodoLlamada = init?.method ?? "GET";
+    if (String(url) === "https://api.github.com/repos/dueno/prueba") {
+      return Response.json({ full_name: "dueno/prueba", permissions: { push: true } });
+    }
+    return Response.json({ merged: true, message: "Pull Request successfully merged" });
+  }) as typeof fetch;
+
+  const respuesta = await pedir(`/acciones/${accion.id}/decidir`, { approve: true });
+  expect(respuesta.status).toBe(200);
+  expect(metodoLlamada).toBe("PUT");
+  expect(urlLlamada).toContain("/repos/dueno/prueba/pulls/1/merge");
   expect(
-    db.query<{ state: string }, [string]>("SELECT state FROM repository_actions WHERE id=?").get(antigua)?.state,
-  ).toBe("failed");
+    db.query<{ state: string }, [string]>("SELECT state FROM repository_actions WHERE id=?").get(accion.id)?.state,
+  ).toBe("approved");
 });
 
 test("crear un pull request usa solo GITHUB_PR_TOKEN, sin respaldo a GITHUB_TOKEN", async () => {

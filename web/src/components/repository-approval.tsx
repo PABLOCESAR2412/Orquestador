@@ -10,7 +10,7 @@ const labels: Record<string, string> = {
   push: "Commit y push",
   push_main: "Commit y push a principal",
   pr: "Crear pull request",
-  merge: "Commit y merge local",
+  merge: "Hacer merge del Pull Request",
 };
 function resultadoLegible(valor: string): string {
   const sinCommits = valor.match(/No commits between\s+([^\s;]+)\s+and\s+([^\s;]+)/i);
@@ -20,11 +20,14 @@ function resultadoLegible(valor: string): string {
   try {
     const r = JSON.parse(valor) as {
       mensaje?: string;
+      message?: string;
       sha?: string;
       url?: string;
+      merged?: boolean;
     };
+    if (r.merged) return "✓ Pull Request fusionado exitosamente en GitHub";
     return (
-      r.mensaje ?? r.url ?? (r.sha ? `Commit ${r.sha.slice(0, 8)}` : valor)
+      r.mensaje ?? r.message ?? r.url ?? (r.sha ? `Commit ${r.sha.slice(0, 8)}` : valor)
     );
   } catch {
     return /^[a-z_]+$/.test(valor)
@@ -49,7 +52,7 @@ function autenticacionDe(accion: RepositoryAction): FuenteAutenticacionGithub | 
   }
 }
 function etiquetaAutenticacion(accion: RepositoryAction): string | null {
-  if (accion.action !== "push" && accion.action !== "pr") return null;
+  if (accion.action !== "push" && accion.action !== "pr" && accion.action !== "merge") return null;
   const autenticacion = autenticacionDe(accion);
   if (!autenticacion) return "Credencial: método no registrado";
   return `Credencial: ${autenticacion.etiqueta}${autenticacion.cuenta ? ` · @${autenticacion.cuenta}` : ""}`;
@@ -77,8 +80,10 @@ export function RepositoryApproval({
     truncado?: boolean;
     autorGit?: string;
     autenticacion?: FuenteAutenticacionGithub;
+    pr_number?: number;
+    pr_url?: string;
   };
-  const requiereGitHub = accion.action === "push" || accion.action === "pr";
+  const requiereGitHub = accion.action === "push" || accion.action === "pr" || accion.action === "merge";
   const credencialObsoleta = requiereGitHub && !p.autenticacion;
   const [confirmarAccesoNoVerificado, setConfirmarAccesoNoVerificado] = useState(false);
   const [avisoAcceso, setAvisoAcceso] = useState<string | null>(null);
@@ -89,7 +94,7 @@ export function RepositoryApproval({
         if (!projectId || !p.autenticacion) {
           throw new ApiError(409, "github_access", "Esta autorización no tiene una credencial registrada. Prepara una nueva para comprobar el acceso antes de aprobar.");
         }
-        const acceso = await api.checkProjectGit(projectId, accion.action as "push" | "pr");
+        const acceso = await api.checkProjectGit(projectId, accion.action === "merge" ? "pr" : (accion.action as "push" | "pr"));
         const esperada = p.autenticacion;
         if (
           acceso.autenticacion.tipo !== esperada.tipo ||
@@ -135,9 +140,16 @@ export function RepositoryApproval({
           {p.rama && (
             <span>
               Rama: {p.rama}
-              {accion.action === "pr" ? ` → ${p.base}` : ""}
+              {(accion.action === "pr" || accion.action === "merge") ? ` → ${p.base ?? "main"}` : ""}
             </span>
           )}
+        </p>
+      )}
+      {p.pr_url && (
+        <p className="approval-meta">
+          <a href={p.pr_url} target="_blank" rel="noreferrer" style={{ fontSize: "0.85rem", textDecoration: "underline" }}>
+            Ver PR #{p.pr_number ?? ""} en GitHub ↗
+          </a>
         </p>
       )}
       {subida ? (
@@ -199,9 +211,11 @@ export function RepositoryApproval({
               ? requiereGitHub ? "Comprobando acceso…" : "Ejecutando…"
               : subida
                 ? "Autorizar commit y push"
-                : confirmarAccesoNoVerificado
-                  ? "Confirmar y autorizar"
-                  : `Autorizar ${titulo.toLowerCase()}`}
+                : accion.action === "merge"
+                  ? "Fusionar Pull Request en GitHub"
+                  : confirmarAccesoNoVerificado
+                    ? "Confirmar y autorizar"
+                    : `Autorizar ${titulo.toLowerCase()}`}
           </button>
           <button
             type="button"
@@ -325,12 +339,14 @@ export function AccionesRepositorioChat({
     void qc.invalidateQueries({ queryKey: ["task-diff", taskId] });
   };
   const pedir = useMutation({
-    mutationFn: (action: string) =>
-      api.requestRepositoryAction(projectId!, {
-        action,
+    mutationFn: (args: string | { action: string; pr_number?: number; pr_url?: string; title?: string }) => {
+      const body = typeof args === "string" ? { action: args } : args;
+      return api.requestRepositoryAction(projectId!, {
         conversationId,
         taskId,
-      }),
+        ...body,
+      });
+    },
     onSuccess: refrescar,
   });
   const lista = acciones.data ?? [];
@@ -482,9 +498,30 @@ export function AccionesRepositorioChat({
             </p>
           )}
           {prUrl && /^https:\/\/github\.com\//.test(prUrl) && (
-            <a href={prUrl} target="_blank" rel="noreferrer">
-              Ver pull request
-            </a>
+            <div className="approval-pr-directo" style={{ display: "inline-flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+              <a href={prUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>
+                Ver pull request en GitHub ↗
+              </a>
+              {!lista.some((a) => a.action === "merge" && a.task_id === taskId && (a.state === "pending" || a.state === "approved")) && (
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={ocupado}
+                  onClick={() => {
+                    const prNumberMatch = prUrl.match(/\/pull\/(\d+)/);
+                    const prNumber = prNumberMatch ? Number(prNumberMatch[1]) : undefined;
+                    pedir.mutate({
+                      action: "merge",
+                      pr_number: prNumber,
+                      pr_url: prUrl,
+                      title: `Fusionar PR #${prNumber ?? ""} en ${diff?.rama ?? "main"}`,
+                    });
+                  }}
+                >
+                  Fusionar Pull Request directamente desde Telo
+                </button>
+              )}
+            </div>
           )}
           {pushVigente && ramaSubida !== diff?.rama && (
             <span className="approval-files" role="status">

@@ -510,6 +510,8 @@ export const api = {
       messageId?: string;
       message?: string;
       title?: string;
+      pr_number?: number;
+      pr_url?: string;
     },
   ) =>
     request<RepositoryAction>(`/api/projects/${id}/acciones`, {
