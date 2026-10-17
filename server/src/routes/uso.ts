@@ -73,7 +73,7 @@ export async function obtenerMetricasGoogleLive(forzar = false): Promise<GoogleL
               COALESCE(SUM(input_tokens + output_tokens), 0) AS tokens,
               COALESCE(SUM(cost), 0) AS costo
          FROM usage
-        WHERE provider = 'google'
+        WHERE (provider = 'google' OR (provider = 'opencode' AND (model LIKE '%gemini%' OR model LIKE '%argon%')))
           AND created_at >= datetime('now', '-24 hours')`,
     )
     .get();
@@ -110,13 +110,15 @@ export async function obtenerMetricasGoogleLive(forzar = false): Promise<GoogleL
 
 function agregado(provider: string, ventana: string): Agregado {
   const row = db
-    .query<{ costo: number; tokens: number; llamadas: number }, [string, string]>(
+    .query<{ costo: number; tokens: number; llamadas: number }, [string, string, string]>(
       `SELECT COALESCE(SUM(cost), 0) AS costo,
               COALESCE(SUM(input_tokens + output_tokens), 0) AS tokens,
               COUNT(*) AS llamadas
-         FROM usage WHERE provider = ? AND created_at >= datetime('now', ?)`,
+         FROM usage
+        WHERE (provider = ? OR (? = 'google' AND provider = 'opencode' AND (model LIKE '%gemini%' OR model LIKE '%argon%')))
+          AND created_at >= datetime('now', ?)`,
     )
-    .get(provider, ventana);
+    .get(provider, provider, ventana);
   return {
     costoUsd: Math.round((row?.costo ?? 0) * 10_000) / 10_000,
     tokens: row?.tokens ?? 0,
@@ -145,17 +147,19 @@ uso.get("/uso", async (c) => {
 
   const proveedores = proveedoresActivos().map((id) => {
     const enUltimos30d = db
-      .query<{ n: number }, [string]>(
-        "SELECT COUNT(*) AS n FROM usage WHERE provider = ? AND created_at >= datetime('now', '-30 days')",
+      .query<{ n: number }, [string, string]>(
+        `SELECT COUNT(*) AS n FROM usage
+          WHERE (provider = ? OR (? = 'google' AND provider = 'opencode' AND (model LIKE '%gemini%' OR model LIKE '%argon%')))
+            AND created_at >= datetime('now', '-30 days')`,
       )
-      .get(id)!.n;
+      .get(id, id)!.n;
     return {
       id,
       nombre: nombreProveedor(id),
       ultimas5h: agregado(id, "-5 hours"),
       ultimos7d: agregado(id, "-7 days"),
       cuotaRestanteUsd: cuotaRestanteUsd(id),
-      precision: enUltimos30d > 0 ? ("medida_telo" as const) : ("sin_datos" as const),
+      precision: (enUltimos30d > 0 || (id === "google" && googleLive.conectado)) ? ("medida_telo" as const) : ("sin_datos" as const),
       ...(id === "google" ? { googleLive } : {}),
     };
   });

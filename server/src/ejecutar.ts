@@ -81,12 +81,21 @@ export function canonicalizarModelo(modelo: string): string {
   if (modelo.startsWith("opencode/gemini-")) {
     return modelo.replace("opencode/gemini-", "google/gemini-");
   }
+  if (modelo === "opencode/argon" || modelo === "opencode/gemini-4-argon") {
+    return "google/gemini-4-argon";
+  }
+  if (modelo === "argon" || modelo === "gemini-4-argon") {
+    return "google/gemini-4-argon";
+  }
+  if (modelo.startsWith("gemini-")) {
+    return `google/${modelo}`;
+  }
   return modelo;
 }
 
 export function proveedorDeModelo(modelo: string): string {
   const m = canonicalizarModelo(modelo);
-  if (m.startsWith("google/") || m.includes("/google/") || /gemini/i.test(m)) {
+  if (m.startsWith("google/") || m.includes("/google/") || /gemini|argon/i.test(m)) {
     return "google";
   }
   if (m.startsWith("codex/") || m === "codex" || m.includes("/codex/")) {

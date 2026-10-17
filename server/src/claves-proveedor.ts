@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { db } from "./db";
 import { claveMaestra, cifrar, descifrar } from "./secretos";
 
@@ -34,7 +37,10 @@ export function claveProveedorValida(valor: unknown): valor is string {
 }
 
 export function tieneClaveProveedor(id: string): boolean {
-  return db.query("SELECT 1 AS ok FROM provider_keys WHERE proveedor = ?").get(id) !== null;
+  if (db.query("SELECT 1 AS ok FROM provider_keys WHERE proveedor = ?").get(id) !== null) {
+    return true;
+  }
+  return valorClaveProveedor(id) !== null;
 }
 
 // Devuelve la fecha de actualización, o null si no hay clave maestra para cifrar.
@@ -78,6 +84,36 @@ export function valorClaveJev(): string | null {
   }
 }
 
+// Busca credenciales guardadas por OpenCode CLI (opencode auth login) en las ubicaciones estándar
+export function claveDeAuthJson(id: string): string | null {
+  const home = homedir();
+  const paths = [
+    join(home, ".local", "share", "opencode", "auth.json"),
+    process.env.XDG_DATA_HOME ? join(process.env.XDG_DATA_HOME, "opencode", "auth.json") : null,
+    process.env.APPDATA ? join(process.env.APPDATA, "opencode", "auth.json") : null,
+    join(home, ".config", "opencode", "auth.json"),
+    join(home, ".opencode", "auth.json"),
+  ].filter(Boolean) as string[];
+
+  for (const p of paths) {
+    if (!existsSync(p)) continue;
+    try {
+      const j = JSON.parse(readFileSync(p, "utf-8")) as Record<string, unknown>;
+      const entrada = j[id] ?? (id === "google" ? j["gemini"] : null);
+      if (!entrada) continue;
+      if (typeof entrada === "string" && entrada.trim()) return entrada.trim();
+      if (typeof entrada === "object" && entrada !== null) {
+        const ent = entrada as { key?: string; apiKey?: string; token?: string; access_token?: string };
+        const k = ent.key || ent.apiKey || ent.token || ent.access_token;
+        if (typeof k === "string" && k.trim()) return k.trim();
+      }
+    } catch {
+      // archivo no legible o JSON inválido: continuar con la siguiente ruta
+    }
+  }
+  return null;
+}
+
 export function valorClaveProveedor(id: string): string | null {
   try {
     const clave = claveMaestra();
@@ -93,12 +129,19 @@ export function valorClaveProveedor(id: string): string | null {
   } catch {
     // Si no descifra o no hay clave maestra
   }
+
+  // Si no está en BD, buscar en variables de entorno directas
   const proveedor = proveedorConClave(id);
   if (proveedor) {
     for (const v of proveedor.variables) {
       if (process.env[v]) return process.env[v]!;
     }
   }
+
+  // Buscar en credenciales autenticadas de OpenCode (~/.local/share/opencode/auth.json)
+  const claveAuth = claveDeAuthJson(id);
+  if (claveAuth) return claveAuth;
+
   return null;
 }
 
@@ -115,13 +158,16 @@ export function estadoClaves(): {
       .all()
       .map((f) => [f.proveedor, f.updated_at]),
   );
-  return PROVEEDORES_CON_CLAVE.map((p) => ({
-    id: p.id,
-    etiqueta: p.etiqueta,
-    variable: p.variables[0],
-    configurada: fechas.has(p.id),
-    actualizada_en: fechas.get(p.id) ?? null,
-  }));
+  return PROVEEDORES_CON_CLAVE.map((p) => {
+    const configurada = fechas.has(p.id) || valorClaveProveedor(p.id) !== null;
+    return {
+      id: p.id,
+      etiqueta: p.etiqueta,
+      variable: p.variables[0],
+      configurada,
+      actualizada_en: fechas.get(p.id) ?? (configurada ? "OpenCode / Entorno" : null),
+    };
+  });
 }
 
 // Proveedores cuya clave llega de verdad al CLI y a los agentes (guardada y descifrable).
@@ -136,25 +182,40 @@ export function proveedoresConClave(): Map<string, string> {
 // Variables de las claves guardadas, listas para el entorno de un agente o de `opencode models`.
 // Una clave que no descifra se omite sin mostrar nada. Nunca lanza error.
 export function entornoProveedores(): Record<string, string> {
+  const entorno: Record<string, string> = {};
+
+  // Primero las claves descifradas de provider_keys (tienen prioridad si fueron fijadas en Telo)
   try {
     const clave = claveMaestra();
-    if (!clave) return {};
-    const filas = db
-      .query<FilaClave & { proveedor: string }, []>("SELECT proveedor, iv, tag, value_enc FROM provider_keys")
-      .all();
-    const entorno: Record<string, string> = {};
-    for (const fila of filas) {
-      const proveedor = proveedorConClave(fila.proveedor);
-      if (!proveedor) continue;
-      try {
-        const valor = descifrar(clave, fila, textoAsociado(proveedor.id));
-        for (const variable of proveedor.variables) entorno[variable] = valor;
-      } catch {
-        // Una clave que no descifra se omite: no se registra su contenido ni su nombre.
+    if (clave) {
+      const filas = db
+        .query<FilaClave & { proveedor: string }, []>("SELECT proveedor, iv, tag, value_enc FROM provider_keys")
+        .all();
+      for (const fila of filas) {
+        const proveedor = proveedorConClave(fila.proveedor);
+        if (!proveedor) continue;
+        try {
+          const valor = descifrar(clave, fila, textoAsociado(proveedor.id));
+          for (const variable of proveedor.variables) entorno[variable] = valor;
+        } catch {
+          // Una clave que no descifra se omite
+        }
       }
     }
-    return entorno;
   } catch {
-    return {};
+    // ignorar error de BD
   }
+
+  // Para proveedores configurados mediante auth.json o variables de entorno que no estuvieran en BD:
+  for (const p of PROVEEDORES_CON_CLAVE) {
+    if (p.variables.some((v) => entorno[v])) continue;
+    const val = valorClaveProveedor(p.id);
+    if (val) {
+      for (const variable of p.variables) {
+        entorno[variable] = val;
+      }
+    }
+  }
+
+  return entorno;
 }

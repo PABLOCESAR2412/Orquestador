@@ -33,6 +33,20 @@ const PROVEEDOR_LABEL: Record<string, string> = {
 export const nombreProveedor = (id: string) =>
   PROVEEDOR_LABEL[id] ?? (id ? id.charAt(0).toUpperCase() + id.slice(1) : "Otro");
 
+export function proveedorDeModelo(modelo: string | null): string {
+  if (!modelo) return "google";
+  const m = modelo.toLowerCase();
+  if (m.startsWith("google/") || m.includes("/google/") || m.includes("gemini") || m.includes("argon")) return "google";
+  if (m.startsWith("codex/") || m === "codex" || m.includes("/codex/")) return "codex";
+  if (m.startsWith("openai/") || m.includes("/openai/")) return "openai";
+  if (m.startsWith("anthropic/") || m.includes("claude")) return "anthropic";
+  if (m.startsWith("groq/") || m.includes("/groq/")) return "groq";
+  if (m.startsWith("nvidia/") || m.includes("/nvidia/")) return "nvidia";
+  if (m.startsWith("deepseek/") || m.includes("deepseek")) return "deepseek";
+  if (m.includes("/")) return m.split("/")[0];
+  return "google";
+}
+
 export const TIER_LABEL: Record<CostTier, string> = {
   gratis: "Gratis",
   economico: "Económico",
