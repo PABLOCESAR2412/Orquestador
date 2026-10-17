@@ -164,8 +164,8 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
 
     db.query("UPDATE conversations SET model='opencode/modelo-b', effort='high' WHERE id=?").run(id);
     expect((await enviar(id, "CAMBIO-MODELO")).status).toBe(202);
-    await esperar(() => mensajes(id).some((m) => m.role === "assistant"));
-    expect(mensajes(id).find((m) => m.role === "assistant")?.content).toContain(
+    await esperar(() => mensajes(id).filter((m) => m.role === "assistant").length === 2);
+    expect(mensajes(id).filter((m) => m.role === "assistant").at(-1)?.content).toContain(
       "modelo=opencode/modelo-b;sesion=nueva;variante=high;historial=si",
     );
     expect(db.query<{ runner_session_model: string }, [string]>(
@@ -174,8 +174,8 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
 
     db.query("UPDATE conversations SET effort='low' WHERE id=?").run(id);
     expect((await enviar(id, "CAMBIO-MODELO")).status).toBe(202);
-    await esperar(() => mensajes(id).filter((m) => m.role === "assistant").length === 2);
-    expect(mensajes(id).filter((m) => m.role === "assistant")[1]?.content).toContain(
+    await esperar(() => mensajes(id).filter((m) => m.role === "assistant").length === 3);
+    expect(mensajes(id).filter((m) => m.role === "assistant").at(-1)?.content).toContain(
       "modelo=opencode/modelo-b;sesion=ses_turno01;variante=low;historial=no",
     );
   });
