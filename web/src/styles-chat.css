@@ -37,6 +37,7 @@
 }
 .tl-chat-archivo-cabecera > .tl-accion-icono { width: 44px; height: 44px; }
 .tl-chat-archivo-titulo { min-width: 0; flex: 1 1 auto; }
+.tl-chat-archivo-nombre { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .tl-chat-archivo-titulo h2 {
   margin: 0;
   overflow: hidden;
@@ -54,6 +55,21 @@
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.tl-chat-archivo-tipo,
+.tl-archivo-chip-tipo {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 2px 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--file-link);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.2;
 }
 .tl-chat-archivo-estado,
 .tl-chat-archivo-nota {
@@ -891,16 +907,20 @@
 
 /* Móvil: cabecera y compositor compactos, sin perder controles */
 @media (max-width: 760px) {
-  .tl-chat-con-archivo { display: flex; }
+  .tl-chat-con-archivo { display: flex; flex-direction: column; }
   .tl-chat-con-archivo > .tl-chat-cabecera,
   .tl-chat-con-archivo > .tl-hilo,
   .tl-chat-con-archivo > .tl-composer { width: 100%; }
   .tl-chat-con-archivo > .tl-hilo,
   .tl-chat-con-archivo > .tl-composer { min-height: 0; }
   .tl-chat-archivo-panel {
-    position: absolute;
-    z-index: 5;
-    inset: 0;
+    position: relative;
+    z-index: auto;
+    inset: auto;
+    flex: 0 0 min(34dvh, 320px);
+    min-height: 200px;
+    overflow: hidden;
+    border-top: 1px solid var(--line);
     border-left: 0;
   }
   .tl-archivo-chip-abrir,
@@ -938,6 +958,8 @@
 
 /* Mensajes: Markdown del agente (títulos, listas, citas, tablas, enlaces) */
 .tl-md { min-width: 0; }
+.tl-md:has(.tl-archivo-chip:hover),
+.tl-md:has(.tl-archivo-chip:focus-within) { position: relative; z-index: 19; }
 .tl-md > :first-child { margin-top: 0; }
 .tl-md > :last-child { margin-bottom: 0; }
 .tl-md p { margin: 0 0 12px; }
@@ -1651,6 +1673,7 @@
    ========================================================================== */
 
 .tl-archivo-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
   vertical-align: middle;
@@ -1666,9 +1689,11 @@
 }
 
 .tl-archivo-chip:hover {
+  z-index: 20;
   background: rgba(255, 255, 255, 0.09);
   border-color: rgba(255, 255, 255, 0.25);
 }
+.tl-archivo-chip:focus-within { z-index: 20; }
 .tl-archivo-chip-abrir,
 .tl-archivo-chip-copiar {
   display: inline-flex;
@@ -1681,6 +1706,7 @@
   font: inherit;
 }
 .tl-archivo-chip-abrir { gap: 5px; text-align: left; }
+.tl-archivo-chip-abrir:focus-visible { outline: 2px solid var(--file-link); outline-offset: 2px; border-radius: 3px; }
 .tl-archivo-chip-copiar { padding: 1px 4px; color: var(--ink-3); font-size: 9px; }
 .tl-archivo-chip-copiar:hover { color: var(--ink); }
 .tl-archivo-chip-abrir-etiqueta {
@@ -1688,6 +1714,43 @@
   color: var(--ink-3);
   font-family: var(--font);
   font-size: 9px;
+}
+.tl-archivo-chip-tooltip {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  bottom: calc(100% + 7px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: max-content;
+  max-width: min(360px, calc(100vw - 40px));
+  padding: 9px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: var(--font);
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(3px);
+  transition: opacity 120ms ease, transform 120ms ease, visibility 120ms;
+  pointer-events: none;
+}
+.tl-archivo-chip-tooltip strong { color: var(--ink); font-size: 12px; }
+.tl-archivo-chip-tooltip code {
+  overflow-wrap: anywhere;
+  color: var(--file-link);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.tl-archivo-chip:hover .tl-archivo-chip-tooltip,
+.tl-archivo-chip:focus-within .tl-archivo-chip-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 .tl-archivo-chip.is-copiado {

@@ -539,9 +539,9 @@ export function ChatPage() {
       }
       else return;
     }
-    if (agenteOcupado || enviandoActual || errorCola || cola.length === 0) return;
+    if (!colaActiva || agenteOcupado || enviandoActual || errorCola || cola.length === 0) return;
     iniciarEnvio({ id: selectedId, content: cola[0].texto, colaId: cola[0].id });
-  }, [selectedId, agenteOcupado, enviandoActual, errorCola, cola, lista]);
+  }, [selectedId, colaActiva, agenteOcupado, enviandoActual, errorCola, cola, lista]);
 
   // Vuelve a enviar el mensaje del usuario que precede a una respuesta.
   const reintentar = (mensajeId: string) => {

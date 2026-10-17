@@ -11,12 +11,19 @@ const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
   return new Response(path.startsWith(root) && extname(path) && await file.exists() ? file : Bun.file(resolve(root, "index.html")));
 } });
 const base = `http://127.0.0.1:${server.port}`;
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({
+  headless: true,
+  ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}),
+});
 mkdirSync("scratch/capturas-ci", { recursive: true });
 try {
   for (const width of [390, 1440]) {
     const context = await browser.newContext({ viewport: { width, height: 1000 }, serviceWorkers: "block", permissions: ["clipboard-read", "clipboard-write"] });
     const page = await context.newPage();
+    await page.addInitScript(() => {
+      localStorage.setItem("telo:cola:c1", JSON.stringify([{ id: "q1", texto: "Mensaje reservado de prueba", creado: Date.now() }]));
+      localStorage.setItem("telo:cola-activa:c1", "false");
+    });
     page.setDefaultTimeout(10_000);
     const errors = [];
     page.on("pageerror", error => { errors.push(error.message); console.error(error.message); });
@@ -193,6 +200,15 @@ try {
     await page.keyboard.press("Tab");
     assert.equal(await page.locator(".tl-composer-caja").evaluate(el => getComputedStyle(el).outlineWidth), "2px");
     const referenciaArchivo = page.locator(".tl-archivo-chip-abrir").filter({ hasText: "server/src/ejecutar.ts:3" });
+    assert.equal(await referenciaArchivo.locator(".tl-archivo-chip-tipo").textContent(), "TS");
+    await referenciaArchivo.hover();
+    const ayudaArchivo = page.getByRole("tooltip");
+    await ayudaArchivo.waitFor();
+    assert.equal(await ayudaArchivo.isVisible(), true);
+    assert.match(await ayudaArchivo.textContent(), /ejecutar\.ts/);
+    assert.match(await ayudaArchivo.textContent(), /TypeScript/);
+    assert.match(await ayudaArchivo.textContent(), /server\/src/);
+    assert.match(await ayudaArchivo.textContent(), /Línea 3/);
     if (width === 390) {
       const objetivoReferencia = await referenciaArchivo.boundingBox();
       assert.ok(objetivoReferencia && objetivoReferencia.width >= 44 && objetivoReferencia.height >= 44);
@@ -200,6 +216,15 @@ try {
     await referenciaArchivo.click();
     const vistaArchivo = page.getByRole("complementary", { name: "Vista del archivo server/src/ejecutar.ts" });
     await vistaArchivo.waitFor();
+    assert.equal(await vistaArchivo.locator(".tl-chat-archivo-tipo").textContent(), "TS");
+    const colaVisible = page.locator(".tl-cola");
+    await colaVisible.locator(".tl-cola-texto").waitFor();
+    const cajaCola = await colaVisible.boundingBox();
+    const cajaVisor = await vistaArchivo.boundingBox();
+    assert.ok(cajaCola && cajaVisor);
+    if (width === 390) assert.ok(cajaCola.y + cajaCola.height <= cajaVisor.y, "la cola debe quedar visible antes del visor móvil");
+    else assert.ok(cajaCola.x + cajaCola.width <= cajaVisor.x, "la cola debe quedar en la columna del chat, junto al visor");
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("telo:cola:c1") ?? "[]").length), 1, "la cola pausada debe conservar el mensaje");
     const cerrarVistaArchivo = vistaArchivo.getByRole("button", { name: "Cerrar vista de archivo", exact: true });
     if (width === 390) {
       const objetivoCerrar = await cerrarVistaArchivo.boundingBox();
@@ -214,6 +239,8 @@ try {
     await vistaArchivo.waitFor({ state: "detached" });
     await page.waitForFunction(() => document.activeElement?.classList.contains("tl-archivo-chip-abrir"));
     assert.equal(await page.locator(".tl-archivo-chip-abrir").filter({ hasText: "server/src/ejecutar.ts:3" }).evaluate(el => el === document.activeElement), true);
+    await colaVisible.getByRole("button", { name: "Quitar mensaje 1 de la cola", exact: true }).click();
+    await colaVisible.waitFor({ state: "detached" });
     const arbolArchivos = page.locator(".tl-codigo").filter({ hasText: "└── src/" });
     assert.equal(await arbolArchivos.getByRole("button", { name: "Aplicar", exact: true }).count(), 0);
     assert.deepEqual(await page.locator(".tl-rail-seccion-titulo").allTextContents(), ["Projects", "Conversations"]);
