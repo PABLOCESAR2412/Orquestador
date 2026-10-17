@@ -50,6 +50,7 @@ export function ModelPicker({
 }: Props) {
   const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders, staleTime: 5 * 60_000 });
   const codexConectado = proveedores.data?.some((proveedor) => proveedor.id === "codex" && proveedor.sesion) ?? false;
+  const codexEnAgente = proveedores.data?.some((proveedor) => proveedor.id === "codex" && proveedor.enAgente) ?? false;
   const catalogoCodex = useQuery({
     queryKey: ["codex-models"],
     queryFn: api.codexModels,
@@ -234,10 +235,21 @@ export function ModelPicker({
               <p className="picker-proveedor-nota">
                 {catalogoCodex.isError
                   ? "No se pudo consultar el catálogo de Codex. Revisa la sesión en Ajustes."
-                  : "Modelos de tu sesión. Telo todavía ejecuta agentes con OpenCode; esta lista es informativa."}
+                  : codexEnAgente
+                    ? "Modelos disponibles a través de tu sesión activa con ChatGPT."
+                    : "Modelos de tu sesión. Telo todavía ejecuta agentes con OpenCode; esta lista es informativa."}
               </p>
               {catalogoCodex.isPending && <p className="picker-cargando" role="status">Consultando modelos de Codex…</p>}
-              {catalogoCodex.data?.models.map((modelo) => <FilaCodex key={modelo.id} modelo={modelo} />)}
+              {catalogoCodex.data?.models.map((modelo) => (
+                <FilaCodex
+                  key={modelo.id}
+                  modelo={modelo}
+                  deshabilitado={!codexEnAgente}
+                  onSelect={seleccionar}
+                  esActual={currentId === `codex/${modelo.id}` || currentId === modelo.id}
+                  esDraft={draftId === `codex/${modelo.id}` || draftId === modelo.id}
+                />
+              ))}
             </section>
           )}
         </div>
@@ -262,15 +274,52 @@ export function ModelPicker({
   );
 }
 
-function FilaCodex({ modelo }: { modelo: ModeloCodex }) {
+function FilaCodex({
+  modelo,
+  deshabilitado,
+  onSelect,
+  esActual,
+  esDraft,
+}: {
+  modelo: ModeloCodex;
+  deshabilitado: boolean;
+  onSelect: (m: ModelInfo) => void;
+  esActual: boolean;
+  esDraft?: boolean;
+}) {
+  const modelInfo: ModelInfo = {
+    id: `codex/${modelo.id}`,
+    provider: "codex",
+    name: modelo.name,
+    inputUsd: 0,
+    outputUsd: 0,
+    context: modelo.context,
+    variants: modelo.variants && modelo.variants.length > 0 ? modelo.variants : ["low", "medium", "high"],
+    free: false,
+    costTier: "medio",
+    costWarning: null,
+    group: "Codex",
+    recommended: true,
+  };
+
   return (
-    <button type="button" className="picker-item picker-item-codex" disabled>
+    <button
+      type="button"
+      className="picker-item picker-item-codex"
+      disabled={deshabilitado}
+      aria-current={esActual || undefined}
+      aria-pressed={esDraft || undefined}
+      onClick={() => onSelect(modelInfo)}
+    >
       <span className="picker-main">
-        <span className="picker-name">{modelo.name}</span>
-        <span className="picker-id">{modelo.id}</span>
+        <span className="picker-nombre-linea">
+          <span className="picker-name">{modelo.name}</span>
+          {esActual && <span className="picker-activo">✓ Activo</span>}
+        </span>
+        <span className="picker-id">{modelInfo.id}</span>
       </span>
       <span className="picker-meta">
-        <span className="picker-price">Solo catálogo</span>
+        <span className="picker-price">{deshabilitado ? "Solo catálogo" : "Cuenta ChatGPT"}</span>
         {modelo.context > 0 && <span className="picker-codex-context">{modelo.context.toLocaleString("es")} tokens</span>}
       </span>
     </button>

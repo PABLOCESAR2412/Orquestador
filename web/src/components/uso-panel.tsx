@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type UsoProveedor } from "../api";
-import { errorText, formatUsd } from "../lib/model";
+import { errorText, formatUsd, proveedorDeModelo } from "../lib/model";
 import { compact } from "./charts";
 import { useDialogo } from "./controls";
 import { CuotasPanel } from "./cuotas-panel";
@@ -16,15 +16,11 @@ type Props = {
 
 type Ventana = { costoUsd: number; tokens: number; llamadas: number };
 
-// Lo que va antes de "/" en el id del modelo es el proveedor.
-const proveedorDe = (modelo: string | null) =>
-  modelo && modelo.includes("/") ? modelo.split("/")[0] : null;
-
 export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [previo] = useState(() => document.activeElement as HTMLElement | null);
   const [anotando, setAnotando] = useState(false);
-  const proveedorId = proveedorDe(modelo);
+  const proveedorId = proveedorDeModelo(modelo);
 
   const cerrar = () => {
     (disparador?.current ?? previo)?.focus();
@@ -65,21 +61,80 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
       </div>
     );
   } else {
-    const registrado = proveedor?.precision === "medida_telo";
+    const googleLive = proveedor?.googleLive ?? (proveedorId === "google" ? uso.data?.googleLive : undefined);
+    const ultimos7d = proveedor?.ultimos7d ?? { costoUsd: 0, tokens: 0, llamadas: 0 };
+    const ultimas5h = proveedor?.ultimas5h ?? { costoUsd: 0, tokens: 0, llamadas: 0 };
     cuerpo = (
       <>
+        {googleLive && (
+          <div className="usage-window" role="region" aria-label="API de Google Gemini en vivo" style={{ borderLeft: googleLive.conectado ? "3px solid var(--ok, #10b981)" : "3px solid var(--error, #ef4444)" }}>
+            <div className="usage-window-heading">
+              <div className="usage-window-copy">
+                <span className="window-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: "8px",
+                      height: "8px",
+                      borderRadius: "50%",
+                      backgroundColor: googleLive.conectado ? "var(--ok, #10b981)" : "var(--error, #ef4444)",
+                    }}
+                  />
+                  Google AI Studio (API en vivo)
+                </span>
+                <span className="window-meta">{googleLive.mensaje}</span>
+              </div>
+              <div className="usage-remaining" aria-hidden="true">
+                <strong>{formatoPorcentaje(googleLive.porcentajeRestante)} %</strong>
+                <span style={{ fontSize: "11px", color: "var(--ink-2)", display: "block" }}>cuota RPD</span>
+              </div>
+            </div>
+            <div className="usage-window-totals" style={{ marginTop: "8px" }}>
+              <div>
+                <span>Peticiones hoy</span>
+                <strong>{googleLive.llamadasHoy} de {googleLive.limiteRpd} RPD</strong>
+              </div>
+              <div>
+                <span>Límite de ritmo</span>
+                <strong>{googleLive.limiteRpm} RPM</strong>
+              </div>
+              <div>
+                <span>Tokens hoy</span>
+                <strong>{compact(googleLive.tokensHoy)}</strong>
+              </div>
+              <div>
+                <span>Gasto estimado</span>
+                <strong>{formatUsd(googleLive.costoHoyUsd)}</strong>
+              </div>
+            </div>
+          </div>
+        )}
         <VentanaSaldo
           titulo="Últimos 7 días"
-          datos={registrado ? proveedor.ultimos7d : null}
+          datos={ultimos7d}
           saldoUsd={proveedor?.cuotaRestanteUsd ?? null}
+          porcentajeFijo={proveedorId === "google" && googleLive ? googleLive.porcentajeRestante : null}
+          textoSaldo={
+            proveedorId === "google" && googleLive && proveedor?.cuotaRestanteUsd === null
+              ? `${googleLive.restantesRpd} RPD disponibles`
+              : null
+          }
         />
         <VentanaSaldo
           titulo="Últimas 5 horas"
-          datos={registrado ? proveedor.ultimas5h : null}
+          datos={ultimas5h}
           saldoUsd={proveedor?.cuotaRestanteUsd ?? null}
+          porcentajeFijo={proveedorId === "google" && googleLive ? googleLive.porcentajeRestante : null}
+          textoSaldo={
+            proveedorId === "google" && googleLive && proveedor?.cuotaRestanteUsd === null
+              ? `${googleLive.restantesRpd} RPD disponibles`
+              : null
+          }
         />
         <p className="usage-note">
-          {proveedor?.cuotaRestanteUsd === null || !proveedor
+          {proveedorId === "google"
+            ? "Métricas en vivo consultadas a Google AI Studio con cuota estándar gratuita (1,500 RPD / 15 RPM). El gasto estimado se calcula según las tarifas oficiales de Google Gemini ($0.075 / $0.30 por millón de tokens)."
+            : proveedor?.cuotaRestanteUsd === null || !proveedor
             ? "Anota el saldo restante para ver porcentajes. Telo no consulta en vivo los límites ni el saldo del proveedor."
             : "Los porcentajes comparan el costo registrado en cada ventana con ese gasto más el saldo anotado restante. Son una estimación de Telo, no la cuota real del proveedor."}
         </p>
@@ -93,7 +148,7 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
       <div className="usage-popover" role="dialog" aria-label="Uso del proveedor" ref={ref}>
         <div className="usage-title-row">
           <span className="usage-title">
-            {proveedor?.nombre ?? proveedorId ?? "Uso de proveedor"}
+            {proveedor?.nombre ?? (proveedorId === "google" ? "Google (Gemini)" : proveedorId ?? "Uso de proveedor")}
           </span>
           <button type="button" className="ghost task-mini-btn" onClick={cerrar}>
             ✕
@@ -133,18 +188,28 @@ function VentanaSaldo({
   titulo,
   datos,
   saldoUsd,
+  porcentajeFijo,
+  textoSaldo,
 }: {
   titulo: string;
   datos: Ventana | null;
   saldoUsd: number | null;
+  porcentajeFijo?: number | null;
+  textoSaldo?: string | null;
 }) {
   const gastoUsd = datos?.costoUsd ?? 0;
-  const gastado = porcentajeGastado(gastoUsd, saldoUsd);
-  const restante = gastado === null ? null : 100 - gastado;
+  const gastadoCalc = porcentajeGastado(gastoUsd, saldoUsd);
+  const restante = porcentajeFijo !== undefined && porcentajeFijo !== null
+    ? porcentajeFijo
+    : gastadoCalc === null
+    ? null
+    : 100 - gastadoCalc;
   const circunferencia = 2 * Math.PI * 8;
   const etiquetaAccesible = restante === null
     ? `${titulo}: ${saldoUsd === null ? "saldo sin anotar" : "porcentaje no disponible"}`
     : `${titulo}: ${formatoPorcentaje(restante)} % restante`;
+
+  const tieneUso = datos && (datos.tokens > 0 || datos.llamadas > 0);
 
   return (
     <div
@@ -159,7 +224,9 @@ function VentanaSaldo({
         <div className="usage-window-copy">
           <span className="window-label">{titulo}</span>
           <span className="window-meta">
-            {datos ? `${compact(datos.tokens)} tokens · ${datos.llamadas} llamadas` : "Sin uso registrado"}
+            {tieneUso
+              ? `${compact(datos.tokens)} tokens · ${datos.llamadas} llamada${datos.llamadas === 1 ? "" : "s"}`
+              : "0 tokens · 0 llamadas"}
           </span>
         </div>
         <div className="usage-remaining" aria-hidden="true">
@@ -181,11 +248,13 @@ function VentanaSaldo({
       <div className="usage-window-totals">
         <div>
           <span>Gastado</span>
-          <strong>{formatUsd(gastoUsd)}{gastado !== null && ` · ${formatoPorcentaje(gastado)} %`}</strong>
+          <strong>{formatUsd(gastoUsd)}{gastadoCalc !== null && ` · ${formatoPorcentaje(gastadoCalc)} %`}</strong>
         </div>
         <div>
           <span>Saldo restante</span>
-          <strong>{saldoUsd === null ? "Sin anotar" : formatUsd(saldoUsd)}{restante !== null && ` · ${formatoPorcentaje(restante)} %`}</strong>
+          <strong>
+            {textoSaldo ?? (saldoUsd === null ? "Sin anotar" : `${formatUsd(saldoUsd)}${restante !== null ? ` · ${formatoPorcentaje(restante)} %` : ""}`)}
+          </strong>
         </div>
       </div>
     </div>

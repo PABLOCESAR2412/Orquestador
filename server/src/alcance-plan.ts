@@ -85,7 +85,8 @@ export async function comprobarAlcance(snapshot: AlcancePlan): Promise<string[]>
     ])
   )
     .split("\0")
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((ruta) => !ruta.startsWith(".opencode/") && !ruta.startsWith(".opencode"));
   return cambiados.filter((ruta) => {
     try {
       rutaDelPlan(ruta);

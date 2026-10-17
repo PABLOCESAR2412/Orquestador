@@ -49,6 +49,12 @@ type Conversation = {
   pinned_at: string | null;
   cuota_modelo: string | null;
   created_at: string;
+  last_message_at?: string | null;
+  ocupada?: boolean;
+  en_proceso?: boolean;
+  pendiente_aprobacion?: boolean;
+  completada?: boolean;
+  estado_tarea?: "en_proceso" | "pendiente_aprobacion" | "completada" | null;
 };
 type Message = {
   id: string;
@@ -64,11 +70,40 @@ export const chat = new Hono();
 // Anclados primero (el más reciente anclado, arriba); luego los demás por fecha.
 chat.get("/conversations", (c) => {
   const rows = db
-    .query<Conversation, []>(
-      "SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name, c.pinned_at, c.cuota_modelo, c.created_at FROM conversations c LEFT JOIN projects p ON p.id = c.project_id ORDER BY (c.pinned_at IS NULL), c.pinned_at DESC, c.created_at DESC, c.rowid DESC",
+    .query<Conversation & { last_msg_at: string | null }, []>(
+      "SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name, c.pinned_at, c.cuota_modelo, c.created_at, (SELECT MAX(created_at) FROM messages WHERE conversation_id = c.id) AS last_msg_at FROM conversations c LEFT JOIN projects p ON p.id = c.project_id ORDER BY (c.pinned_at IS NULL), c.pinned_at DESC, c.created_at DESC, c.rowid DESC",
     )
     .all();
-  return c.json(rows.map((r) => ({ ...r, ocupada: chatOcupado(r.id) })));
+
+  return c.json(
+    rows.map((r) => {
+      const tarea = db
+        .query<{ status: string; finished_at: string | null }, [string]>(
+          "SELECT status, finished_at FROM tasks WHERE conversation_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        )
+        .get(r.id);
+
+      const enCurso = conversacionEnCurso(r.id) || (tarea ? ["queued", "analyzing", "running"].includes(tarea.status) : false);
+      const pendienteAprobacion = tarea?.status === "waiting_approval";
+      const completada = tarea?.status === "done";
+
+      return {
+        ...r,
+        last_message_at: r.last_msg_at || r.created_at,
+        ocupada: chatOcupado(r.id),
+        en_proceso: Boolean(enCurso),
+        pendiente_aprobacion: Boolean(pendienteAprobacion),
+        completada: Boolean(completada && !enCurso && !pendienteAprobacion),
+        estado_tarea: enCurso
+          ? "en_proceso"
+          : pendienteAprobacion
+            ? "pendiente_aprobacion"
+            : completada
+              ? "completada"
+              : null,
+      };
+    }),
+  );
 });
 
 // POST /api/conversations  body: { title?, projectId? }

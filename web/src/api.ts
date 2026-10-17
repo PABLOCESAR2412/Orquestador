@@ -8,6 +8,11 @@ export type Conversation = {
   pinned_at?: string | null;
   // Hay un mensaje en curso (puede venir de otro dispositivo).
   ocupada?: boolean;
+  en_proceso?: boolean;
+  pendiente_aprobacion?: boolean;
+  completada?: boolean;
+  estado_tarea?: "en_proceso" | "pendiente_aprobacion" | "completada" | null;
+  last_message_at?: string | null;
   // Modelo que se quedó sin cuota en el último turno: el chat espera a que se cambie de modelo y se siga.
   cuota_modelo?: string | null;
   created_at: string;
@@ -41,6 +46,8 @@ export type Project = {
   chats?: number;
   tareas?: number;
   ultima_actividad?: string | null;
+  en_proceso?: boolean;
+  pendiente_aprobacion?: boolean;
 };
 
 // Revisión de un repo de GitHub sin clave: público o privado (un nombre mal escrito también parece privado).
@@ -149,6 +156,20 @@ export type TaskDiff =
       identidad_git?: string;
     };
 
+export type GoogleLiveMetrics = {
+  conectado: boolean;
+  estado: "activo" | "agotado" | "sin_clave" | "clave_invalida" | "desconectado";
+  mensaje: string;
+  limiteRpd: number;
+  llamadasHoy: number;
+  restantesRpd: number;
+  porcentajeRestante: number;
+  limiteRpm: number;
+  tokensHoy: number;
+  costoHoyUsd: number;
+  ultimaComprobacion: string;
+};
+
 export type UsoProveedor = {
   id: string;
   nombre: string;
@@ -156,6 +177,7 @@ export type UsoProveedor = {
   ultimos7d: { costoUsd: number; tokens: number; llamadas: number };
   cuotaRestanteUsd: number | null;
   precision: "medida_telo" | "sin_datos";
+  googleLive?: GoogleLiveMetrics;
 };
 
 // Estado de la unidad orquestador en systemd. Fuera de systemd (desarrollo), disponible es false.
@@ -510,6 +532,8 @@ export const api = {
       messageId?: string;
       message?: string;
       title?: string;
+      pr_number?: number;
+      pr_url?: string;
     },
   ) =>
     request<RepositoryAction>(`/api/projects/${id}/acciones`, {
@@ -530,10 +554,10 @@ export const api = {
     request<{ ok: boolean }>("/api/login", { method: "POST", body: JSON.stringify({ clave }) }),
   logout: () => request<{ ok: boolean }>("/api/logout", { method: "POST", body: "{}" }),
   listConversations: () => request<Conversation[]>("/api/conversations"),
-  createConversation: (projectId?: string | null) =>
+  createConversation: (projectId?: string | null, title?: string) =>
     request<Conversation>("/api/conversations", {
       method: "POST",
-      body: JSON.stringify({ projectId: projectId ?? null }),
+      body: JSON.stringify({ projectId: projectId ?? null, title }),
     }),
   listMessages: (id: string) => request<Message[]>(`/api/conversations/${id}/messages`),
   // Pasos del agente de un turno (el id es el del mensaje del usuario).
@@ -631,7 +655,7 @@ export const api = {
     request<{ ok: boolean }>(`/api/programadas/${id}`, { method: "DELETE" }),
   runProgramada: (id: string) =>
     request<Task>(`/api/programadas/${id}/ejecutar`, { method: "POST", body: "{}" }),
-  usage: () => request<{ generado: string; proveedores: UsoProveedor[] }>("/api/uso"),
+  usage: () => request<{ generado: string; proveedores: UsoProveedor[]; googleLive?: GoogleLiveMetrics }>("/api/uso"),
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
   serverService: () => request<ServicioEstado>("/api/servidor/servicio"),
   serverLogs: (lineas = 100) => request<RegistrosServidor>(`/api/servidor/logs?lineas=${lineas}`),

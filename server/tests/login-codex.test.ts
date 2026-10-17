@@ -60,7 +60,9 @@ afterAll(() => {
   process.env.PATH = PATH_ORIGINAL;
   if (HOME_ORIGINAL === undefined) delete process.env.HOME;
   else process.env.HOME = HOME_ORIGINAL;
-  rmSync(RAIZ, { recursive: true, force: true });
+  try {
+    rmSync(RAIZ, { recursive: true, force: true });
+  } catch {}
 });
 
 describe("login de Codex", () => {

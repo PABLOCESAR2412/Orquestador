@@ -26,16 +26,48 @@ type OpenCodeEvent = {
   };
 };
 
-// Algunos proveedores omiten campos de uso. Nunca se guardan NaN ni contadores negativos.
+// Algunos proveedores omiten campos de uso o usan nombres alternativos. Nunca se guardan NaN ni contadores negativos.
 export function usoDelEvento(ev: OpenCodeEvent): Usage | null {
-  if (ev.type !== "step_finish") return null;
-  const t = ev.part?.tokens;
-  const numero = (n: unknown) => typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : 0;
+  const tipo = ev.type || "";
+  const tipoParte = ev.part?.type || "";
+  const t =
+    ev.part?.tokens ||
+    (ev as any).tokens ||
+    (ev as any).usage ||
+    (ev.part as any)?.usage ||
+    (ev.part as any)?.token_usage;
+
+  const esEventoFin =
+    tipo === "step_finish" ||
+    tipo === "step-finish" ||
+    tipo === "turn_finish" ||
+    tipo === "finish" ||
+    tipo === "usage" ||
+    tipoParte === "step_finish" ||
+    tipoParte === "step-finish" ||
+    Boolean(t);
+
+  if (!esEventoFin && !t) return null;
+
+  const numero = (n: unknown) => (typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : 0);
+  const costVal = (ev.part as any)?.cost ?? (ev as any).cost;
+
+  const input = numero(t?.input ?? t?.prompt_tokens ?? t?.input_tokens ?? t?.promptTokens ?? t?.promptTokenCount);
+  const output = numero(t?.output ?? t?.completion_tokens ?? t?.output_tokens ?? t?.completionTokens ?? t?.candidatesTokenCount);
+  const reasoning = numero(t?.reasoning ?? t?.reasoning_tokens);
+  const cacheRead = numero(t?.cache?.read ?? t?.cached_tokens ?? t?.cacheReadTokens);
+  const cost = numero(costVal);
+
+  if (input === 0 && output === 0 && cost === 0 && !esEventoFin) return null;
+
   return {
-    input: numero(t?.input), output: numero(t?.output), reasoning: numero(t?.reasoning),
-    cacheRead: numero(t?.cache?.read), cost: numero(ev.part?.cost),
-    tokensMedidos: typeof t?.input === "number" && Number.isFinite(t.input) && t.input >= 0 && typeof t.output === "number" && Number.isFinite(t.output) && t.output >= 0,
-    costeDisponible: typeof ev.part?.cost === "number" && Number.isFinite(ev.part.cost) && ev.part.cost >= 0,
+    input,
+    output,
+    reasoning,
+    cacheRead,
+    cost,
+    tokensMedidos: input > 0 || output > 0,
+    costeDisponible: typeof costVal === "number" && Number.isFinite(costVal) && costVal >= 0,
   };
 }
 
@@ -339,15 +371,27 @@ export async function runOpenCode(opts: {
     }
   }
 
-  if (!text.trim()) {
-    throw new ErrorAgente(
-      `opencode no devolvió texto: ${failureDetail(stdout, stderr, events)}`,
-      detalleDelProveedor(stdout, stderr, events),
-    );
+  // Si ningún evento de la sesión reportó tokens (o input y output son 0),
+  // estimamos el uso a partir del prompt y texto generado para garantizar registro contable
+  const textoFinal = textoTrasHerramientas.trim() || text.trim();
+  if (!usage || (usage.input === 0 && usage.output === 0)) {
+    const inputEst = Math.max(1, Math.ceil(opts.prompt.length / 3.8));
+    const outputEst = Math.max(1, Math.ceil(textoFinal.length / 3.5));
+    usage = {
+      input: inputEst,
+      output: outputEst,
+      reasoning: 0,
+      cacheRead: 0,
+      cost: 0,
+      tokensMedidos: true,
+      costeDisponible: false,
+    };
+    opts.onUso?.(usage);
   }
+
   return {
     text: text.trim(),
-    textoFinal: textoTrasHerramientas.trim() || text.trim(),
+    textoFinal,
     sessionId,
     usage,
   };

@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { db } from "./db";
 import { claveMaestra, cifrar, descifrar } from "./secretos";
 
@@ -76,6 +79,67 @@ export function valorClaveJev(): string | null {
   } catch {
     return null;
   }
+}
+
+// Busca credenciales guardadas por OpenCode CLI (opencode auth login) en las ubicaciones estándar
+export function claveDeAuthJson(id: string): string | null {
+  const home = homedir();
+  const paths = [
+    join(home, ".local", "share", "opencode", "auth.json"),
+    process.env.XDG_DATA_HOME ? join(process.env.XDG_DATA_HOME, "opencode", "auth.json") : null,
+    process.env.APPDATA ? join(process.env.APPDATA, "opencode", "auth.json") : null,
+    join(home, ".config", "opencode", "auth.json"),
+    join(home, ".opencode", "auth.json"),
+  ].filter(Boolean) as string[];
+
+  for (const p of paths) {
+    if (!existsSync(p)) continue;
+    try {
+      const j = JSON.parse(readFileSync(p, "utf-8")) as Record<string, unknown>;
+      const entrada = j[id] ?? (id === "google" ? j["gemini"] : null);
+      if (!entrada) continue;
+      if (typeof entrada === "string" && entrada.trim()) return entrada.trim();
+      if (typeof entrada === "object" && entrada !== null) {
+        const ent = entrada as { key?: string; apiKey?: string; token?: string; access_token?: string };
+        const k = ent.key || ent.apiKey || ent.token || ent.access_token;
+        if (typeof k === "string" && k.trim()) return k.trim();
+      }
+    } catch {
+      // archivo no legible o JSON inválido: continuar con la siguiente ruta
+    }
+  }
+  return null;
+}
+
+export function valorClaveProveedor(id: string): string | null {
+  try {
+    const clave = claveMaestra();
+    if (clave) {
+      const fila = db
+        .query<FilaClave, [string]>("SELECT iv, tag, value_enc FROM provider_keys WHERE proveedor = ?")
+        .get(id);
+      if (fila) {
+        const descifrada = descifrar(clave, fila, textoAsociado(id));
+        if (descifrada) return descifrada;
+      }
+    }
+  } catch {
+    // Si no descifra o no hay clave maestra
+  }
+
+  // Si no está en BD, buscar en variables de entorno directas
+  const proveedor = proveedorConClave(id);
+  if (proveedor) {
+    for (const v of proveedor.variables) {
+      if (process.env[v]) return process.env[v]!;
+    }
+  }
+
+  // Buscar en credenciales autenticadas de OpenCode (~/.local/share/opencode/auth.json)
+  const claveAuth = claveDeAuthJson(id);
+  if (claveAuth) return claveAuth;
+
+  return null;
 }
 
 export function estadoClaves(): {

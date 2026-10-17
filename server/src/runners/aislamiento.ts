@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { config } from "../config";
 import { hallarEjecutable } from "../ejecutable";
@@ -24,15 +24,16 @@ export class AislamientoError extends Error {
 // server/src/runners -> raíz del repo
 const RAIZ_REPO = resolve(import.meta.dir, "../../..");
 
-// Estado de OpenCode dentro del HOME: lectura y escritura.
+// Estado de OpenCode y herramientas de agente dentro del HOME: lectura y escritura.
 const ESTADO_OPENCODE = [
   ".local/share/opencode",
   ".config/opencode",
   ".local/state/opencode",
   ".cache/opencode",
+  ".codex",
 ];
 // Herramientas instaladas en el HOME: solo lectura.
-const HERRAMIENTAS = [".local/bin", ".opencode", ".bun", ".gitconfig", ".config/git"];
+const HERRAMIENTAS = [".local/bin", ".opencode", ".bun", ".gitconfig", ".config/git", ".codex"];
 
 export function aislamientoActivo(): boolean {
   return process.env.TELO_AISLAMIENTO !== "desactivado";
@@ -150,6 +151,16 @@ export function prefijoAislamiento(cwd: string, soloLectura = false): string[] {
 
   // La carpeta de trabajo es lo único con escritura fuera del estado de OpenCode.
   args.push(soloLectura ? "--ro-bind" : "--bind", carpeta, carpeta);
+  // Si la ejecución es en solo lectura (como el analizador), OpenCode aún necesita escribir
+  // su configuración runtime, sesión y su .opencode/.gitignore dentro del workspace.
+  // Montamos .opencode con permisos de escritura superpuestos para evitar fallos de EROFS.
+  const opencodeEnCwd = join(carpeta, ".opencode");
+  try {
+    mkdirSync(opencodeEnCwd, { recursive: true });
+  } catch {}
+  if (soloLectura && existsSync(opencodeEnCwd)) {
+    args.push("--bind-try", opencodeEnCwd, opencodeEnCwd);
+  }
   // El servidor es el único que escribe Git: commit y push pasan por aprobación.
   const git = join(carpeta, ".git");
   if (existsSync(git)) {

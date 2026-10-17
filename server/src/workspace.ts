@@ -306,6 +306,29 @@ async function existeCommit(clon: string, sha: string): Promise<boolean> {
 // asegurando que las skills locales y no commiteadas estén disponibles para el agente.
 function sincronizarSkillsDeProyecto(repoPath: string, clon: string): void {
   try {
+    const opencodeDir = join(clon, ".opencode");
+    mkdirSync(opencodeDir, { recursive: true });
+
+    // Pre-crea .opencode/.gitignore para que OpenCode no intente crearlo sobre un sistema de archivos solo lectura
+    const gitignorePath = join(opencodeDir, ".gitignore");
+    if (!existsSync(gitignorePath)) {
+      writeFileSync(gitignorePath, "*\n!.gitignore\n!skills/\n", "utf-8");
+    }
+
+    // Asegura que Git en el clon ignore completamente la carpeta .opencode para que las skills
+    // sincronizadas no aparezcan jamás como archivos modificados o pendientes de commit en el repo del proyecto.
+    const gitDir = join(clon, ".git");
+    if (existsSync(gitDir)) {
+      const infoDir = join(gitDir, "info");
+      mkdirSync(infoDir, { recursive: true });
+      const excludeFile = join(infoDir, "exclude");
+      let contenido = existsSync(excludeFile) ? readFileSync(excludeFile, "utf-8") : "";
+      if (!contenido.includes(".opencode")) {
+        contenido = `${contenido.trim()}\n.opencode\n.opencode/\n`;
+        writeFileSync(excludeFile, contenido.trim() + "\n", "utf-8");
+      }
+    }
+
     const skillsOpencode = join(repoPath, ".opencode", "skills");
     if (existsSync(skillsOpencode)) {
       const destOpencode = join(clon, ".opencode", "skills");
@@ -410,24 +433,30 @@ async function estadoDelClon(ctx: Contexto): Promise<{
   truncado: boolean;
   hash: string | null;
 }> {
+  await gitSeguro(["reset", "HEAD", "--", ".opencode"], { cwd: ctx.clon });
   await gitOkSeguro(["add", "-A"], { cwd: ctx.clon, timeoutMs: TIEMPO_ESTADO_MS });
-  const nombres = await gitOkSeguro(["diff", "--cached", "-M", "--name-status", "-z", ctx.base], {
-    cwd: ctx.clon,
-  });
-  const numeros = await gitOkSeguro(["diff", "--cached", "-M", "--numstat", "-z", ctx.base], {
-    cwd: ctx.clon,
-  });
-  const archivos = combinar(nombres, numeros);
+  await gitSeguro(["reset", "HEAD", "--", ".opencode"], { cwd: ctx.clon });
+  const nombres = await gitOkSeguro(
+    ["diff", "--cached", "-M", "--name-status", "-z", ctx.base, "--", ":!.opencode", ":!.opencode/*"],
+    { cwd: ctx.clon },
+  );
+  const numeros = await gitOkSeguro(
+    ["diff", "--cached", "-M", "--numstat", "-z", ctx.base, "--", ":!.opencode", ":!.opencode/*"],
+    { cwd: ctx.clon },
+  );
+  const archivos = combinar(nombres, numeros).filter(
+    (a) => !a.ruta.startsWith(".opencode/") && !a.ruta.startsWith(".opencode"),
+  );
   if (archivos.length === 0)
     return { archivos, diff: "", completo: "", truncado: false, hash: null };
 
   const texto = await gitOkSeguro(
-    ["diff", "--cached", "-M", "--no-color", "--no-ext-diff", "--no-textconv", ctx.base],
+    ["diff", "--cached", "-M", "--no-color", "--no-ext-diff", "--no-textconv", ctx.base, "--", ":!.opencode", ":!.opencode/*"],
     { cwd: ctx.clon },
   );
   // El texto de un binario no muestra su contenido; el hash de los blobs (--raw) sí lo cubre.
   const raw = await gitOkSeguro(
-    ["diff", "--cached", "-M", "--raw", "--no-abbrev", "-z", ctx.base],
+    ["diff", "--cached", "-M", "--raw", "--no-abbrev", "-z", ctx.base, "--", ":!.opencode", ":!.opencode/*"],
     { cwd: ctx.clon },
   );
   const hash = createHash("sha256").update(texto).update("\0").update(raw).digest("hex");

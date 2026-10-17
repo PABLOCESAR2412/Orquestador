@@ -208,12 +208,22 @@ projects.get("/projects", (c) => {
     )
     .all();
   return c.json(
-    rows.map((row) => ({
-      ...aProyecto(row),
-      chats: row.chats,
-      tareas: row.tareas,
-      ultima_actividad: row.ultima_actividad || null,
-    })),
+    rows.map((row) => {
+      const tareaActiva = db
+        .query<{ status: string }, [string]>(
+          "SELECT status FROM tasks WHERE project_id=? AND status IN ('queued','analyzing','running','waiting_approval') ORDER BY created_at DESC LIMIT 1",
+        )
+        .get(row.id);
+
+      return {
+        ...aProyecto(row),
+        chats: row.chats,
+        tareas: row.tareas,
+        ultima_actividad: row.ultima_actividad || null,
+        en_proceso: tareaActiva ? ["queued", "analyzing", "running"].includes(tareaActiva.status) : false,
+        pendiente_aprobacion: tareaActiva?.status === "waiting_approval" || false,
+      };
+    }),
   );
 });
 

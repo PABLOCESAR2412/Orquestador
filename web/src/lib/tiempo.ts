@@ -51,3 +51,22 @@ export function haceTexto(sql: string | null, ahora = Date.now()): string {
   if (dias < 7) return `hace ${dias} d`;
   return new Intl.DateTimeFormat("es", { day: "numeric", month: "short" }).format(fecha);
 }
+
+// Formato compacto estilo escritorio para la barra lateral (ej: "13m", "6h", "3d", "1mo", "1y")
+export function haceTextoCorto(sql: string | null, ahora = Date.now()): string {
+  if (sql === null) return "ahora";
+  const fecha = aFecha(sql);
+  if (!fecha) return "";
+  const segundos = Math.max(0, Math.round((ahora - fecha.getTime()) / 1000));
+  if (segundos < 60) return "ahora";
+  const minutos = Math.floor(segundos / 60);
+  if (minutos < 60) return `${minutos}m`;
+  const horas = Math.floor(minutos / 60);
+  if (horas < 24) return `${horas}h`;
+  const dias = Math.floor(horas / 24);
+  if (dias < 30) return `${dias}d`;
+  const meses = Math.floor(dias / 30);
+  if (meses < 12) return `${meses}mo`;
+  const anos = Math.floor(dias / 365);
+  return `${anos}y`;
+}

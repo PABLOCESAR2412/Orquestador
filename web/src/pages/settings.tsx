@@ -966,8 +966,8 @@ function JevPanel() {
 // Un proveedor sin clave que se puede guardar ya lo dice su propio campo, así que no se repite aquí.
 function notaEstado(p: ProviderStatus, modelos: { total: number } | null): string | null {
   if (p.id === "opencode") return p.configured ? null : "El CLI de OpenCode no se encontró en el servidor.";
-  // Codex: la sesión se inicia desde su panel; los agentes todavía no lo usan.
-  if (p.id === "codex") return p.configured ? "Los agentes todavía no usan Codex. Su sesión queda lista para cuando exista ese paso." : null;
+  // Codex: la sesión se inicia desde su panel; los agentes pueden seleccionarlo.
+  if (p.id === "codex") return p.configured ? "Sesión conectada con ChatGPT. Los modelos de Codex están disponibles en el selector." : null;
   if (!p.configured) return p.guardable ? null : `Falta ${p.variable ?? "la clave"} en el archivo de entorno del servidor.`;
   if (!p.enAgente) {
     return `La clave está configurada, pero no llega a los agentes: agrégala a TELO_AGENTE_VARIABLES en el archivo de entorno del servidor.`;

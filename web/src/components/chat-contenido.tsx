@@ -148,6 +148,126 @@ function Diagrama({ codigo }: { codigo: string }) {
   );
 }
 
+const EXTENSIONES_CODIGO = new Set([
+  "ts", "tsx", "js", "jsx", "mjs", "cjs",
+  "json", "css", "scss", "html", "htm",
+  "md", "markdown", "py", "sql", "sh", "bash",
+  "yaml", "yml", "toml", "lock", "svg", "png", "jpg", "jpeg",
+  "env", "dockerfile", "gitignore", "txt", "conf", "ini"
+]);
+
+const PREFIJOS_CARPETAS = /^(web|server|src|components|lib|pages|styles|routes|runners|tests|\.opencode|\.config|\.github|skills|data|dist|public)\//i;
+
+export function esRutaArchivo(texto: string): boolean {
+  if (!texto || texto.length < 3 || texto.length > 200) return false;
+  if (/[\s;{}()="'<>`$*?!]/.test(texto)) return false;
+  const tieneBarras = texto.includes("/") || texto.includes("\\");
+  const partes = texto.split(/[/\\]/);
+  const ultimoSegmento = partes[partes.length - 1];
+  const puntoIdx = ultimoSegmento.lastIndexOf(".");
+  if (puntoIdx > 0 && puntoIdx < ultimoSegmento.length - 1) {
+    const ext = ultimoSegmento.slice(puntoIdx + 1).toLowerCase();
+    if (EXTENSIONES_CODIGO.has(ext)) return true;
+  }
+  if (tieneBarras && PREFIJOS_CARPETAS.test(texto)) return true;
+  return false;
+}
+
+function IconoArchivo({ extension }: { extension: string }) {
+  const ext = extension.toLowerCase();
+  if (ext === "tsx" || ext === "jsx") {
+    return (
+      <svg width="13" height="13" viewBox="-11.5 -10.23174 23 20.46348" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+        <circle cx="0" cy="0" r="2.05" fill="#00d8ff" />
+        <g stroke="#00d8ff">
+          <ellipse rx="11" ry="4.2" />
+          <ellipse rx="11" ry="4.2" transform="rotate(60)" />
+          <ellipse rx="11" ry="4.2" transform="rotate(120)" />
+        </g>
+      </svg>
+    );
+  }
+  if (ext === "ts") {
+    return (
+      <span style={{ fontSize: 9, fontWeight: 800, background: "#3178c6", color: "#fff", padding: "1px 3px", borderRadius: 2, lineHeight: 1 }}>
+        TS
+      </span>
+    );
+  }
+  if (ext === "js" || ext === "mjs" || ext === "cjs") {
+    return (
+      <span style={{ fontSize: 9, fontWeight: 800, background: "#f7df1e", color: "#000", padding: "1px 3px", borderRadius: 2, lineHeight: 1 }}>
+        JS
+      </span>
+    );
+  }
+  if (ext === "css" || ext === "scss") {
+    return (
+      <span style={{ fontSize: 11, fontWeight: 800, color: "#38bdf8", lineHeight: 1 }}>
+        #
+      </span>
+    );
+  }
+  if (ext === "json") {
+    return (
+      <span style={{ fontSize: 10, fontWeight: 800, color: "#f59e0b", lineHeight: 1 }}>
+        {"{}"}
+      </span>
+    );
+  }
+  if (ext === "md" || ext === "markdown") {
+    return (
+      <span style={{ fontSize: 9, fontWeight: 800, background: "#475569", color: "#f8fafc", padding: "1px 3px", borderRadius: 2, lineHeight: 1 }}>
+        MD
+      </span>
+    );
+  }
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+    </svg>
+  );
+}
+
+export function PastillaArchivo({ ruta }: { ruta: string }) {
+  const [copiado, setCopiado] = useState(false);
+  const partes = ruta.split(/[/\\]/);
+  const nombreArchivo = partes[partes.length - 1];
+  const puntoIdx = nombreArchivo.lastIndexOf(".");
+  const ext = puntoIdx > 0 ? nombreArchivo.slice(puntoIdx + 1).toLowerCase() : "";
+
+  const copiar = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const ok = await copiarTexto(ruta);
+    if (ok) {
+      setCopiado(true);
+      window.setTimeout(() => setCopiado(false), 1500);
+    }
+  };
+
+  return (
+    <span
+      className={`tl-archivo-chip${copiado ? " is-copiado" : ""}`}
+      title={copiado ? "¡Ruta copiada al portapapeles!" : `${ruta} (Clic para copiar)`}
+      onClick={copiar}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") void copiar(e as any);
+      }}
+    >
+      <span className="tl-archivo-chip-icono" aria-hidden="true">
+        <IconoArchivo extension={ext} />
+      </span>
+      <span className="tl-archivo-chip-ruta">{ruta}</span>
+      <span className="tl-archivo-chip-accion" aria-hidden="true">
+        {copiado ? "✓" : "📋"}
+      </span>
+    </span>
+  );
+}
+
 // Texto plano de un nodo de React (react-markdown entrega el código como hijos anidados).
 function textoDe(nodo: ReactNode): string {
   if (nodo == null || typeof nodo === "boolean") return "";
@@ -169,8 +289,24 @@ const COMPONENTES: Components = {
     }
     return <pre>{children}</pre>;
   },
-  // Enlaces en pestaña nueva, sin pasar la referencia de la conversación.
+  // Código inline: si parece una ruta de archivo, renderiza como pastilla interactiva
+  code({ className, children, ...props }) {
+    const texto = textoDe(children).trim();
+    if (esRutaArchivo(texto)) {
+      return <PastillaArchivo ruta={texto} />;
+    }
+    return <code className={className} {...props}>{children}</code>;
+  },
+  // Enlaces en pestaña nueva, y enlaces a archivos locales como pastilla
   a({ href, children }: { href?: string; children?: ReactNode }) {
+    const textoHref = href ?? "";
+    const textoHijo = textoDe(children).trim();
+    if (textoHref.startsWith("file://") || esRutaArchivo(textoHref) || esRutaArchivo(textoHijo)) {
+      const rutaReal = textoHref.startsWith("file://")
+        ? textoHref.replace(/^file:\/\/\/?/, "")
+        : (esRutaArchivo(textoHijo) ? textoHijo : textoHref);
+      return <PastillaArchivo ruta={rutaReal} />;
+    }
     return (
       <a href={href} target="_blank" rel="noopener noreferrer">
         {children}

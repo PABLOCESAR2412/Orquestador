@@ -305,3 +305,127 @@ main.an-principal {
   .an-uso-tabla tbody th { display: flex; min-width: 0; }
   .an-uso-tabla tbody td { align-items: flex-start; }
 }
+
+/* Pestañas de nivel superior (Modelos y Agentes vs Consumo interno Telo) */
+.an-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 2px;
+  margin-bottom: 4px;
+}
+.an-tab {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.an-tab:hover {
+  color: var(--ink);
+}
+.an-tab.is-activa {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+
+/* Chip de proveedor opaco y nombre de modelo */
+.an-modelo-ident {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.an-proveedor-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  opacity: 0.85;
+}
+
+/* Toggle de vista en ejecuciones (Por modelo vs Historial de tareas) */
+.an-vista-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.an-vista-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.an-vista-btn:hover {
+  color: var(--ink);
+}
+.an-vista-btn.is-activo {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  font-weight: 600;
+}
+
+/* Celda de tarea e historial */
+.an-celda-tarea {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.an-tarea-titulo {
+  font-weight: 500;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+.an-badge-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  width: fit-content;
+}
+.an-badge-status.is-done {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--ok, #10b981);
+}
+.an-badge-status.is-running {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+.an-badge-status.is-failed {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--error, #ef4444);
+}
+.an-badge-status.is-waiting_approval,
+.an-badge-status.is-queued {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+

@@ -74,8 +74,10 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
       id: "codex",
       name: "Codex",
       configured: sesionCodex,
-      implemented: false,
-      hint: "Inicio de sesión con la cuenta de ChatGPT desde esta página. Los agentes todavía no usan Codex.",
+      implemented: true,
+      hint: sesionCodex
+        ? "Sesión conectada con ChatGPT. Los modelos de Codex están disponibles en el selector."
+        : "Inicia sesión con tu cuenta de ChatGPT usando el código de dispositivo.",
       variable: "OPENAI_API_KEY",
       enAgente: enAgente.has("OPENAI_API_KEY"),
       guardable: false,

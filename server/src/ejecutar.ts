@@ -77,22 +77,78 @@ async function reservarAgente(signal?: AbortSignal): Promise<() => void> {
   return liberarAgente;
 }
 
+export function canonicalizarModelo(modelo: string): string {
+  if (modelo.startsWith("opencode/gemini-")) {
+    return modelo.replace("opencode/gemini-", "google/gemini-");
+  }
+  if (modelo === "opencode/argon" || modelo === "opencode/gemini-4-argon") {
+    return "google/gemini-4-argon";
+  }
+  if (modelo === "argon" || modelo === "gemini-4-argon") {
+    return "google/gemini-4-argon";
+  }
+  if (modelo.startsWith("gemini-")) {
+    return `google/${modelo}`;
+  }
+  return modelo;
+}
+
+export function proveedorDeModelo(modelo: string): string {
+  const m = canonicalizarModelo(modelo);
+  if (m.startsWith("google/") || m.includes("/google/") || /gemini|argon/i.test(m)) {
+    return "google";
+  }
+  if (m.startsWith("codex/") || m === "codex" || m.includes("/codex/")) {
+    return "codex";
+  }
+  if (m.startsWith("openai/") || m.includes("/openai/")) {
+    return "openai";
+  }
+  if (m.startsWith("groq/") || m.includes("/groq/")) {
+    return "groq";
+  }
+  if (m.startsWith("nvidia/") || m.includes("/nvidia/")) {
+    return "nvidia";
+  }
+  if (m.startsWith("openrouter/")) {
+    return "openrouter";
+  }
+  return m.split("/")[0] || "opencode";
+}
+
+export function estimarCosteGemini(modelo: string, inputTokens: number, outputTokens: number): number {
+  const esPro = /pro/i.test(modelo);
+  const tarifaInput = esPro ? 1.25 / 1_000_000 : 0.075 / 1_000_000;
+  const tarifaOutput = esPro ? 5.00 / 1_000_000 : 0.30 / 1_000_000;
+  return Math.round((inputTokens * tarifaInput + outputTokens * tarifaOutput) * 10_000) / 10_000;
+}
+
 // Cada paso se persiste al llegar: fallos, cancelaciones y respaldos conservan el consumo previo.
 export function registrarUsoAgente(
   modelo: string,
   uso: Usage,
   contexto: Pick<OpcionesAgente, "conversationId" | "projectId" | "taskId">,
 ): void {
+  const modeloCanonico = canonicalizarModelo(modelo);
+  const provider = proveedorDeModelo(modeloCanonico);
+  let costo = uso.cost;
+  let costPrecision = uso.costeDisponible === undefined ? "desconocida" : uso.costeDisponible ? "estimado" : "no_disponible";
+
+  if (costo === 0 && (uso.input > 0 || uso.output > 0) && provider === "google") {
+    costo = estimarCosteGemini(modeloCanonico, uso.input, uso.output);
+    costPrecision = "estimado";
+  }
+
   db.query(
     `INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens,
       reasoning_tokens, cache_read_tokens, cost, project_id, task_id, tokens_precision, cost_precision)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
-    crypto.randomUUID(), contexto.conversationId ?? null, modelo.split("/")[0], modelo,
-    uso.input, uso.output, uso.reasoning, uso.cacheRead, uso.cost,
+    crypto.randomUUID(), contexto.conversationId ?? null, provider, modeloCanonico,
+    uso.input, uso.output, uso.reasoning, uso.cacheRead, costo,
     contexto.projectId ?? null, contexto.taskId ?? null,
     uso.tokensMedidos === undefined ? "desconocida" : uso.tokensMedidos ? "medida" : "no_disponible",
-    uso.costeDisponible === undefined ? "desconocida" : uso.costeDisponible ? "estimado" : "no_disponible",
+    costPrecision,
   );
 }
 
@@ -221,15 +277,23 @@ export function conInstrucciones(projectId: string | null | undefined, prompt: s
 // Estilo de respuesta de los chats: concreto, con rutas y resultados, y sin repetir la pregunta.
 // Va delante del prompt en cada envío; la sesión de OpenCode no lo guarda por sí sola.
 export const ESTILO_CHAT = [
-  "Estilo de respuesta y razonamiento (no lo menciones en la respuesta):",
+  "Estilo de respuesta, presentación y razonamiento nativo de Telo (no lo menciones en la respuesta):",
   "- Investiga antes de actuar: inspecciona los archivos, dependencias, documentación o skills relevantes del proyecto antes de proponer cambios.",
   "- Si necesitas documentarte sobre librerías o frameworks modernos, usa skills del proyecto (como context7) o inspecciona el código existente.",
   "- Si una tarea requiere investigación profunda o pasos complejos, organízate paso a paso y puedes coordinar o apoyarte en subagentes especializados.",
-  "- Empieza con una frase que diga qué vas a hacer y por qué.",
-  "- Sé concreto: cita rutas de archivo (con línea cuando aplique) y nombres exactos de funciones, comandos y configuraciones.",
-  "- Si ejecutaste un comando, muestra el resultado que importa, no solo la conclusión.",
-  "- Si cambiaste archivos, lista cada uno y di qué cambió en él, manteniendo clean code y sin introducir regresiones.",
-  "- Si verificaste algo, di cómo (comando o prueba) y qué resultado dio. Si no pudiste comprobarlo, dilo sin rodeos.",
+  "- Jerarquía y títulos Markdown: Usa ## (H2) para secciones clave estructuradas (ej. ## Diagnóstico, ## Solución, ## Cambios) y ### (H3) para subsecciones. EVITA el uso de títulos gigantes # (H1) en respuestas de chat para preservar la armonía visual.",
+  "- Respuestas directas en un solo párrafo: Si la pregunta o consulta es conceptual, breve o directa, responde en un único párrafo claro, conciso y directo, sin forzar listas innecesarias ni encabezados.",
+  "- Cuándo usar listas numeradas vs viñetas:",
+  "  * Usa listas numeradas (1., 2., 3.) ÚNICAMENTE cuando exista un orden secuencial estricto, una guía de pasos cronológicos o prioridades ordenadas.",
+  "  * Usa viñetas con guiones (-) para listas de elementos independientes, inventario de archivos modificados, características o hallazgos sin orden secuencial.",
+  "- Patrón Diagnóstico (Problema -> Causa -> Solución): Al explicar anomalías, errores o bugs técnicos, presenta de forma estructurada:",
+  "  * **Problema:** Qué falló o qué comportamiento indeseado ocurre.",
+  "  * **Causa:** Por qué ocurrió, citando la condición o línea exacta.",
+  "  * **Solución:** Cómo se resuelve o se resolvió de forma verificable.",
+  "- Tablas Markdown: Úsalas para comparar alternativas, resumir parámetros de configuración, métricas o contrastar estados antes/después.",
+  "- Diagramas visuales Mermaid: Al explicar arquitectura, flujos de datos, dependencias o máquinas de estados, genera un bloque ```mermaid (usando flowchart TD, flowchart LR, sequenceDiagram o stateDiagram) cuando el gráfico aporte claridad inmediata.",
+  "- Cita de archivos y código: Cita siempre las rutas relativas exactas de los archivos entre comillas invertidas (ej. `web/src/components/chat-comandos.tsx` o `server/src/plan.ts`) para que el visor interactivo de Telo genere automáticamente las pastillas de archivo navegables.",
+  "- Comprobaciones y Clean Code: Si ejecutaste un comando o prueba, reporta el resultado concreto. Mantén clean code, tipos estrictos y no dejes stubs ni regresiones.",
 ].join("\n");
 
 export function conEstilo(prompt: string, estilo?: "chat", esChatDeProyecto = false): string {

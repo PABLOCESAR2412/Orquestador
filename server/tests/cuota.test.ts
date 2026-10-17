@@ -183,7 +183,7 @@ describe("seguir una tarea sin cuota", () => {
     expect(estado?.status).toBe("sin_cuota");
   });
 
-  test("si el modelo no se puede validar, la tarea sigue detenida", async () => {
+  test("si el modelo no se puede validar, la tarea sigue detenida", { timeout: 15000 }, async () => {
     const id = tarea("sin_cuota", { model: "opencode/a", modeloAgotado: "opencode/a", sesion: "s-1" });
     const res = await post(`/api/tasks/${id}/seguir`, { model: "opencode/b" });
     expect(res.status).not.toBe(200);

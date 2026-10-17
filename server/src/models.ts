@@ -1,4 +1,6 @@
 import { entornoProveedores, proveedoresConClave } from "./claves-proveedor";
+import { sesionCodexConectada } from "./login-cli";
+import { listarModelosCodex } from "./modelos-codex";
 
 export type CostTier = "gratis" | "economico" | "medio" | "alto" | "premium";
 
@@ -152,6 +154,34 @@ export async function getModels(force = false): Promise<ModelInfo[]> {
   }
 
   const models = parseModels(out, proveedoresConClave());
+
+  try {
+    if (await sesionCodexConectada()) {
+      const codexRes = await listarModelosCodex();
+      for (const m of codexRes.models) {
+        const id = `codex/${m.id}`;
+        if (!models.some((existente) => existente.id === id)) {
+          models.push({
+            id,
+            provider: "codex",
+            name: m.name,
+            inputUsd: 0,
+            outputUsd: 0,
+            context: m.context,
+            variants: m.variants.length > 0 ? m.variants : ["low", "medium", "high"],
+            free: false,
+            costTier: "medio",
+            costWarning: null,
+            group: "Codex",
+            recommended: true,
+          });
+        }
+      }
+    }
+  } catch {
+    // Si Codex no responde, no interrumpimos la lista principal
+  }
+
   cache = { at: Date.now(), models };
   return models;
 }

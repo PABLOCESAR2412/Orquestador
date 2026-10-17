@@ -271,11 +271,12 @@ export async function githubApiPr(
   path: string,
   autenticacion: FuenteAutenticacionGithub,
   body?: unknown,
+  metodo?: string,
 ) {
   const remoto = remotoDeRutaGithub(path);
   if (!remoto) throw new Error("La ruta de GitHub no identifica un repositorio válido.");
   const token = await tokenParaFuenteGithub(projectId, remoto, "pr", autenticacion);
-  return githubLlamar(token, path, body, autenticacion.tipo === "github_app" ? "github_app" : "credencial_anterior", "Pull requests");
+  return githubLlamar(token, path, body, autenticacion.tipo === "github_app" ? "github_app" : "credencial_anterior", "Pull requests", metodo);
 }
 
 async function tokenParaFuenteGithub(
@@ -326,9 +327,11 @@ async function githubLlamar(
   body?: unknown,
   tipoAutenticacion: "github_app" | "credencial_anterior" = "credencial_anterior",
   permiso = "escritura",
+  metodo?: string,
 ) {
+  const method = metodo ?? (body ? "POST" : "GET");
   const res = await fetch("https://api.github.com" + path, {
-    method: body ? "POST" : "GET",
+    method,
     redirect: "error",
     signal: AbortSignal.timeout(15000),
     headers: {
