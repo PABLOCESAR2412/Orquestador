@@ -1,6 +1,7 @@
 import { Children, isValidElement, memo, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { GraficoChat, leerGraficoChat } from "./grafico-chat";
 
 // Contenido de un mensaje: Markdown (títulos, listas, negritas, citas, tablas y enlaces) con bloques de código
 // que tienen su pestaña y copiar. react-markdown no ejecuta HTML del texto: todo se muestra como texto.
@@ -381,6 +382,10 @@ const crearComponentes = (onAbrirArchivo?: (referencia: ReferenciaArchivo, trigg
       const etiqueta = /language-(\S+)/.exec(hijo.props.className ?? "")?.[1] ?? "";
       const codigo = textoDe(hijo.props.children).replace(/\n$/, "");
       if (etiqueta.toLowerCase() === "mermaid") return <Diagrama codigo={codigo} />;
+      if (etiqueta.toLowerCase() === "chart") {
+        const datos = leerGraficoChat(codigo);
+        if (datos) return <GraficoChat datos={datos} />;
+      }
       return <BloqueCodigo etiqueta={etiqueta} codigo={codigo} />;
     }
     return <pre>{children}</pre>;

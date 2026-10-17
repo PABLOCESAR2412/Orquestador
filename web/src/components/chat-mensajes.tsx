@@ -252,7 +252,7 @@ export function MensajeAgente({
           {ICONO_AGENTE}
         </span>
         <span className="tl-msg-meta">
-          <span className="tl-msg-modelo">{modelo ?? "Modelo no registrado"}</span>
+          <span className="tl-msg-modelo">{modelo ?? "Modelo no guardado"}</span>
           {esfuerzo && <span className="tl-msg-esfuerzo">{effortLabel(esfuerzo)}</span>}
           <span> · {haceTexto(cuando)}</span>{duracion ? <span className="tl-msg-duracion"> · Respondió en {duracion}</span> : null}
         </span>

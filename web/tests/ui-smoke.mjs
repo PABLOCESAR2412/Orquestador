@@ -23,6 +23,7 @@ try {
     const context = await browser.newContext({ viewport: { width, height: 1000 }, serviceWorkers: "block", permissions: ["clipboard-read", "clipboard-write"] });
     const page = await context.newPage();
     await page.addInitScript(() => {
+      if (window.top !== window) return;
       localStorage.setItem("telo:cola:c1", JSON.stringify([
         { id: "q1", texto: "Primer mensaje reservado", creado: Date.now() },
         { id: "q2", texto: "Segundo mensaje reservado", creado: Date.now() + 1 },
@@ -39,7 +40,7 @@ try {
       { id: "u1", role: "user", content: "git commit y push", created_at: now },
       { id: "a1", role: "assistant", content: '{"estado":"fallo","resumen":"Faltan dependencias","desviacion":"Instala antes de probar","pendientes":["x".replace("x","y")]}<telo-memoria>MEMORIA_INTERNA</telo-memoria>', model: "groq/llama-test", effort: "low", created_at: now },
       { id: "u2", role: "user", content: "prepara de nuevo el git commit y push", created_at: now },
-      { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\nAbre `server/src/ejecutar.ts:3` para ver el ejemplo.\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", model: "nvidia/nemotron-test", effort: "high", created_at: now },
+      { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\nAbre `server/src/ejecutar.ts:3` para ver el ejemplo.\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Uso por área\",\"unit\":\"tokens\",\"data\":[{\"label\":\"Chat\",\"value\":120},{\"label\":\"Tareas\",\"value\":80}]}\n```\n\n```chart\n{\"type\":\"line\",\"title\":\"Uso diario\",\"data\":[{\"label\":\"Lun\",\"value\":20},{\"label\":\"Mar\",\"value\":35}]}\n```\n\n```chart\n{\"type\":\"pie\",\"title\":\"Distribución\",\"data\":[{\"label\":\"A\",\"value\":3},{\"label\":\"B\",\"value\":2}]}\n```\n\n```chart\n{\"type\":\"donut\",\"title\":\"Resultados\",\"data\":[{\"label\":\"Correcto\",\"value\":9},{\"label\":\"Pendiente\",\"value\":1}]}\n```\n\n```chart\n{\"type\":\"stats\",\"title\":\"Resumen\",\"unit\":\"pruebas\",\"data\":[{\"label\":\"Correctas\",\"value\":11,\"detail\":\"En verde\"}]}\n```\n\n```chart\nesto no es JSON\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Balance\",\"data\":[{\"label\":\"Ingresos\",\"value\":5},{\"label\":\"Ajustes\",\"value\":-2}]}\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", model: "nvidia/nemotron-test", effort: "high", created_at: now },
     ];
     const actions = [
       { id: "git-old", action: "push", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ mensaje: "Falló el intento anterior" }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
@@ -133,6 +134,11 @@ try {
       else if (path.includes("/projects/") && path.endsWith("/git")) data = { remote: "https://github.com/ejemplo/pruebas", repository: "ejemplo/pruebas", author_name: "Telo", base_branch: "main", inicializado: true, ocupado: false, token: false, tokenProyecto: false, tokenGlobal: false, prToken: false, ssh: false, github: { conectado: true, metodo: "app", login: "PABLOCESAR2412" } };
       else if (path === "/api/runner") data = { opencode: true, bwrap: true, aislamiento: true };
       else if (path === "/api/projects") data = [{ id: "p1", name: "Pruebas" }];
+      else if (path === "/api/documentos" && route.request().method() === "POST") data = { id: "doc1", conversation_id: "c1", titulo: "Documento de prueba", formato: "md", bytes: 123, created_at: now };
+      else if (path === "/api/documentos/doc1/vista") {
+        return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: "<!doctype html><html><body><p>Vista previa de prueba</p></body></html>" });
+      }
+      else if (path.startsWith("/api/documentos")) data = [];
       else if (path === "/api/projects/p1/archivo") {
         const ruta = new URL(route.request().url()).searchParams.get("ruta");
         data = { ruta, tamano: 42, texto: "export function responder() {\n  return 'ok';\n}\n", truncado: false };
@@ -162,6 +168,7 @@ try {
     await page.getByText("Conversaciones", { exact: true }).waitFor();
     assert.equal((await (await respuestaDiffTransitoria).json()).estado, "en_curso");
     await page.locator(".tl-diagrama-visual svg").waitFor();
+    await page.locator(".tl-grafico-chat").first().waitFor();
     const comprobarTemaDiagrama = async tema => {
       await page.evaluate(valor => { document.documentElement.dataset.theme = valor; }, tema);
       await page.waitForFunction(valor => {
@@ -181,6 +188,28 @@ try {
     await comprobarTemaDiagrama("oscuro");
     assert.equal(await page.locator(".tl-diagrama-visual svg .node").count(), 3);
     assert.equal(await page.locator(".tl-diagrama-fuente summary").textContent(), "Ver código Mermaid");
+    assert.equal(await page.locator(".tl-grafico-chat").count(), 6);
+    assert.equal(await page.locator(".tl-grafico-chat").nth(0).locator(".tl-grafico-barras li").count(), 2);
+    assert.equal(await page.locator(".tl-grafico-chat").nth(1).locator(".tl-grafico-linea").count(), 1);
+    assert.equal(await page.locator(".tl-grafico-chat").nth(2).locator(".tl-grafico-segmento").count(), 2);
+    assert.equal(await page.locator(".tl-grafico-chat").nth(3).locator(".tl-grafico-total").textContent(), "10");
+    assert.equal(await page.locator(".tl-grafico-chat").nth(4).locator(".tl-grafico-estadisticas li").count(), 1);
+    assert.equal(await page.locator(".tl-grafico-chat").nth(5).locator(".tl-grafico-barras li").count(), 2);
+    assert.ok(parseFloat(await page.locator(".tl-grafico-chat").nth(5).locator(".tl-grafico-barra").nth(1).evaluate(el => el.style.left)) < 1, "una barra negativa parte a la izquierda del cero");
+    await page.locator(".tl-grafico-chat").first().locator(".tl-grafico-datos summary").click();
+    assert.equal(await page.locator(".tl-grafico-chat").first().locator(".tl-grafico-datos tbody tr").count(), 2);
+    assert.equal(await page.locator(".tl-codigo-pestana").filter({ hasText: "chart" }).count(), 1, "JSON inválido se conserva como código");
+    await page.locator(".tl-grafico-chat").first().scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `scratch/capturas-ci/chat-graficos-${width}.png` });
+    const mensajeConGraficos = page.locator(".tl-msg-agente").filter({ hasText: "El segundo intento está listo para revisar." });
+    await mensajeConGraficos.getByRole("button", { name: "Guardar como documento" }).click();
+    await page.getByRole("menuitem", { name: "Markdown (.md)" }).click();
+    const vistaDocumento = page.getByRole("dialog", { name: "Vista previa de Documento de prueba" });
+    await vistaDocumento.waitFor();
+    const imprimirPdf = vistaDocumento.getByRole("link", { name: "PDF / Imprimir" });
+    assert.equal(await imprimirPdf.getAttribute("href"), "/api/documentos/doc1/vista");
+    assert.equal(await imprimirPdf.getAttribute("target"), "_blank");
+    await vistaDocumento.getByRole("button", { name: "Cerrar", exact: true }).click();
     assert.equal(await page.locator(".tl-tabla-wrap table tbody tr").count(), 1);
     assert.ok((await page.locator(".tl-md pre code").allTextContents()).some(codigo => codigo.includes("└── src/")));
     assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Llama Test" }).count(), 1);
@@ -200,10 +229,15 @@ try {
     await page.locator(".tl-modelo-boton .tl-modelo-nombre").filter({ hasText: "Google Test" }).waitFor();
     assert.equal(await page.locator(".tl-atajos-barra").count(), 0);
     const inputChat = page.getByRole("textbox", { name: "Mensaje", exact: true });
-    assert.match(await inputChat.getAttribute("placeholder"), /Usa \/ para ver comandos/);
+    const recomendacion = await inputChat.getAttribute("placeholder");
+    assert.ok(recomendacion && recomendacion.length > 20);
+    assert.doesNotMatch(recomendacion, /Usa \/ para ver comandos|para comandos/);
+    assert.equal(await page.locator(".tl-composer-sugerencia").count(), 0);
     await inputChat.focus();
-    await inputChat.press("Shift+Tab");
-    await page.keyboard.press("Tab");
+    await inputChat.press("Tab");
+    assert.equal(await inputChat.inputValue(), recomendacion, "Tab inserta la recomendación del placeholder");
+    await inputChat.fill("");
+    await inputChat.focus();
     assert.equal(await page.locator(".tl-composer-caja").evaluate(el => getComputedStyle(el).outlineWidth), "2px");
     const primerPrompt = page.getByRole("button", { name: "Ir al prompt 1: git commit y push", exact: true });
     await primerPrompt.click();
@@ -337,6 +371,15 @@ try {
     assert.equal(await medidoresUso.nth(1).getAttribute("aria-valuenow"), "88.9");
     assert.equal((await panelUso.textContent()).includes("US$ 0.50 · 11,1 %"), true);
     assert.equal((await panelUso.textContent()).includes("US$ 4.00 · 88,9 %"), true);
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Capacidades multimedia", exact: true }).click();
+    const panelMedios = page.getByRole("dialog", { name: "Capacidades multimedia" });
+    await panelMedios.waitFor();
+    assert.equal((await panelMedios.textContent()).includes("Google Test"), true);
+    assert.equal((await panelMedios.textContent()).includes("La generación no está conectada a este chat"), true);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/medios-${width}.png` });
+    await page.keyboard.press("Escape");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/uso-${width}.png` });
     await page.keyboard.press("Escape");

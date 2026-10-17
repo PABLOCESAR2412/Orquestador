@@ -225,9 +225,11 @@ export function codigoHttpDelProveedor(err: unknown): number | null {
   if (!(err instanceof ErrorAgente)) return null;
   try {
     const evento = JSON.parse(err.detalleProveedor) as {
+      message?: unknown;
       status?: unknown;
       statusCode?: unknown;
       error?: {
+        message?: unknown;
         status?: unknown;
         statusCode?: unknown;
         data?: { status?: unknown; statusCode?: unknown };
@@ -241,9 +243,18 @@ export function codigoHttpDelProveedor(err: unknown): number | null {
       evento.error?.statusCode,
       evento.error?.status,
     ];
-    return candidatos.find((codigo): codigo is number =>
+    const codigo = candidatos.find((codigo): codigo is number =>
       typeof codigo === "number" && Number.isInteger(codigo) && codigo >= 100 && codigo <= 599,
     ) ?? null;
+    if (codigo !== null) return codigo;
+
+    // OpenCode a veces omite statusCode en su evento APIError para este fallo 5xx genérico.
+    const mensaje = typeof evento.message === "string"
+      ? evento.message
+      : typeof evento.error?.message === "string" ? evento.error.message : "";
+    return /^Unexpected server error(?:\. Check server logs for details\.)?$/i.test(mensaje.trim())
+      ? 500
+      : null;
   } catch {
     return null;
   }
@@ -331,6 +342,7 @@ export const ESTILO_CHAT = [
   "  * **Solución:** Cómo se resuelve o se resolvió de forma verificable.",
   "- Tablas: Usa tablas Markdown para comparar alternativas, parámetros, métricas o estados antes/después; no conviertas párrafos en tablas.",
   "- Diagramas: Cuando arquitectura, secuencias, dependencias o decisiones se entiendan mejor visualmente, usa un bloque ```mermaid válido (flowchart TD/LR, sequenceDiagram, stateDiagram-v2 o mindmap). No inventes nodos ni relaciones, y evita diagramas decorativos o para respuestas simples.",
+  "- Gráficos cuantitativos: Si hay datos numéricos concretos que se entienden mejor visualmente, puedes usar un bloque ```chart con JSON {\"type\":\"bar|line|pie|donut|stats\",\"title\":\"…\",\"unit\":\"…\",\"data\":[{\"label\":\"…\",\"value\":12,\"detail\":\"…\"}]}. Usa solo valores presentes o calculables a partir de la conversación; nunca inventes métricas. Barras, líneas y estadísticas admiten valores negativos; pastel y dona requieren valores no negativos. Para datos insuficientes, usa una tabla Markdown.",
   "- Código: Separa cada fragmento en su propio bloque con el lenguaje indicado (```ts, ```sql, ```json, ```bash, ```markdown, etc.) para conservar resaltado y copia. No mezcles explicación dentro del código.",
   "- Archivos: Cuando señales código del proyecto, cita su ruta relativa exacta entre comillas invertidas (por ejemplo `web/src/components/chat-comandos.tsx:42`) y, si ayuda, la línea relevante. No inventes rutas.",
   "- Explica decisiones con evidencia verificable y comunica conclusiones, no razonamiento interno privado.",

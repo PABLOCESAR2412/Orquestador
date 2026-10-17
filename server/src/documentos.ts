@@ -220,6 +220,7 @@ h1,h2,h3{line-height:1.25}pre{background:#f4f5f7;padding:12px;border-radius:6px;
 code{font-family:ui-monospace,Menlo,monospace;font-size:13px}blockquote{margin:0;padding-left:12px;border-left:3px solid #c9ccd2;color:#4a4f57}
 table{border-collapse:collapse;margin:12px 0;font-size:14px}td,th{border:1px solid #c9ccd2;padding:5px 9px;text-align:left;vertical-align:top}
 th{background:#f4f5f7}img{max-width:100%}h2.hoja{font-size:16px;margin:24px 0 8px}
+@media print{@page{margin:18mm}body{max-width:none;margin:0;padding:0;color:#111;background:#fff}pre,blockquote,table{break-inside:avoid}h1,h2,h3{break-after:avoid}a{color:inherit;text-decoration:none}}
 </style>`;
 
 const TOPE_FILAS_VISTA = 500;

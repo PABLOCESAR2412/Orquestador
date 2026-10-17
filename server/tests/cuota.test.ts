@@ -113,6 +113,19 @@ describe("clasificación de cuota agotada", () => {
     expect(esErrorTransitorioDelProveedor(errorHttp(599))).toBe(true);
     expect(esErrorTransitorioDelProveedor(errorHttp(401))).toBe(false);
     expect(esErrorTransitorioDelProveedor(errorHttp(422))).toBe(false);
+    const eventoOpenCodeSinEstado = {
+      type: "error",
+      error: { name: "APIError", data: { message: "Unexpected server error. Check server logs for details." } },
+    };
+    const errorOpenCodeSinEstado = new ErrorAgente(
+      "opencode salió con código 1",
+      detalleDelProveedor("", "", [eventoOpenCodeSinEstado as never]),
+    );
+    expect(esErrorTransitorioDelProveedor(errorOpenCodeSinEstado)).toBe(true);
+    expect(esErrorTransitorioDelProveedor(new ErrorAgente(
+      "Fallo",
+      JSON.stringify({ type: "error", statusCode: null, message: "Unauthorized" }),
+    ))).toBe(false);
     expect(esErrorTransitorioDelProveedor(new ErrorAgente("Fallo", "Unexpected server error"))).toBe(false);
     expect(esErrorTransitorioDelProveedor(new Error("fallo local 503"))).toBe(false);
   });
