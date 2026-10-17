@@ -145,12 +145,15 @@ export function MensajeAgente({
   guardando = false,
   proceso,
   duracion,
+  onCitar,
 }: {
   texto: string;
   cuando: string;
   modelo: string;
   // Vuelve a enviar el mensaje del usuario que originó esta respuesta.
   onReintentar?: () => void;
+  // Carga el texto en el compositor para editarlo o iterar.
+  onCitar?: (texto: string) => void;
   // Guarda el texto de esta respuesta como documento en el formato elegido.
   onGuardar?: (formato: FormatoDocumento) => void;
   guardando?: boolean;
@@ -230,6 +233,20 @@ export function MensajeAgente({
         </span>
         <div className="tl-msg-acciones">
           <BotonCopiar texto={reporte ? `${reporte.resumen}\n${reporte.causa ?? ""}`.trim() : texto} etiqueta="Copiar respuesta" />
+          {onCitar && (
+            <button
+              type="button"
+              className="tl-accion-icono"
+              aria-label="Citar o editar en compositor"
+              title="Cargar esta respuesta en el compositor para editarla o continuar sobre ella"
+              onClick={() => onCitar(reporte ? `${reporte.resumen}\n${reporte.causa ?? ""}`.trim() : texto)}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
+          )}
           {"speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined" && (
             <button
               type="button"

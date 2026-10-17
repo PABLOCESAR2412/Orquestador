@@ -12,7 +12,7 @@ import { ChatConfiguracion } from "../components/chat-configuracion";
 import { AvisoCuota } from "../components/cuota-aviso";
 import { VistaDocumento } from "../components/documentos";
 import { HistorialPrompts, type PromptEnviado } from "../components/chat-historial";
-import { MenuComandosChat, type ComandoChat } from "../components/chat-comandos";
+import { MenuComandosChat, BarraAtajosRapidos, type ComandoChat } from "../components/chat-comandos";
 import { MenuSkillsChat, type SkillOpcion } from "../components/chat-skills-picker";
 import { PlanRevision } from "../components/plan-revision";
 import { AccionRepositorioMensaje, AccionesAnteriores, AccionesRepositorioChat } from "../components/repository-approval";
@@ -850,6 +850,33 @@ export function ChatPage() {
         window.setTimeout(() => inputRef.current?.focus(), 0);
       },
     },
+    {
+      id: "plan",
+      etiqueta: "/plan",
+      descripcion: "Genera un plan de acción estructurado paso a paso",
+      ejecutar: () => {
+        cambiarBorrador("Analiza el estado del proyecto y genera un plan de acción estructurado paso a paso para: ");
+        window.setTimeout(() => inputRef.current?.focus(), 0);
+      },
+    },
+    {
+      id: "diff",
+      etiqueta: "/diff",
+      descripcion: "Muestra el diff detallado frente a la rama base",
+      ejecutar: () => {
+        cambiarBorrador("Revisa y muestra el diff detallado de los cambios realizados en el workspace frente a la rama base.");
+        window.setTimeout(() => inputRef.current?.focus(), 0);
+      },
+    },
+    {
+      id: "test",
+      etiqueta: "/test",
+      descripcion: "Ejecuta las pruebas automatizadas del proyecto",
+      ejecutar: () => {
+        cambiarBorrador("Ejecuta la suite de pruebas del proyecto, reporta los resultados y corrige cualquier fallo detectado.");
+        window.setTimeout(() => inputRef.current?.focus(), 0);
+      },
+    },
     { id: "nuevo", etiqueta: "Nuevo chat", descripcion: "Abre un chat vacío", ejecutar: nuevoChat },
     {
       id: "historial",
@@ -1116,6 +1143,10 @@ export function ChatPage() {
                       }
                       onGuardar={(formato) => crearDoc.mutate({ mensajeId: m.id, formato })}
                       guardando={crearDoc.isPending && crearDoc.variables?.mensajeId === m.id}
+                      onCitar={(texto) => {
+                        cambiarBorrador(texto);
+                        window.setTimeout(() => inputRef.current?.focus(), 0);
+                      }}
                     />
                     {current?.project_id && Array.from(accionesTrasRespuesta.get(m.id)?.entries() ?? []).map(([action, intentos]) => {
                       const ultima = intentos.at(-1)!;
@@ -1433,6 +1464,13 @@ export function ChatPage() {
               {menuAbierto && !menuSkillsAbierto && (
                 <MenuComandosChat comandos={comandosFiltrados} activo={indiceSlash} onElegir={elegirComando} />
               )}
+
+              <BarraAtajosRapidos
+                onEjecutar={(id) => {
+                  const cmd = comandosChat.find((c) => c.id === id);
+                  cmd?.ejecutar();
+                }}
+              />
 
               <textarea
                 ref={inputRef}
