@@ -1,4 +1,4 @@
-import { Children, isValidElement, useEffect, useId, useState, type ReactNode } from "react";
+import { Children, isValidElement, memo, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -160,6 +160,7 @@ const PREFIJOS_CARPETAS = /^(web|server|src|components|lib|pages|styles|routes|r
 
 export function esRutaArchivo(texto: string): boolean {
   if (!texto || texto.length < 3 || texto.length > 200) return false;
+  if (/^[a-z][a-z\d+.-]*:\/\//i.test(texto)) return false;
   if (/[\s;{}()="'<>`$*?!]/.test(texto)) return false;
   const tieneBarras = texto.includes("/") || texto.includes("\\");
   const partes = texto.split(/[/\\]/);
@@ -230,16 +231,38 @@ function IconoArchivo({ extension }: { extension: string }) {
   );
 }
 
-export function PastillaArchivo({ ruta }: { ruta: string }) {
+export type ReferenciaArchivo = { ruta: string; linea?: number };
+
+function separarReferenciaArchivo(texto: string): ReferenciaArchivo {
+  const linea = /^(.*?)(?::(\d+)(?::\d+)?|#L(\d+))$/i.exec(texto);
+  if (linea && esRutaArchivo(linea[1]!)) {
+    return { ruta: linea[1]!, linea: Number(linea[2] ?? linea[3]) };
+  }
+  return { ruta: texto };
+}
+
+export function PastillaArchivo({
+  ruta,
+  referencia,
+  onAbrir,
+}: {
+  ruta: string;
+  referencia?: string;
+  onAbrir?: (referencia: ReferenciaArchivo, triggerId: string) => void;
+}) {
   const [copiado, setCopiado] = useState(false);
+  const etiquetaReferencia = referencia ?? ruta;
+  const referenciaAbierta = separarReferenciaArchivo(etiquetaReferencia);
+  const triggerKey = JSON.stringify([referenciaAbierta.ruta, referenciaAbierta.linea ?? null]);
+  const rutaAbsoluta = /^(?:[a-z]:[\\/]|[\\/]|file:)/i.test(referenciaAbierta.ruta);
+  const puedeAbrir = Boolean(onAbrir && !rutaAbsoluta && !referenciaAbierta.ruta.split(/[\\/]/).includes(".."));
   const partes = ruta.split(/[/\\]/);
   const nombreArchivo = partes[partes.length - 1];
   const puntoIdx = nombreArchivo.lastIndexOf(".");
   const ext = puntoIdx > 0 ? nombreArchivo.slice(puntoIdx + 1).toLowerCase() : "";
 
-  const copiar = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const ok = await copiarTexto(ruta);
+  const copiar = async () => {
+    const ok = await copiarTexto(etiquetaReferencia);
     if (ok) {
       setCopiado(true);
       window.setTimeout(() => setCopiado(false), 1500);
@@ -247,23 +270,30 @@ export function PastillaArchivo({ ruta }: { ruta: string }) {
   };
 
   return (
-    <span
-      className={`tl-archivo-chip${copiado ? " is-copiado" : ""}`}
-      title={copiado ? "¡Ruta copiada al portapapeles!" : `${ruta} (Clic para copiar)`}
-      onClick={copiar}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") void copiar(e as any);
-      }}
-    >
-      <span className="tl-archivo-chip-icono" aria-hidden="true">
-        <IconoArchivo extension={ext} />
-      </span>
-      <span className="tl-archivo-chip-ruta">{ruta}</span>
-      <span className="tl-archivo-chip-accion" aria-hidden="true">
-        {copiado ? "✓" : "📋"}
-      </span>
+    <span className={`tl-archivo-chip${copiado ? " is-copiado" : ""}`}>
+      <button
+        type="button"
+        className="tl-archivo-chip-abrir"
+        data-archivo-trigger-key={triggerKey}
+        title={puedeAbrir ? `Abrir ${etiquetaReferencia} en el visor del proyecto` : `Copiar ruta ${etiquetaReferencia}`}
+        aria-label={puedeAbrir ? `Abrir archivo ${ruta}${referenciaAbierta.linea ? ` en la línea ${referenciaAbierta.linea}` : ""}` : `Copiar ruta ${etiquetaReferencia}`}
+        onClick={() => puedeAbrir ? onAbrir?.(referenciaAbierta, triggerKey) : void copiar()}
+      >
+        <span className="tl-archivo-chip-icono" aria-hidden="true">
+          <IconoArchivo extension={ext} />
+        </span>
+        <span className="tl-archivo-chip-ruta">{etiquetaReferencia}</span>
+        {puedeAbrir && <span className="tl-archivo-chip-abrir-etiqueta">Abrir</span>}
+      </button>
+      <button
+        type="button"
+        className="tl-archivo-chip-copiar"
+        title={copiado ? "Ruta copiada" : "Copiar ruta"}
+        aria-label={copiado ? "Ruta copiada" : `Copiar ruta ${etiquetaReferencia}`}
+        onClick={() => void copiar()}
+      >
+        <span aria-hidden="true">{copiado ? "✓" : "Copiar"}</span>
+      </button>
     </span>
   );
 }
@@ -277,7 +307,7 @@ function textoDe(nodo: ReactNode): string {
   return "";
 }
 
-const COMPONENTES: Components = {
+const crearComponentes = (onAbrirArchivo?: (referencia: ReferenciaArchivo, triggerId: string) => void): Components => ({
   // Los bloques ``` llegan como <pre><code class="language-x">: se muestran con su pestaña y copiar.
   pre({ children }: { children?: ReactNode }) {
     const hijo = Children.toArray(children)[0];
@@ -292,8 +322,9 @@ const COMPONENTES: Components = {
   // Código inline: si parece una ruta de archivo, renderiza como pastilla interactiva
   code({ className, children, ...props }) {
     const texto = textoDe(children).trim();
-    if (esRutaArchivo(texto)) {
-      return <PastillaArchivo ruta={texto} />;
+    const referencia = separarReferenciaArchivo(texto);
+    if (esRutaArchivo(referencia.ruta)) {
+      return <PastillaArchivo ruta={referencia.ruta} referencia={texto} onAbrir={onAbrirArchivo} />;
     }
     return <code className={className} {...props}>{children}</code>;
   },
@@ -301,11 +332,14 @@ const COMPONENTES: Components = {
   a({ href, children }: { href?: string; children?: ReactNode }) {
     const textoHref = href ?? "";
     const textoHijo = textoDe(children).trim();
-    if (textoHref.startsWith("file://") || esRutaArchivo(textoHref) || esRutaArchivo(textoHijo)) {
+    const referenciaHref = separarReferenciaArchivo(textoHref);
+    const referenciaTexto = separarReferenciaArchivo(textoHijo);
+    if (textoHref.startsWith("file://") || esRutaArchivo(referenciaHref.ruta) || esRutaArchivo(referenciaTexto.ruta)) {
       const rutaReal = textoHref.startsWith("file://")
         ? textoHref.replace(/^file:\/\/\/?/, "")
-        : (esRutaArchivo(textoHijo) ? textoHijo : textoHref);
-      return <PastillaArchivo ruta={rutaReal} />;
+        : (esRutaArchivo(referenciaTexto.ruta) ? referenciaTexto.ruta : referenciaHref.ruta);
+      const referencia = esRutaArchivo(referenciaTexto.ruta) ? textoHijo : textoHref;
+      return <PastillaArchivo ruta={rutaReal} referencia={referencia} onAbrir={onAbrirArchivo} />;
     }
     return (
       <a href={href} target="_blank" rel="noopener noreferrer">
@@ -321,14 +355,21 @@ const COMPONENTES: Components = {
       </div>
     );
   },
-};
+});
 
-export function Contenido({ texto }: { texto: string }) {
+export const Contenido = memo(function Contenido({
+  texto,
+  onAbrirArchivo,
+}: {
+  texto: string;
+  onAbrirArchivo?: (referencia: ReferenciaArchivo, triggerId: string) => void;
+}) {
+  const componentes = useMemo(() => crearComponentes(onAbrirArchivo), [onAbrirArchivo]);
   return (
     <div className="tl-md">
-      <Markdown remarkPlugins={[remarkGfm]} components={COMPONENTES}>
+      <Markdown remarkPlugins={[remarkGfm]} components={componentes}>
         {texto}
       </Markdown>
     </div>
   );
-}
+});

@@ -178,11 +178,11 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     expect(readFileSync(join(clon, "permitido.txt"), "utf8")).toBe("trabajo conservado\n");
     expect(
       db
-        .query(
-          "SELECT 1 FROM messages WHERE conversation_id=? AND content LIKE 'Obrero aislado completado%'",
+        .query<{ model: string | null; effort: string | null }, [string]>(
+          "SELECT model, effort FROM messages WHERE conversation_id=? AND content LIKE 'Obrero aislado completado%'",
         )
         .get(conversacion),
-    ).not.toBeNull();
+    ).toEqual({ model: "fixture/normal", effort: null });
   }, 15000);
 
   test("el worker procesa diez tareas independientes al mismo tiempo", async () => {

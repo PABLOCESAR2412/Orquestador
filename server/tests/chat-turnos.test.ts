@@ -21,7 +21,7 @@ const { chat, avisarTurnosInterrumpidos } = await import("../src/routes/chat");
 const app = new Hono();
 app.route("/api", chat);
 
-type Mensaje = { id: string; role: string; content: string };
+type Mensaje = { id: string; role: string; content: string; model: string | null; effort: string | null };
 
 const RESTAURAR = { PATH: process.env.PATH, TELO_AISLAMIENTO: process.env.TELO_AISLAMIENTO };
 let carpeta = "";
@@ -71,7 +71,7 @@ function conversacion(model = "opencode/prueba"): string {
 
 function mensajes(id: string): Mensaje[] {
   return db
-    .query<Mensaje, [string]>("SELECT id, role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC")
+    .query<Mensaje, [string]>("SELECT id, role, content, model, effort FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC")
     .all(id);
 }
 
@@ -168,6 +168,10 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     expect(mensajes(id).filter((m) => m.role === "assistant").at(-1)?.content).toContain(
       "modelo=opencode/modelo-b;sesion=nueva;variante=high;historial=si",
     );
+    expect(mensajes(id).filter((m) => m.role === "assistant").at(-1)).toMatchObject({
+      model: "opencode/modelo-b",
+      effort: "high",
+    });
     expect(db.query<{ runner_session_model: string }, [string]>(
       "SELECT runner_session_model FROM conversations WHERE id=?",
     ).get(id)?.runner_session_model).toBe("opencode/modelo-b");
@@ -178,6 +182,10 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     expect(mensajes(id).filter((m) => m.role === "assistant").at(-1)?.content).toContain(
       "modelo=opencode/modelo-b;sesion=ses_turno01;variante=low;historial=no",
     );
+    expect(mensajes(id).filter((m) => m.role === "assistant").at(-1)).toMatchObject({
+      model: "opencode/modelo-b",
+      effort: "low",
+    });
   });
 });
 
@@ -208,6 +216,24 @@ describe("reinicio del servidor", () => {
     const antes = mensajes(sinRespuesta).length;
     avisarTurnosInterrumpidos();
     expect(mensajes(sinRespuesta).length).toBe(antes);
+  });
+});
+
+describe("metadatos del historial de chat", () => {
+  test("la API devuelve el modelo y el esfuerzo guardados en cada respuesta", async () => {
+    const id = conversacion("openai/modelo-actual");
+    db.query("INSERT INTO messages (id, conversation_id, role, content, model, effort) VALUES (?, ?, 'assistant', 'Respuesta anterior', ?, ?)")
+      .run(crypto.randomUUID(), id, "groq/modelo-anterior", "medium");
+    db.query("UPDATE conversations SET model = ?, effort = ? WHERE id = ?").run("google/modelo-actual", "high", id);
+
+    const respuesta = await app.request(`/api/conversations/${id}/messages`);
+    const cuerpo = await respuesta.json() as { role: string; model: string | null; effort: string | null }[];
+    expect(respuesta.status).toBe(200);
+    expect(cuerpo).toContainEqual(expect.objectContaining({
+      role: "assistant",
+      model: "groq/modelo-anterior",
+      effort: "medium",
+    }));
   });
 });
 

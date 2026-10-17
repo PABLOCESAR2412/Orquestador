@@ -64,6 +64,8 @@ type Message = {
   role: "user" | "assistant" | "system";
   content: string;
   created_at: string;
+  model: string | null;
+  effort: string | null;
 };
 type TurnoUsuario = { id: string; role: "user"; content: string };
 
@@ -144,7 +146,7 @@ chat.get("/conversations/:id/turnos/:turno/actividad", (c) => {
 chat.get("/conversations/:id/messages", (c) => {
   const messages = db
     .query<Message, [string]>(
-      "SELECT id, conversation_id, role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC",
+      "SELECT id, conversation_id, role, content, created_at, model, effort FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC",
     )
     .all(c.req.param("id"));
   return c.json(messages);
@@ -308,12 +310,14 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
     id: crypto.randomUUID(),
     role: "assistant" as const,
     content: result.textoFinal,
+    model: result.modelo || model,
+    effort: result.variante,
   };
 
   db.transaction(() => {
     db.query(
-      "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)",
-    ).run(assistantMsg.id, conversationId, assistantMsg.role, assistantMsg.content);
+      "INSERT INTO messages (id, conversation_id, role, content, model, effort) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run(assistantMsg.id, conversationId, assistantMsg.role, assistantMsg.content, assistantMsg.model, assistantMsg.effort);
 
     // Una respuesta correcta levanta el aviso de cuota, si lo había.
     db.query("UPDATE conversations SET cuota_modelo = NULL WHERE id = ?").run(conversationId);

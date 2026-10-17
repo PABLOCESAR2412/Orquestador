@@ -223,6 +223,8 @@ export type Message = {
   role: "user" | "assistant" | "system";
   content: string;
   created_at: string;
+  model: string | null;
+  effort: string | null;
 };
 
 export type CostTier = "gratis" | "economico" | "medio" | "alto" | "premium";
