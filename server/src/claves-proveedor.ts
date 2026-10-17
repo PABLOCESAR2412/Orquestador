@@ -37,10 +37,7 @@ export function claveProveedorValida(valor: unknown): valor is string {
 }
 
 export function tieneClaveProveedor(id: string): boolean {
-  if (db.query("SELECT 1 AS ok FROM provider_keys WHERE proveedor = ?").get(id) !== null) {
-    return true;
-  }
-  return valorClaveProveedor(id) !== null;
+  return db.query("SELECT 1 AS ok FROM provider_keys WHERE proveedor = ?").get(id) !== null;
 }
 
 // Devuelve la fecha de actualización, o null si no hay clave maestra para cifrar.
@@ -158,16 +155,13 @@ export function estadoClaves(): {
       .all()
       .map((f) => [f.proveedor, f.updated_at]),
   );
-  return PROVEEDORES_CON_CLAVE.map((p) => {
-    const configurada = fechas.has(p.id) || valorClaveProveedor(p.id) !== null;
-    return {
-      id: p.id,
-      etiqueta: p.etiqueta,
-      variable: p.variables[0],
-      configurada,
-      actualizada_en: fechas.get(p.id) ?? (configurada ? "OpenCode / Entorno" : null),
-    };
-  });
+  return PROVEEDORES_CON_CLAVE.map((p) => ({
+    id: p.id,
+    etiqueta: p.etiqueta,
+    variable: p.variables[0],
+    configurada: fechas.has(p.id),
+    actualizada_en: fechas.get(p.id) ?? null,
+  }));
 }
 
 // Proveedores cuya clave llega de verdad al CLI y a los agentes (guardada y descifrable).
@@ -182,40 +176,25 @@ export function proveedoresConClave(): Map<string, string> {
 // Variables de las claves guardadas, listas para el entorno de un agente o de `opencode models`.
 // Una clave que no descifra se omite sin mostrar nada. Nunca lanza error.
 export function entornoProveedores(): Record<string, string> {
-  const entorno: Record<string, string> = {};
-
-  // Primero las claves descifradas de provider_keys (tienen prioridad si fueron fijadas en Telo)
   try {
     const clave = claveMaestra();
-    if (clave) {
-      const filas = db
-        .query<FilaClave & { proveedor: string }, []>("SELECT proveedor, iv, tag, value_enc FROM provider_keys")
-        .all();
-      for (const fila of filas) {
-        const proveedor = proveedorConClave(fila.proveedor);
-        if (!proveedor) continue;
-        try {
-          const valor = descifrar(clave, fila, textoAsociado(proveedor.id));
-          for (const variable of proveedor.variables) entorno[variable] = valor;
-        } catch {
-          // Una clave que no descifra se omite
-        }
+    if (!clave) return {};
+    const filas = db
+      .query<FilaClave & { proveedor: string }, []>("SELECT proveedor, iv, tag, value_enc FROM provider_keys")
+      .all();
+    const entorno: Record<string, string> = {};
+    for (const fila of filas) {
+      const proveedor = proveedorConClave(fila.proveedor);
+      if (!proveedor) continue;
+      try {
+        const valor = descifrar(clave, fila, textoAsociado(proveedor.id));
+        for (const variable of proveedor.variables) entorno[variable] = valor;
+      } catch {
+        // Una clave que no descifra se omite: no se registra su contenido ni su nombre.
       }
     }
+    return entorno;
   } catch {
-    // ignorar error de BD
+    return {};
   }
-
-  // Para proveedores configurados mediante auth.json o variables de entorno que no estuvieran en BD:
-  for (const p of PROVEEDORES_CON_CLAVE) {
-    if (p.variables.some((v) => entorno[v])) continue;
-    const val = valorClaveProveedor(p.id);
-    if (val) {
-      for (const variable of p.variables) {
-        entorno[variable] = val;
-      }
-    }
-  }
-
-  return entorno;
 }
