@@ -168,10 +168,13 @@ function formatearRespuestaTarea(reporte: Reporte, texto: string): string {
   return mensaje || "Tarea completada con éxito.";
 }
 
-function avisarChat(id: string, texto?: string) {
+function avisarChat(id: string, texto?: string, modelo?: { model: string; effort: string | null }) {
   const conv = db.query<{ conversation_id: string | null }, [string]>("SELECT conversation_id FROM tasks WHERE id=?").get(id)?.conversation_id;
   if (!conv) return;
-  if (texto) db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES (?,?,'assistant',?)").run(crypto.randomUUID(), conv, redactar(texto));
+  if (texto) {
+    db.query("INSERT INTO messages(id,conversation_id,role,content,model,effort) VALUES (?,?,'assistant',?,?,?)")
+      .run(crypto.randomUUID(), conv, redactar(texto), modelo?.model ?? null, modelo?.effort ?? null);
+  }
   publicar({ tipo: "chat", conversacion_id: conv, estado: "terminado" });
 }
 
@@ -500,14 +503,14 @@ async function ejecutarTarea(task: QueuedTask) {
     const { reporte, texto } = resultado;
     if (reporte.estado === "fallo") {
       finish(task.id, "failed", { result: texto, reporte, error: reporte.resumen });
-      avisarChat(task.id, reporte.resumen || "La tarea no se pudo completar.");
+      avisarChat(task.id, reporte.resumen || "La tarea no se pudo completar.", { model: task.model, effort: task.effort });
     } else {
       const messageId = task.conversation_id
         ? db.query<{ id: string }, [string]>("SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(task.conversation_id)?.id
         : undefined;
       finish(task.id, "done", { result: texto, reporte });
       if (task.conversation_id) db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(task.conversation_id);
-      avisarChat(task.id, formatearRespuestaTarea(reporte, texto));
+      avisarChat(task.id, formatearRespuestaTarea(reporte, texto), { model: task.model, effort: task.effort });
       if (task.conversation_id && task.project_id) {
         const accion = ["push","commit","pr"].find(a => planGuardado(task.id)?.requiere_aprobacion.includes(a as "commit"|"push"|"pr"));
         if (accion) {

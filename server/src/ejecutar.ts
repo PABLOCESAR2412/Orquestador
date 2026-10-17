@@ -283,8 +283,8 @@ export const ESTILO_CHAT = [
   "- Investiga antes de actuar: inspecciona los archivos, dependencias, documentación o skills relevantes del proyecto antes de proponer cambios.",
   "- Si necesitas documentarte sobre librerías o frameworks modernos, usa skills del proyecto (como context7) o inspecciona el código existente.",
   "- Si una tarea requiere investigación profunda o pasos complejos, organízate paso a paso y puedes coordinar o apoyarte en subagentes especializados.",
-  "- Jerarquía y títulos Markdown: Usa ## (H2) para secciones clave estructuradas (ej. ## Diagnóstico, ## Solución, ## Cambios) y ### (H3) para subsecciones. EVITA el uso de títulos gigantes # (H1) en respuestas de chat para preservar la armonía visual.",
-  "- Respuestas directas en un solo párrafo: Si la pregunta o consulta es conceptual, breve o directa, responde en un único párrafo claro, conciso y directo, sin forzar listas innecesarias ni encabezados.",
+  "- Jerarquía visual: Da primero la respuesta o el resultado. Usa ## y ### solo si la explicación tiene secciones reales; en respuestas cortas, usa un párrafo claro. No pongas todo en negrita: reserva **negrita** para etiquetas o conceptos puntuales.",
+  "- Respuestas directas: Si la pregunta es breve o conceptual, responde en un párrafo conciso, sin forzar listas ni encabezados.",
   "- Cuándo usar listas numeradas vs viñetas:",
   "  * Usa listas numeradas (1., 2., 3.) ÚNICAMENTE cuando exista un orden secuencial estricto, una guía de pasos cronológicos o prioridades ordenadas.",
   "  * Usa viñetas con guiones (-) para listas de elementos independientes, inventario de archivos modificados, características o hallazgos sin orden secuencial.",
@@ -292,9 +292,11 @@ export const ESTILO_CHAT = [
   "  * **Problema:** Qué falló o qué comportamiento indeseado ocurre.",
   "  * **Causa:** Por qué ocurrió, citando la condición o línea exacta.",
   "  * **Solución:** Cómo se resuelve o se resolvió de forma verificable.",
-  "- Tablas Markdown: Úsalas para comparar alternativas, resumir parámetros de configuración, métricas o contrastar estados antes/después.",
-  "- Diagramas visuales Mermaid: Al explicar arquitectura, flujos de datos, dependencias o máquinas de estados, genera un bloque ```mermaid (usando flowchart TD, flowchart LR, sequenceDiagram o stateDiagram) cuando el gráfico aporte claridad inmediata.",
-  "- Cita de archivos y código: Cita siempre las rutas relativas exactas de los archivos entre comillas invertidas (ej. `web/src/components/chat-comandos.tsx` o `server/src/plan.ts`) para que el visor interactivo de Telo genere automáticamente las pastillas de archivo navegables.",
+  "- Tablas: Usa tablas Markdown para comparar alternativas, parámetros, métricas o estados antes/después; no conviertas párrafos en tablas.",
+  "- Diagramas: Cuando arquitectura, secuencias, dependencias o decisiones se entiendan mejor visualmente, usa un bloque ```mermaid válido (flowchart TD/LR, sequenceDiagram, stateDiagram-v2 o mindmap). No inventes nodos ni relaciones, y evita diagramas decorativos o para respuestas simples.",
+  "- Código: Separa cada fragmento en su propio bloque con el lenguaje indicado (```ts, ```sql, ```json, ```bash, ```markdown, etc.) para conservar resaltado y copia. No mezcles explicación dentro del código.",
+  "- Archivos: Cuando señales código del proyecto, cita su ruta relativa exacta entre comillas invertidas (por ejemplo `web/src/components/chat-comandos.tsx:42`) y, si ayuda, la línea relevante. No inventes rutas.",
+  "- Explica decisiones con evidencia verificable y comunica conclusiones, no razonamiento interno privado.",
   "- Comprobaciones y Clean Code: Si ejecutaste un comando o prueba, reporta el resultado concreto. Mantén clean code, tipos estrictos y no dejes stubs ni regresiones.",
 ].join("\n");
 
@@ -302,8 +304,8 @@ export function conEstilo(prompt: string, estilo?: "chat", esChatDeProyecto = fa
   if (estilo !== "chat") return prompt;
   const formatoVisual = esChatDeProyecto
     ? [
-        "- Al explicar la arquitectura o relaciones de este proyecto, incluye un bloque ```mermaid con un flowchart válido cuando el gráfico ayude a entenderlo; evita diagramas en respuestas simples o cuando falte información.",
-        "- Para comparar opciones o componentes usa una tabla Markdown; para mostrar la estructura de carpetas usa un bloque ```text con un árbol legible. No inventes archivos ni relaciones.",
+        "- Al explicar arquitectura, secuencias o relaciones de este proyecto, prefiere un diagrama Mermaid adecuado (flowchart, sequenceDiagram, stateDiagram-v2 o mindmap) si aclara el tema; en respuestas simples, responde sin diagrama.",
+        "- Para comparar opciones o componentes usa una tabla Markdown; para estructura de carpetas usa un bloque ```text con un árbol legible. No inventes archivos ni relaciones.",
       ].join("\n")
     : "";
   return `${ESTILO_CHAT}${formatoVisual ? `\n${formatoVisual}` : ""}\n---\n${prompt}`;

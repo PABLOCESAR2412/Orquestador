@@ -24,15 +24,17 @@ try {
     const task = { id: "t1", title: "Prueba", model: "google/prueba", modelo_agotado: null, status: "done", created_at: now, started_at: now, finished_at: now, plan: null, reporte: null };
     const messages = [
       { id: "u1", role: "user", content: "git commit y push", created_at: now },
-      { id: "a1", role: "assistant", content: '{"estado":"fallo","resumen":"Faltan dependencias","desviacion":"Instala antes de probar","pendientes":["x".replace("x","y")]}<telo-memoria>MEMORIA_INTERNA</telo-memoria>', created_at: now },
+      { id: "a1", role: "assistant", content: '{"estado":"fallo","resumen":"Faltan dependencias","desviacion":"Instala antes de probar","pendientes":["x".replace("x","y")]}<telo-memoria>MEMORIA_INTERNA</telo-memoria>', model: "groq/llama-test", effort: "low", created_at: now },
       { id: "u2", role: "user", content: "prepara de nuevo el git commit y push", created_at: now },
-      { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", created_at: now },
+      { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\nAbre `server/src/ejecutar.ts:3` para ver el ejemplo.\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", model: "nvidia/nemotron-test", effort: "high", created_at: now },
     ];
     const actions = [
       { id: "git-old", action: "push", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ mensaje: "Falló el intento anterior" }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
       { id: "git1", action: "push", task_id: "t1", message_id: "u2", state: "pending", result: null, payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2", autenticacion: { tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "PABLOCESAR2412", instalacion_id: 1 } }) },
     ];
     let authenticated = false;
+    let modeloC1 = "google/prueba";
+    let esfuerzoC1 = null;
     let codexSesionEnPicker = false;
     let jevConfigurada = false;
     let approvals = 0;
@@ -48,7 +50,7 @@ try {
       if (path === "/api/sesion") return route.fulfill({ status: authenticated ? 200 : 401, json: { ok: authenticated } });
       if (path === "/api/login") { authenticated = true; data = { ok: true }; }
       else if (path === "/api/conversations") data = [
-        { id: "c1", title: "Prueba de flujo", model: "google/prueba", project_id: "p1", project_name: "Pruebas", created_at: now },
+        { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, project_id: "p1", project_name: "Pruebas", created_at: now },
         { id: "c2", title: "Chat paralelo", model: "nvidia/nemotron-test", project_id: null, project_name: null, created_at: now },
         { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
         { id: "c4", title: "Chat anterior", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() },
@@ -66,6 +68,12 @@ try {
           data = { messages: messages.slice(-2) };
         } else data = messages;
       }
+      else if (path === "/api/conversations/c1" && route.request().method() === "PATCH") {
+        const body = route.request().postDataJSON();
+        if ("model" in body) modeloC1 = body.model;
+        if ("effort" in body) esfuerzoC1 = body.effort;
+        data = { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, pinned_at: null, costTier: null, costWarning: null };
+      }
       else if (path === "/api/conversations/c2/messages") data = [];
       else if (path === "/api/conversations/c1/acciones") data = actions;
       else if (path === "/api/conversations/c1/tasks" || path === "/api/tasks") data = [task];
@@ -78,8 +86,10 @@ try {
       else if (path.endsWith("/decidir")) { approvals++; actions[1].state = "approved"; actions[1].result = JSON.stringify({ sha: "abcdef012345" }); return route.fulfill({ status: 409, json: { error: "action_already_decided" } }); }
       else if (path === "/api/models") data = { models: [
         { id: "opencode/claude-fable-5", provider: "opencode", name: "Claude Fable 5", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Claude", recommended: true },
+        { id: "google/prueba", provider: "google", name: "Google Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Gemini", recommended: true },
         { id: "nvidia/nemotron-test", provider: "nvidia", name: "Nemotron Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Nemotron", recommended: true },
         { id: "groq/llama-test", provider: "groq", name: "Llama Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Llama", recommended: true },
+        { id: "groq/other-test", provider: "groq", name: "Other Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Other", recommended: true },
       ] };
       else if (path === "/api/preferences") data = { defaultModel: null, defaultEffort: null, monthlyBudgetUsd: null, budgetAlertPercent: 80 };
       else if (path === "/api/providers") data = [{ id: "codex", name: "Codex", configured: codexSesionEnPicker, variable: null, enAgente: false, guardable: false, sesion: codexSesionEnPicker }];
@@ -110,6 +120,10 @@ try {
       else if (path.includes("/projects/") && path.endsWith("/git")) data = { remote: "https://github.com/ejemplo/pruebas", repository: "ejemplo/pruebas", author_name: "Telo", base_branch: "main", inicializado: true, ocupado: false, token: false, tokenProyecto: false, tokenGlobal: false, prToken: false, ssh: false, github: { conectado: true, metodo: "app", login: "PABLOCESAR2412" } };
       else if (path === "/api/runner") data = { opencode: true, bwrap: true, aislamiento: true };
       else if (path === "/api/projects") data = [{ id: "p1", name: "Pruebas" }];
+      else if (path === "/api/projects/p1/archivo") {
+        const ruta = new URL(route.request().url()).searchParams.get("ruta");
+        data = { ruta, tamano: 42, texto: "export function responder() {\n  return 'ok';\n}\n", truncado: false };
+      }
       else if (path === "/api/uso") data = { generado: now, proveedores: [{
         id: "google", nombre: "Google (Gemini)",
         ultimas5h: { costoUsd: 0.5, tokens: 1200, llamadas: 2 },
@@ -156,6 +170,50 @@ try {
     assert.equal(await page.locator(".tl-diagrama-fuente summary").textContent(), "Ver código Mermaid");
     assert.equal(await page.locator(".tl-tabla-wrap table tbody tr").count(), 1);
     assert.ok((await page.locator(".tl-md pre code").allTextContents()).some(codigo => codigo.includes("└── src/")));
+    assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Llama Test" }).count(), 1);
+    assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Nemotron Test" }).count(), 1);
+    assert.equal(await page.locator(".tl-msg-esfuerzo").filter({ hasText: "Bajo" }).count(), 1);
+    assert.equal(await page.locator(".tl-msg-esfuerzo").filter({ hasText: "Alto" }).count(), 1);
+    await page.locator(".tl-modelo-boton").click();
+    const selectorModelo = page.getByRole("dialog", { name: "Elegir modelo" });
+    await selectorModelo.locator(".picker-item").filter({ hasText: "Other Test" }).click();
+    await page.locator(".tl-modelo-boton .tl-modelo-nombre").filter({ hasText: "Other Test" }).waitFor();
+    assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Llama Test" }).count(), 1);
+    assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Nemotron Test" }).count(), 1);
+    assert.equal(await page.locator(".tl-msg-esfuerzo").filter({ hasText: "Bajo" }).count(), 1);
+    assert.equal(await page.locator(".tl-msg-esfuerzo").filter({ hasText: "Alto" }).count(), 1);
+    await page.locator(".tl-modelo-boton").click();
+    await selectorModelo.locator(".picker-item").filter({ hasText: "Google Test" }).click();
+    await page.locator(".tl-modelo-boton .tl-modelo-nombre").filter({ hasText: "Google Test" }).waitFor();
+    assert.equal(await page.locator(".tl-atajos-barra").count(), 0);
+    const inputChat = page.getByRole("textbox", { name: "Mensaje", exact: true });
+    assert.match(await inputChat.getAttribute("placeholder"), /Usa \/ para ver comandos/);
+    await inputChat.focus();
+    await inputChat.press("Shift+Tab");
+    await page.keyboard.press("Tab");
+    assert.equal(await page.locator(".tl-composer-caja").evaluate(el => getComputedStyle(el).outlineWidth), "2px");
+    const referenciaArchivo = page.locator(".tl-archivo-chip-abrir").filter({ hasText: "server/src/ejecutar.ts:3" });
+    if (width === 390) {
+      const objetivoReferencia = await referenciaArchivo.boundingBox();
+      assert.ok(objetivoReferencia && objetivoReferencia.width >= 44 && objetivoReferencia.height >= 44);
+    }
+    await referenciaArchivo.click();
+    const vistaArchivo = page.getByRole("complementary", { name: "Vista del archivo server/src/ejecutar.ts" });
+    await vistaArchivo.waitFor();
+    const cerrarVistaArchivo = vistaArchivo.getByRole("button", { name: "Cerrar vista de archivo", exact: true });
+    if (width === 390) {
+      const objetivoCerrar = await cerrarVistaArchivo.boundingBox();
+      assert.ok(objetivoCerrar && objetivoCerrar.width >= 44 && objetivoCerrar.height >= 44);
+    }
+    assert.equal(await cerrarVistaArchivo.evaluate(el => el === document.activeElement), true);
+    await vistaArchivo.locator('[data-linea="3"].is-activa').waitFor();
+    assert.equal((await vistaArchivo.locator(".tl-chat-archivo-titulo p").textContent()).includes("línea 3"), true);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/archivo-chat-${width}.png` });
+    await vistaArchivo.getByRole("button", { name: "Cerrar vista de archivo", exact: true }).click();
+    await vistaArchivo.waitFor({ state: "detached" });
+    await page.waitForFunction(() => document.activeElement?.classList.contains("tl-archivo-chip-abrir"));
+    assert.equal(await page.locator(".tl-archivo-chip-abrir").filter({ hasText: "server/src/ejecutar.ts:3" }).evaluate(el => el === document.activeElement), true);
     const arbolArchivos = page.locator(".tl-codigo").filter({ hasText: "└── src/" });
     assert.equal(await arbolArchivos.getByRole("button", { name: "Aplicar", exact: true }).count(), 0);
     assert.deepEqual(await page.locator(".tl-rail-seccion-titulo").allTextContents(), ["Projects", "Conversations"]);
@@ -228,7 +286,7 @@ try {
     await page.locator(".cuota-aviso").waitFor();
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("No se debe aceptar mientras falte cuota");
     assert.equal(await page.getByRole("button", { name: "Enviar", exact: true }).isDisabled(), true);
-    assert.equal((await page.locator(".cuota-aviso").textContent()).includes("Se acabó la cuota de google/prueba"), true);
+    assert.equal((await page.locator(".cuota-aviso").textContent()).includes("Se acabó la cuota de Google Test"), true);
     await page.screenshot({ path: `scratch/capturas-ci/cuota-chat-${width}.png` });
     await page.getByRole("button", { name: "Cambiar modelo", exact: true }).click();
     await page.locator(".picker").waitFor();

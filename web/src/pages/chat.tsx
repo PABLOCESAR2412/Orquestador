@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad, type RepositoryAction } from "../api";
@@ -7,12 +7,13 @@ import { ModelPicker } from "../components/model-picker";
 import { UsoPanel } from "../components/uso-panel";
 import { IndicadorPensando, MensajeAgente, MensajeUsuario } from "../components/chat-mensajes";
 import { ProcesoAgente } from "../components/chat-proceso";
-import { copiarTexto } from "../components/chat-contenido";
+import { copiarTexto, type ReferenciaArchivo } from "../components/chat-contenido";
+import { ChatArchivoPreview } from "../components/chat-archivo-preview";
 import { ChatConfiguracion } from "../components/chat-configuracion";
 import { AvisoCuota } from "../components/cuota-aviso";
 import { VistaDocumento } from "../components/documentos";
 import { HistorialPrompts, type PromptEnviado } from "../components/chat-historial";
-import { MenuComandosChat, BarraAtajosRapidos, type ComandoChat } from "../components/chat-comandos";
+import { MenuComandosChat, type ComandoChat } from "../components/chat-comandos";
 import { MenuSkillsChat, type SkillOpcion } from "../components/chat-skills-picker";
 import { PlanRevision } from "../components/plan-revision";
 import { AccionRepositorioMensaje, AccionesAnteriores, AccionesRepositorioChat } from "../components/repository-approval";
@@ -132,6 +133,8 @@ export function ChatPage() {
   const [dictando, setDictando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [vistaDoc, setVistaDoc] = useState<Documento | null>(null);
+  const [archivoAbierto, setArchivoAbierto] = useState<ReferenciaArchivo | null>(null);
+  const archivoDisparadorRef = useRef<string | null>(null);
   const [historialAbierto, setHistorialAbierto] = useState(false);
   const [resaltadoId, setResaltadoId] = useState<string | null>(null);
   // Menú de "/": activo es la fila marcada; oculto lo cierra con Escape hasta que el texto cambie.
@@ -145,10 +148,27 @@ export function ChatPage() {
   // Botones que abren el selector y el panel de uso: reciben el foco al cerrar.
   const chipRef = useRef<HTMLButtonElement>(null);
   const usoRef = useRef<HTMLButtonElement>(null);
+  const abrirArchivo = useCallback((referencia: ReferenciaArchivo, triggerId: string) => {
+    archivoDisparadorRef.current = triggerId;
+    setArchivoAbierto(referencia);
+  }, []);
+  const cerrarArchivo = () => setArchivoAbierto(null);
+
+  useEffect(() => {
+    if (archivoAbierto || !archivoDisparadorRef.current) return;
+    const triggerId = archivoDisparadorRef.current;
+    const frame = requestAnimationFrame(() => {
+      const disparador = [...document.querySelectorAll<HTMLElement>("[data-archivo-trigger-key]")]
+        .find((elemento) => elemento.dataset.archivoTriggerKey === triggerId);
+      disparador?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [archivoAbierto]);
 
   // Los adjuntos son del chat en el que se escribieron.
   useEffect(() => {
     setPendientes([]);
+    setArchivoAbierto(null);
   }, [selectedId]);
 
   // Al salir del chat se corta el dictado.
@@ -986,7 +1006,7 @@ export function ChatPage() {
   };
 
   return (
-    <section className="tl-chat" aria-label="Chat">
+    <section className={`tl-chat${archivoAbierto && current?.project_id ? " tl-chat-con-archivo" : ""}`} aria-label="Chat">
       {!selectedId ? (
         <div className="tl-vacio">
           <div className="tl-vacio-caja">
@@ -1133,7 +1153,9 @@ export function ChatPage() {
                     <MensajeAgente
                       texto={m.content}
                       cuando={m.created_at}
-                      modelo={nombreAgente}
+                      modelo={m.model ? modelList.find((modelo) => modelo.id === m.model)?.name ?? m.model : null}
+                      esfuerzo={m.effort}
+                      onAbrirArchivo={current?.project_id ? abrirArchivo : undefined}
                       duracion={duracionDeRespuesta(i)}
                       proceso={
                         selectedId && turnoDeRespuesta(i)
@@ -1469,12 +1491,22 @@ export function ChatPage() {
                 <MenuComandosChat comandos={comandosFiltrados} activo={indiceSlash} onElegir={elegirComando} />
               )}
 
-              <BarraAtajosRapidos
-                onEjecutar={(id) => {
-                  const cmd = comandosChat.find((c) => c.id === id);
-                  cmd?.ejecutar();
-                }}
-              />
+              {sugerencia && (
+                <button
+                  type="button"
+                  className="tl-composer-sugerencia"
+                  aria-label={`Usar sugerencia: ${sugerencia}`}
+                  title="Pulsa Tab para aceptar la sugerencia"
+                  onClick={() => {
+                    cambiarBorrador(sugerencia);
+                    window.setTimeout(() => inputRef.current?.focus(), 0);
+                  }}
+                >
+                  <span className="tl-composer-sugerencia-etiqueta">Sugerencia</span>
+                  <span className="tl-composer-sugerencia-texto">{sugerencia}</span>
+                  <kbd>Tab</kbd>
+                </button>
+              )}
 
               <textarea
                 ref={inputRef}
@@ -1483,15 +1515,13 @@ export function ChatPage() {
                 value={draft}
                 placeholder={
                   planPendiente
-                    ? "Responde a las preguntas del plan, indica qué cambiar o pulsa Aprobar plan…"
+                    ? "Responde las preguntas del plan · Usa / para ver comandos"
                     : agenteOcupado && colaActiva
-                    ? "El agente está respondiendo; tu mensaje se añadirá a la cola"
-                    : sugerencia
-                    ? `${sugerencia} (Tab) o escribe un mensaje, usa $, @ o / para skills y comandos`
-                    : "Escribe un mensaje, usa $, @ o / para skills y comandos, o pega archivos"
+                    ? "El agente responde; escribe en cola · Usa / para comandos"
+                    : "Escribe un mensaje · Usa / para ver comandos"
                 }
                 aria-label={planPendiente ? "Aclaraciones o cambios al plan" : "Mensaje"}
-                aria-autocomplete={menuSkillsAbierto || menuAbierto ? "list" : sugerencia ? "inline" : undefined}
+                aria-autocomplete={menuSkillsAbierto || menuAbierto ? "list" : undefined}
                 aria-activedescendant={
                   menuSkillsAbierto
                     ? `skill-opcion-${skillsFiltradas[indiceSkillActivo]?.nombre}`
@@ -1700,6 +1730,14 @@ export function ChatPage() {
               Los agentes trabajan en el servidor de forma persistente. Revisa sus cambios antes de aplicarlos.
             </p>
           </form>
+
+          {archivoAbierto && current?.project_id && (
+            <ChatArchivoPreview
+              projectId={current.project_id}
+              referencia={archivoAbierto}
+              onClose={cerrarArchivo}
+            />
+          )}
 
           {configAbierta && current && (
             <ChatConfiguracion

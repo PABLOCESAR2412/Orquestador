@@ -564,6 +564,13 @@ const migrations: Migration[] = [
       ALTER TABLE tasks ADD COLUMN provider_session_model TEXT;
     `,
   },
+  {
+    name: "032_modelo_y_esfuerzo_por_mensaje",
+    sql: `
+      ALTER TABLE messages ADD COLUMN model TEXT;
+      ALTER TABLE messages ADD COLUMN effort TEXT;
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

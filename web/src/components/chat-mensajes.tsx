@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { haceTexto, tiempoTranscurrido } from "../lib/tiempo";
 import { interpretarRespuestaTarea } from "../lib/respuesta-tarea";
 import { partirMensaje } from "../lib/adjuntos";
+import { effortLabel } from "../lib/model";
 import type { FormatoDocumento } from "../api";
-import { Contenido, copiarTexto } from "./chat-contenido";
+import { Contenido, copiarTexto, type ReferenciaArchivo } from "./chat-contenido";
 import { ProcesoAgente, ProcesoGuardado } from "./chat-proceso";
 import { FORMATOS_OPCIONES } from "./documentos";
 import type { PasoActividad } from "../api";
@@ -140,6 +141,8 @@ export function MensajeAgente({
   texto,
   cuando,
   modelo,
+  esfuerzo,
+  onAbrirArchivo,
   onReintentar,
   onGuardar,
   guardando = false,
@@ -149,7 +152,9 @@ export function MensajeAgente({
 }: {
   texto: string;
   cuando: string;
-  modelo: string;
+  modelo: string | null;
+  esfuerzo?: string | null;
+  onAbrirArchivo?: (referencia: ReferenciaArchivo, triggerId: string) => void;
   // Vuelve a enviar el mensaje del usuario que originó esta respuesta.
   onReintentar?: () => void;
   // Carga el texto en el compositor para editarlo o iterar.
@@ -229,7 +234,9 @@ export function MensajeAgente({
           {ICONO_AGENTE}
         </span>
         <span className="tl-msg-meta">
-          {modelo} · {haceTexto(cuando)}{duracion ? <span className="tl-msg-duracion"> · Respondió en {duracion}</span> : null}
+          <span className="tl-msg-modelo">{modelo ?? "Modelo no registrado"}</span>
+          {esfuerzo && <span className="tl-msg-esfuerzo">{effortLabel(esfuerzo)}</span>}
+          <span> · {haceTexto(cuando)}</span>{duracion ? <span className="tl-msg-duracion"> · Respondió en {duracion}</span> : null}
         </span>
         <div className="tl-msg-acciones">
           <BotonCopiar texto={reporte ? `${reporte.resumen}\n${reporte.causa ?? ""}`.trim() : texto} etiqueta="Copiar respuesta" />
@@ -331,7 +338,7 @@ export function MensajeAgente({
         <ProcesoGuardado conversacionId={proceso.conversacionId} turnoId={proceso.turnoId} textoFinal={texto} />
       )}
       <div className="tl-msg-texto">
-        <Contenido texto={reporte?.resumen ?? texto} />
+        <Contenido texto={reporte?.resumen ?? texto} onAbrirArchivo={onAbrirArchivo} />
         {reporte?.causa && <p className="tl-alerta">{reporte.causa}</p>}
         {reporte && (
           <details className="tl-detalles-reporte">
