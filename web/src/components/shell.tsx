@@ -14,6 +14,7 @@ import { HistorialCambios } from "./historial-cambios";
 import { PaletaComandos } from "./paleta-comandos";
 import { useShell } from "./shell-context";
 import { ShellTopbar } from "./shell-topbar";
+import { nuevoChatDelProyecto } from "../lib/chat-proyecto";
 import "../styles-shell.css";
 
 type DateGroupTitle = "ANCLADOS" | "RECIENTES" | "ÚLTIMOS 7 DÍAS" | "ANTERIORES";
@@ -94,6 +95,58 @@ export function Shell({ children }: { children: ReactNode }) {
         : eliminar.isError
           ? errorText(eliminar.error)
           : null;
+
+  // Menú desplegable multifunción para "+ Nuevo..."
+  const [menuNuevoAbierto, setMenuNuevoAbierto] = useState(false);
+  const menuNuevoRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuNuevoAbierto) return;
+    const onClicFuera = (e: MouseEvent) => {
+      if (menuNuevoRef.current && !menuNuevoRef.current.contains(e.target as Node)) {
+        setMenuNuevoAbierto(false);
+      }
+    };
+    const onTecla = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuNuevoAbierto(false);
+    };
+    document.addEventListener("mousedown", onClicFuera);
+    document.addEventListener("keydown", onTecla);
+    return () => {
+      document.removeEventListener("mousedown", onClicFuera);
+      document.removeEventListener("keydown", onTecla);
+    };
+  }, [menuNuevoAbierto]);
+
+  const crearChatLibre = useMutation({
+    mutationFn: () => api.createConversation(null),
+    onSuccess: (conv) => {
+      void invalidarChats();
+      setSelectedConversationId(conv.id);
+      setMenuNuevoAbierto(false);
+      closeDrawer();
+      if (currentPath !== "/chat") {
+        void navigate({ to: "/chat" });
+      }
+    },
+  });
+
+  const conversacionActiva = conversations.data?.find((c) => c.id === selectedConversationId);
+  const proyectoActivoId = conversacionActiva?.project_id ?? null;
+  const proyectoActivoNombre = conversacionActiva?.project_name ?? null;
+
+  const crearChatProyecto = useMutation({
+    mutationFn: (pId: string) => nuevoChatDelProyecto(pId),
+    onSuccess: (conv) => {
+      void invalidarChats();
+      setSelectedConversationId(conv.id);
+      setMenuNuevoAbierto(false);
+      closeDrawer();
+      if (currentPath !== "/chat") {
+        void navigate({ to: "/chat" });
+      }
+    },
+  });
 
   const groupedConversations = useMemo(() => {
     if (!conversations.data) return [];
@@ -190,20 +243,106 @@ export function Shell({ children }: { children: ReactNode }) {
             </button>
           </div>
 
-          <button
-            type="button"
-            className="tl-nuevo"
-            onClick={abrirNuevoProyecto}
-            title={`Nuevo proyecto (${ATAJO_NUEVO})`}
-            aria-keyshortcuts={ES_MAC ? "Meta+N" : "Control+N"}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            <span className="tl-nuevo-texto">Nuevo proyecto</span>
-            <kbd className="tl-kbd">{ATAJO_NUEVO}</kbd>
-          </button>
+          <div className="tl-nuevo-wrap" ref={menuNuevoRef}>
+            <button
+              type="button"
+              className={`tl-nuevo${menuNuevoAbierto ? " is-activo" : ""}`}
+              onClick={() => setMenuNuevoAbierto((prev) => !prev)}
+              aria-haspopup="menu"
+              aria-expanded={menuNuevoAbierto}
+              title={`Crear nuevo... (${ATAJO_NUEVO} para proyecto)`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span className="tl-nuevo-texto">Nuevo…</span>
+              <kbd className="tl-kbd">{ATAJO_NUEVO}</kbd>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                className={`tl-nuevo-flecha${menuNuevoAbierto ? " is-abierta" : ""}`}
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+
+            {menuNuevoAbierto && (
+              <div className="tl-nuevo-desplegable" role="menu" aria-label="Opciones de creación">
+                <button
+                  type="button"
+                  className="tl-nuevo-item"
+                  role="menuitem"
+                  onClick={() => {
+                    crearChatLibre.mutate();
+                  }}
+                  disabled={crearChatLibre.isPending}
+                >
+                  <span className="tl-nuevo-item-icono is-libre" aria-hidden="true">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                  </span>
+                  <div className="tl-nuevo-item-texto">
+                    <strong>Nuevo chat libre</strong>
+                    <span>Conversación independiente, sin proyecto</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  className="tl-nuevo-item"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuNuevoAbierto(false);
+                    abrirNuevoProyecto();
+                  }}
+                >
+                  <span className="tl-nuevo-item-icono is-proyecto" aria-hidden="true">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                      <line x1="12" y1="11" x2="12" y2="17" />
+                      <line x1="9" y1="14" x2="15" y2="14" />
+                    </svg>
+                  </span>
+                  <div className="tl-nuevo-item-texto">
+                    <strong>Nuevo proyecto</strong>
+                    <span>Workspace y repositorio Git</span>
+                  </div>
+                  <kbd className="tl-kbd">{ATAJO_NUEVO}</kbd>
+                </button>
+
+                {proyectoActivoId && (
+                  <button
+                    type="button"
+                    className="tl-nuevo-item"
+                    role="menuitem"
+                    onClick={() => {
+                      crearChatProyecto.mutate(proyectoActivoId);
+                    }}
+                    disabled={crearChatProyecto.isPending}
+                  >
+                    <span className="tl-nuevo-item-icono is-proyecto-chat" aria-hidden="true">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                      </svg>
+                    </span>
+                    <div className="tl-nuevo-item-texto">
+                      <strong>Nuevo chat en este proyecto</strong>
+                      <span>Hilo en «{proyectoActivoNombre || "Proyecto"}»</span>
+                    </div>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
           <AppNav variant="sidebar" onItemClick={closeDrawer} />
 

@@ -22,156 +22,182 @@ export type Release = {
 
 export const RELEASES_DESTACADAS: Release[] = [
   {
-    version: "v2.0.0",
+    version: `v${VERSION_SISTEMA}`,
     actual: true,
-    tipoSemver: "Cambio Grande (Major)",
+    tipoSemver: "Cambio Mediano (Minor)",
     fecha: "2026-10-16",
-    titulo: "Rediseño Tríptico de Escritorio & Modo Claro de Precisión",
+    titulo: "Múltiples chats por proyecto, chats libres independientes y optimizaciones de sistema",
     resumen:
-      "Transformación integral de la experiencia de usuario inspirada en Claude Desktop, Antigravity Desktop y Codex Desktop. Incorpora modo claro de alta fidelidad basado en Stitch MCP, Command Palette (Ctrl+K), inspector de diffs Git side-by-side/unificado, telemetría y runner status LED, tareas programadas y analíticas avanzadas.",
+      "Soporte integral para múltiples conversaciones independientes dentro de cada proyecto y chats libres fuera de proyectos. Monitorización de cuota de Gemini en vivo, métricas segmentadas en analítica y nuevo historial de versiones alineado a Telo.",
     items: [
       {
         tag: "FEATURE",
-        titulo: "Modo Claro 'Orquestador Light Precision' (Stitch MCP)",
+        titulo: "Múltiples chats por proyecto",
         descripcion:
-          "Implementación completa del tema claro y sincronización con el sistema (oscuro/claro/sistema) preservando la paleta ámbar industrial (#d9a441/#b88628), con tokens CSS variables para fondos, tarjetas y tipografía de precisión.",
+          "Cada proyecto puede albergar múltiples conversaciones simultáneas, compartiendo el workspace, las instrucciones y la memoria del proyecto.",
       },
       {
         tag: "FEATURE",
-        titulo: "Paleta de Comandos Global (Ctrl+K / ⌘K)",
+        titulo: "Chats libres independientes",
         descripcion:
-          "Acceso rápido a cualquier sección, ejecución de agentes, creación de proyectos, cambio de tema y acciones de desarrollo mediante teclado con búsqueda difusa en tiempo real.",
+          "Creación de chats rápidos sin vincular a ningún proyecto, con workspace aislado por conversación y distinción visual permanente en la barra lateral.",
       },
       {
         tag: "FEATURE",
-        titulo: "Inspector de Diffs Git (Estilo Codex Desktop)",
+        titulo: "Botón multifunción + Nuevo",
         descripcion:
-          "Visualizador de cambios de código con vistas unificada y dividida (split view), conteo de adiciones/eliminaciones por archivo, pestañas interactivas y barra de aprobación de commits.",
+          "Menú desplegable en la barra lateral para crear rápidamente un proyecto, un chat libre o un chat adicional dentro del proyecto activo.",
       },
       {
         tag: "FEATURE",
-        titulo: "Bloques de Razonamiento Expandibles & Quick Commands (Estilo Claude Desktop)",
+        titulo: "Monitorización de cuota de Google Gemini en vivo",
         descripcion:
-          "Integración de bloques <details className='thought-block'> para visualizar el pensamiento interno del modelo y barra de comandos rápidos (/plan, /diff, /test, /run, /status) en Chat.",
+          "Consulta y estimación en tiempo real del límite diario (1.500 RPD) y por minuto (15 RPM), con desglose de porcentaje restante y alertas preventivas.",
       },
       {
-        tag: "FEATURE",
-        titulo: "Barra Superior de Telemetría (Estilo Antigravity Desktop)",
+        tag: "MEJORA",
+        titulo: "Segmentación en analítica",
         descripcion:
-          "Cabecera global con indicador LED de estado del runner (Workers/Actions), selector de rama activa, acceso directo a la paleta y conmutador rápido de tema.",
+          "Diferenciación de métricas de modelos y agentes externos frente al consumo del propio sistema Telo, con agregación por modelo.",
       },
       {
-        tag: "FEATURE",
-        titulo: "Módulo de Tareas Programadas",
+        tag: "ARQUITECTURA",
+        titulo: "Resiliencia SSE e índices de base de datos",
         descripcion:
-          "Soporte para tareas recurrentes con frecuencias cron (cada hora, diario, nocturno), control de pausa/reanudación y ejecución inmediata.",
-      },
-      {
-        tag: "FEATURE",
-        titulo: "Sincronización de Skills en Workspace & Comandos @, $, /",
-        descripcion:
-          "Sincronización automática de skills (.opencode/skills y skills/) desde el proyecto hacia el workspace clonado de cada tarea, con fallback ante límites de GitHub y reconocimiento de comandos @, $ y / en el chat.",
+          "Reconexión SSE transparente con Last-Event-ID, rate limiting por IP, modularización de ajustes y sesiones dinámicas por dispositivo.",
       },
     ],
   },
   {
-    version: "v1.9.0",
+    version: "v10.6.0",
     actual: false,
     tipoSemver: "Cambio Mediano (Minor)",
-    fecha: "2026-10-15",
-    titulo: "GitHub App, Credenciales Temporales y Aislamiento de Sesiones",
+    fecha: "2026-10-16",
+    titulo: "Metodología Gauntlet para Telo, plantillas de proyecto y Git asistido",
     resumen:
-      "Infraestructura de alta seguridad para interacción con repositorios mediante GitHub App con permisos acotados, sesiones activas con revocación y cola de mensajes persistente.",
+      "Incorporación nativa de la metodología Gauntlet para diseño de sistemas, plantillas de inicio rápido para proyectos y flujo asistido de Git con aprobación de PR y merge.",
     items: [
       {
         tag: "FEATURE",
-        titulo: "Autenticación con GitHub App",
+        titulo: "Metodología Gauntlet nativa en Telo",
         descripcion:
-          "Emisión de tokens efímeros para clonar, subir ramas y crear PRs con verificación previa de permisos.",
+          "Directrices estructuradas para análisis por capas, verificación rigurosa y plantillas para creación de sistemas, páginas web y módulos.",
+      },
+      {
+        tag: "FEATURE",
+        titulo: "Flujo asistido de Git y Pull Requests",
+        descripcion:
+          "Autorización y revisión de commits, subida a ramas de trabajo y merge asistido desde la propia interfaz de Telo.",
+      },
+      {
+        tag: "MEJORA",
+        titulo: "Bloques de código enriquecidos y referencias visuales",
+        descripcion:
+          "Soporte mejorado de Markdown con diagramas Mermaid, tablas estructuradas y referencias interactivas a archivos modificados.",
+      },
+    ],
+  },
+  {
+    version: "v10.0.0",
+    actual: false,
+    tipoSemver: "Cambio Grande (Major)",
+    fecha: "2026-10-15",
+    titulo: "Sesiones dinámicas por dispositivo con revocación y propuestas de memoria",
+    resumen:
+      "Arquitectura de sesiones activas por dispositivo con revocación inmediata, propuestas de memoria contextuales sin dependencias externas y modularización del motor de chat.",
+    items: [
+      {
+        tag: "ARQUITECTURA",
+        titulo: "Sesiones dinámicas por dispositivo",
+        descripcion:
+          "Registro y visualización de dispositivos conectados con capacidad de revocación remota en tiempo real.",
+      },
+      {
+        tag: "FEATURE",
+        titulo: "Propuestas de memoria autónomas",
+        descripcion:
+          "Detección y sugerencia de aprendizajes clave y convenciones del proyecto para persistencia en memoria.",
+      },
+      {
+        tag: "ARQUITECTURA",
+        titulo: "Modularización del motor de chat",
+        descripcion:
+          "Separación del despachador de turnos, aislamiento de procesos y gestión reactiva de cuotas agotadas.",
+      },
+    ],
+  },
+  {
+    version: "v9.0.0",
+    actual: false,
+    tipoSemver: "Cambio Grande (Major)",
+    fecha: "2026-10-14",
+    titulo: "GitHub App, credenciales seguras y aislamiento de ramas",
+    resumen:
+      "Emisión de credenciales temporales mediante GitHub App con verificación previa de permisos, ramas de trabajo aisladas por tarea y gestión segura de secretos.",
+    items: [
+      {
+        tag: "ARQUITECTURA",
+        titulo: "Autenticación segura con GitHub App",
+        descripcion:
+          "Tokens de instalación acotados para clonado y operaciones de repositorio sin exponer claves personales.",
         pr: 51,
       },
       {
         tag: "FEATURE",
-        titulo: "Aislamiento y Concurrencia de Chats",
+        titulo: "Aprobación de commit y push",
         descripcion:
-          "Ejecución de hasta diez turnos concurrentes con estado aislado por conversación y serialización de tareas por proyecto.",
-        pr: 58,
-      },
-      {
-        tag: "MEJORA",
-        titulo: "Cola Persistente de Mensajes",
-        descripcion:
-          "Cola interactiva con edición, reordenamiento, redirección al compositor y despacho automático.",
-        pr: 48,
-      },
-      {
-        tag: "MEJORA",
-        titulo: "Sesiones por Dispositivo con Revocación",
-        descripcion:
-          "Detección de navegadores y dispositivos activos con posibilidad de revocar sesiones sospechosas.",
-        pr: 53,
+          "Verificación visual de diffs antes de registrar cambios en el repositorio con bloqueo de secretos sensibles.",
+        pr: 14,
       },
     ],
   },
   {
-    version: "v1.8.0",
+    version: "v8.0.0",
     actual: false,
     tipoSemver: "Cambio Grande (Major)",
-    fecha: "2026-10-14",
-    titulo: "Arquitectura Analizador-Obrero y Aprobación de Planes",
+    fecha: "2026-10-13",
+    titulo: "Arquitectura Analizador-Obrero y reportes estructurados",
     resumen:
-      "Flujo de dos fases para tareas autónomas: el Analizador genera un plan JSON validado y estructurado, el usuario aprueba o solicita ajustes en el compositor, y el Obrero ejecuta de manera aislada.",
+      "Flujo de dos fases para tareas autónomas de Telo: el Analizador genera un plan validado, el usuario autoriza la ejecución y el Obrero ejecuta de forma aislada entregando un reporte verificable.",
     items: [
       {
         tag: "ARQUITECTURA",
-        titulo: "Flujo Analizador / Obrero",
+        titulo: "Separación Analizador / Obrero",
         descripcion:
-          "Separación estricta de responsabilidades: el analizador no muta archivos y el obrero ejecuta solo lo autorizado.",
+          "El analizador no modifica archivos; el obrero trabaja estrictamente dentro de su workspace clonado.",
         pr: 28,
       },
       {
         tag: "FEATURE",
-        titulo: "Aprobación de Plan Integrada en el Compositor",
+        titulo: "Planes estructurados y reportes",
         descripcion:
-          "Acciones de aprobación y rechazo sin cuadros de diálogo secundarios, respondiendo notas directamente en el chat.",
-      },
-      {
-        tag: "FEATURE",
-        titulo: "Reportes Estructurados y Diff en Vivo",
-        descripcion:
-          "Resumen de cambios por archivo, pruebas ejecutadas y diff unificado listo para revisión.",
+          "Aprobación o revisión de pasos de tarea, con trazabilidad de cambios, pruebas ejecutadas y diffs unificados.",
+        pr: 28,
       },
     ],
   },
   {
-    version: "v1.5.0",
+    version: "v5.0.0",
     actual: false,
-    tipoSemver: "Cambio Mediano (Minor)",
+    tipoSemver: "Cambio Grande (Major)",
     fecha: "2026-10-13",
-    titulo: "Ecosistema Multi-Proveedor, Skills CLI y Codex",
+    titulo: "Actualización automática de Telo y tareas de fondo con systemd",
     resumen:
-      "Soporte para múltiples proveedores de IA (OpenAI Codex, Groq, NVIDIA, Google Gemini), almacenamiento cifrado de claves en servidor y compatibilidad con el ecosistema de skills de OpenCode.",
+      "Supervisión y actualización continua de Telo desde la rama main mediante temporizadores de systemd y tareas programadas en segundo plano.",
     items: [
       {
         tag: "FEATURE",
-        titulo: "Inicio de Sesión Codex CLI",
+        titulo: "Actualizador continuo con systemd",
         descripcion:
-          "Flujo OAuth Device Code para conectar cuentas de OpenAI sin manipular tokens en texto plano.",
-        pr: 34,
+          "Descarga y despliegue automático de versiones desde la rama principal sin pérdida de estado.",
+        pr: 22,
       },
       {
         tag: "FEATURE",
-        titulo: "Skills CLI y Catálogo de Skills",
+        titulo: "Tareas programadas",
         descripcion:
-          "Gestión e importación de skills desde repositorios comunitarios e integración en el razonamiento del agente.",
-        pr: 34,
-      },
-      {
-        tag: "MEJORA",
-        titulo: "Memoria Adaptativa por Proyecto",
-        descripcion:
-          "Memoria persistente que aprende convenciones y reglas del proyecto entre turnos.",
-        pr: 17,
+          "Ejecución autónoma y periódica de tareas configuradas por proyecto o globales.",
+        pr: 14,
       },
     ],
   },
@@ -180,22 +206,22 @@ export const RELEASES_DESTACADAS: Release[] = [
     actual: false,
     tipoSemver: "Cambio Grande (Major)",
     fecha: "2026-10-11",
-    titulo: "Lanzamiento del Núcleo de Orquestador",
+    titulo: "Lanzamiento del Núcleo de Telo",
     resumen:
-      "Primera versión de la plataforma Orquestador con sandboxing Bubblewrap, base de datos SQLite con migraciones seguras y streaming de eventos en tiempo real.",
+      "Primera versión del orquestador de agentes Telo: sandboxing seguro con Bubblewrap, colas reactivas con SQLite y streaming en tiempo real.",
     items: [
       {
         tag: "ARQUITECTURA",
-        titulo: "Sandboxing Aislado",
+        titulo: "Aislamiento de agentes con Bubblewrap",
         descripcion:
-          "Ejecución de procesos del agente restringidos con Bubblewrap sin acceso a variables del sistema.",
+          "Ejecución de agentes dentro de contenedores efímeros sin acceso a secretos ni variables globales del servidor.",
         pr: 13,
       },
       {
         tag: "FEATURE",
-        titulo: "Streaming SSE y Reactividad",
+        titulo: "Streaming SSE reactivo",
         descripcion:
-          "Canal en vivo de pasos y telemetría de ejecución de agentes.",
+          "Recepción en vivo de pasos de razonamiento, comandos y eventos de ejecución.",
         pr: 13,
       },
     ],
@@ -308,7 +334,7 @@ export function HistorialCambios({
               <h2 id="tl-cambios-titulo" className="tl-cambios-titulo">
                 Historial de versiones
               </h2>
-              <p className="tl-cambios-subtitulo">Registro de novedades y cambios en Cubo</p>
+              <p className="tl-cambios-subtitulo">Registro de novedades y mejoras de Telo</p>
             </div>
           </div>
           <button
@@ -338,18 +364,18 @@ export function HistorialCambios({
 
         {/* Cuerpo desplazable */}
         <div className="tl-cambios-cuerpo" aria-label="Actualizaciones del sistema">
-          {/* Tarjeta explicativa SemVer (idéntica a la referencia) */}
+          {/* Tarjeta explicativa SemVer según las reglas de Telo */}
           <div className="tl-semver-caja">
-            <h3 className="tl-semver-titulo">Control Semántico de Versiones (SemVer):</h3>
+            <h3 className="tl-semver-titulo">Control Semántico de Versiones (SemVer) de Telo:</h3>
             <ul className="tl-semver-lista">
               <li className="tl-semver-item">
-                <strong>• Grande (Major):</strong> Cambios mayores de arquitectura o ruptura de compatibilidad.
+                <strong>• Grande (Major):</strong> Arquitectura, seguridad, aislamiento, base de datos y migraciones.
               </li>
               <li className="tl-semver-item">
-                <strong>• Mediano (Minor):</strong> Nuevas funcionalidades, agentes y módulos.
+                <strong>• Mediano (Minor):</strong> Nuevos módulos, habilidades, plantillas e integraciones.
               </li>
               <li className="tl-semver-item">
-                <strong>• Mínimo (Patch):</strong> Optimizaciones, seguridad y correcciones.
+                <strong>• Mínimo (Patch):</strong> Optimizaciones, interfaz, rendimiento y correcciones.
               </li>
             </ul>
           </div>

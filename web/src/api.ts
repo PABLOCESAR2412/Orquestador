@@ -547,10 +547,10 @@ export const api = {
     request<{ ok: boolean }>("/api/login", { method: "POST", body: JSON.stringify({ clave }) }),
   logout: () => request<{ ok: boolean }>("/api/logout", { method: "POST", body: "{}" }),
   listConversations: () => request<Conversation[]>("/api/conversations"),
-  createConversation: (projectId?: string | null) =>
+  createConversation: (projectId?: string | null, title?: string) =>
     request<Conversation>("/api/conversations", {
       method: "POST",
-      body: JSON.stringify({ projectId: projectId ?? null }),
+      body: JSON.stringify({ projectId: projectId ?? null, title }),
     }),
   listMessages: (id: string) => request<Message[]>(`/api/conversations/${id}/messages`),
   // Pasos del agente de un turno (el id es el del mensaje del usuario).

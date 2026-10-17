@@ -72,6 +72,7 @@ export function ConvItem({ conv, active, onSelect, onRename, onTogglePin, onDele
   }
 
   const anclado = Boolean(conv.pinned_at);
+  const esProyecto = Boolean(conv.project_id);
 
   return (
     <div className="conv-item">
@@ -81,10 +82,24 @@ export function ConvItem({ conv, active, onSelect, onRename, onTogglePin, onDele
           className={`sidebar-conv${active ? " active" : ""}`}
           aria-current={active ? "true" : undefined}
           onClick={() => onSelect(conv.id)}
-          title={conv.title}
+          title={`${conv.title}${esProyecto ? ` (${conv.project_name || "Proyecto"})` : " (Chat libre)"}`}
         >
+          <span className={`sidebar-conv-tipo-icono ${esProyecto ? "is-proyecto" : "is-libre"}`} aria-hidden="true">
+            {esProyecto ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+            )}
+          </span>
           <span className="sidebar-conv-texto">
             <span className="sidebar-conv-title">{conv.title}</span>
+            <span className={`sidebar-conv-sub ${esProyecto ? "is-proyecto" : "is-libre"}`}>
+              {esProyecto ? (conv.project_name || "Proyecto") : "Chat libre"}
+            </span>
           </span>
           {conv.ocupada && <span className="pill-dot is-live conv-busy" role="img" aria-label="Respondiendo" />}
         </button>
