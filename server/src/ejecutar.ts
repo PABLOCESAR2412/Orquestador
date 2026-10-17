@@ -7,6 +7,7 @@ import { entornoProveedores } from "./claves-proveedor";
 import { redactar } from "./redaccion";
 import { AislamientoError } from "./runners/aislamiento";
 import { ErrorAgente, runOpenCode, type RunResult, type Usage } from "./runners/opencode";
+import { runCodex } from "./runners/codex";
 import { conMemoria, extraerMemoria, guardarMemoria, guardarPropuestaMemoria, memoriaDelProyecto, quitarBloqueMemoria } from "./memoria";
 import { conservarMemoriaSegunJev, puntuarMemoriaJev } from "./jev";
 import { inyectarSkillsEnPrompt } from "./resolucion-skills";
@@ -444,9 +445,16 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     return { ...r, text: opts.aprender ? quitarBloqueMemoria(texto) : texto, textoFinal: opts.aprender ? quitarBloqueMemoria(textoFinal) : textoFinal, modelo };
   };
 
+  async function ejecutarConRunner(modelo: string, params: Parameters<typeof runOpenCode>[0]): Promise<RunResult> {
+    if (modelo.startsWith("codex/")) {
+      return runCodex(params);
+    }
+    return runOpenCode(params);
+  }
+
   const inicio = Date.now();
   try {
-    const r = await runOpenCode({
+    const r = await ejecutarConRunner(opts.model, {
       ...base,
       model: opts.model,
       variant: opts.variant ?? undefined,
@@ -470,7 +478,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       await Bun.sleep(1200);
       if (!opts.signal?.aborted) {
         try {
-          const r = await runOpenCode({
+          const r = await ejecutarConRunner(opts.model, {
             ...base,
             model: opts.model,
             variant: opts.variant ?? undefined,
@@ -491,7 +499,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       registrarEvento(opts.taskId, "modelo_respaldo", `${etiquetaDelError(err)} en ${opts.model}; usando ${respaldo}`);
     }
     try {
-      const r = await runOpenCode({
+      const r = await ejecutarConRunner(respaldo, {
         ...base,
         model: respaldo,
         variant: await varianteSoportada(respaldo, opts.variant),
