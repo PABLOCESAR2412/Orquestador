@@ -5,6 +5,7 @@ import { api, ApiError, type Conversation, type Documento, type FormatoDocumento
 import { useEventosVivos } from "../lib/eventos-vivos";
 import { ModelPicker } from "../components/model-picker";
 import { UsoPanel } from "../components/uso-panel";
+import { CapacidadesMedios } from "../components/capacidades-medios";
 import { IndicadorPensando, MensajeAgente, MensajeUsuario } from "../components/chat-mensajes";
 import { ProcesoAgente } from "../components/chat-proceso";
 import { copiarTexto, type ReferenciaArchivo } from "../components/chat-contenido";
@@ -138,6 +139,7 @@ export function ChatPage() {
   };
   const [pickerOpen, setPickerOpen] = useState(false);
   const [usoAbierto, setUsoAbierto] = useState(false);
+  const [mediosAbierto, setMediosAbierto] = useState(false);
   const [pendientes, setPendientes] = useState<Pendiente[]>([]);
   const [arrastrando, setArrastrando] = useState(false);
   const [dictando, setDictando] = useState(false);
@@ -159,6 +161,7 @@ export function ChatPage() {
   // Botones que abren el selector y el panel de uso: reciben el foco al cerrar.
   const chipRef = useRef<HTMLButtonElement>(null);
   const usoRef = useRef<HTMLButtonElement>(null);
+  const mediosRef = useRef<HTMLButtonElement>(null);
   const abrirArchivo = useCallback((referencia: ReferenciaArchivo, triggerId: string) => {
     archivoDisparadorRef.current = triggerId;
     setArchivoAbierto(referencia);
@@ -1572,6 +1575,15 @@ export function ChatPage() {
                 />
               )}
 
+              {mediosAbierto && (
+                <CapacidadesMedios
+                  modelo={current?.model ?? null}
+                  nombreModelo={modelInfo?.name ?? null}
+                  onCerrar={() => setMediosAbierto(false)}
+                  disparador={mediosRef}
+                />
+              )}
+
               {pendientes.length > 0 && (
                 <ul className="tl-adjuntos-pendientes" aria-label="Archivos del mensaje">
                   {pendientes.map((p) => {
@@ -1630,36 +1642,20 @@ export function ChatPage() {
                 <MenuComandosChat comandos={comandosFiltrados} activo={indiceSlash} onElegir={elegirComando} />
               )}
 
-              {sugerencia && (
-                <button
-                  type="button"
-                  className="tl-composer-sugerencia"
-                  aria-label={`Usar sugerencia: ${sugerencia}`}
-                  title="Pulsa Tab para aceptar la sugerencia"
-                  onClick={() => {
-                    cambiarBorrador(sugerencia);
-                    window.setTimeout(() => inputRef.current?.focus(), 0);
-                  }}
-                >
-                  <span className="tl-composer-sugerencia-etiqueta">Sugerencia</span>
-                  <span className="tl-composer-sugerencia-texto">{sugerencia}</span>
-                  <kbd>Tab</kbd>
-                </button>
-              )}
-
               <textarea
                 ref={inputRef}
                 className="tl-composer-input"
                 rows={2}
                 value={draft}
-                placeholder={
+                placeholder={sugerencia ?? (
                   planPendiente
-                    ? "Responde las preguntas del plan · Usa / para ver comandos"
+                    ? "Responde las preguntas del plan"
                     : agenteOcupado && colaActiva
-                    ? "El agente responde; escribe en cola · Usa / para comandos"
-                    : "Escribe un mensaje · Usa / para ver comandos"
-                }
+                    ? "El agente responde; escribe en cola"
+                    : "Escribe un mensaje"
+                )}
                 aria-label={planPendiente ? "Aclaraciones o cambios al plan" : "Mensaje"}
+                aria-description={sugerencia ? "Pulsa Tab para insertar la recomendación." : undefined}
                 aria-autocomplete={menuSkillsAbierto || menuAbierto ? "list" : undefined}
                 aria-activedescendant={
                   menuSkillsAbierto
@@ -1785,6 +1781,7 @@ export function ChatPage() {
                     aria-expanded={pickerOpen}
                     onClick={() => {
                       setUsoAbierto(false);
+                      setMediosAbierto(false);
                       setPickerOpen((o) => !o);
                     }}
                   >
@@ -1804,10 +1801,32 @@ export function ChatPage() {
                     aria-expanded={usoAbierto}
                     onClick={() => {
                       setPickerOpen(false);
+                      setMediosAbierto(false);
                       setUsoAbierto((o) => !o);
                     }}
                   >
                     Uso
+                  </button>
+
+                  <button
+                    ref={mediosRef}
+                    type="button"
+                    className="tl-boton tl-boton-compacto tl-uso tl-medios-boton"
+                    aria-label="Capacidades multimedia"
+                    title="Capacidades multimedia"
+                    aria-haspopup="dialog"
+                    aria-expanded={mediosAbierto}
+                    onClick={() => {
+                      setPickerOpen(false);
+                      setUsoAbierto(false);
+                      setMediosAbierto((o) => !o);
+                    }}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <rect x="3" y="5" width="18" height="14" rx="2" />
+                      <path d="m10 9 5 3-5 3z" />
+                    </svg>
+                    <span className="tl-medios-boton-texto">Medios</span>
                   </button>
                 </div>
 

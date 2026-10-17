@@ -77,6 +77,13 @@ describe("documentos: vista previa", () => {
     expect(vista).toContain("&lt;b&gt;hola&lt;/b&gt;");
   });
 
+  test("la vista HTML incluye estilos de impresión para guardar como PDF", async () => {
+    const vista = await vistaHtml("md", new TextEncoder().encode("# Informe\n\nTexto"));
+    expect(vista).toContain("@media print");
+    expect(vista).toContain("@page{margin:18mm}");
+    expect(vista).toContain("Texto");
+  });
+
   test("xlsx muestra la cabecera de la tabla y escapa las celdas", async () => {
     const xlsx = await generarArchivo("xlsx", "t", "| A | B |\n|---|---|\n| <x> | 1 |");
     const vista = await vistaHtml("xlsx", xlsx);

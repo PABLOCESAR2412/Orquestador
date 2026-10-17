@@ -62,6 +62,15 @@ export function VistaDocumento({
             <span className="tl-chip">{ETIQUETA_CORTA[documento.formato]}</span>
           </div>
           <div className="tl-dialogo-acciones">
+            <a
+              className="tl-boton"
+              href={urlVistaDocumento(documento.id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Abre una vista lista para imprimir; elige Guardar como PDF en el navegador."
+            >
+              PDF / Imprimir
+            </a>
             <a className="tl-boton tl-boton-principal" href={urlDescargaDocumento(documento.id)} download>
               Descargar
             </a>
