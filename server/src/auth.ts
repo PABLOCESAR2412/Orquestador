@@ -51,6 +51,9 @@ export function crearSesionDispositivo(opts: { userAgent?: string; ip?: string }
   return { id, token };
 }
 
+const ultimasVistas = new Map<string, number>();
+const INTERVALO_ACTUALIZACION_SESION_MS = 5 * 60_000;
+
 // Comprueba si la cookie corresponde a una sesión activa en auth_sessions (o al HMAC estático anterior).
 export function sesionValida(valor: string | undefined): boolean {
   if (config.sinClave) return true;
@@ -61,7 +64,16 @@ export function sesionValida(valor: string | undefined): boolean {
     const th = hashToken(valor);
     const row = db.query<{ id: string }, [string]>("SELECT id FROM auth_sessions WHERE token_hash = ?").get(th);
     if (row) {
-      db.query("UPDATE auth_sessions SET last_seen_at = datetime('now') WHERE id = ?").run(row.id);
+      const ahora = Date.now();
+      const ultima = ultimasVistas.get(row.id) ?? 0;
+      if (ahora - ultima >= INTERVALO_ACTUALIZACION_SESION_MS) {
+        ultimasVistas.set(row.id, ahora);
+        try {
+          db.query("UPDATE auth_sessions SET last_seen_at = datetime('now') WHERE id = ?").run(row.id);
+        } catch {
+          // Si la base está ocupada, la sesión sigue siendo válida
+        }
+      }
       return true;
     }
   } catch {

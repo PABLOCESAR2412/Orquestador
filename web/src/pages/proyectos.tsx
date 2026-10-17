@@ -109,6 +109,7 @@ function TarjetaProyecto({ proyecto: p, alCambiar }: { proyecto: Project; alCamb
   const [renombrando, setRenombrando] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState(p.name);
   const [confirmarBorrar, setConfirmarBorrar] = useState(false);
+  const [borrarArchivos, setBorrarArchivos] = useState(false);
 
   const editar = useMutation({
     mutationFn: (body: { name?: string; pinned?: boolean }) => api.updateProject(p.id, body),
@@ -119,7 +120,7 @@ function TarjetaProyecto({ proyecto: p, alCambiar }: { proyecto: Project; alCamb
   });
 
   const quitar = useMutation({
-    mutationFn: () => api.deleteProject(p.id),
+    mutationFn: () => api.deleteProject(p.id, { borrarCarpeta: borrarArchivos }),
     onSettled: () => {
       setConfirmarBorrar(false);
       alCambiar();
@@ -239,8 +240,16 @@ function TarjetaProyecto({ proyecto: p, alCambiar }: { proyecto: Project; alCamb
       {confirmarBorrar && (
         <div className="error-box" role="alertdialog" aria-label={`Eliminar ${p.name}`}>
           <span className="error-text">
-            ¿Quitar «{p.name}» de Telo? Se elimina solo el registro: la carpeta «{p.carpeta}» y sus archivos siguen en el servidor.
+            ¿Quitar «{p.name}» de Telo?
           </span>
+          <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", margin: "0.4rem 0", fontSize: "0.85rem", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={borrarArchivos}
+              onChange={(e) => setBorrarArchivos(e.target.checked)}
+            />
+            <span>Eliminar también la carpeta «{p.carpeta}» y sus archivos del servidor</span>
+          </label>
           <div className="proyecto-tarjeta-acciones">
             <button
               type="button"

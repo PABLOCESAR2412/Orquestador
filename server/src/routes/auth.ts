@@ -11,41 +11,32 @@ import {
   sesionValida,
 } from "../auth";
 import { config } from "../config";
+import { bloquearIntento, LimitadorLogin, validarIp } from "../seguridad-login";
 
-// Límite de intentos fallidos por IP para evitar ataques de fuerza bruta
+// Límite de intentos fallidos por IP y global para evitar ataques de fuerza bruta
 // sin provocar denegación de servicio a clientes legítimos en otras redes.
 const VENTANA_MS = 15 * 60_000;
 const MAX_FALLOS_POR_IP = 10;
-const fallosPorIp = new Map<string, number[]>();
+const MAX_FALLOS_TOTALES = 50;
+const limitadorLogin = new LimitadorLogin(VENTANA_MS, MAX_FALLOS_POR_IP, MAX_FALLOS_TOTALES);
 
 function obtenerIpCliente(c: Context): string {
-  const ip =
-    c.req.header("cf-connecting-ip") ||
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-    c.req.header("x-real-ip");
-  return ip && ip.length > 0 ? ip : "desconocida";
-}
+  const cf = validarIp(c.req.header("cf-connecting-ip"));
+  if (cf) return cf;
 
-function demasiadosIntentos(ip: string): boolean {
-  const desde = Date.now() - VENTANA_MS;
-  const intentos = fallosPorIp.get(ip) ?? [];
-  const validos = intentos.filter((t) => t >= desde);
-  if (validos.length > 0) {
-    fallosPorIp.set(ip, validos);
-  } else {
-    fallosPorIp.delete(ip);
+  const xff = c.req.header("x-forwarded-for");
+  if (xff) {
+    const partes = xff.split(",");
+    for (let i = partes.length - 1; i >= 0; i--) {
+      const v = validarIp(partes[i]);
+      if (v) return v;
+    }
   }
-  return validos.length >= MAX_FALLOS_POR_IP;
-}
 
-function registrarFallo(ip: string): void {
-  const intentos = fallosPorIp.get(ip) ?? [];
-  intentos.push(Date.now());
-  fallosPorIp.set(ip, intentos);
-}
+  const real = validarIp(c.req.header("x-real-ip"));
+  if (real) return real;
 
-function limpiarFallos(ip: string): void {
-  fallosPorIp.delete(ip);
+  return "desconocida";
 }
 
 const DURACION_SESION_S = 60 * 60 * 24 * 30;
@@ -83,17 +74,19 @@ auth.get("/sesion", (c) =>
 auth.post("/login", async (c) => {
   if (config.sinClave) return c.json({ ok: true });
   const ip = obtenerIpCliente(c);
-  if (demasiadosIntentos(ip)) return c.json({ error: "demasiados_intentos" }, 429);
+  const limites = limitadorLogin.limites(ip);
 
   const body = await c.req.json<{ clave?: string }>().catch(() => ({}) as { clave?: string });
   // Solo texto: un número o una lista en el cuerpo cuenta como intento fallido, no como error del servidor.
-  if (typeof body.clave !== "string" || !claveCorrecta(body.clave)) {
-    registrarFallo(ip);
+  const claveValida = typeof body.clave === "string" && claveCorrecta(body.clave);
+  if (bloquearIntento(limites, claveValida)) return c.json({ error: "demasiados_intentos" }, 429);
+  if (!claveValida) {
+    limitadorLogin.registrarFallo(ip);
     return c.json({ error: "clave_incorrecta" }, 401);
   }
 
   // Éxito: limpiar fallos registrados para esta IP
-  limpiarFallos(ip);
+  limitadorLogin.limpiar(ip);
 
   const userAgent = c.req.header("user-agent");
   const sesion = crearSesionDispositivo({ userAgent, ip: ip !== "desconocida" ? ip : undefined });

@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, type Project, type ProjectSshKey } from "../api";
+import { api, ApiError, type Project, type ProjectSshKey } from "../api";
 import { errorText } from "../lib/model";
 import { MAX_NOMBRE_PROYECTO, carpetaDe, rutaCarpeta } from "../lib/proyecto";
 import { useDialogo } from "./controls";
@@ -45,6 +45,55 @@ export function NuevoProyectoDialog({ onCerrar }: { onCerrar: () => void }) {
       params: { id: p.id },
       state: (prev) => ({ ...prev, proyectoNuevo: true, clonandoEn }),
     });
+  };
+
+  const vincularExistente = async () => {
+    const n = nombre.trim();
+    if (!n || !slug || ocupado) return;
+    setOcupado(true);
+    setError(null);
+    try {
+      setProgreso("Vinculando carpeta existente…");
+      irAlProyecto(await api.createProject({ path: slug, name: n }));
+    } catch (err) {
+      setError(err);
+    } finally {
+      setOcupado(false);
+    }
+  };
+
+  const sobrescribirYCrear = async () => {
+    const n = nombre.trim();
+    if (!n || !slug || ocupado) return;
+    setOcupado(true);
+    setError(null);
+    let nuevo: Project | null = null;
+    try {
+      if (!conClonar) {
+        setProgreso("Vaciando y creando el proyecto…");
+        irAlProyecto(await api.createProject({ name: n, sobrescribir: true }));
+        return;
+      }
+      setProgreso("Revisando el repositorio…");
+      const revision = await api.verificarRepositorioGithub(url.trim());
+      setProgreso("Recreando el proyecto…");
+      nuevo = await api.createProject({ name: n, url: revision.url, sobrescribir: true });
+      setCreado(nuevo);
+      if (revision.visibilidad === "publico" || revision.credencial === "app") {
+        setProgreso(revision.credencial === "app" ? "Clonando con la GitHub App…" : "Empezando el clonado…");
+        const inicio = await api.cloneProject(nuevo.id);
+        irAlProyecto(nuevo, inicio.conversacion_id);
+        return;
+      }
+      setProgreso("Creando la clave de GitHub…");
+      setClave(await api.createProjectSshKey(nuevo.id));
+      setPaso2(true);
+    } catch (err) {
+      setError(err);
+      if (nuevo) setPaso2(true);
+    } finally {
+      setOcupado(false);
+    }
   };
 
   const enviar = async (e: FormEvent) => {
@@ -181,6 +230,28 @@ export function NuevoProyectoDialog({ onCerrar }: { onCerrar: () => void }) {
               {error != null && (
                 <div className="error-box" role="alert">
                   <span className="error-text">{errorText(error)}</span>
+                  {error instanceof ApiError && error.code === "project_folder_exists" && (
+                    <div style={{ marginTop: "0.6rem", display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        style={{ fontSize: "0.82rem", padding: "0.3rem 0.6rem" }}
+                        onClick={() => void vincularExistente()}
+                        disabled={ocupado}
+                      >
+                        Vincular carpeta existente
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost is-peligro"
+                        style={{ fontSize: "0.82rem", padding: "0.3rem 0.6rem" }}
+                        onClick={() => void sobrescribirYCrear()}
+                        disabled={ocupado}
+                      >
+                        Vaciar y empezar de cero
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 

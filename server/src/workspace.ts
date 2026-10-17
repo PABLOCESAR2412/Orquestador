@@ -833,7 +833,7 @@ export function limpiarCopiaCancelada(taskId: string): Promise<void> {
 export async function limpiarCopias(): Promise<void> {
   const filas = db
     .query<{ id: string }, []>(
-      `SELECT id FROM tasks WHERE conversation_id IS NULL AND status IN ('done', 'failed', 'cancelled') AND finished_at IS NOT NULL
+      `SELECT id FROM tasks WHERE status IN ('done', 'failed', 'cancelled') AND finished_at IS NOT NULL
        AND finished_at < datetime('now', '-${DIAS_CONSERVAR} days')`,
     )
     .all();
@@ -846,23 +846,36 @@ export async function limpiarCopias(): Promise<void> {
            AND finished_at < datetime('now', '-${DIAS_CONSERVAR} days')`,
         )
         .get(id);
-      if (!vieja || !existsSync(rutaClon(id))) return;
-      try {
-        const ctx = await contextoGit(id);
-        const pendientes = (
-          await gitOkSeguro(["status", "--porcelain", "--untracked-files=all", "--ignored"], {
-            cwd: ctx.clon,
-          })
-        ).trim();
-        if (pendientes !== "") return;
-        const head = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: ctx.clon })).trim();
-        const subida = aprobacionDe(id, "push");
-        if (head !== ctx.base && head !== subida?.commit_sha) return;
-      } catch {
-        // Ante metadatos o Git dañados, conservar para revisión manual.
-        return;
+      if (!vieja) return;
+      if (existsSync(rutaClon(id))) {
+        try {
+          const ctx = await contextoGit(id);
+          const pendientes = (
+            await gitOkSeguro(["status", "--porcelain", "--untracked-files=all", "--ignored"], {
+              cwd: ctx.clon,
+            })
+          ).trim();
+          if (pendientes !== "") return;
+          const head = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: ctx.clon })).trim();
+          const subida = aprobacionDe(id, "push");
+          if (head !== ctx.base && head !== subida?.commit_sha) return;
+        } catch {
+          // Ante metadatos o Git dañados, conservar para revisión manual.
+          return;
+        }
+        rmSync(rutaClon(id), { recursive: true, force: true });
       }
-      rmSync(rutaClon(id), { recursive: true, force: true });
+
+      // Si la tarea terminó hace más de 30 días y el clon ya no existe, purgar logs y carpeta contenedora
+      const muyVieja = db
+        .query<{ id: string }, [string]>(
+          `SELECT id FROM tasks WHERE id = ? AND status IN ('done', 'failed', 'cancelled')
+           AND finished_at < datetime('now', '-30 days')`,
+        )
+        .get(id);
+      if (muyVieja && existsSync(carpetaTarea(id)) && !existsSync(rutaClon(id))) {
+        rmSync(carpetaTarea(id), { recursive: true, force: true });
+      }
     });
   }
 }

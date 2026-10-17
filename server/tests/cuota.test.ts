@@ -66,8 +66,11 @@ describe("diff de una tarea activa", () => {
 });
 
 describe("clasificación de cuota agotada", () => {
-  test("un 429, un límite de uso o un saldo agotado cuentan como cuota", () => {
-    expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"message":"Rate limit exceeded (429)"}}'))).toBe(true);
+  test("el rate limit temporal no se confunde con una cuota agotada", () => {
+    expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"message":"Rate limit exceeded (429)"}}'))).toBe(false);
+    expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"message":"429 Too Many Requests"}}'))).toBe(false);
+    expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"message":"Quota exceeded for this model"}}'))).toBe(true);
+    expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"code":"insufficient_quota"}}'))).toBe(true);
     expect(esErrorDeCuota(new Error("Insufficient account funds"))).toBe(true);
     expect(esErrorDeCuota(new Error("usage limit reached for this model"))).toBe(true);
   });
@@ -76,10 +79,12 @@ describe("clasificación de cuota agotada", () => {
     // Sin evento de error, la cola de la salida se mira sin rutas: una carpeta «cuota-app» no cuenta.
     const sinEvento = detalleDelProveedor("", "TypeError at /home/x/cuota-app/bin/opencode:21", []);
     expect(esErrorDeCuota(new ErrorAgente("opencode salió con código 1", sinEvento))).toBe(false);
-    // Con evento de error, lo que dice el proveedor sí cuenta.
+    // El rate limit del proveedor es temporal, aunque aparezca como evento de error.
     const evento = { type: "error", error: { data: { message: "Rate limit exceeded" } } } as const;
     const conEvento = detalleDelProveedor("", "", [evento as never]);
-    expect(esErrorDeCuota(new ErrorAgente("opencode salió con código 1", conEvento))).toBe(true);
+    expect(esErrorDeCuota(new ErrorAgente("opencode salió con código 1", conEvento))).toBe(false);
+    const cuota = { type: "error", error: { data: { message: "Quota exceeded" } } } as const;
+    expect(esErrorDeCuota(new ErrorAgente("opencode salió con código 1", detalleDelProveedor("", "", [cuota as never])))).toBe(true);
   });
 
   test("el respaldo se activa por saturación del proveedor, nunca por una ruta con «429» o «quota»", () => {

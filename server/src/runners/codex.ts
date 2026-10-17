@@ -3,7 +3,28 @@ import { join } from "node:path";
 import { prefijoAislamiento } from "./aislamiento";
 import { hallarEjecutable } from "../ejecutable";
 import { carpetaHome } from "../hogar";
-import type { RunResult, Usage } from "./opencode";
+import { entornoDelAgente, type RunResult, type Usage } from "./opencode";
+
+// Termina el grupo de procesos para que herramientas e hijos no queden como zombies huérfanos.
+function terminarGrupo(proc: { pid: number; kill: () => void }) {
+  if (process.platform === "win32") {
+    try {
+      proc.kill();
+    } catch {}
+    return;
+  }
+  const enviar = (señal: NodeJS.Signals) => {
+    try {
+      process.kill(-proc.pid, señal);
+    } catch {
+      try {
+        proc.kill();
+      } catch {}
+    }
+  };
+  enviar("SIGTERM");
+  setTimeout(() => enviar("SIGKILL"), 3_000).unref();
+}
 
 // Ejecución de tareas con el CLI de Codex cuando el modelo seleccionado es de Codex (codex/*).
 // Utiliza la sesión activa autenticada con ChatGPT (`codex login --device-auth`).
@@ -41,13 +62,8 @@ export async function runCodex(opts: {
 
   const comandoCompleto = aislamiento.length > 0 ? ["setsid", ...aislamiento, ...args] : process.platform === "win32" ? ["cmd", "/c", ...args] : ["setsid", ...args];
 
-  const env = {
-    ...process.env,
-    PATH: process.env.PATH ?? "/usr/bin:/bin",
-    HOME: carpetaHome(),
-    LC_ALL: "C.UTF-8",
-    ...(opts.extraEnv ?? {}),
-  };
+  // Aislar variables sensibles usando entornoDelAgente para nunca filtrar TELO_* ni secretos del servidor
+  const env = entornoDelAgente(opts.extraEnv);
 
   const proc = Bun.spawn(comandoCompleto, {
     cwd: opts.cwd,
@@ -58,15 +74,11 @@ export async function runCodex(opts: {
   });
 
   const timer = setTimeout(() => {
-    try {
-      proc.kill();
-    } catch {}
+    terminarGrupo(proc);
   }, opts.timeoutMs ?? 180_000);
 
   const onAbort = () => {
-    try {
-      proc.kill();
-    } catch {}
+    terminarGrupo(proc);
   };
   if (opts.signal) {
     if (opts.signal.aborted) onAbort();
@@ -140,13 +152,29 @@ export async function runCodex(opts: {
     }
   };
 
-  const [_, stderr, code] = await Promise.all([
+  const salidaPromesa = Promise.all([
     lector(),
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
 
-  clearTimeout(timer);
+  const abortado = new Promise<never>((_, reject) => {
+    if (opts.signal?.aborted) {
+      reject(new Error("Ejecución cancelada"));
+      return;
+    }
+    opts.signal?.addEventListener("abort", () => reject(new Error("Ejecución cancelada")), { once: true });
+  });
+
+  let stderr = "";
+  let code = 0;
+  try {
+    const res = await Promise.race([salidaPromesa, abortado]);
+    stderr = res[1];
+    code = res[2];
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (code !== 0) {
     const detalle = ultimoError || stderr.trim() || `Codex terminó con código ${code}`;

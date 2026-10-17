@@ -11,6 +11,7 @@ import { db } from "./db";
 import { publicar } from "./bus";
 import { publicarEstado, registrarEvento } from "./eventos";
 import { ejecutarAgente, ErrorCuota, promptContinuacion, type ResultadoAgente } from "./ejecutar";
+import { sesionCompatible } from "./conversacion-contexto";
 import { redactar } from "./redaccion";
 import { clasificarTareaJev } from "./jev";
 import {
@@ -56,6 +57,7 @@ export const MAX_NOTAS = 2000;
 const controllers = new Map<string, AbortController>();
 const cancelRequested = new Set<string>();
 const tareasEnEjecucion = new Set<string>();
+const proyectosEnEjecucion = new Set<string>();
 const MAX_TAREAS_SIMULTANEAS = 10;
 let wake: (() => void) | null = null;
 
@@ -72,6 +74,7 @@ type QueuedTask = {
   repo_path: string | null;
   project_id: string | null;
   provider_session_id: string | null;
+  provider_session_model: string | null;
   conversation_id: string | null;
   // 1 si el plan ya fue aprobado: la tarea va directo al obrero.
   aprobado: number;
@@ -98,12 +101,19 @@ export function notifyWorker() {
 function nextQueued(): QueuedTask | null {
   const pendientes = db
     .query<QueuedTask, []>(
-      "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, t.conversation_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado, t.continuar FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC",
+      "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, t.provider_session_model, t.conversation_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado, t.continuar FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC",
     )
     .all();
-  return pendientes.find((task) =>
-    !tareasEnEjecucion.has(task.id) && (!task.project_id || !proyectoOcupado(task.project_id)),
-  ) ?? null;
+  const candidata = pendientes.find((task) =>
+    !tareasEnEjecucion.has(task.id) &&
+    (!task.project_id || (!proyectosEnEjecucion.has(task.project_id) && !proyectoOcupado(task.project_id))),
+  );
+  if (!candidata) return null;
+  if (candidata.project_id) {
+    proyectosEnEjecucion.add(candidata.project_id);
+    reservarProyecto(candidata.project_id);
+  }
+  return candidata;
 }
 
 function estadoActual(id: string): string | null {
@@ -212,12 +222,15 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
     agotado = true;
     controller.abort();
   }, TASK_TIMEOUT_MS);
+  const modeloSolicitado = task.model;
+  const esfuerzoSolicitado = task.effort;
   try {
     const result = await ejecutarAgente({
       prompt: ctx.avisos?.length ? `${prompt}\n\nComprobaciones previas de Telo (incorpora su resolución al plan antes de ejecutar pruebas):\n${ctx.avisos.join("\n")}` : prompt,
       model: task.model,
       variant: task.effort,
       sessionId: task.provider_session_id,
+      sessionModel: task.provider_session_model,
       cwd: ctx.cwd,
       timeoutMs: TASK_TIMEOUT_MS,
       signal: controller.signal,
@@ -228,12 +241,16 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
       // Solo el obrero aprende del proyecto: al terminar, guarda su memoria.
       aprender,
       // Guarda la sesión apenas aparece, para poder reanudar si el servidor se reinicia a mitad.
-      onSesion: (sid) => {
-        if (sid === task.provider_session_id) return;
+      onSesion: (sid, model) => {
+        if (sid === task.provider_session_id && model === task.provider_session_model) return;
         task.provider_session_id = sid;
-        db.query("UPDATE tasks SET provider_session_id = ? WHERE id = ?").run(sid, task.id);
-        registrarEvento(task.id, "sesion_asignada", sid);
-        if (task.conversation_id) db.query("UPDATE conversations SET runner_session_id=? WHERE id=?").run(sid, task.conversation_id);
+        task.provider_session_model = model;
+        db.query("UPDATE tasks SET provider_session_id = ?, provider_session_model = ? WHERE id = ?").run(sid, model, task.id);
+        if (sid) registrarEvento(task.id, "sesion_asignada", `Modelo ${model}`);
+        if (task.conversation_id) {
+          db.query("UPDATE conversations SET runner_session_id = ?, runner_session_model = ? WHERE id = ?")
+            .run(sid, model, task.conversation_id);
+        }
       },
       onLinea: (linea) => {
         if (!linea.trim()) return;
@@ -246,6 +263,15 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
         publicar({ tipo: "salida", task_id: task.id, linea: recortarLinea(linea) });
       },
     });
+    if (result.modelo !== modeloSolicitado || result.variante !== esfuerzoSolicitado) {
+      task.model = result.modelo;
+      task.effort = result.variante;
+      db.query("UPDATE tasks SET model = ?, effort = ? WHERE id = ?").run(result.modelo, result.variante, task.id);
+      if (task.conversation_id) {
+        db.query("UPDATE conversations SET model = ?, effort = ? WHERE id = ? AND model IS ? AND effort IS ?")
+          .run(result.modelo, result.variante, task.conversation_id, modeloSolicitado, esfuerzoSolicitado);
+      }
+    }
     return result;
   } catch (err) {
     if (agotado) throw new TiempoAgotado("El agente superó los 30 minutos sin terminar.");
@@ -259,7 +285,10 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
 function promptDeFase(ctx: Contexto, prompt: string): string {
   if (!ctx.continuar) return prompt;
   ctx.continuar = false;
-  return promptContinuacion(prompt);
+  return promptContinuacion(
+    prompt,
+    sesionCompatible(ctx.task.provider_session_id, ctx.task.provider_session_model, ctx.task.model),
+  );
 }
 
 // Sin cuota: la tarea se detiene con el modelo que se quedó sin tokens, sin pasar por "fallida".
@@ -355,14 +384,13 @@ function pedirReplanificacion(id: string, motivo: string) {
 }
 
 async function runTask(task: QueuedTask) {
-  if (task.project_id && (proyectoOcupado(task.project_id) || !reservarProyecto(task.project_id))) {
-    await Bun.sleep(500);
-    return;
-  }
   try {
     await ejecutarTarea(task);
   } finally {
-    if (task.project_id) soltarProyecto(task.project_id);
+    if (task.project_id) {
+      proyectosEnEjecucion.delete(task.project_id);
+      soltarProyecto(task.project_id);
+    }
   }
 }
 
@@ -531,6 +559,10 @@ async function ejecutarSlot(task: QueuedTask): Promise<void> {
     }
   } finally {
     tareasEnEjecucion.delete(task.id);
+    if (task.project_id) {
+      proyectosEnEjecucion.delete(task.project_id);
+      soltarProyecto(task.project_id);
+    }
     notifyWorker();
   }
 }

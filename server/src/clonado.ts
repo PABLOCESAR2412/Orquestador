@@ -102,7 +102,8 @@ function casaTemporal(): string {
 }
 
 function entornoAislado(casa: string): Record<string, string> {
-  return { HOME: casa, GIT_CONFIG_GLOBAL: "/dev/null" };
+  const nullDev = process.platform === "win32" ? "NUL" : "/dev/null";
+  return { HOME: casa, GIT_CONFIG_GLOBAL: nullDev };
 }
 
 // Quita de la salida las rutas del servidor y los secretos conocidos antes de mostrarla.

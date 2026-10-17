@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-17", "tipo": "grande", "titulo": "Chat: conserva el contexto al cambiar de modelo, valida esfuerzo por turno y separa rate limits de cuota agotada; protege el acceso de login", "pr": 71 },
     { "fecha": "2026-10-16", "tipo": "mediano", "titulo": "Múltiples chats por proyecto, chats libres independientes con botón multifunción e historial de versiones alineado a Telo", "pr": null },
     { "fecha": "2026-10-16", "tipo": "grande", "titulo": "Rendimiento e índices en base de datos, resiliencia SSE con Last-Event-ID, rate limiting por IP y modularización de ajustes", "pr": null },
     { "fecha": "2026-10-16", "tipo": "grande", "titulo": "Sesiones dinámicas por dispositivo con revocación, propuestas de memoria sin Jev y modularización de chat", "pr": null },
