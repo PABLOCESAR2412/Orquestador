@@ -229,6 +229,8 @@ try {
     await page.locator(".tl-modelo-boton .tl-modelo-nombre").filter({ hasText: "Google Test" }).waitFor();
     assert.equal(await page.locator(".tl-atajos-barra").count(), 0);
     const inputChat = page.getByRole("textbox", { name: "Mensaje", exact: true });
+    const hiloChat = page.locator(".tl-hilo");
+    assert.equal(await hiloChat.evaluate(el => getComputedStyle(el).overflowX), "hidden", "el hilo no debe permitir desplazamiento horizontal");
     const recomendacion = await inputChat.getAttribute("placeholder");
     assert.ok(recomendacion && recomendacion.length > 20);
     assert.doesNotMatch(recomendacion, /Usa \/ para ver comandos|para comandos/);
@@ -237,6 +239,16 @@ try {
     await inputChat.press("Tab");
     assert.equal(await inputChat.inputValue(), recomendacion, "Tab inserta la recomendación del placeholder");
     await inputChat.fill("");
+    if (width === 390) {
+      await hiloChat.evaluate(el => { el.scrollTop = 0; el.dispatchEvent(new Event("scroll")); });
+      const irAlUltimo = page.getByRole("button", { name: "Ir al último mensaje", exact: true });
+      await irAlUltimo.waitFor();
+      await irAlUltimo.click();
+      await page.waitForFunction(() => {
+        const hilo = document.querySelector(".tl-hilo");
+        return hilo && hilo.scrollHeight - hilo.scrollTop - hilo.clientHeight <= 2;
+      });
+    }
     await inputChat.focus();
     assert.equal(await page.locator(".tl-composer-caja").evaluate(el => getComputedStyle(el).outlineWidth), "2px");
     const primerPrompt = page.getByRole("button", { name: "Ir al prompt 1: git commit y push", exact: true });
@@ -345,10 +357,15 @@ try {
     }), true);
     assert.equal(approvals, 1);
     assert.equal(await page.locator('article[aria-label="Acción de Git"] [role="alert"]').count(), 0);
+    await hiloChat.evaluate(el => { el.scrollTop = 0; el.dispatchEvent(new Event("scroll")); });
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Envío del chat A");
     const requestChatA = page.waitForRequest(request => request.url().endsWith("/api/conversations/c1/messages") && request.method() === "POST" && request.postDataJSON().content === "Envío del chat A");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await Promise.all([requestChatA, envioAIniciado]);
+    await page.waitForFunction(() => {
+      const hilo = document.querySelector(".tl-hilo");
+      return hilo && hilo.scrollHeight - hilo.scrollTop - hilo.clientHeight <= 2;
+    });
     if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
     await page.getByRole("button", { name: "Chat paralelo", exact: true }).click();
     await page.getByRole("heading", { name: "Chat paralelo", exact: true }).waitFor();
