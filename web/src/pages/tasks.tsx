@@ -813,7 +813,10 @@ function DetalleTarea({ id }: { id: string }) {
 
   // Aprobar el plan lo pone en la cola; rechazarlo cancela la tarea. Las notas viajan con la decisión.
   const aprobarPlan = useMutation({
-    mutationFn: (notas: string) => api.approveTaskPlan(id, { ...(notas ? { notas } : {}), plan_hash: t?.plan_hash ?? undefined }),
+    mutationFn: (notas: string) => {
+      if (!t?.plan_hash) throw new Error("No hay un plan vigente para aprobar");
+      return api.approveTaskPlan(id, { ...(notas ? { notas } : {}), plan_hash: t.plan_hash });
+    },
     onSettled: refrescar,
   });
   const rechazarPlan = useMutation({

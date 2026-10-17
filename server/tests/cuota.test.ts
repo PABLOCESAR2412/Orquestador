@@ -16,7 +16,7 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 process.env.PATH = `${join(import.meta.dir, "fixtures", "bin")}:${process.env.PATH ?? ""}`;
 
 const { db } = await import("../src/db");
-const { ErrorCuota, esErrorDeCuota, esErrorDeProveedor } = await import("../src/ejecutar");
+const { ErrorCuota, esErrorDeCuota, esErrorDeProveedor, esErrorTransitorioDelProveedor } = await import("../src/ejecutar");
 const { ErrorAgente, detalleDelProveedor, explicarErrorProveedor } = await import("../src/runners/opencode");
 const { tasks } = await import("../src/routes/tasks");
 const { chat } = await import("../src/routes/chat");
@@ -103,6 +103,40 @@ describe("clasificación de cuota agotada", () => {
     expect(esErrorDeProveedor(errorServidor)).toBe(true);
   });
 
+  test("solo 429 y 5xx HTTP explícitos habilitan el modelo de respaldo", () => {
+    const errorHttp = (statusCode: number) => new ErrorAgente(
+      "opencode salió con código 1",
+      JSON.stringify({ type: "error", error: { data: { statusCode, message: `Error ${statusCode}` } } }),
+    );
+    expect(esErrorTransitorioDelProveedor(errorHttp(429))).toBe(true);
+    expect(esErrorTransitorioDelProveedor(errorHttp(500))).toBe(true);
+    expect(esErrorTransitorioDelProveedor(errorHttp(599))).toBe(true);
+    expect(esErrorTransitorioDelProveedor(errorHttp(401))).toBe(false);
+    expect(esErrorTransitorioDelProveedor(errorHttp(422))).toBe(false);
+    expect(esErrorTransitorioDelProveedor(new ErrorAgente("Fallo", "Unexpected server error"))).toBe(false);
+    expect(esErrorTransitorioDelProveedor(new Error("fallo local 503"))).toBe(false);
+  });
+
+  test("conserva el estado HTTP aunque el evento del proveedor tenga metadatos extensos", () => {
+    const evento = {
+      type: "error",
+      sessionID: "sesion-interna",
+      error: {
+        name: "APIError",
+        data: {
+          message: `Unexpected server error ${"x".repeat(1_000)}`,
+          statusCode: 503,
+          responseHeaders: { "x-debug": "metadatos internos" },
+        },
+      },
+    };
+    const detalle = detalleDelProveedor("", "", [evento as never]);
+    expect(detalle).toContain('"statusCode":503');
+    expect(detalle).not.toContain("sesion-interna");
+    expect(detalle).not.toContain("responseHeaders");
+    expect(esErrorTransitorioDelProveedor(new ErrorAgente("fallo del proveedor", detalle))).toBe(true);
+  });
+
   test("un error del servidor o una salida vacía no cuentan como cuota", () => {
     expect(esErrorDeCuota(new Error("opencode salió con código 1: 500 Internal Server Error"))).toBe(false);
     expect(esErrorDeCuota(new Error("opencode no devolvió texto: sin salida"))).toBe(false);
@@ -151,6 +185,47 @@ describe("clasificación de cuota agotada", () => {
     expect(err.modelo).toBe("opencode/big-pickle");
     expect(err.sessionId).toBe("s-1");
     expect(esErrorDeCuota(err)).toBe(true);
+  });
+});
+
+describe("aprobación del plan con hash revisado", () => {
+  const hash = "a".repeat(64);
+  const plan = JSON.stringify({ objetivo: "Prueba", pasos: [], criterios_de_aceptacion: [] });
+
+  function pendiente() {
+    const id = tarea("waiting_approval");
+    db.query("UPDATE tasks SET plan=?, plan_hash=? WHERE id=?").run(plan, hash, id);
+    return id;
+  }
+
+  test("rechaza si falta el hash o no coincide y mantiene el plan en espera", async () => {
+    const id = pendiente();
+    try {
+      const sinHash = await post(`/api/tasks/${id}/aprobar-plan`, { notas: "aprobar" });
+      expect(sinHash.status).toBe(400);
+
+      const stale = await post(`/api/tasks/${id}/aprobar-plan`, { plan_hash: "b".repeat(64) });
+      expect(stale.status).toBe(409);
+
+      expect(db.query<{ status: string }, [string]>("SELECT status FROM tasks WHERE id=?").get(id)?.status)
+        .toBe("waiting_approval");
+    } finally {
+      db.query("DELETE FROM tasks WHERE id=?").run(id);
+    }
+  });
+
+  test("aprueba y registra el mismo hash revisado", async () => {
+    const id = pendiente();
+    try {
+      const response = await post(`/api/tasks/${id}/aprobar-plan`, { plan_hash: hash });
+      expect(response.status).toBe(200);
+      const fila = db.query<{ status: string; approved_hash: string | null }, [string]>(
+        "SELECT status, approved_hash FROM tasks WHERE id=?",
+      ).get(id);
+      expect(fila).toEqual({ status: "queued", approved_hash: hash });
+    } finally {
+      db.query("DELETE FROM tasks WHERE id=?").run(id);
+    }
   });
 });
 

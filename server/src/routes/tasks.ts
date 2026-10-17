@@ -179,13 +179,13 @@ tasks.post("/tasks/:id/aprobar", async (c) => {
   }
 });
 
-// POST /api/tasks/:id/aprobar-plan  body: { notas? }
+// POST /api/tasks/:id/aprobar-plan  body: { plan_hash, notas? }
 // Aprueba el plan que espera al usuario. El obrero lo ejecuta en la misma sesión y carpeta.
 tasks.post("/tasks/:id/aprobar-plan", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json<{ notas?: unknown; plan_hash?: unknown }>()
     .catch(() => ({}) as { notas?: unknown; plan_hash?: unknown });
-  if (body.plan_hash !== undefined && (typeof body.plan_hash !== "string" || !/^[0-9a-f]{64}$/i.test(body.plan_hash))) {
+  if (typeof body.plan_hash !== "string" || !/^[0-9a-f]{64}$/i.test(body.plan_hash)) {
     return c.json({ error: "invalid_hash" }, 400);
   }
   if (body.notas !== undefined && body.notas !== null && typeof body.notas !== "string") {
@@ -194,7 +194,7 @@ tasks.post("/tasks/:id/aprobar-plan", async (c) => {
   if (typeof body.notas === "string" && body.notas.length > MAX_NOTAS) return c.json({ error: "invalid_notas" }, 400);
 
   const notas = typeof body.notas === "string" && body.notas.trim() ? body.notas.trim() : null;
-  const resultado = aprobarPlan(id, notas, typeof body.plan_hash === "string" ? body.plan_hash.toLowerCase() : undefined);
+  const resultado = aprobarPlan(id, notas, body.plan_hash.toLowerCase());
   if (resultado === "not_found") return c.json({ error: "task_not_found" }, 404);
   if (resultado === "not_waiting") return c.json({ error: "task_not_waiting_plan" }, 409);
   if (resultado === "stale") return c.json({ error: "cambios_cambiaron" }, 409);

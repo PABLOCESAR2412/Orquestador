@@ -44,6 +44,37 @@ export function validarIp(candidato: string | undefined): string | null {
   return isIP(limpio) === 0 ? null : limpio;
 }
 
+export type CabecerasIp = {
+  cfConnectingIp?: string;
+  forwardedFor?: string;
+  realIp?: string;
+};
+
+// Solo se usan cabeceras reenviadas cuando el peer inmediato está declarado explícitamente como proxy
+// de confianza. En conexiones directas, la IP real del socket tiene prioridad y no se puede falsificar.
+export function resolverIpCliente(
+  ipConexion: string | undefined,
+  cabeceras: CabecerasIp,
+  proxiesConfiables: ReadonlySet<string>,
+): string {
+  const ipRemota = validarIp(ipConexion);
+  if (!ipRemota) return "desconocida";
+  if (!proxiesConfiables.has(ipRemota)) return ipRemota;
+
+  const cf = validarIp(cabeceras.cfConnectingIp);
+  if (cf) return cf;
+
+  if (cabeceras.forwardedFor) {
+    const partes = cabeceras.forwardedFor.split(",");
+    for (let i = partes.length - 1; i >= 0; i--) {
+      const ip = validarIp(partes[i]);
+      if (ip) return ip;
+    }
+  }
+
+  return validarIp(cabeceras.realIp) ?? ipRemota;
+}
+
 // El límite global frena intentos incorrectos distribuidos, pero no bloquea al dueño que conoce la clave.
 export function bloquearIntento(limites: LimitesLogin, claveValida: boolean): boolean {
   return !claveValida && (limites.ip || limites.global);

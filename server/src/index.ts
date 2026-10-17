@@ -177,5 +177,7 @@ console.log(`Orquestador escuchando en http://localhost:${config.port}`);
 export default {
   port: config.port,
   hostname: config.hostname,
-  fetch: app.fetch,
+  fetch(request: Request, server: Bun.Server<unknown>) {
+    return app.fetch(request, { clientIp: server.requestIP(request)?.address });
+  },
 };

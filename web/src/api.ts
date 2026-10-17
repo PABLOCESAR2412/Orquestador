@@ -603,7 +603,7 @@ export const api = {
       { method: "POST", body: JSON.stringify(body) },
     ),
   // El plan espera al usuario: aprobarlo lo pone en la cola; las notas llegan al obrero.
-  approveTaskPlan: (id: string, body: { notas?: string; plan_hash?: string }) =>
+  approveTaskPlan: (id: string, body: { notas?: string; plan_hash: string }) =>
     request<Task>(`/api/tasks/${id}/aprobar-plan`, { method: "POST", body: JSON.stringify(body) }),
   rejectTaskPlan: (id: string, body: { motivo?: string }) =>
     request<Task>(`/api/tasks/${id}/rechazar-plan`, { method: "POST", body: JSON.stringify(body) }),

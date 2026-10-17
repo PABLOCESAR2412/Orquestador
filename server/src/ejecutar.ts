@@ -219,6 +219,43 @@ export function esErrorDeProveedor(err: unknown, signal?: AbortSignal): boolean 
   return PATRON_PROVEEDOR.test(texto);
 }
 
+// El respaldo solo se permite cuando el evento del proveedor informa un estado HTTP transitorio.
+// No se infiere a partir del mensaje: un 401 o una petición inválida no deben generar otra llamada.
+export function codigoHttpDelProveedor(err: unknown): number | null {
+  if (!(err instanceof ErrorAgente)) return null;
+  try {
+    const evento = JSON.parse(err.detalleProveedor) as {
+      status?: unknown;
+      statusCode?: unknown;
+      error?: {
+        status?: unknown;
+        statusCode?: unknown;
+        data?: { status?: unknown; statusCode?: unknown };
+      };
+    };
+    const candidatos = [
+      evento.statusCode,
+      evento.status,
+      evento.error?.data?.statusCode,
+      evento.error?.data?.status,
+      evento.error?.statusCode,
+      evento.error?.status,
+    ];
+    return candidatos.find((codigo): codigo is number =>
+      typeof codigo === "number" && Number.isInteger(codigo) && codigo >= 100 && codigo <= 599,
+    ) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function esErrorTransitorioDelProveedor(err: unknown, signal?: AbortSignal): boolean {
+  if (err instanceof AislamientoError || signal?.aborted) return false;
+  const codigo = codigoHttpDelProveedor(err);
+  if (codigo === 429) return !esErrorDeCuota(err);
+  return codigo !== null && codigo >= 500 && codigo <= 599;
+}
+
 // Solo el código HTTP, nunca el texto del error: el detalle llega a la interfaz.
 function etiquetaDelError(err: unknown): string {
   const texto = textoDelProveedor(err);
@@ -495,13 +532,11 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       esErrorDeCuota(e) ? new ErrorCuota(modelo, sesion) : limpiarError(e);
     // Ante fallo transitorio del servidor (HTTP 5xx) o rate limit transitorio (429 por RPM/TPM),
     // intentamos un reintento breve con backoff antes de recurrir al respaldo o detener la tarea.
-    const textoProv = textoDelProveedor(err);
-    const esErrorServidor = /server error|internal error|5\d\d|service unavailable|bad gateway/i.test(textoProv);
-    const esRateLimitTransitorio =
-      /\b429\b|rate.?limit|too many requests/i.test(textoProv) &&
-      !esErrorDeCuota(err);
+    const codigoHttp = codigoHttpDelProveedor(err);
+    const esErrorServidor = codigoHttp !== null && codigoHttp >= 500 && codigoHttp <= 599;
+    const esRateLimitTransitorio = codigoHttp === 429 && !esErrorDeCuota(err);
 
-    if (esErrorDeProveedor(err, opts.signal) && (esErrorServidor || esRateLimitTransitorio)) {
+    if (esErrorServidor || esRateLimitTransitorio) {
       await Bun.sleep(esRateLimitTransitorio ? 2500 : 1200);
       if (!opts.signal?.aborted) {
         try {
@@ -512,6 +547,8 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
         }
       }
     }
+
+    if (!esErrorTransitorioDelProveedor(err, opts.signal)) throw comoCuota(err, opts.model);
 
     const respaldo = getPreferences().fallbackModel;
     if (!respaldo || respaldo === opts.model) throw comoCuota(err, opts.model);
