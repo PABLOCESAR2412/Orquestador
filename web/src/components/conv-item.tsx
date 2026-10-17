@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { Conversation } from "../api";
+import { haceTextoCorto } from "../lib/tiempo";
 
 type Props = {
   conv: Conversation;
   active: boolean;
+  variant?: "arbol" | "lista";
   onSelect: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string, pinned: boolean) => void;
@@ -14,7 +16,7 @@ const SVG = { width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke:
 
 // Un chat en la barra lateral. Renombrar, anclar y eliminar están a la vista como iconos en la misma fila,
 // para que funcionen igual con el dedo en el teléfono.
-export function ConvItem({ conv, active, onSelect, onRename, onTogglePin, onDelete }: Props) {
+export function ConvItem({ conv, active, variant = "arbol", onSelect, onRename, onTogglePin, onDelete }: Props) {
   const [confirmando, setConfirmando] = useState(false);
   const [renombrando, setRenombrando] = useState(false);
   const [nombre, setNombre] = useState(conv.title);
@@ -73,9 +75,10 @@ export function ConvItem({ conv, active, onSelect, onRename, onTogglePin, onDele
 
   const anclado = Boolean(conv.pinned_at);
   const esProyecto = Boolean(conv.project_id);
+  const tiempoRelativo = haceTextoCorto(conv.last_message_at || conv.created_at);
 
   return (
-    <div className="conv-item">
+    <div className={`conv-item${variant === "arbol" ? " is-arbol" : ""}`}>
       <div className="conv-row">
         <button
           type="button"
@@ -84,24 +87,50 @@ export function ConvItem({ conv, active, onSelect, onRename, onTogglePin, onDele
           onClick={() => onSelect(conv.id)}
           title={`${conv.title}${esProyecto ? ` (${conv.project_name || "Proyecto"})` : " (Chat libre)"}`}
         >
-          <span className={`sidebar-conv-tipo-icono ${esProyecto ? "is-proyecto" : "is-libre"}`} aria-hidden="true">
-            {esProyecto ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-              </svg>
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-            )}
-          </span>
+          {variant !== "arbol" && (
+            <span className={`sidebar-conv-tipo-icono ${esProyecto ? "is-proyecto" : "is-libre"}`} aria-hidden="true">
+              {esProyecto ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+              )}
+            </span>
+          )}
           <span className="sidebar-conv-texto">
             <span className="sidebar-conv-title">{conv.title}</span>
-            <span className={`sidebar-conv-sub ${esProyecto ? "is-proyecto" : "is-libre"}`}>
-              {esProyecto ? (conv.project_name || "Proyecto") : "Chat libre"}
-            </span>
+            {variant !== "arbol" && (
+              <span className={`sidebar-conv-sub ${esProyecto ? "is-proyecto" : "is-libre"}`}>
+                {esProyecto ? (conv.project_name || "Proyecto") : "Chat libre"}
+              </span>
+            )}
           </span>
-          {conv.ocupada && <span className="pill-dot is-live conv-busy" role="img" aria-label="Respondiendo" />}
+
+          {/* Indicadores de estado (spinner en proceso, punto pendiente, visto completado) o tiempo relativo */}
+          <span className="sidebar-conv-meta">
+            {conv.en_proceso ? (
+              <span className="tl-indicador-spinner" title="En proceso…" aria-label="En proceso">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+              </span>
+            ) : conv.pendiente_aprobacion ? (
+              <span className="tl-indicador-alerta" title="Requiere aprobación / atención" aria-label="Requiere aprobación">
+                <span className="tl-indicador-dot is-pendiente" />
+              </span>
+            ) : conv.completada ? (
+              <span className="tl-indicador-listo" title="Listo para revisar" aria-label="Listo para revisar">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="tl-icono-visto">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </span>
+            ) : tiempoRelativo ? (
+              <span className="sidebar-conv-tiempo">{tiempoRelativo}</span>
+            ) : null}
+          </span>
         </button>
         <div className="conv-acciones" role="group" aria-label={`Acciones de ${conv.title}`}>
           <button

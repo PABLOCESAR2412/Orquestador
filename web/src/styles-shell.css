@@ -307,16 +307,225 @@
   font-size: 13px;
 }
 .tl-rail-error { margin: 4px 8px; font-size: 12px; }
-.tl-grupo { display: flex; flex-direction: column; gap: 2px; margin-top: 14px; }
-.tl-grupo:first-child { margin-top: 6px; }
-.tl-grupo-titulo {
-  padding: 0 10px 4px;
-  color: var(--ink-3);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
+/* Secciones del árbol en la barra lateral: Projects y Conversations */
+.tl-rail-seccion {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 14px;
 }
+.tl-rail-seccion:first-child {
+  margin-top: 6px;
+}
+.tl-rail-seccion-conversaciones {
+  margin-top: 18px;
+}
+
+.tl-rail-seccion-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 4px 8px;
+}
+.tl-rail-seccion-titulo {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  letter-spacing: -0.01em;
+}
+.tl-rail-seccion-acciones {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.tl-rail-icono-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.tl-rail-icono-btn:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface-hover);
+}
+.tl-rail-icono-btn.is-activo {
+  color: var(--signal, var(--primary));
+  background: var(--surface-2);
+}
+.tl-rail-icono-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Filtro rápido */
+.tl-rail-filtro-wrap {
+  padding: 0 4px 6px;
+}
+.tl-rail-filtro-input {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 12px;
+  outline: none;
+}
+.tl-rail-filtro-input:focus {
+  border-color: var(--line-strong);
+}
+
+.tl-rail-seccion-vacio {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* Árbol de proyectos */
+.tl-proyectos-arbol {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tl-proyecto-rama {
+  display: flex;
+  flex-direction: column;
+}
+.tl-proyecto-fila {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 6px;
+  position: relative;
+}
+.tl-proyecto-fila:hover .tl-proyecto-nuevo-chat-btn {
+  opacity: 1;
+}
+.tl-proyecto-carpeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.tl-proyecto-carpeta:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+.tl-proyecto-carpeta.is-activo {
+  color: var(--signal, #d9a441);
+}
+.tl-proyecto-icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-3);
+  flex-shrink: 0;
+  transition: color 0.12s ease;
+}
+.tl-proyecto-carpeta:hover .tl-proyecto-icono,
+.tl-proyecto-carpeta.is-activo .tl-proyecto-icono {
+  color: inherit;
+}
+.tl-proyecto-nombre {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-proyecto-meta {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.tl-proyecto-nuevo-chat-btn {
+  opacity: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  flex-shrink: 0;
+}
+.tl-proyecto-nuevo-chat-btn:hover {
+  color: var(--ink);
+  background: var(--surface-hover);
+}
+@media (hover: none) {
+  .tl-proyecto-nuevo-chat-btn {
+    opacity: 0.8;
+  }
+}
+
+/* Hijos indentados bajo el proyecto */
+.tl-proyecto-hijos {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 18px;
+  margin-top: 1px;
+}
+.tl-proyecto-vacio {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.tl-proyecto-vacio-btn {
+  border: 0;
+  background: transparent;
+  color: var(--signal, var(--primary));
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.tl-proyecto-vacio-btn:hover {
+  text-decoration: underline;
+}
+
+/* Lista de conversaciones sueltas */
+.tl-conversaciones-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Base de conv-item en el riel */
 .tl-rail .conv-item { position: relative; }
 .tl-rail .conv-row {
   display: flex;
@@ -392,6 +601,147 @@
 }
 .tl-rail .conv-busy { margin-left: auto; }
 .tl-rail .conv-acciones { margin-left: 0; }
+
+/* Variante Árbol de ConvItem */
+.tl-rail .conv-item.is-arbol {
+  width: 100%;
+}
+.tl-rail .conv-item.is-arbol .conv-row {
+  position: relative;
+  border-radius: 6px;
+}
+.tl-rail .conv-item.is-arbol .sidebar-conv {
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  gap: 6px;
+}
+.tl-rail .conv-item.is-arbol .sidebar-conv-title {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+.tl-rail .conv-item.is-arbol .sidebar-conv:hover .sidebar-conv-title {
+  color: var(--ink);
+}
+.tl-rail .conv-item.is-arbol .sidebar-conv.active {
+  background: var(--surface-2);
+}
+.tl-rail .conv-item.is-arbol .sidebar-conv.active .sidebar-conv-title {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* Metadatos y tiempo a la derecha */
+.tl-rail .sidebar-conv-meta {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.tl-rail .sidebar-conv-tiempo {
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+}
+.tl-rail .sidebar-conv.active .sidebar-conv-tiempo {
+  color: var(--ink-2);
+}
+
+/* En hover de la fila, las acciones sustituyen la meta de tiempo de forma limpia */
+.tl-rail .conv-item.is-arbol .conv-row:hover .sidebar-conv-tiempo,
+.tl-rail .conv-item.is-arbol .conv-row:focus-within .sidebar-conv-tiempo {
+  display: none;
+}
+.tl-rail .conv-item.is-arbol .conv-acciones {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  background: var(--surface);
+  border-radius: 4px;
+  padding: 1px;
+}
+.tl-rail .conv-item.is-arbol .sidebar-conv.active ~ .conv-acciones {
+  background: var(--surface-2);
+}
+.tl-rail .conv-item.is-arbol .conv-icono {
+  width: 22px;
+  height: 22px;
+}
+
+/* Animaciones e indicadores de estado */
+@keyframes tl-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.tl-indicador-spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--signal, #d9a441);
+  animation: tl-spin 1s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes tl-pulse-amber {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(217, 164, 65, 0.7);
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.85;
+    box-shadow: 0 0 0 4px rgba(217, 164, 65, 0);
+  }
+}
+.tl-indicador-alerta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+.tl-indicador-dot.is-pendiente {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--signal, #d9a441);
+  display: inline-block;
+  animation: tl-pulse-amber 1.8s ease-in-out infinite;
+}
+
+@keyframes tl-pulse-green {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+.tl-indicador-listo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--online, #4ade80);
+  flex-shrink: 0;
+}
+.tl-icono-visto {
+  color: var(--online, #4ade80);
+}
 
 /* Instalar y estado del servidor, al pie del riel */
 .tl-instalar { display: flex; flex-direction: column; gap: 6px; }

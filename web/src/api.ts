@@ -8,6 +8,11 @@ export type Conversation = {
   pinned_at?: string | null;
   // Hay un mensaje en curso (puede venir de otro dispositivo).
   ocupada?: boolean;
+  en_proceso?: boolean;
+  pendiente_aprobacion?: boolean;
+  completada?: boolean;
+  estado_tarea?: "en_proceso" | "pendiente_aprobacion" | "completada" | null;
+  last_message_at?: string | null;
   // Modelo que se quedó sin cuota en el último turno: el chat espera a que se cambie de modelo y se siga.
   cuota_modelo?: string | null;
   created_at: string;
@@ -41,6 +46,8 @@ export type Project = {
   chats?: number;
   tareas?: number;
   ultima_actividad?: string | null;
+  en_proceso?: boolean;
+  pendiente_aprobacion?: boolean;
 };
 
 // Revisión de un repo de GitHub sin clave: público o privado (un nombre mal escrito también parece privado).

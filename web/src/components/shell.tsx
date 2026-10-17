@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Conversation } from "../api";
+import { api, type Conversation, type Project } from "../api";
 import { isIOS, isStandalone, useInstallPrompt } from "../lib/install";
 import { errorText } from "../lib/model";
 import { useLatencia } from "../lib/latencia";
@@ -17,21 +17,7 @@ import { ShellTopbar } from "./shell-topbar";
 import { nuevoChatDelProyecto } from "../lib/chat-proyecto";
 import "../styles-shell.css";
 
-type DateGroupTitle = "ANCLADOS" | "RECIENTES" | "ÚLTIMOS 7 DÍAS" | "ANTERIORES";
 
-function getGroupForDate(dateStr: string | null | undefined): DateGroupTitle {
-  if (!dateStr) return "ANTERIORES";
-  const d = new Date(dateStr);
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startOfYesterday = startOfToday - 86_400_000;
-  const startOf7Days = startOfToday - 6 * 86_400_000;
-  const time = d.getTime();
-
-  if (time >= startOfYesterday) return "RECIENTES";
-  if (time >= startOf7Days) return "ÚLTIMOS 7 DÍAS";
-  return "ANTERIORES";
-}
 
 // El atajo se muestra según el sistema: ⌘N en Mac, Ctrl+N en lo demás.
 const ES_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -60,17 +46,26 @@ export function Shell({ children }: { children: ReactNode }) {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
-  // Cada 5 s para ver al instante los chats creados, renombrados o ocupados desde otro dispositivo.
+  // Cada 5 s para ver al instante los chats y proyectos actualizados desde cualquier dispositivo.
   const conversations = useQuery({
     queryKey: ["conversations"],
     queryFn: api.listConversations,
     refetchInterval: 5_000,
   });
 
+  const projects = useQuery({
+    queryKey: ["projects"],
+    queryFn: api.listProjects,
+    refetchInterval: 5_000,
+  });
+
   const qc = useQueryClient();
   // Avisos del sistema cuando una tarea termina, falla o pide decisión (activos por defecto).
   useNotificacionesDeTareas();
-  const invalidarChats = () => qc.invalidateQueries({ queryKey: ["conversations"] });
+  const invalidarChats = () => {
+    void qc.invalidateQueries({ queryKey: ["conversations"] });
+    void qc.invalidateQueries({ queryKey: ["projects"] });
+  };
   const renombrar = useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) => api.updateConversation(id, { title }),
     onSettled: () => void invalidarChats(),
@@ -148,21 +143,98 @@ export function Shell({ children }: { children: ReactNode }) {
     },
   });
 
-  const groupedConversations = useMemo(() => {
-    if (!conversations.data) return [];
-    const groups: { title: DateGroupTitle; items: Conversation[] }[] = [
-      { title: "ANCLADOS", items: [] },
-      { title: "RECIENTES", items: [] },
-      { title: "ÚLTIMOS 7 DÍAS", items: [] },
-      { title: "ANTERIORES", items: [] },
-    ];
-    for (const c of conversations.data) {
-      const groupTitle = c.pinned_at ? "ANCLADOS" : getGroupForDate(c.created_at);
-      const target = groups.find((g) => g.title === groupTitle);
-      if (target) target.items.push(c);
+  // Estado de carpetas de proyectos expandidas/colapsadas en el árbol
+  const [proyectosExpandidos, setProyectosExpandidos] = useState<Record<string, boolean>>(() => {
+    try {
+      const guardado = localStorage.getItem("telo_proyectos_expandidos");
+      if (guardado) return JSON.parse(guardado);
+    } catch {
+      // ignorar
     }
-    return groups.filter((g) => g.items.length > 0);
+    return {};
+  });
+
+  const toggleProyectoExpandido = (id: string) => {
+    setProyectosExpandidos((prev) => {
+      const actual = prev[id] !== undefined ? prev[id] : true;
+      const next = { ...prev, [id]: !actual };
+      try {
+        localStorage.setItem("telo_proyectos_expandidos", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  // Si el usuario tiene seleccionado un chat de un proyecto, expandimos automáticamente esa carpeta
+  useEffect(() => {
+    if (proyectoActivoId) {
+      setProyectosExpandidos((prev) => {
+        if (prev[proyectoActivoId] !== false) return prev;
+        const next = { ...prev, [proyectoActivoId]: true };
+        try {
+          localStorage.setItem("telo_proyectos_expandidos", JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+    }
+  }, [proyectoActivoId]);
+
+  const [filtroTexto, setFiltroTexto] = useState("");
+  const [mostrarFiltro, setMostrarFiltro] = useState(false);
+  const q = filtroTexto.trim().toLowerCase();
+
+  // Chats organizados por proyecto y chats libres (sin proyecto)
+  const chatsPorProyecto = useMemo(() => {
+    const map = new Map<string, Conversation[]>();
+    if (!conversations.data) return map;
+    for (const c of conversations.data) {
+      if (c.project_id) {
+        const arr = map.get(c.project_id) || [];
+        arr.push(c);
+        map.set(c.project_id, arr);
+      }
+    }
+    for (const [, list] of map) {
+      list.sort((a, b) => {
+        if (Boolean(a.pinned_at) !== Boolean(b.pinned_at)) {
+          return a.pinned_at ? -1 : 1;
+        }
+        const timeA = new Date(a.last_message_at || a.created_at).getTime();
+        const timeB = new Date(b.last_message_at || b.created_at).getTime();
+        return timeB - timeA;
+      });
+    }
+    return map;
   }, [conversations.data]);
+
+  const chatsLibres = useMemo(() => {
+    if (!conversations.data) return [];
+    const list = conversations.data.filter((c) => !c.project_id);
+    list.sort((a, b) => {
+      if (Boolean(a.pinned_at) !== Boolean(b.pinned_at)) {
+        return a.pinned_at ? -1 : 1;
+      }
+      const timeA = new Date(a.last_message_at || a.created_at).getTime();
+      const timeB = new Date(b.last_message_at || b.created_at).getTime();
+      return timeB - timeA;
+    });
+    return list;
+  }, [conversations.data]);
+
+  const proyectosFiltrados = useMemo(() => {
+    if (!projects.data) return [];
+    if (!q) return projects.data;
+    return projects.data.filter((p) => {
+      if (p.name.toLowerCase().includes(q)) return true;
+      const chats = chatsPorProyecto.get(p.id) || [];
+      return chats.some((c) => c.title.toLowerCase().includes(q));
+    });
+  }, [projects.data, chatsPorProyecto, q]);
+
+  const chatsLibresFiltrados = useMemo(() => {
+    if (!q) return chatsLibres;
+    return chatsLibres.filter((c) => c.title.toLowerCase().includes(q));
+  }, [chatsLibres, q]);
 
   // Estado del servidor: ida y vuelta a /api/health, cada 30 s (ver lib/latencia.ts).
   const latencia = useLatencia();
@@ -347,11 +419,18 @@ export function Shell({ children }: { children: ReactNode }) {
           <AppNav variant="sidebar" onItemClick={closeDrawer} />
 
           <div className="tl-rail-lista">
-            {conversations.isLoading && <span className="tl-rail-aviso">Cargando…</span>}
-            {conversations.isError && (
+            {(conversations.isLoading || projects.isLoading) && <span className="tl-rail-aviso">Cargando…</span>}
+            {(conversations.isError || projects.isError) && (
               <div className="tl-rail-aviso tl-rail-aviso-error">
                 <span>Error al cargar</span>
-                <button type="button" className="tl-boton" onClick={() => void conversations.refetch()}>
+                <button
+                  type="button"
+                  className="tl-boton"
+                  onClick={() => {
+                    void conversations.refetch();
+                    void projects.refetch();
+                  }}
+                >
                   Reintentar
                 </button>
               </div>
@@ -361,22 +440,198 @@ export function Shell({ children }: { children: ReactNode }) {
                 {accionError}
               </p>
             )}
-            {groupedConversations.map((group) => (
-              <div key={group.title} className="tl-grupo">
-                <div className="tl-grupo-titulo">{group.title}</div>
-                {group.items.map((c) => (
-                  <ConvItem
-                    key={c.id}
-                    conv={c}
-                    active={currentPath === "/chat" && selectedConversationId === c.id}
-                    onSelect={handleSelectConv}
-                    onRename={(id, title) => renombrar.mutate({ id, title })}
-                    onTogglePin={(id, pinned) => anclar.mutate({ id, pinned })}
-                    onDelete={(id) => eliminar.mutate(id)}
-                  />
-                ))}
+
+            {/* SECCIÓN 1: PROJECTS (Árbol con carpetas colapsables y chats anidados) */}
+            <div className="tl-rail-seccion">
+              <div className="tl-rail-seccion-head">
+                <span className="tl-rail-seccion-titulo">Projects</span>
+                <div className="tl-rail-seccion-acciones">
+                  <button
+                    type="button"
+                    className={`tl-rail-icono-btn${mostrarFiltro ? " is-activo" : ""}`}
+                    onClick={() => {
+                      setMostrarFiltro((v) => !v);
+                      if (mostrarFiltro) setFiltroTexto("");
+                    }}
+                    title="Filtrar proyectos y chats"
+                    aria-label="Filtrar proyectos y chats"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <line x1="4" y1="6" x2="20" y2="6" />
+                      <line x1="7" y1="12" x2="17" y2="12" />
+                      <line x1="10" y1="18" x2="14" y2="18" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className="tl-rail-icono-btn"
+                    onClick={() => abrirNuevoProyecto()}
+                    title="Nuevo proyecto (Ctrl+N)"
+                    aria-label="Nuevo proyecto"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                      <line x1="12" y1="11" x2="12" y2="17" />
+                      <line x1="9" y1="14" x2="15" y2="14" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-            ))}
+
+              {mostrarFiltro && (
+                <div className="tl-rail-filtro-wrap">
+                  <input
+                    type="search"
+                    className="tl-rail-filtro-input"
+                    placeholder="Filtrar proyectos y chats…"
+                    value={filtroTexto}
+                    onChange={(e) => setFiltroTexto(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+              )}
+
+              <div className="tl-proyectos-arbol">
+                {proyectosFiltrados.length === 0 && !projects.isLoading && (
+                  <div className="tl-rail-seccion-vacio">
+                    <span>{q ? "Sin proyectos coincidentes" : "Sin proyectos aún"}</span>
+                  </div>
+                )}
+                {proyectosFiltrados.map((p) => {
+                  const expandido = Boolean(filtroTexto) || (proyectosExpandidos[p.id] ?? true);
+                  const chats = chatsPorProyecto.get(p.id) || [];
+                  const chatsVisibles = filtroTexto
+                    ? chats.filter((c) => c.title.toLowerCase().includes(q))
+                    : chats;
+                  const tieneChatActivo = chats.some((c) => c.id === selectedConversationId);
+
+                  return (
+                    <div
+                      key={p.id}
+                      className={`tl-proyecto-rama${expandido ? " is-expandido" : ""}${tieneChatActivo ? " has-active" : ""}`}
+                    >
+                      <div className="tl-proyecto-fila">
+                        <button
+                          type="button"
+                          className={`tl-proyecto-carpeta${tieneChatActivo ? " is-activo" : ""}`}
+                          onClick={() => toggleProyectoExpandido(p.id)}
+                          title={`${p.name} (${chats.length} chats)`}
+                        >
+                          <span className="tl-proyecto-icono" aria-hidden="true">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                            </svg>
+                          </span>
+                          <span className="tl-proyecto-nombre">{p.name}</span>
+                          <span className="tl-proyecto-meta">
+                            {p.en_proceso ? (
+                              <span className="tl-indicador-spinner" title="Proyecto con tareas en proceso…">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+                                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                </svg>
+                              </span>
+                            ) : p.pendiente_aprobacion ? (
+                              <span className="tl-indicador-alerta" title="Requiere aprobación / atención">
+                                <span className="tl-indicador-dot is-pendiente" />
+                              </span>
+                            ) : null}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="tl-proyecto-nuevo-chat-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            crearChatProyecto.mutate(p.id);
+                          }}
+                          disabled={crearChatProyecto.isPending}
+                          title={`Nuevo chat en ${p.name}`}
+                          aria-label={`Nuevo chat en ${p.name}`}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                          </svg>
+                        </button>
+                      </div>
+
+                      {expandido && (
+                        <div className="tl-proyecto-hijos">
+                          {chatsVisibles.length === 0 ? (
+                            <div className="tl-proyecto-vacio">
+                              <span>Sin chats</span>
+                              <button
+                                type="button"
+                                className="tl-proyecto-vacio-btn"
+                                onClick={() => crearChatProyecto.mutate(p.id)}
+                              >
+                                + Crear chat
+                              </button>
+                            </div>
+                          ) : (
+                            chatsVisibles.map((c) => (
+                              <ConvItem
+                                key={c.id}
+                                conv={c}
+                                variant="arbol"
+                                active={currentPath === "/chat" && selectedConversationId === c.id}
+                                onSelect={handleSelectConv}
+                                onRename={(id, title) => renombrar.mutate({ id, title })}
+                                onTogglePin={(id, pinned) => anclar.mutate({ id, pinned })}
+                                onDelete={(id) => eliminar.mutate(id)}
+                              />
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* SECCIÓN 2: CONVERSATIONS (Chats libres no ligados a proyectos) */}
+            <div className="tl-rail-seccion tl-rail-seccion-conversaciones">
+              <div className="tl-rail-seccion-head">
+                <span className="tl-rail-seccion-titulo">Conversations</span>
+                <div className="tl-rail-seccion-acciones">
+                  <button
+                    type="button"
+                    className="tl-rail-icono-btn"
+                    onClick={() => crearChatLibre.mutate()}
+                    disabled={crearChatLibre.isPending}
+                    title="Nueva conversación libre"
+                    aria-label="Nueva conversación libre"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div className="tl-conversaciones-lista">
+                {chatsLibresFiltrados.length === 0 ? (
+                  <div className="tl-rail-seccion-vacio">
+                    <span>{q ? "Sin conversaciones coincidentes" : "Sin conversaciones sueltas"}</span>
+                  </div>
+                ) : (
+                  chatsLibresFiltrados.map((c) => (
+                    <ConvItem
+                      key={c.id}
+                      conv={c}
+                      variant="arbol"
+                      active={currentPath === "/chat" && selectedConversationId === c.id}
+                      onSelect={handleSelectConv}
+                      onRename={(id, title) => renombrar.mutate({ id, title })}
+                      onTogglePin={(id, pinned) => anclar.mutate({ id, pinned })}
+                      onDelete={(id) => eliminar.mutate(id)}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
