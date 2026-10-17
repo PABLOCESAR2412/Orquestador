@@ -36,6 +36,7 @@ import {
   colaActivaPara,
   claveColaActiva,
 } from "../lib/chat-cola";
+import { leerHitos, guardarHitos } from "../lib/chat-hitos";
 import { leerBorrador, guardarBorrador } from "../lib/chat-borrador";
 import { type ReconocimientoVoz, ctorVoz, mensajeVoz } from "../lib/chat-dictado";
 import { PLANTILLAS_GAUNTLET } from "../lib/plantillas-gauntlet";
@@ -52,6 +53,11 @@ type Restaurar = { texto: string; pendientes: Pendiente[] };
 
 // Quita tildes y pasa a minúsculas para buscar comandos: "analiticas" encuentra "Analíticas".
 const sinTildes = (texto: string) => texto.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+
+function etiquetaPrompt(texto: string): string {
+  const limpio = texto.replace(/\s+/g, " ").trim() || "Mensaje con adjuntos";
+  return limpio.length > 120 ? `${limpio.slice(0, 120)}…` : limpio;
+}
 
 // Ventana de contexto en tokens, abreviada: 128000 es "128k".
 function etiquetaContexto(tokens: number | undefined): string | null {
@@ -105,6 +111,10 @@ export function ChatPage() {
   const [menuColaAbierto, setMenuColaAbierto] = useState<string | null>(null);
   const [editandoColaId, setEditandoColaId] = useState<string | null>(null);
   const [textoEditadoCola, setTextoEditadoCola] = useState("");
+  const [mensajeArrastradoColaId, setMensajeArrastradoColaId] = useState<string | null>(null);
+  const [destinoArrastreColaId, setDestinoArrastreColaId] = useState<string | null>(null);
+  const [hitosPorChat, setHitosPorChat] = useState<Record<string, string[]>>(leerHitos);
+  const [promptActivoId, setPromptActivoId] = useState<string | null>(null);
   const colaEsperandoTurnoRef = useRef<Record<string, { vioAgenteOcupado: boolean; texto: string }>>({});
   const cambiarCola = (id: string, transformar: (mensajes: MensajeEnCola[]) => MensajeEnCola[]) => {
     const mensajes = transformar(colasPorChatRef.current[id] ?? []);
@@ -143,6 +153,7 @@ export function ChatPage() {
   const [sugerenciaOculta, setSugerenciaOculta] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const hiloRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const recRef = useRef<ReconocimientoVoz | null>(null);
   // Botones que abren el selector y el panel de uso: reciben el foco al cerrar.
@@ -236,6 +247,7 @@ export function ChatPage() {
   const cola = selectedId ? colasPorChat[selectedId] ?? [] : [];
   const colaActiva = useMemo(() => colaActivaPara(selectedId), [selectedId, colaRevision]);
   const menuColaItem = cola.find((item) => item.id === menuColaAbierto) ?? null;
+  const indiceMenuCola = menuColaItem ? cola.findIndex((item) => item.id === menuColaItem.id) : -1;
   const errorCola = falloCola?.conversacionId === selectedId && cola.some((item) => item.id === falloCola.mensajeId);
   const modelList: ModelInfo[] = models.data?.models ?? [];
   const modelInfo = modelList.find((m) => m.id === current?.model) ?? null;
@@ -514,6 +526,54 @@ export function ChatPage() {
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
+  const reordenarCola = (origenId: string, destinoId: string) => {
+    if (!selectedId || origenId === destinoId || envioActual?.colaId === origenId || envioActual?.colaId === destinoId) return;
+    cambiarCola(selectedId, (mensajes) => {
+      const origen = mensajes.findIndex((mensaje) => mensaje.id === origenId);
+      const destino = mensajes.findIndex((mensaje) => mensaje.id === destinoId);
+      if (origen < 0 || destino < 0) return mensajes;
+      const siguientes = [...mensajes];
+      const [movido] = siguientes.splice(origen, 1);
+      siguientes.splice(destino, 0, movido!);
+      return siguientes;
+    });
+    setMenuColaAbierto(null);
+  };
+
+  const moverCola = (mensajeId: string, paso: -1 | 1) => {
+    const indice = cola.findIndex((mensaje) => mensaje.id === mensajeId);
+    const destino = cola[indice + paso];
+    if (destino) reordenarCola(mensajeId, destino.id);
+  };
+
+  const iniciarArrastreCola = (event: DragEvent<HTMLButtonElement>, mensajeId: string) => {
+    if (envioActual?.colaId === mensajeId) {
+      event.preventDefault();
+      return;
+    }
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", mensajeId);
+    setMensajeArrastradoColaId(mensajeId);
+  };
+
+  const soltarSobreCola = (event: DragEvent<HTMLDivElement>, destinoId: string) => {
+    event.preventDefault();
+    const origenId = event.dataTransfer.getData("text/plain") || mensajeArrastradoColaId;
+    if (origenId) reordenarCola(origenId, destinoId);
+    setMensajeArrastradoColaId(null);
+    setDestinoArrastreColaId(null);
+  };
+
+  const marcarPrompt = (mensajeId: string) => {
+    if (!selectedId) return;
+    const actuales = hitosPorChat[selectedId] ?? [];
+    const siguientes = actuales.includes(mensajeId)
+      ? actuales.filter((id) => id !== mensajeId)
+      : [...actuales, mensajeId];
+    guardarHitos(selectedId, siguientes);
+    setHitosPorChat((prev) => ({ ...prev, [selectedId]: siguientes }));
+  };
+
   const cambiarColaActiva = () => {
     if (!selectedId) return;
     try {
@@ -769,6 +829,31 @@ export function ChatPage() {
       cuando: m.created_at,
     }))
     .reverse();
+  const promptsEnOrden = useMemo(() => lista.filter((mensaje) => mensaje.role === "user"), [lista]);
+  const indicePrompt = useMemo(
+    () => new Map(promptsEnOrden.map((mensaje, indice) => [mensaje.id, indice + 1] as const)),
+    [promptsEnOrden],
+  );
+  const hitos = selectedId ? hitosPorChat[selectedId] ?? [] : [];
+
+  useEffect(() => {
+    const hilo = hiloRef.current;
+    if (!hilo || promptsEnOrden.length === 0) {
+      setPromptActivoId(null);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (visible) setPromptActivoId(visible.target.id.replace(/^mensaje-/, ""));
+    }, { root: hilo, rootMargin: "-10% 0px -65% 0px", threshold: 0 });
+    for (const prompt of promptsEnOrden) {
+      const elemento = document.getElementById(`mensaje-${prompt.id}`);
+      if (elemento) observer.observe(elemento);
+    }
+    return () => observer.disconnect();
+  }, [promptsEnOrden, selectedId]);
 
   // Salta al mensaje del historial y lo resalta un momento.
   const irAPrompt = (id: string) => {
@@ -1115,7 +1200,7 @@ export function ChatPage() {
             </div>
           </header>
 
-          <div className="tl-hilo">
+          <div className="tl-hilo" ref={hiloRef}>
             <div className="tl-hilo-columna">
               {messages.isPending && <p className="tl-nota">Cargando mensajes…</p>}
               {messages.isError && (
@@ -1131,65 +1216,80 @@ export function ChatPage() {
               {messages.data?.length === 0 && !enviandoActual && (
                 <p className="tl-nota">Aún no hay mensajes. Escribe una instrucción para el agente o pulsa Ctrl+K para comandos.</p>
               )}
-              {lista.map((m, i) =>
-                m.role === "system" ? (
-                  <article key={m.id} className="tl-msg" aria-label="Aviso del sistema">
-                    <p className="tl-alerta" role="status">{m.content}</p>
-                    {!agenteOcupado && lista.slice(0, i).some(p => p.role === "user") && (
-                      <button type="button" className="tl-boton" onClick={() => reintentar(m.id)}>Reintentar solicitud</button>
-                    )}
-                  </article>
-                ) : m.role === "user" ? (
-                  <Fragment key={m.id}>
+              {lista.map((m, i) => (
+                <div key={m.id} className={`tl-hilo-evento${m.role === "user" ? " tl-hilo-evento-prompt" : ""}`}>
+                  {m.role === "user" && (
+                    <button
+                      type="button"
+                      className={`tl-hilo-hito${promptActivoId === m.id ? " is-activo" : ""}${hitos.includes(m.id) ? " is-marcado" : ""}`}
+                      aria-label={`Ir al prompt ${indicePrompt.get(m.id) ?? ""}: ${etiquetaPrompt(m.content)}`}
+                      aria-current={promptActivoId === m.id ? "location" : undefined}
+                      title={`Prompt ${indicePrompt.get(m.id) ?? ""}${hitos.includes(m.id) ? " · Importante" : ""}`}
+                      onClick={() => irAPrompt(m.id)}
+                    >
+                      <span className="tl-hilo-hito-trazo" aria-hidden="true" />
+                      {hitos.includes(m.id) && <span className="tl-hilo-hito-marca" aria-hidden="true" />}
+                    </button>
+                  )}
+                  {m.role === "system" ? (
+                    <article className="tl-msg" aria-label="Aviso del sistema">
+                      <p className="tl-alerta" role="status">{m.content}</p>
+                      {!agenteOcupado && lista.slice(0, i).some(p => p.role === "user") && (
+                        <button type="button" className="tl-boton" onClick={() => reintentar(m.id)}>Reintentar solicitud</button>
+                      )}
+                    </article>
+                  ) : m.role === "user" ? (
                     <MensajeUsuario
                       id={`mensaje-${m.id}`}
                       texto={m.content}
                       cuando={m.created_at}
                       resaltado={resaltadoId === m.id}
+                      marcado={hitos.includes(m.id)}
+                      onToggleMarca={() => marcarPrompt(m.id)}
                     />
-                  </Fragment>
-                ) : (
-                  <Fragment key={m.id}>
-                    <MensajeAgente
-                      texto={m.content}
-                      cuando={m.created_at}
-                      modelo={m.model ? modelList.find((modelo) => modelo.id === m.model)?.name ?? m.model : null}
-                      esfuerzo={m.effort}
-                      onAbrirArchivo={current?.project_id ? abrirArchivo : undefined}
-                      duracion={duracionDeRespuesta(i)}
-                      proceso={
-                        selectedId && turnoDeRespuesta(i)
-                          ? { conversacionId: selectedId, turnoId: turnoDeRespuesta(i)! }
-                          : undefined
-                      }
-                      onReintentar={
-                        lista.slice(0, i).some((p) => p.role === "user") && !enviandoActual
-                          ? () => reintentar(m.id)
-                          : undefined
-                      }
-                      onGuardar={(formato) => crearDoc.mutate({ mensajeId: m.id, formato })}
-                      guardando={crearDoc.isPending && crearDoc.variables?.mensajeId === m.id}
-                      onCitar={(texto) => {
-                        cambiarBorrador(texto);
-                        window.setTimeout(() => inputRef.current?.focus(), 0);
-                      }}
-                    />
-                    {current?.project_id && Array.from(accionesTrasRespuesta.get(m.id)?.entries() ?? []).map(([action, intentos]) => {
-                      const ultima = intentos.at(-1)!;
-                      const anteriores = intentos.slice(0, -1);
-                      const accionAlFinal = ultima.task_id === tareaChat?.id;
-                      return (
-                        <Fragment key={`${ultima.message_id}-${action}`}>
-                          {!accionAlFinal && <AccionRepositorioMensaje accion={ultima} conversationId={selectedId!} projectId={current.project_id!} taskId={tareaChat?.id} />}
-                          {anteriores.length > 0 && <AccionesAnteriores acciones={anteriores} />}
-                        </Fragment>
-                      );
-                    })}
-                  </Fragment>
-                ),
-              )}
+                  ) : (
+                    <>
+                      <MensajeAgente
+                        texto={m.content}
+                        cuando={m.created_at}
+                        modelo={m.model ? modelList.find((modelo) => modelo.id === m.model)?.name ?? m.model : null}
+                        esfuerzo={m.effort}
+                        onAbrirArchivo={current?.project_id ? abrirArchivo : undefined}
+                        duracion={duracionDeRespuesta(i)}
+                        proceso={
+                          selectedId && turnoDeRespuesta(i)
+                            ? { conversacionId: selectedId, turnoId: turnoDeRespuesta(i)! }
+                            : undefined
+                        }
+                        onReintentar={
+                          lista.slice(0, i).some((p) => p.role === "user") && !enviandoActual
+                            ? () => reintentar(m.id)
+                            : undefined
+                        }
+                        onGuardar={(formato) => crearDoc.mutate({ mensajeId: m.id, formato })}
+                        guardando={crearDoc.isPending && crearDoc.variables?.mensajeId === m.id}
+                        onCitar={(texto) => {
+                          cambiarBorrador(texto);
+                          window.setTimeout(() => inputRef.current?.focus(), 0);
+                        }}
+                      />
+                      {current?.project_id && Array.from(accionesTrasRespuesta.get(m.id)?.entries() ?? []).map(([action, intentos]) => {
+                        const ultima = intentos.at(-1)!;
+                        const anteriores = intentos.slice(0, -1);
+                        const accionAlFinal = ultima.task_id === tareaChat?.id;
+                        return (
+                          <Fragment key={`${ultima.message_id}-${action}`}>
+                            {!accionAlFinal && <AccionRepositorioMensaje accion={ultima} conversationId={selectedId!} projectId={current.project_id!} taskId={tareaChat?.id} />}
+                            {anteriores.length > 0 && <AccionesAnteriores acciones={anteriores} />}
+                          </Fragment>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+              ))}
               {enviandoActual && !yaGuardado && (
-                <MensajeUsuario texto={envioActual?.content ?? ""} cuando={null} />
+                <div className="tl-hilo-evento"><MensajeUsuario texto={envioActual?.content ?? ""} cuando={null} /></div>
               )}
               {pensando && (
                 <IndicadorPensando
@@ -1286,7 +1386,20 @@ export function ChatPage() {
 
                 <div className="tl-cola-lista" aria-label="Mensajes pendientes">
                   {cola.map((item, indice) => (
-                    <div className="tl-cola-item" key={item.id}>
+                    <div
+                      className={`tl-cola-item${mensajeArrastradoColaId === item.id ? " is-arrastrado" : ""}${destinoArrastreColaId === item.id ? " is-destino" : ""}`}
+                      key={item.id}
+                      onDragOver={(event) => {
+                        if (!mensajeArrastradoColaId || mensajeArrastradoColaId === item.id || envioActual?.colaId === item.id) return;
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                        setDestinoArrastreColaId(item.id);
+                      }}
+                      onDragLeave={(event) => {
+                        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDestinoArrastreColaId(null);
+                      }}
+                      onDrop={(event) => soltarSobreCola(event, item.id)}
+                    >
                       {editandoColaId === item.id ? (
                         <div className="tl-cola-editor">
                           <textarea
@@ -1318,6 +1431,24 @@ export function ChatPage() {
                         </div>
                       ) : (
                         <>
+                          <button
+                            type="button"
+                            className="tl-cola-arrastre"
+                            draggable={envioActual?.colaId !== item.id}
+                            aria-label={`Arrastrar mensaje ${indice + 1} para reordenar`}
+                            title="Arrastra para reordenar"
+                            onDragStart={(event) => iniciarArrastreCola(event, item.id)}
+                            onDragEnd={() => {
+                              setMensajeArrastradoColaId(null);
+                              setDestinoArrastreColaId(null);
+                            }}
+                          >
+                            <svg width="14" height="16" viewBox="0 0 12 16" fill="currentColor" aria-hidden="true">
+                              <circle cx="3" cy="3" r="1" /><circle cx="9" cy="3" r="1" />
+                              <circle cx="3" cy="8" r="1" /><circle cx="9" cy="8" r="1" />
+                              <circle cx="3" cy="13" r="1" /><circle cx="9" cy="13" r="1" />
+                            </svg>
+                          </button>
                           <p className="tl-cola-texto" title={item.texto}>
                             <span className="tl-cola-indice" aria-hidden="true">{indice + 1}</span>
                             {item.texto.replace(/\s+/g, " ").trim()}
@@ -1372,6 +1503,14 @@ export function ChatPage() {
                 </div>
                 {menuColaItem && envioActual?.colaId !== menuColaItem.id && (
                   <div className="tl-cola-menu" role="menu">
+                    <button type="button" role="menuitem" disabled={indiceMenuCola <= 0 || envioActual?.colaId === cola[indiceMenuCola - 1]?.id} onClick={() => moverCola(menuColaItem.id, -1)}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6" /></svg>
+                      Subir en la cola
+                    </button>
+                    <button type="button" role="menuitem" disabled={indiceMenuCola < 0 || indiceMenuCola >= cola.length - 1 || envioActual?.colaId === cola[indiceMenuCola + 1]?.id} onClick={() => moverCola(menuColaItem.id, 1)}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                      Bajar en la cola
+                    </button>
                     <button type="button" role="menuitem" onClick={() => {
                       setTextoEditadoCola(menuColaItem.texto);
                       setEditandoColaId(menuColaItem.id);

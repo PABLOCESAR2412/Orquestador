@@ -103,11 +103,15 @@ export function MensajeUsuario({
   cuando,
   id,
   resaltado = false,
+  marcado = false,
+  onToggleMarca,
 }: {
   texto: string;
   cuando: string | null;
   id?: string;
   resaltado?: boolean;
+  marcado?: boolean;
+  onToggleMarca?: () => void;
 }) {
   const { texto: prosa, adjuntos } = partirMensaje(texto);
   return (
@@ -115,6 +119,20 @@ export function MensajeUsuario({
       <div className="tl-msg-usuario-cabecera">
         <div className="tl-msg-meta">Tú · {haceTexto(cuando)}</div>
         <div className="tl-msg-acciones">
+          {onToggleMarca && (
+            <button
+              type="button"
+              className={`tl-accion-icono tl-msg-marcar${marcado ? " is-marcado" : ""}`}
+              aria-label={marcado ? "Quitar marca de importante" : "Marcar mensaje como importante"}
+              aria-pressed={marcado}
+              title={marcado ? "Quitar marca de importante" : "Marcar como importante"}
+              onClick={onToggleMarca}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill={marcado ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M6 4h12v16l-6-4-6 4z" />
+              </svg>
+            </button>
+          )}
           <BotonCopiar texto={texto} etiqueta="Copiar mensaje" />
         </div>
       </div>
