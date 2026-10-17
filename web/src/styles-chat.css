@@ -982,6 +982,18 @@
   .tl-composer-caja { padding: 10px 10px 8px 12px; }
   .tl-modelo-nombre { max-width: 130px; }
   .tl-msg-acciones { opacity: 1; pointer-events: auto; }
+  .tl-msg-usuario-cabecera,
+  .tl-msg-agente-cabecera { flex-wrap: wrap; }
+  .tl-msg-usuario-cabecera > .tl-msg-acciones {
+    flex: 0 0 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+  }
+  .tl-msg-agente-cabecera > .tl-msg-acciones {
+    flex: 0 0 calc(100% - 26px);
+    margin-left: 26px;
+    justify-content: flex-start;
+  }
   .tl-msg-procesando { align-items: flex-start; flex-direction: column; gap: 2px; }
   .tl-msg-duracion::before { content: none; }
   .tl-composer-barra:has(.tl-composer-decisiones) { flex-wrap: wrap; }

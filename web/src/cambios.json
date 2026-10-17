@@ -3,7 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
-    { "fecha": "2026-10-17", "tipo": "minimo", "titulo": "Chat móvil: separa el estado del agente, cierra el menú de cola y ordena los controles del plan", "pr": 78 },
+    { "fecha": "2026-10-17", "tipo": "minimo", "titulo": "Chat móvil: ordena estado y acciones de mensajes, cola y compositor del plan", "pr": 78 },
     { "fecha": "2026-10-17", "tipo": "mediano", "titulo": "Chat: reintenta errores temporales de OpenCode, usa recomendaciones en el placeholder, renderiza gráficos y permite imprimir documentos a PDF", "pr": 76 },
     { "fecha": "2026-10-17", "tipo": "minimo", "titulo": "Gauntlet: limita reintentos, historial, precarga PWA, SSE y aprobaciones; protege la IP real del cliente y traduce la navegación", "pr": 74 },
     { "fecha": "2026-10-17", "tipo": "mediano", "titulo": "Chat: reordena, edita y redirige mensajes en cola; línea de tiempo con prompts importantes", "pr": 75 },

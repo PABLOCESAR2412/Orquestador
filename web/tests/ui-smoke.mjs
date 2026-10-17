@@ -199,6 +199,17 @@ try {
     await page.locator(".tl-grafico-chat").first().locator(".tl-grafico-datos summary").click();
     assert.equal(await page.locator(".tl-grafico-chat").first().locator(".tl-grafico-datos tbody tr").count(), 2);
     assert.equal(await page.locator(".tl-codigo-pestana").filter({ hasText: "chart" }).count(), 1, "JSON inválido se conserva como código");
+    const mensajeUsuario = page.locator(".tl-msg-usuario").filter({ hasText: "git commit y push" }).first();
+    const mensajeAgente = page.locator(".tl-msg-agente").filter({ hasText: "Faltan dependencias" }).first();
+    for (const mensaje of [mensajeUsuario, mensajeAgente]) {
+      const [meta, acciones] = await Promise.all([
+        mensaje.locator(".tl-msg-meta").boundingBox(),
+        mensaje.locator(".tl-msg-acciones").boundingBox(),
+      ]);
+      assert.ok(meta && acciones);
+      if (width === 390) assert.ok(acciones.y >= meta.y + meta.height - 1, "en móvil, las acciones del mensaje van debajo de sus metadatos");
+      else assert.ok(acciones.y < meta.y + meta.height && meta.y < acciones.y + acciones.height, "en escritorio, las acciones conservan la fila de metadatos");
+    }
     await page.locator(".tl-grafico-chat").first().scrollIntoViewIfNeeded();
     await page.screenshot({ path: `scratch/capturas-ci/chat-graficos-${width}.png` });
     const mensajeConGraficos = page.locator(".tl-msg-agente").filter({ hasText: "El segundo intento está listo para revisar." });
