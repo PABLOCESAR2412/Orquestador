@@ -525,6 +525,18 @@ const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS auth_sessions_last_seen ON auth_sessions (last_seen_at);
     `,
   },
+  {
+    name: "029_proveedor_google_y_coste_gemini",
+    sql: `
+      UPDATE usage SET model = REPLACE(model, 'opencode/gemini-', 'google/gemini-') WHERE model LIKE 'opencode/gemini-%';
+      UPDATE tasks SET model = REPLACE(model, 'opencode/gemini-', 'google/gemini-') WHERE model LIKE 'opencode/gemini-%';
+      UPDATE usage SET provider = 'google' WHERE (model LIKE '%gemini%' OR model LIKE 'google/%') AND provider != 'google';
+      UPDATE usage SET
+        cost = ROUND((input_tokens * 0.000000075 + output_tokens * 0.0000003), 4),
+        cost_precision = 'estimado'
+      WHERE provider = 'google' AND cost = 0 AND (input_tokens > 0 OR output_tokens > 0);
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

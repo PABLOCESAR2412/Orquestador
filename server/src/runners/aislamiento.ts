@@ -24,15 +24,16 @@ export class AislamientoError extends Error {
 // server/src/runners -> raíz del repo
 const RAIZ_REPO = resolve(import.meta.dir, "../../..");
 
-// Estado de OpenCode dentro del HOME: lectura y escritura.
+// Estado de OpenCode y herramientas de agente dentro del HOME: lectura y escritura.
 const ESTADO_OPENCODE = [
   ".local/share/opencode",
   ".config/opencode",
   ".local/state/opencode",
   ".cache/opencode",
+  ".codex",
 ];
 // Herramientas instaladas en el HOME: solo lectura.
-const HERRAMIENTAS = [".local/bin", ".opencode", ".bun", ".gitconfig", ".config/git"];
+const HERRAMIENTAS = [".local/bin", ".opencode", ".bun", ".gitconfig", ".config/git", ".codex"];
 
 export function aislamientoActivo(): boolean {
   return process.env.TELO_AISLAMIENTO !== "desactivado";

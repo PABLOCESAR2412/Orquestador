@@ -149,6 +149,20 @@ export type TaskDiff =
       identidad_git?: string;
     };
 
+export type GoogleLiveMetrics = {
+  conectado: boolean;
+  estado: "activo" | "agotado" | "sin_clave" | "clave_invalida" | "desconectado";
+  mensaje: string;
+  limiteRpd: number;
+  llamadasHoy: number;
+  restantesRpd: number;
+  porcentajeRestante: number;
+  limiteRpm: number;
+  tokensHoy: number;
+  costoHoyUsd: number;
+  ultimaComprobacion: string;
+};
+
 export type UsoProveedor = {
   id: string;
   nombre: string;
@@ -156,6 +170,7 @@ export type UsoProveedor = {
   ultimos7d: { costoUsd: number; tokens: number; llamadas: number };
   cuotaRestanteUsd: number | null;
   precision: "medida_telo" | "sin_datos";
+  googleLive?: GoogleLiveMetrics;
 };
 
 // Estado de la unidad orquestador en systemd. Fuera de systemd (desarrollo), disponible es false.
@@ -633,7 +648,7 @@ export const api = {
     request<{ ok: boolean }>(`/api/programadas/${id}`, { method: "DELETE" }),
   runProgramada: (id: string) =>
     request<Task>(`/api/programadas/${id}/ejecutar`, { method: "POST", body: "{}" }),
-  usage: () => request<{ generado: string; proveedores: UsoProveedor[] }>("/api/uso"),
+  usage: () => request<{ generado: string; proveedores: UsoProveedor[]; googleLive?: GoogleLiveMetrics }>("/api/uso"),
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
   serverService: () => request<ServicioEstado>("/api/servidor/servicio"),
   serverLogs: (lineas = 100) => request<RegistrosServidor>(`/api/servidor/logs?lineas=${lineas}`),

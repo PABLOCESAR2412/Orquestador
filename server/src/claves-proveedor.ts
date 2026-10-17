@@ -78,6 +78,30 @@ export function valorClaveJev(): string | null {
   }
 }
 
+export function valorClaveProveedor(id: string): string | null {
+  try {
+    const clave = claveMaestra();
+    if (clave) {
+      const fila = db
+        .query<FilaClave, [string]>("SELECT iv, tag, value_enc FROM provider_keys WHERE proveedor = ?")
+        .get(id);
+      if (fila) {
+        const descifrada = descifrar(clave, fila, textoAsociado(id));
+        if (descifrada) return descifrada;
+      }
+    }
+  } catch {
+    // Si no descifra o no hay clave maestra
+  }
+  const proveedor = proveedorConClave(id);
+  if (proveedor) {
+    for (const v of proveedor.variables) {
+      if (process.env[v]) return process.env[v]!;
+    }
+  }
+  return null;
+}
+
 export function estadoClaves(): {
   id: string;
   etiqueta: string;

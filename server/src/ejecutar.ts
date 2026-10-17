@@ -77,22 +77,69 @@ async function reservarAgente(signal?: AbortSignal): Promise<() => void> {
   return liberarAgente;
 }
 
+export function canonicalizarModelo(modelo: string): string {
+  if (modelo.startsWith("opencode/gemini-")) {
+    return modelo.replace("opencode/gemini-", "google/gemini-");
+  }
+  return modelo;
+}
+
+export function proveedorDeModelo(modelo: string): string {
+  const m = canonicalizarModelo(modelo);
+  if (m.startsWith("google/") || m.includes("/google/") || /gemini/i.test(m)) {
+    return "google";
+  }
+  if (m.startsWith("codex/") || m === "codex" || m.includes("/codex/")) {
+    return "codex";
+  }
+  if (m.startsWith("openai/") || m.includes("/openai/")) {
+    return "openai";
+  }
+  if (m.startsWith("groq/") || m.includes("/groq/")) {
+    return "groq";
+  }
+  if (m.startsWith("nvidia/") || m.includes("/nvidia/")) {
+    return "nvidia";
+  }
+  if (m.startsWith("openrouter/")) {
+    return "openrouter";
+  }
+  return m.split("/")[0] || "opencode";
+}
+
+export function estimarCosteGemini(modelo: string, inputTokens: number, outputTokens: number): number {
+  const esPro = /pro/i.test(modelo);
+  const tarifaInput = esPro ? 1.25 / 1_000_000 : 0.075 / 1_000_000;
+  const tarifaOutput = esPro ? 5.00 / 1_000_000 : 0.30 / 1_000_000;
+  return Math.round((inputTokens * tarifaInput + outputTokens * tarifaOutput) * 10_000) / 10_000;
+}
+
 // Cada paso se persiste al llegar: fallos, cancelaciones y respaldos conservan el consumo previo.
 export function registrarUsoAgente(
   modelo: string,
   uso: Usage,
   contexto: Pick<OpcionesAgente, "conversationId" | "projectId" | "taskId">,
 ): void {
+  const modeloCanonico = canonicalizarModelo(modelo);
+  const provider = proveedorDeModelo(modeloCanonico);
+  let costo = uso.cost;
+  let costPrecision = uso.costeDisponible === undefined ? "desconocida" : uso.costeDisponible ? "estimado" : "no_disponible";
+
+  if (costo === 0 && (uso.input > 0 || uso.output > 0) && provider === "google") {
+    costo = estimarCosteGemini(modeloCanonico, uso.input, uso.output);
+    costPrecision = "estimado";
+  }
+
   db.query(
     `INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens,
       reasoning_tokens, cache_read_tokens, cost, project_id, task_id, tokens_precision, cost_precision)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
-    crypto.randomUUID(), contexto.conversationId ?? null, modelo.split("/")[0], modelo,
-    uso.input, uso.output, uso.reasoning, uso.cacheRead, uso.cost,
+    crypto.randomUUID(), contexto.conversationId ?? null, provider, modeloCanonico,
+    uso.input, uso.output, uso.reasoning, uso.cacheRead, costo,
     contexto.projectId ?? null, contexto.taskId ?? null,
     uso.tokensMedidos === undefined ? "desconocida" : uso.tokensMedidos ? "medida" : "no_disponible",
-    uso.costeDisponible === undefined ? "desconocida" : uso.costeDisponible ? "estimado" : "no_disponible",
+    costPrecision,
   );
 }
 

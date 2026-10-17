@@ -66,8 +66,52 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
     );
   } else {
     const registrado = proveedor?.precision === "medida_telo";
+    const googleLive = proveedor?.googleLive ?? (proveedorId === "google" ? uso.data?.googleLive : undefined);
     cuerpo = (
       <>
+        {googleLive && (
+          <div className="usage-window" role="region" aria-label="API de Google Gemini en vivo" style={{ borderLeft: googleLive.conectado ? "3px solid var(--ok, #10b981)" : "3px solid var(--error, #ef4444)" }}>
+            <div className="usage-window-heading">
+              <div className="usage-window-copy">
+                <span className="window-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: "8px",
+                      height: "8px",
+                      borderRadius: "50%",
+                      backgroundColor: googleLive.conectado ? "var(--ok, #10b981)" : "var(--error, #ef4444)",
+                    }}
+                  />
+                  Google AI Studio (API en vivo)
+                </span>
+                <span className="window-meta">{googleLive.mensaje}</span>
+              </div>
+              <div className="usage-remaining" aria-hidden="true">
+                <strong>{formatoPorcentaje(googleLive.porcentajeRestante)} %</strong>
+                <span style={{ fontSize: "11px", color: "var(--ink-2)", display: "block" }}>cuota RPD</span>
+              </div>
+            </div>
+            <div className="usage-window-totals" style={{ marginTop: "8px" }}>
+              <div>
+                <span>Peticiones hoy</span>
+                <strong>{googleLive.llamadasHoy} de {googleLive.limiteRpd} RPD</strong>
+              </div>
+              <div>
+                <span>Límite de ritmo</span>
+                <strong>{googleLive.limiteRpm} RPM</strong>
+              </div>
+              <div>
+                <span>Tokens hoy</span>
+                <strong>{compact(googleLive.tokensHoy)}</strong>
+              </div>
+              <div>
+                <span>Gasto estimado</span>
+                <strong>{formatUsd(googleLive.costoHoyUsd)}</strong>
+              </div>
+            </div>
+          </div>
+        )}
         <VentanaSaldo
           titulo="Últimos 7 días"
           datos={registrado ? proveedor.ultimos7d : null}
@@ -79,7 +123,9 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
           saldoUsd={proveedor?.cuotaRestanteUsd ?? null}
         />
         <p className="usage-note">
-          {proveedor?.cuotaRestanteUsd === null || !proveedor
+          {proveedorId === "google"
+            ? "Métricas en vivo de Google AI Studio con límites estándar gratuitos (1,500 RPD / 15 RPM). El gasto estimado usa tarifas oficiales por millón de tokens ($0.075 input / $0.30 output en Flash)."
+            : proveedor?.cuotaRestanteUsd === null || !proveedor
             ? "Anota el saldo restante para ver porcentajes. Telo no consulta en vivo los límites ni el saldo del proveedor."
             : "Los porcentajes comparan el costo registrado en cada ventana con ese gasto más el saldo anotado restante. Son una estimación de Telo, no la cuota real del proveedor."}
         </p>
