@@ -331,6 +331,9 @@
 .tl-msg:focus-within .tl-msg-acciones { opacity: 1; pointer-events: auto; }
 .tl-msg-marcar.is-marcado { color: var(--signal); background: var(--signal-soft); }
 .tl-msg-agente-cabecera .tl-msg-meta { white-space: normal; }
+.tl-msg-procesando { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
+.tl-msg-duracion { white-space: nowrap; }
+.tl-msg-duracion::before { content: "·"; margin-right: 6px; }
 .tl-msg-texto {
   min-width: 0;
   color: var(--ink);
@@ -979,6 +982,19 @@
   .tl-composer-caja { padding: 10px 10px 8px 12px; }
   .tl-modelo-nombre { max-width: 130px; }
   .tl-msg-acciones { opacity: 1; pointer-events: auto; }
+  .tl-msg-procesando { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .tl-msg-duracion::before { content: none; }
+  .tl-composer-barra:has(.tl-composer-decisiones) { flex-wrap: wrap; }
+  .tl-composer-barra:has(.tl-composer-decisiones) .tl-composer-izq { flex: 1 1 100%; width: 100%; }
+  .tl-composer-barra:has(.tl-composer-decisiones) .tl-composer-der { flex: 1 1 100%; width: 100%; justify-content: flex-end; }
+  .tl-composer-decisiones {
+    display: grid;
+    flex: 1 1 auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+  .tl-composer-decisiones button { min-width: 0; padding-inline: 8px; }
+  .tl-composer-decisiones .tl-boton-plan-aprobar { grid-column: 1 / -1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

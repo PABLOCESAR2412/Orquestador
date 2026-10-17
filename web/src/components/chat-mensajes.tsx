@@ -405,7 +405,10 @@ export function IndicadorPensando({ modelo, vivo = [], desde = null }: { modelo:
         <span className="tl-msg-marca" aria-hidden="true">
           {ICONO_AGENTE}
         </span>
-        <span className="tl-msg-meta">{modelo}{transcurrido ? <span className="tl-msg-duracion"> · Procesando desde hace {transcurrido}</span> : null}</span>
+        <span className="tl-msg-meta tl-msg-procesando">
+          <span className="tl-msg-modelo">{modelo}</span>
+          {transcurrido ? <span className="tl-msg-duracion">Procesando desde hace {transcurrido}</span> : null}
+        </span>
       </div>
       <div className="tl-pensando" title={ultimaAccion?.titulo ?? estado}>
         <span className="tl-pensando-texto">{estado}</span>
