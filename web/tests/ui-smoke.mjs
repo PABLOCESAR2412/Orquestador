@@ -199,6 +199,17 @@ try {
     await page.locator(".tl-grafico-chat").first().locator(".tl-grafico-datos summary").click();
     assert.equal(await page.locator(".tl-grafico-chat").first().locator(".tl-grafico-datos tbody tr").count(), 2);
     assert.equal(await page.locator(".tl-codigo-pestana").filter({ hasText: "chart" }).count(), 1, "JSON inválido se conserva como código");
+    const mensajeUsuario = page.locator(".tl-msg-usuario").filter({ hasText: "git commit y push" }).first();
+    const mensajeAgente = page.locator(".tl-msg-agente").filter({ hasText: "Faltan dependencias" }).first();
+    for (const mensaje of [mensajeUsuario, mensajeAgente]) {
+      const [meta, acciones] = await Promise.all([
+        mensaje.locator(".tl-msg-meta").boundingBox(),
+        mensaje.locator(".tl-msg-acciones").boundingBox(),
+      ]);
+      assert.ok(meta && acciones);
+      if (width === 390) assert.ok(acciones.y >= meta.y + meta.height - 1, "en móvil, las acciones del mensaje van debajo de sus metadatos");
+      else assert.ok(acciones.y < meta.y + meta.height && meta.y < acciones.y + acciones.height, "en escritorio, las acciones conservan la fila de metadatos");
+    }
     await page.locator(".tl-grafico-chat").first().scrollIntoViewIfNeeded();
     await page.screenshot({ path: `scratch/capturas-ci/chat-graficos-${width}.png` });
     const mensajeConGraficos = page.locator(".tl-msg-agente").filter({ hasText: "El segundo intento está listo para revisar." });
@@ -309,6 +320,13 @@ try {
     await page.keyboard.press("Enter");
     assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("telo:cola:c1") ?? "[]").map(({ id }) => id)), ["q2", "q3", "q1"]);
     await colaVisible.getByRole("button", { name: "Más opciones para mensaje 1", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Bajar en la cola", exact: true }).waitFor();
+    await inputChat.click();
+    await page.getByRole("menuitem", { name: "Bajar en la cola", exact: true }).waitFor({ state: "detached" });
+    await colaVisible.getByRole("button", { name: "Más opciones para mensaje 1", exact: true }).click();
+    await page.keyboard.press("Escape");
+    await page.getByRole("menuitem", { name: "Bajar en la cola", exact: true }).waitFor({ state: "detached" });
+    await colaVisible.getByRole("button", { name: "Más opciones para mensaje 1", exact: true }).click();
     await page.getByRole("menuitem", { name: "Editar mensaje", exact: true }).click();
     await colaVisible.getByRole("textbox", { name: "Editar mensaje en cola", exact: true }).fill("Segundo mensaje corregido");
     await colaVisible.getByRole("button", { name: "Guardar", exact: true }).click();
@@ -397,6 +415,44 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/medios-${width}.png` });
     await page.keyboard.press("Escape");
+    task.status = "running";
+    task.started_at = new Date(Date.now() - 12_000).toISOString();
+    const pensando = page.locator(".tl-pensando");
+    await pensando.waitFor();
+    const modeloEnCurso = page.locator(".tl-msg-procesando .tl-msg-modelo").last();
+    const duracionEnCurso = page.locator(".tl-msg-procesando .tl-msg-duracion").last();
+    await duracionEnCurso.waitFor();
+    if (width === 390) {
+      const [modeloCaja, duracionCaja] = await Promise.all([modeloEnCurso.boundingBox(), duracionEnCurso.boundingBox()]);
+      assert.ok(modeloCaja && duracionCaja && duracionCaja.y >= modeloCaja.y + modeloCaja.height, "en móvil, el tiempo de proceso va debajo del modelo");
+      assert.match(await duracionEnCurso.textContent(), /^Procesando desde hace .+$/);
+    }
+    await page.screenshot({ path: `scratch/capturas-ci/chat-procesando-${width}.png` });
+    task.status = "waiting_approval";
+    task.plan_hash = "hash-de-prueba";
+    task.plan = {
+      objetivo: "Revisar la respuesta del agente en el compositor móvil.", supuestos: [],
+      pasos: [{ id: 1, descripcion: "Responder desde el compositor.", archivos: [] }],
+      criterios_de_aceptacion: ["El compositor conserva su distribución."], requiere_aprobacion: [], riesgos: [], preguntas: ["¿Qué respuesta quieres dar?"]
+    };
+    const respuestaPlan = page.getByRole("textbox", { name: "Aclaraciones o cambios al plan", exact: true });
+    await respuestaPlan.waitFor();
+    await respuestaPlan.fill("1. Respuesta de prueba");
+    const decisionesPlan = page.locator(".tl-composer-decisiones");
+    const cajaComposer = page.locator(".tl-composer-caja");
+    await decisionesPlan.waitFor();
+    assert.equal(await decisionesPlan.evaluate(el => getComputedStyle(el).display), width === 390 ? "grid" : "flex");
+    const [decisionesCaja, composerCaja, inputCaja] = await Promise.all([
+      decisionesPlan.boundingBox(), cajaComposer.boundingBox(), respuestaPlan.boundingBox(),
+    ]);
+    assert.ok(decisionesCaja && composerCaja && inputCaja);
+    assert.ok(inputCaja.height <= 180, "responder al plan no debe estirar el textarea fuera de su límite");
+    assert.ok(decisionesCaja.x >= composerCaja.x && decisionesCaja.x + decisionesCaja.width <= composerCaja.x + composerCaja.width + 1, "los botones de plan deben quedar dentro del compositor");
+    assert.ok(await page.locator(".tl-composer-barra").evaluate(el => el.scrollWidth <= el.clientWidth + 1), "la barra del compositor no debe desbordarse");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/chat-respuesta-plan-${width}.png` });
+    task.plan = null;
+    task.plan_hash = null;
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/uso-${width}.png` });
     await page.keyboard.press("Escape");

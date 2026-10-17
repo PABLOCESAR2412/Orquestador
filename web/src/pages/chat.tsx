@@ -110,6 +110,7 @@ export function ChatPage() {
   const [enviosPorChat, setEnviosPorChat] = useState(enviosPorChatRef.current);
   const [erroresEnvio, setErroresEnvio] = useState<Record<string, string>>({});
   const [menuColaAbierto, setMenuColaAbierto] = useState<string | null>(null);
+  const colaRef = useRef<HTMLElement>(null);
   const [editandoColaId, setEditandoColaId] = useState<string | null>(null);
   const [textoEditadoCola, setTextoEditadoCola] = useState("");
   const [mensajeArrastradoColaId, setMensajeArrastradoColaId] = useState<string | null>(null);
@@ -271,6 +272,14 @@ export function ChatPage() {
   const colaActiva = useMemo(() => colaActivaPara(selectedId), [selectedId, colaRevision]);
   const menuColaItem = cola.find((item) => item.id === menuColaAbierto) ?? null;
   const indiceMenuCola = menuColaItem ? cola.findIndex((item) => item.id === menuColaItem.id) : -1;
+  useEffect(() => {
+    if (!menuColaAbierto) return;
+    const cerrarAlTocarFuera = (event: PointerEvent) => {
+      if (!colaRef.current?.contains(event.target as Node)) setMenuColaAbierto(null);
+    };
+    document.addEventListener("pointerdown", cerrarAlTocarFuera);
+    return () => document.removeEventListener("pointerdown", cerrarAlTocarFuera);
+  }, [menuColaAbierto]);
   const errorCola = falloCola?.conversacionId === selectedId && cola.some((item) => item.id === falloCola.mensajeId);
   const modelList: ModelInfo[] = models.data?.models ?? [];
   const modelInfo = modelList.find((m) => m.id === current?.model) ?? null;
@@ -1409,6 +1418,7 @@ export function ChatPage() {
 
             {cola.length > 0 && (
               <section
+                ref={colaRef}
                 className="tl-cola"
                 aria-label={`${cola.length} ${cola.length === 1 ? "mensaje" : "mensajes"} en cola`}
                 onKeyDown={(e) => {
