@@ -97,7 +97,7 @@ async function main() {
   comprobar(tb.reporte === null && tb.plan_aprobado_en === null, "sin aprobación no hay reporte ni fecha de aprobación");
   await Bun.sleep(300);
   comprobar(estadoDe(b) === "waiting_approval", "el obrero no corre antes de aprobar");
-  const apB = await api(`/tasks/${b}/aprobar-plan`, { notas: "Usa la rama principal" });
+  const apB = await api(`/tasks/${b}/aprobar-plan`, { notas: "Usa la rama principal", plan_hash: tb.plan_hash });
   comprobar(apB.status === 200, "aprobar-plan responde 200");
   await esperar(b, ["done", "failed"]);
   tb = await leer(b);
@@ -105,7 +105,7 @@ async function main() {
   const obreroB = llamadas(b).filter((l) => l.rol === "obrero");
   comprobar(obreroB.length === 1 && obreroB[0].prompt.includes("Usa la rama principal"), "las notas llegan al obrero");
   comprobar(eventos(b).includes("plan_aprobado"), "la aprobación queda en el historial");
-  const otraVez = await api(`/tasks/${b}/aprobar-plan`, {});
+  const otraVez = await api(`/tasks/${b}/aprobar-plan`, { plan_hash: tb.plan_hash });
   comprobar(otraVez.status === 409, "un plan ya aprobado no se aprueba de nuevo");
 
   // C. Rechazo: el plan no se ejecuta y la tarea queda cancelada.
@@ -127,12 +127,13 @@ async function main() {
   // E. Desviación: el obrero se sale del plan, el analizador replanifica y el usuario vuelve a aprobar.
   const e = crearTarea({ ...base, prompt: "Ordena la carpeta DESVIAR COMMIT" });
   await esperar(e, ["waiting_approval"]);
-  await api(`/tasks/${e}/aprobar-plan`, {});
-  await esperar(e, ["waiting_approval"]);
   let te = await leer(e);
+  await api(`/tasks/${e}/aprobar-plan`, { plan_hash: te.plan_hash });
+  await esperar(e, ["waiting_approval"]);
+  te = await leer(e);
   comprobar(te.plan?.objetivo?.startsWith("Plan replanificado"), "una desviación replanifica y vuelve a esperar aprobación");
   comprobar(eventos(e).includes("replanificada"), "la desviación queda en el historial");
-  await api(`/tasks/${e}/aprobar-plan`, {});
+  await api(`/tasks/${e}/aprobar-plan`, { plan_hash: te.plan_hash });
   await esperar(e, ["done", "failed"]);
   te = await leer(e);
   comprobar(te.status === "done", "tras replanificar y aprobar, la tarea termina");
@@ -143,7 +144,8 @@ async function main() {
   for (let vuelta = 0; vuelta < 3; vuelta++) {
     await esperar(f, ["waiting_approval", "failed"]);
     if (estadoDe(f) === "failed") break;
-    await api(`/tasks/${f}/aprobar-plan`, {});
+    const tf = await leer(f);
+    await api(`/tasks/${f}/aprobar-plan`, { plan_hash: tf.plan_hash });
   }
   await esperar(f, ["failed"]);
   const tf = await leer(f);

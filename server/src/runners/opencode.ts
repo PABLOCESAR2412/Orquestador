@@ -151,7 +151,20 @@ export class ErrorAgente extends Error {
 
 export function detalleDelProveedor(stdout: string, stderr: string, events: OpenCodeEvent[]): string {
   const errorEvent = events.find((e) => e.type === "error");
-  if (errorEvent) return JSON.stringify(errorEvent).slice(0, 800);
+  if (errorEvent) {
+    const evento = registro(errorEvent);
+    const error = registro(evento?.error);
+    const data = registro(error?.data);
+    const statusCode = typeof data?.statusCode === "number"
+      ? data.statusCode
+      : typeof error?.statusCode === "number" ? error.statusCode : null;
+    const message = typeof data?.message === "string"
+      ? data.message
+      : typeof error?.message === "string" ? error.message : "";
+    // Conserva lo necesario para clasificar el error sin perder el código si el evento trae
+    // metadatos grandes (por ejemplo, cabeceras o IDs de sesión) al final del JSON.
+    return JSON.stringify({ type: "error", statusCode, message: message.slice(0, 500) });
+  }
   return (stderr || stdout).trim().slice(-800).replace(/\S*[\\/]\S*/g, " ");
 }
 

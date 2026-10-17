@@ -4,6 +4,28 @@ import { VitePWA } from "vite-plugin-pwa";
 
 // Identifica cada build. La app lo compara con version.json para avisar de cambios.
 const buildId = Date.now().toString(36);
+let jsCargaInicial = new Set<string>();
+
+// Workbox debe guardar la entrada y sus imports estáticos para abrir la PWA sin red. Los imports
+// dinámicos (pantallas y, sobre todo, diagramas Mermaid/ELK) se guardan al usarse, no al instalar.
+function detectarCargaInicial(): Plugin {
+  return {
+    name: "telo-pwa-carga-inicial",
+    apply: "build",
+    generateBundle(_opciones, bundle) {
+      const chunks = Object.values(bundle).filter((salida) => salida.type === "chunk");
+      const porArchivo = new Map(chunks.map((chunk) => [chunk.fileName, chunk]));
+      const necesarios = new Set<string>();
+      const visitar = (archivo: string) => {
+        if (necesarios.has(archivo)) return;
+        necesarios.add(archivo);
+        for (const importado of porArchivo.get(archivo)?.imports ?? []) visitar(importado);
+      };
+      for (const chunk of chunks) if (chunk.isEntry) visitar(chunk.fileName);
+      jsCargaInicial = necesarios;
+    },
+  };
+}
 
 // Escribe version.json junto al build.
 function versionFile(): Plugin {
@@ -23,6 +45,7 @@ export default defineConfig({
   plugins: [
     react(),
     versionFile(),
+    detectarCargaInicial(),
     VitePWA({
       // "prompt": la versión nueva espera y la app pregunta antes de recargar.
       registerType: "prompt",
@@ -30,6 +53,26 @@ export default defineConfig({
       // llegan al servidor, no al index.html guardado en caché.
       workbox: {
         navigateFallbackDenylist: [/^\/api\//],
+        // Los chunks que se cargan bajo demanda (vistas, Mermaid y ELK) pasan al caché al usarse.
+        // Así siguen disponibles sin conexión después de abrirlos una vez, sin descargar todo al instalar.
+        runtimeCaching: [{
+          urlPattern: ({ url, request }) => url.pathname.startsWith("/assets/") && request.destination === "script",
+          handler: "CacheFirst",
+          options: {
+            cacheName: "telo-chunks",
+            expiration: { maxEntries: 100, maxAgeSeconds: 30 * 24 * 60 * 60 },
+            cacheableResponse: { statuses: [200] },
+          },
+        }],
+        manifestTransforms: [(entries) => ({
+          manifest: entries.filter(({ url }) => {
+            const archivo = decodeURIComponent(url).replace(/^\/+/, "");
+            if (/^assets\/.*\.js$/i.test(archivo)) return jsCargaInicial.has(archivo);
+            if (/\.woff$/i.test(archivo)) return false;
+            return !/-(cyrillic|greek|vietnamese)-[^/]*\.woff2$/i.test(archivo);
+          }),
+          warnings: [],
+        })],
       },
       manifest: {
         name: "Telo",

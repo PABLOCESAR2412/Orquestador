@@ -66,6 +66,12 @@ sudo systemctl start orquestador-deploy.service    # forzar un ciclo ahora
 
 Para pausar el despliegue automático: `sudo systemctl disable --now orquestador-deploy.timer`.
 
+## Proxy inverso y límite por IP
+
+El servidor escucha en `127.0.0.1` por defecto, por lo que Tailscale Serve no necesita configuración adicional. Si se cambia `TELO_ESCUCHAR` para aceptar conexiones desde otra interfaz detrás de un proxy, añade a `/etc/orquestador/orquestador.env` `TELO_PROXIES_CONFIABLES` con las IP exactas de los proxies que conectan directamente al servidor, separadas por comas. El proxy debe sobrescribir `CF-Connecting-IP`, `X-Forwarded-For` o `X-Real-IP`; el servidor ignora esas cabeceras para cualquier otro peer.
+
+No declares como confiables las IP de los clientes. Tras cambiar el archivo de entorno, reinicia `orquestador`.
+
 ## Registros y estado en Ajustes (una vez)
 
 Ajustes > Estado del servidor muestra el estado de `orquestador` y sus últimos registros. La app los lee con `journalctl`, sin sudo. Para que el usuario `orquestador` pueda leer el diario, hay que añadirlo al grupo de lectura del diario:

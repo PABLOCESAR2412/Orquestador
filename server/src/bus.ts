@@ -45,8 +45,12 @@ export function publicar(evento: EventoVivo): number {
 
 // Devuelve los eventos almacenados en el buffer circular posteriores a `ultimoId`.
 export function eventosDesde(ultimoId: number): EventoConSecuencia[] {
-  if (ultimoId <= 0) return [];
+  if (ultimoId < 0) return [];
   return bufferEventos.filter((e) => e.id > ultimoId);
+}
+
+export function ultimoEventoId(): number {
+  return contadorSecuencia;
 }
 
 // Devuelve la función que quita la suscripción.
@@ -54,6 +58,24 @@ export function suscribir(fn: Suscriptor): () => void {
   suscriptores.add(fn);
   return () => {
     suscriptores.delete(fn);
+  };
+}
+
+// Registra el cliente y captura su cursor/replay en el mismo tramo síncrono para evitar huecos
+// entre consultar el buffer y comenzar la suscripción.
+export function suscribirConEventosDesde(
+  ultimoId: number | null,
+  fn: Suscriptor,
+): { cursor: number; eventos: EventoConSecuencia[]; baja: () => void } {
+  suscriptores.add(fn);
+  const cursor = contadorSecuencia;
+  const eventos = ultimoId === null ? [] : eventosDesde(ultimoId);
+  return {
+    cursor,
+    eventos,
+    baja: () => {
+      suscriptores.delete(fn);
+    },
   };
 }
 

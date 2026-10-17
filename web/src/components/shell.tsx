@@ -444,7 +444,7 @@ export function Shell({ children }: { children: ReactNode }) {
             {/* SECCIÓN 1: PROJECTS (Árbol con carpetas colapsables y chats anidados) */}
             <div className="tl-rail-seccion">
               <div className="tl-rail-seccion-head">
-                <span className="tl-rail-seccion-titulo">Projects</span>
+                <span className="tl-rail-seccion-titulo">Proyectos</span>
                 <div className="tl-rail-seccion-acciones">
                   <button
                     type="button"
@@ -593,7 +593,7 @@ export function Shell({ children }: { children: ReactNode }) {
             {/* SECCIÓN 2: CONVERSATIONS (Chats libres no ligados a proyectos) */}
             <div className="tl-rail-seccion tl-rail-seccion-conversaciones">
               <div className="tl-rail-seccion-head">
-                <span className="tl-rail-seccion-titulo">Conversations</span>
+                <span className="tl-rail-seccion-titulo">Conversaciones</span>
                 <div className="tl-rail-seccion-acciones">
                   <button
                     type="button"
