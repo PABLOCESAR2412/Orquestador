@@ -110,7 +110,7 @@ export function ConvItem({ conv, active, variant = "arbol", onSelect, onRename, 
           </span>
 
           {/* Indicadores de estado (spinner en proceso, punto pendiente, visto completado) o tiempo relativo */}
-          <span className="sidebar-conv-meta">
+          <span className="sidebar-conv-meta" aria-hidden="true">
             {conv.en_proceso ? (
               <span className="tl-indicador-spinner" title="En proceso…" aria-label="En proceso">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">

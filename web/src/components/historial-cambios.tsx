@@ -310,7 +310,6 @@ export function HistorialCambios({
         role="dialog"
         aria-modal="true"
         aria-label="Historial de cambios"
-        aria-labelledby="tl-cambios-titulo"
         ref={dialogRef}
       >
         {/* Cabecera con icono isométrico, título y botón de cierre */}
@@ -407,7 +406,7 @@ export function HistorialCambios({
             RELEASES_DESTACADAS.map((rel) => (
               <article
                 key={rel.version}
-                className={`tl-version-card${rel.actual ? " is-actual" : ""}`}
+                className={`tl-version-card tl-cambio${rel.actual ? " is-actual" : ""}`}
                 aria-label={`Versión ${rel.version}`}
               >
                 <div className="tl-version-header">
@@ -462,7 +461,7 @@ export function HistorialCambios({
                     <h4 className="tl-cambios-grupo-fecha">{fechaLegible(grupo.fecha)}</h4>
                     <ul className="tl-cambios-detallados-lista">
                       {grupo.cambios.map((c, idx) => (
-                        <li key={idx} className="tl-cambio-detallado">
+                        <li key={idx} className="tl-cambio-detallado tl-cambio">
                           <span
                             className={`tl-item-tag ${
                               c.tipo === "grande"

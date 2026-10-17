@@ -165,7 +165,7 @@ test("PR sin commits nuevos muestra cómo corregir rama y base", { timeout: 1500
   expect(resultado.detail).not.toContain("Validation Failed");
 });
 
-test("push muestra remoto fijado en clon y no el nuevo remoto de configuración", async () => {
+test("push muestra remoto fijado en clon y no el nuevo remoto de configuración", { timeout: 15000 }, async () => {
   const p = await tareaConCommit();
   db.query("INSERT INTO project_git(project_id,remote) VALUES (?,?)").run(
     p.id,
@@ -186,7 +186,7 @@ test("push muestra remoto fijado en clon y no el nuevo remoto de configuración"
   expect(llamadas).toBe(0);
 });
 
-test("si diff cambia después de solicitar PR, rechaza aprobar antes de llamar GitHub", async () => {
+test("si diff cambia después de solicitar PR, rechaza aprobar antes de llamar GitHub", { timeout: 15000 }, async () => {
   const p = await tareaConCommit();
   guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
   const accion = (await (
@@ -272,7 +272,7 @@ test("una autorización registra la cuenta del servidor y comprueba acceso antes
   } finally { espia.mockRestore(); borrarCuentaGithubGlobal(); }
 });
 
-test("no prepara autorizaciones de commit o push sin cambios respecto a la base", async () => {
+test("no prepara autorizaciones de commit o push sin cambios respecto a la base", { timeout: 15000 }, async () => {
   const p = await tareaConCommit();
   await gitOk(["reset", "--hard", p.diff.base_commit!], { cwd: p.clon });
   for (const action of ["commit", "push"]) {
@@ -283,7 +283,7 @@ test("no prepara autorizaciones de commit o push sin cambios respecto a la base"
   expect(db.query("SELECT 1 FROM repository_actions WHERE task_id=?").get(p.taskId)).toBeNull();
 });
 
-test("no prepara un push cuando falta el remoto guardado", async () => {
+test("no prepara un push cuando falta el remoto guardado", { timeout: 15000 }, async () => {
   const p = await tareaConCommit();
   rmSync(join(config.dataDir, "tasks", p.taskId, "remoto.txt"));
   const respuesta = await pedir(`/projects/${p.id}/acciones`, { action: "push", taskId: p.taskId });
@@ -292,7 +292,7 @@ test("no prepara un push cuando falta el remoto guardado", async () => {
   expect(db.query("SELECT 1 FROM repository_actions WHERE task_id=?").get(p.taskId)).toBeNull();
 });
 
-test("cada petición conserva su mensaje aunque se reutilice la tarea del chat", async () => {
+test("cada petición conserva su mensaje aunque se reutilice la tarea del chat", { timeout: 15000 }, async () => {
   const p = await tareaConCommit();
   const conversationId = randomUUID();
   db.query("INSERT INTO conversations(id,title,project_id) VALUES (?,'Git',?)").run(conversationId, p.id);

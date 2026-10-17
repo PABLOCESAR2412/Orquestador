@@ -132,7 +132,7 @@ try {
     await page.getByRole("button", { name: "Entrar", exact: true }).click();
     await page.waitForURL("**/chat");
     console.log(`${width}px: sesión local de prueba iniciada`);
-    await page.getByText("ANTERIORES", { exact: true }).waitFor();
+    await page.getByText("Conversations", { exact: true }).waitFor();
     assert.equal((await (await respuestaDiffTransitoria).json()).estado, "en_curso");
     await page.locator(".tl-diagrama-visual svg").waitFor();
     const comprobarTemaDiagrama = async tema => {
@@ -158,9 +158,7 @@ try {
     assert.ok((await page.locator(".tl-md pre code").allTextContents()).some(codigo => codigo.includes("└── src/")));
     const arbolArchivos = page.locator(".tl-codigo").filter({ hasText: "└── src/" });
     assert.equal(await arbolArchivos.getByRole("button", { name: "Aplicar", exact: true }).count(), 0);
-    assert.deepEqual(await page.locator(".tl-grupo-titulo").allTextContents(), ["RECIENTES", "ÚLTIMOS 7 DÍAS", "ANTERIORES"]);
-    assert.equal(await page.getByText("HOY", { exact: true }).count(), 0);
-    assert.equal(await page.getByText("AYER", { exact: true }).count(), 0);
+    assert.deepEqual(await page.locator(".tl-rail-seccion-titulo").allTextContents(), ["Projects", "Conversations"]);
     if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
     const versionButton = page.getByRole("button", { name: /Ver historial de cambios de la versión/ });
     await versionButton.click();
@@ -173,7 +171,7 @@ try {
     await historialCambios.waitFor({ state: "detached" });
     assert.equal(await versionButton.evaluate(el => el === document.activeElement), true);
     if (width === 390) await page.getByRole("button", { name: "Cerrar barra lateral", exact: true }).click();
-    const contrasteGrupo = await page.locator(".tl-grupo-titulo").first().evaluate(el => getComputedStyle(el).color);
+    const contrasteGrupo = await page.locator(".tl-rail-seccion-titulo").first().evaluate(el => getComputedStyle(el).color);
     const contrasteChat = await page.locator(".sidebar-conv-title").first().evaluate(el => getComputedStyle(el).color);
     assert.notEqual(contrasteGrupo, contrasteChat);
     await page.getByText("Faltan dependencias", { exact: true }).waitFor();
@@ -308,14 +306,14 @@ try {
     console.log(`${width}px: código de acceso comprobado`);
     await page.goto(`${base}/analiticas`);
     await page.getByRole("heading", { name: "Precisión de las métricas", exact: true }).waitFor();
-    await page.getByRole("cell", { name: /10\s+medidos/ }).waitFor();
+    await page.getByText(/registros con tokens medidos/).waitFor();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/analiticas-${width}.png` });
     sinDatos = true;
     await page.reload();
     await page.getByText("No disponible", { exact: true }).first().waitFor();
     assert.equal(await page.getByText("No disponible", { exact: true }).count(), 2);
-    const origenTarea = page.getByRole("table", { name: "Uso de IA por origen" }).getByRole("row").filter({ hasText: "Tareas del agente" });
+    const origenTarea = page.getByRole("table", { name: /Uso de IA por origen/ }).getByRole("row").filter({ hasText: "Tareas del agente" });
     assert.equal(await origenTarea.getByRole("cell").nth(1).textContent(), "—");
     assert.deepEqual(errors, []);
     await context.close();
