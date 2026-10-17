@@ -96,8 +96,8 @@ export function registrarUsoAgente(
   );
 }
 
-// Saturación o límite del proveedor: justifica probar otro modelo.
-const PATRON_PROVEEDOR = /\b(429|5\d\d)\b|rate limit|too many requests|overloaded|quota/i;
+// Saturación, error de servidor o límite del proveedor: justifica probar otro modelo.
+const PATRON_PROVEEDOR = /\b(429|5\d\d)\b|rate limit|too many requests|overloaded|quota|server error|internal error|service unavailable|bad gateway|gateway timeout|temporarily unavailable/i;
 // Saldo insuficiente: otro modelo no lo arregla, así que nunca se reintenta.
 const PATRON_SALDO = /insufficient|saldo|funds|balance/i;
 // Cuota agotada: el modelo ya no da más tokens (límite de uso, saldo o 429). Se distingue de un fallo
@@ -163,8 +163,12 @@ export function esErrorDeProveedor(err: unknown, signal?: AbortSignal): boolean 
 
 // Solo el código HTTP, nunca el texto del error: el detalle llega a la interfaz.
 function etiquetaDelError(err: unknown): string {
-  const codigo = textoDelProveedor(err).match(/\b(429|5\d\d)\b/);
-  return codigo ? codigo[1] : "Error del proveedor";
+  const texto = textoDelProveedor(err);
+  const codigo = texto.match(/\b(429|5\d\d)\b/);
+  if (codigo) return codigo[1];
+  if (/server error|internal error|service unavailable/i.test(texto)) return "500";
+  if (/rate limit|too many requests/i.test(texto)) return "429";
+  return "Error del proveedor";
 }
 
 // Obtiene un resumen conciso de los otros chats recientes del proyecto si compartir_contexto está activo.
@@ -393,7 +397,28 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     // Un modelo sin cuota se marca como tal (ver ErrorCuota); cualquier otro error sigue como antes.
     const comoCuota = (e: unknown, modelo: string): unknown =>
       esErrorDeCuota(e) ? new ErrorCuota(modelo, sesion) : limpiarError(e);
-    if (!esErrorDeProveedor(err, opts.signal)) throw comoCuota(err, opts.model);
+    // Ante fallo transitorio del servidor (HTTP 5xx o error inesperado del proveedor),
+    // intentamos un reintento breve antes de recurrir al respaldo o detener la tarea.
+    if (
+      esErrorDeProveedor(err, opts.signal) &&
+      /server error|internal error|5\d\d|service unavailable/i.test(textoDelProveedor(err))
+    ) {
+      await Bun.sleep(1200);
+      if (!opts.signal?.aborted) {
+        try {
+          const r = await runOpenCode({
+            ...base,
+            model: opts.model,
+            variant: opts.variant ?? undefined,
+            sessionId: opts.sessionId ?? null,
+            onUso: (uso) => registrarUsoAgente(opts.model, uso, opts),
+          });
+          return terminar(r, opts.model);
+        } catch (reintentoErr) {
+          err = reintentoErr;
+        }
+      }
+    }
 
     const respaldo = getPreferences().fallbackModel;
     if (!respaldo || respaldo === opts.model) throw comoCuota(err, opts.model);

@@ -791,14 +791,14 @@ export function ChatPage() {
   const [skillIndex, setSkillIndex] = useState(0);
   const [skillPickerOculto, setSkillPickerOculto] = useState(false);
 
-  // Analiza si el cursor o el final del borrador está redactando un token de skill ($ o /)
+  // Analiza si el cursor o el final del borrador está redactando un token de skill ($, @ o /)
   const tokenSkill = useMemo(() => {
     if (!draft) return null;
     const cursor = inputRef.current ? inputRef.current.selectionStart : draft.length;
     const antesCursor = draft.slice(0, cursor);
-    const m = /(?:^|\s)([$/])([a-zA-Z0-9-]*)$/.exec(antesCursor);
+    const m = /(?:^|\s)([@$/])([a-zA-Z0-9-]*)$/.exec(antesCursor);
     if (!m) return null;
-    const prefijo = m[1] as "$" | "/";
+    const prefijo = m[1] as "$" | "/" | "@";
     const query = m[2]!.toLowerCase();
     const inicio = antesCursor.length - m[0].length + (m[0].startsWith(" ") ? 1 : 0);
     return { prefijo, query, inicio, fin: cursor };
@@ -1435,8 +1435,8 @@ export function ChatPage() {
                     : agenteOcupado && colaActiva
                     ? "El agente está respondiendo; tu mensaje se añadirá a la cola"
                     : sugerencia
-                    ? `${sugerencia} (Tab) o escribe un mensaje, usa $ o / para skills y comandos`
-                    : "Escribe un mensaje, usa $ o / para skills y comandos, o pega archivos"
+                    ? `${sugerencia} (Tab) o escribe un mensaje, usa $, @ o / para skills y comandos`
+                    : "Escribe un mensaje, usa $, @ o / para skills y comandos, o pega archivos"
                 }
                 aria-label={planPendiente ? "Aclaraciones o cambios al plan" : "Mensaje"}
                 aria-autocomplete={menuSkillsAbierto || menuAbierto ? "list" : sugerencia ? "inline" : undefined}

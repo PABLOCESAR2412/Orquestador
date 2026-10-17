@@ -91,8 +91,9 @@ export function explicarErrorProveedor(evento: unknown): string {
   if (status === 429) {
     return "El proveedor limitó las solicitudes temporalmente. Por dónde empezar: espera un momento o elige otro modelo/proveedor.";
   }
-  if (status !== null && status >= 500) {
-    return `El proveedor tuvo un error temporal (HTTP ${status}). Por dónde empezar: espera un momento y vuelve a intentarlo; si se repite, prueba otro modelo.`;
+  if ((status !== null && status >= 500) || /server error|internal error|service unavailable|bad gateway|gateway timeout|temporarily unavailable/i.test(mensaje)) {
+    const detalleMsg = mensaje ? `: «${mensaje.slice(0, 160)}»` : "";
+    return `El proveedor del modelo tuvo un error temporal en sus servidores${status ? ` (HTTP ${status})` : ""}${detalleMsg}. Por dónde empezar: espera unos momentos y vuelve a intentarlo; si el problema persiste, selecciona otro modelo en el selector (por ejemplo, Claude, GPT o Groq).`;
   }
   if (mensaje) return `El proveedor devolvió un error${status === null ? "" : ` (HTTP ${status})`}: ${mensaje.slice(0, 500)}`;
   return `OpenCode informó un error del proveedor${status === null ? "" : ` (HTTP ${status})`}. Revisa «Ver proceso» y vuelve a intentarlo.`;

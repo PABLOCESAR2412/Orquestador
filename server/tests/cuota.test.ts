@@ -90,6 +90,12 @@ describe("clasificación de cuota agotada", () => {
       '{"type":"error","error":{"message":"429 Too Many Requests"}}',
     );
     expect(esErrorDeProveedor(saturado)).toBe(true);
+
+    const errorServidor = new ErrorAgente(
+      "opencode salió con código 1",
+      '{"type":"error","error":{"message":"Unexpected server error. Check server logs for details."}}',
+    );
+    expect(esErrorDeProveedor(errorServidor)).toBe(true);
   });
 
   test("un error del servidor o una salida vacía no cuentan como cuota", () => {
@@ -119,6 +125,19 @@ describe("clasificación de cuota agotada", () => {
     expect(mensaje).not.toContain("cf-ray");
     const detalle = detalleDelProveedor("", "", [evento as never]);
     expect(esErrorDeCuota(new ErrorAgente(mensaje, detalle))).toBe(false);
+  });
+
+  test("explica un error temporal de servidor del proveedor con sugerencia clara", () => {
+    const evento = {
+      type: "error",
+      error: {
+        message: "Unexpected server error. Check server logs for details.",
+      },
+    };
+    const mensaje = explicarErrorProveedor(evento);
+    expect(mensaje).toContain("error temporal en sus servidores");
+    expect(mensaje).toContain("Unexpected server error");
+    expect(mensaje).toContain("selecciona otro modelo");
   });
 
   test("ErrorCuota nombra el modelo y ya es cuota", () => {

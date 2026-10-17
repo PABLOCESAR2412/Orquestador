@@ -6,7 +6,7 @@ export type SkillOpcion = {
 
 type Props = {
   skills: SkillOpcion[];
-  prefijo: "$" | "/";
+  prefijo: "$" | "/" | "@";
   activo: number;
   onElegir: (skill: SkillOpcion) => void;
 };

@@ -226,3 +226,30 @@ test("instala skills conocidas y desempata rutas múltiples (playwright, caveman
   expect(existsSync(rutaOpencode)).toBe(true);
   expect(existsSync(rutaVisible)).toBe(true);
 });
+
+test("usa fallback global o directo si la API de GitHub devuelve rate-limit o 502", async () => {
+  const id = proyecto();
+  // Simular que GitHub API falla con 403 Rate Limit en /repos/
+  globalThis.fetch = (async (url) => {
+    const destino = String(url);
+    if (destino.includes("api.github.com")) {
+      return new Response("API rate limit exceeded", { status: 403 });
+    }
+    // Pero el CDN raw funciona
+    if (destino.includes("raw.githubusercontent.com")) {
+      return new Response("---\nname: context7\ndescription: Frameworks docs\n---\n\nDocs actualizadas");
+    }
+    return new Response("Not found", { status: 404 });
+  }) as typeof fetch;
+
+  const respuesta = await app.request("/projects/skills-test/skills/instalar", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ comando: "context7" }),
+  });
+  expect(respuesta.status).toBe(201);
+  const data = (await respuesta.json()) as { name: string; content: string };
+  expect(data.name).toBe("context7");
+  expect(data.content).toContain("Docs actualizadas");
+});
+

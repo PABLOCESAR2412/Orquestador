@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   closeSync,
   constants as fsConstants,
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -301,6 +302,27 @@ async function existeCommit(clon: string, sha: string): Promise<boolean> {
   return r.code === 0;
 }
 
+// Sincroniza las carpetas de skills del proyecto hacia el clon del workspace,
+// asegurando que las skills locales y no commiteadas estén disponibles para el agente.
+function sincronizarSkillsDeProyecto(repoPath: string, clon: string): void {
+  try {
+    const skillsOpencode = join(repoPath, ".opencode", "skills");
+    if (existsSync(skillsOpencode)) {
+      const destOpencode = join(clon, ".opencode", "skills");
+      mkdirSync(destOpencode, { recursive: true });
+      cpSync(skillsOpencode, destOpencode, { recursive: true, force: true });
+    }
+    const skillsRaiz = join(repoPath, "skills");
+    if (existsSync(skillsRaiz)) {
+      const destRaiz = join(clon, "skills");
+      mkdirSync(destRaiz, { recursive: true });
+      cpSync(skillsRaiz, destRaiz, { recursive: true, force: true });
+    }
+  } catch {
+    // Si la sincronización auxiliar de skills no se completa, no bloquea el arranque de la tarea.
+  }
+}
+
 // Prepara la carpeta de trabajo de una tarea. Sin repo Git, la tarea usa la carpeta del proyecto.
 export function prepararCopia(
   taskId: string,
@@ -373,6 +395,7 @@ export function prepararCopia(
       base = fila.base_commit ?? (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: clon })).trim();
     }
 
+    sincronizarSkillsDeProyecto(repoPath, clon);
     db.query("UPDATE tasks SET rama = ?, base_commit = ? WHERE id = ?").run(rama, base, taskId);
     return { cwd: clon, rama, base_commit: base, copia: true };
   });
