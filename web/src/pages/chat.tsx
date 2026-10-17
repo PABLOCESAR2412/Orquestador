@@ -154,8 +154,28 @@ export function ChatPage() {
   const [slashOculto, setSlashOculto] = useState(false);
   const [sugerenciaOculta, setSugerenciaOculta] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const endRef = useRef<HTMLDivElement>(null);
   const hiloRef = useRef<HTMLDivElement>(null);
+  const chatHiloIdRef = useRef<string | null>(null);
+  const seguirHiloAlFinalRef = useRef(true);
+  const [mostrarIrAlFinal, setMostrarIrAlFinal] = useState(false);
+  const irAlFinal = useCallback(() => {
+    const hilo = hiloRef.current;
+    if (!hilo) return;
+    seguirHiloAlFinalRef.current = true;
+    setMostrarIrAlFinal(false);
+    hilo.scrollTo({
+      top: hilo.scrollHeight,
+      left: 0,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+  }, []);
+  const actualizarSeguimientoHilo = useCallback(() => {
+    const hilo = hiloRef.current;
+    if (!hilo) return;
+    const cercaDelFinal = hilo.scrollHeight - hilo.scrollTop - hilo.clientHeight <= 48;
+    seguirHiloAlFinalRef.current = cercaDelFinal;
+    setMostrarIrAlFinal(!cercaDelFinal);
+  }, []);
   const fileRef = useRef<HTMLInputElement>(null);
   const recRef = useRef<ReconocimientoVoz | null>(null);
   // Botones que abren el selector y el panel de uso: reciben el foco al cerrar.
@@ -404,6 +424,10 @@ export function ChatPage() {
 
   const iniciarEnvio = (variables: { id: string; content: string; restaurar?: Restaurar; colaId?: string }) => {
     if (enviosPorChatRef.current[variables.id]) return false;
+    if (variables.id === selectedId) {
+      seguirHiloAlFinalRef.current = true;
+      setMostrarIrAlFinal(false);
+    }
     setErroresEnvio((prev) => {
       const siguiente = { ...prev };
       delete siguiente[variables.id];
@@ -706,10 +730,17 @@ export function ChatPage() {
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
   }, [draft]);
 
-  // Mantiene visible el último mensaje, incluido el de "pensando".
+  // Sigue la respuesta nueva solo mientras el usuario permanezca al final del hilo.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.data?.length, enviandoActual, selectedId, tareaChat?.status, tareaChat?.plan_hash]);
+    const hilo = hiloRef.current;
+    if (chatHiloIdRef.current !== selectedId) {
+      chatHiloIdRef.current = selectedId;
+      seguirHiloAlFinalRef.current = true;
+      setMostrarIrAlFinal(false);
+    }
+    if (!hilo || !seguirHiloAlFinalRef.current) return;
+    hilo.scrollTo({ top: hilo.scrollHeight, left: 0, behavior: "auto" });
+  }, [messages.data?.length, enviandoActual, selectedId, tareaChat?.status, tareaChat?.plan_hash, current?.ocupada, selectedId ? vivos[selectedId]?.pasos.length : 0]);
 
   // Solo llega aquí un fallo que no se guardó (409 si el chat ya responde, 4xx o 5xx del servidor).
   const sendError = selectedId ? erroresEnvio[selectedId] ?? null : null;
@@ -863,7 +894,17 @@ export function ChatPage() {
     setHistorialAbierto(false);
     setResaltadoId(id);
     const suave = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    document.getElementById(`mensaje-${id}`)?.scrollIntoView({ block: "center", behavior: suave ? "smooth" : "auto" });
+    const hilo = hiloRef.current;
+    const mensaje = document.getElementById(`mensaje-${id}`);
+    if (hilo && mensaje) {
+      const cajaHilo = hilo.getBoundingClientRect();
+      const cajaMensaje = mensaje.getBoundingClientRect();
+      const destino = Math.max(0, hilo.scrollTop + cajaMensaje.top - cajaHilo.top - (hilo.clientHeight - cajaMensaje.height) / 2);
+      const cercaDelFinal = hilo.scrollHeight - destino - hilo.clientHeight <= 48;
+      seguirHiloAlFinalRef.current = cercaDelFinal;
+      setMostrarIrAlFinal(!cercaDelFinal);
+      hilo.scrollTo({ top: destino, left: 0, behavior: suave ? "smooth" : "auto" });
+    }
     window.setTimeout(() => setResaltadoId((actual) => (actual === id ? null : actual)), 1800);
   };
 
@@ -1200,10 +1241,18 @@ export function ChatPage() {
                   <HistorialPrompts prompts={prompts} onElegir={irAPrompt} onCerrar={() => setHistorialAbierto(false)} />
                 )}
               </div>
+              {mostrarIrAlFinal && (
+                <button type="button" className="tl-boton tl-hilo-ir-final" onClick={irAlFinal} aria-label="Ir al último mensaje" title="Ir al último mensaje">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 5v14" />
+                    <path d="m19 12-7 7-7-7" />
+                  </svg>
+                </button>
+              )}
             </div>
           </header>
 
-          <div className="tl-hilo" ref={hiloRef}>
+          <div className="tl-hilo" ref={hiloRef} onScroll={actualizarSeguimientoHilo}>
             <div className="tl-hilo-columna">
               {messages.isPending && <p className="tl-nota">Cargando mensajes…</p>}
               {messages.isError && (
@@ -1336,7 +1385,6 @@ export function ChatPage() {
                   error={seguirChat.isError && seguirChat.variables === selectedId ? errorText(seguirChat.error) : null}
                 />
               )}
-              <div ref={endRef} />
             </div>
           </div>
 
