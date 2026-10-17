@@ -842,3 +842,247 @@
 @media (prefers-reduced-motion: reduce) {
   .tl-rail { transition: none; }
 }
+
+/* ==========================================================================
+   Panel de Siguiente Paso y Plantillas Gauntlet
+   ========================================================================== */
+
+.tl-siguiente-panel {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(13, 18, 28, 0.85);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+  padding: 20px 24px 24px;
+  margin-bottom: 24px;
+}
+
+.tl-siguiente-cabecera-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tl-siguiente-badge-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tl-gauntlet-badge {
+  background: #d97706;
+  color: #ffffff;
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tl-siguiente-subbadge {
+  font-size: 11.5px;
+  color: #94a3b8;
+  font-family: var(--font-mono);
+}
+
+.tl-siguiente-titulo {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.tl-siguiente-nota {
+  margin: 10px 0 16px;
+  color: #94a3b8;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.tl-plantillas-seccion {
+  margin-bottom: 18px;
+}
+
+.tl-plantillas-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.tl-plantilla-card {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  color: inherit;
+}
+
+.tl-plantilla-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.16);
+  transform: translateY(-1px);
+}
+
+.tl-plantilla-card.is-activa {
+  background: rgba(217, 119, 6, 0.1);
+  border-color: #d97706;
+  box-shadow: 0 0 16px -2px rgba(217, 119, 6, 0.2);
+}
+
+.tl-plantilla-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.tl-plantilla-icono {
+  font-size: 18px;
+}
+
+.tl-plantilla-tipo {
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.tl-plantilla-card.is-activa .tl-plantilla-tipo {
+  color: #f59e0b;
+  border-color: rgba(217, 119, 6, 0.3);
+}
+
+.tl-plantilla-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tl-plantilla-titulo {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.tl-plantilla-desc {
+  margin: 0;
+  font-size: 11.5px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.tl-siguiente-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tl-siguiente-editor-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tl-siguiente-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.tl-editor-etiqueta {
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.tl-editor-caracteres {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.tl-siguiente-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 160px;
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: rgba(11, 15, 25, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #f8fafc;
+  resize: vertical;
+  outline: none;
+}
+
+.tl-siguiente-textarea:focus {
+  border-color: #d97706;
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.2);
+}
+
+.tl-siguiente-ayuda {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.45;
+}
+
+.tl-siguiente-ayuda code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.tl-siguiente-acciones {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* Modo claro */
+:root[data-theme="claro"] .tl-siguiente-panel {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.07);
+}
+
+:root[data-theme="claro"] .tl-siguiente-titulo {
+  color: #0f172a;
+}
+
+:root[data-theme="claro"] .tl-plantilla-card {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+:root[data-theme="claro"] .tl-plantilla-card.is-activa {
+  background: #fffdfa;
+  border-color: #d97706;
+}
+
+:root[data-theme="claro"] .tl-plantilla-titulo {
+  color: #0f172a;
+}
+
+:root[data-theme="claro"] .tl-siguiente-textarea {
+  background: #ffffff;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+:root[data-theme="claro"] .tl-editor-etiqueta {
+  color: #0f172a;
+}

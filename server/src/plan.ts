@@ -200,7 +200,8 @@ const FORMA_PLAN = `{
 
 const REGLAS_PLAN = [
   "Reglas:",
-  "- Investiga antes de planificar: revisa la estructura del proyecto, los archivos relevantes y las skills instaladas (como context7 para frameworks o librerías). Razona paso a paso la arquitectura de la solución.",
+  "- Metodología Gauntlet por defecto: Formula el plan con máxima rigurosidad en base a 4 pilares: Tarea (objetivo concreto), Método (planificación y ejecución en bucle con auto-revisión adversarial), Listón comprobable (criterios deterministas uno a uno que no admitan ambigüedad ni placeholders), y Entregable verificable.",
+  "- Investiga antes de planificar: revisa la estructura del proyecto, los archivos relevantes y las skills instaladas (como gauntlet, context7 para frameworks o librerías, playwright). Razona paso a paso la arquitectura de la solución.",
   "- Si la tarea requiere investigación especializada, pruebas o verificación intensiva, prevé el uso de subagentes o skills del proyecto.",
   "- De 3 a 8 pasos, concretos y comprobables. Nunca más de 12.",
   "- Cada paso nombra los archivos que toca, si ya los conoces, con rutas relativas dentro del workspace.",
@@ -250,8 +251,9 @@ export function promptObrero(plan: Plan): string {
     "Eres el obrero de Telo. Ejecuta solo el plan aprobado que aparece abajo, dentro de tu carpeta de trabajo.",
     "",
     "Reglas:",
+    "- Metodología Gauntlet por defecto: No te conformes con la primera versión. Aplica la mentalidad en bucle de Constructor y Árbitro Adversarial: tras implementar los cambios, audita tu propio trabajo buscando fallos a propósito como si quisieras tumbarlo. Prohibido elogiar y prohibido complacencias; comprueba que cada criterio de aceptación y listón se cumpla al 100%, ejecuta las pruebas del proyecto y elimina cualquier placeholder o función vacía antes de entregar.",
     "- Razonamiento y rigor: Antes de modificar cada archivo, revisa su contexto y convenciones. Aplica principios de clean code y modularidad.",
-    "- Skills y herramientas: Utiliza las skills del proyecto (como context7 para APIs/documentación de librerías, playwright para pruebas e interfaz) o subagentes cuando aporten valor a la tarea.",
+    "- Skills y herramientas: Utiliza las skills del proyecto (como gauntlet, context7 para APIs/documentación de librerías, playwright para pruebas e interfaz) o subagentes cuando aporten valor a la tarea.",
     '- Haz únicamente los pasos del plan. Si necesitas algo que el plan no cubre, o algo fuera de tu carpeta de trabajo, no lo hagas: responde con "estado": "desviacion" y explica el motivo en "desviacion".',
     "- No hagas commit, push ni PR. Deja los cambios listos para revisión.",
     "- Si el plan menciona commit, push o PR, prepara y verifica los cambios: Telo ejecutará esas operaciones al autorizar el usuario. Esa separación no es una desviación del plan.",

@@ -37,6 +37,7 @@ import {
 } from "../lib/chat-cola";
 import { leerBorrador, guardarBorrador } from "../lib/chat-borrador";
 import { type ReconocimientoVoz, ctorVoz, mensajeVoz } from "../lib/chat-dictado";
+import { PLANTILLAS_GAUNTLET } from "../lib/plantillas-gauntlet";
 import "../styles-chat.css";
 import "../styles-flujo.css";
 
@@ -840,6 +841,15 @@ export function ChatPage() {
   // Comandos que se ven al escribir "/" en el compositor.
   const anclado = Boolean(current?.pinned_at);
   const comandosChat: ComandoChat[] = [
+    {
+      id: "gauntlet",
+      etiqueta: "/gauntlet",
+      descripcion: "Inserta la plantilla Gauntlet (Constructor + Árbitro Adversarial)",
+      ejecutar: () => {
+        cambiarBorrador(PLANTILLAS_GAUNTLET[0].prompt);
+        window.setTimeout(() => inputRef.current?.focus(), 0);
+      },
+    },
     { id: "nuevo", etiqueta: "Nuevo chat", descripcion: "Abre un chat vacío", ejecutar: nuevoChat },
     {
       id: "historial",
