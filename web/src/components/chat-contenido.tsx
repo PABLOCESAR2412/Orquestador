@@ -233,6 +233,55 @@ function IconoArchivo({ extension }: { extension: string }) {
 
 export type ReferenciaArchivo = { ruta: string; linea?: number };
 
+const TIPOS_ARCHIVO: Record<string, { etiqueta: string; tipo: string }> = {
+  ts: { etiqueta: "TS", tipo: "TypeScript" },
+  tsx: { etiqueta: "TSX", tipo: "TypeScript con React" },
+  js: { etiqueta: "JS", tipo: "JavaScript" },
+  jsx: { etiqueta: "JSX", tipo: "JavaScript con React" },
+  mjs: { etiqueta: "MJS", tipo: "JavaScript ES module" },
+  cjs: { etiqueta: "CJS", tipo: "JavaScript CommonJS" },
+  css: { etiqueta: "CSS", tipo: "CSS" },
+  scss: { etiqueta: "SCSS", tipo: "Sass (SCSS)" },
+  html: { etiqueta: "HTML", tipo: "HTML" },
+  htm: { etiqueta: "HTML", tipo: "HTML" },
+  json: { etiqueta: "JSON", tipo: "JSON" },
+  md: { etiqueta: "MD", tipo: "Markdown" },
+  markdown: { etiqueta: "MD", tipo: "Markdown" },
+  py: { etiqueta: "PY", tipo: "Python" },
+  sql: { etiqueta: "SQL", tipo: "SQL" },
+  sh: { etiqueta: "SH", tipo: "Shell" },
+  bash: { etiqueta: "SH", tipo: "Bash" },
+  yaml: { etiqueta: "YAML", tipo: "YAML" },
+  yml: { etiqueta: "YAML", tipo: "YAML" },
+  toml: { etiqueta: "TOML", tipo: "TOML" },
+  lock: { etiqueta: "LOCK", tipo: "Archivo de bloqueo" },
+  svg: { etiqueta: "SVG", tipo: "Imagen vectorial SVG" },
+  png: { etiqueta: "PNG", tipo: "Imagen PNG" },
+  jpg: { etiqueta: "JPG", tipo: "Imagen JPEG" },
+  jpeg: { etiqueta: "JPG", tipo: "Imagen JPEG" },
+  env: { etiqueta: "ENV", tipo: "Variables de entorno" },
+  dockerfile: { etiqueta: "DOCKER", tipo: "Dockerfile" },
+  gitignore: { etiqueta: "GIT", tipo: "Reglas de Git ignore" },
+  txt: { etiqueta: "TXT", tipo: "Texto plano" },
+  conf: { etiqueta: "CONF", tipo: "Configuración" },
+  ini: { etiqueta: "INI", tipo: "Configuración INI" },
+};
+
+export function describirTipoArchivo(ruta: string): { etiqueta: string; tipo: string } {
+  const nombre = ruta.split(/[\\/]/).at(-1)?.toLowerCase() ?? "";
+  const extension = nombre === "dockerfile"
+    ? "dockerfile"
+    : nombre === ".gitignore"
+      ? "gitignore"
+      : nombre === ".env"
+        ? "env"
+        : nombre.split(".").at(-1) ?? "";
+  return TIPOS_ARCHIVO[extension] ?? {
+    etiqueta: extension && extension !== nombre ? extension.slice(0, 5).toUpperCase() : "FILE",
+    tipo: extension && extension !== nombre ? `Archivo ${extension.toUpperCase()}` : "Archivo sin extensión",
+  };
+}
+
 function separarReferenciaArchivo(texto: string): ReferenciaArchivo {
   const linea = /^(.*?)(?::(\d+)(?::\d+)?|#L(\d+))$/i.exec(texto);
   if (linea && esRutaArchivo(linea[1]!)) {
@@ -251,13 +300,16 @@ export function PastillaArchivo({
   onAbrir?: (referencia: ReferenciaArchivo, triggerId: string) => void;
 }) {
   const [copiado, setCopiado] = useState(false);
+  const tooltipId = useId();
   const etiquetaReferencia = referencia ?? ruta;
   const referenciaAbierta = separarReferenciaArchivo(etiquetaReferencia);
   const triggerKey = JSON.stringify([referenciaAbierta.ruta, referenciaAbierta.linea ?? null]);
   const rutaAbsoluta = /^(?:[a-z]:[\\/]|[\\/]|file:)/i.test(referenciaAbierta.ruta);
   const puedeAbrir = Boolean(onAbrir && !rutaAbsoluta && !referenciaAbierta.ruta.split(/[\\/]/).includes(".."));
   const partes = ruta.split(/[/\\]/);
-  const nombreArchivo = partes[partes.length - 1];
+  const nombreArchivo = referenciaAbierta.ruta.split(/[\\/]/).at(-1) || partes[partes.length - 1];
+  const carpetaArchivo = referenciaAbierta.ruta.split(/[\\/]/).slice(0, -1).join("/") || "Raíz del proyecto";
+  const tipoArchivo = describirTipoArchivo(referenciaAbierta.ruta);
   const puntoIdx = nombreArchivo.lastIndexOf(".");
   const ext = puntoIdx > 0 ? nombreArchivo.slice(puntoIdx + 1).toLowerCase() : "";
 
@@ -275,16 +327,30 @@ export function PastillaArchivo({
         type="button"
         className="tl-archivo-chip-abrir"
         data-archivo-trigger-key={triggerKey}
-        title={puedeAbrir ? `Abrir ${etiquetaReferencia} en el visor del proyecto` : `Copiar ruta ${etiquetaReferencia}`}
-        aria-label={puedeAbrir ? `Abrir archivo ${ruta}${referenciaAbierta.linea ? ` en la línea ${referenciaAbierta.linea}` : ""}` : `Copiar ruta ${etiquetaReferencia}`}
+        title={puedeAbrir
+          ? `${nombreArchivo} · ${tipoArchivo.tipo}\n${referenciaAbierta.ruta}${referenciaAbierta.linea ? ` · línea ${referenciaAbierta.linea}` : ""}`
+          : `Copiar ruta ${etiquetaReferencia}`}
+        aria-describedby={puedeAbrir ? tooltipId : undefined}
+        aria-label={puedeAbrir
+          ? `Abrir ${nombreArchivo}, ${tipoArchivo.tipo}, ${referenciaAbierta.ruta}${referenciaAbierta.linea ? `, línea ${referenciaAbierta.linea}` : ""}`
+          : `Copiar ruta ${etiquetaReferencia}`}
         onClick={() => puedeAbrir ? onAbrir?.(referenciaAbierta, triggerKey) : void copiar()}
       >
         <span className="tl-archivo-chip-icono" aria-hidden="true">
           <IconoArchivo extension={ext} />
         </span>
         <span className="tl-archivo-chip-ruta">{etiquetaReferencia}</span>
+        <span className="tl-archivo-chip-tipo" aria-hidden="true">{tipoArchivo.etiqueta}</span>
         {puedeAbrir && <span className="tl-archivo-chip-abrir-etiqueta">Abrir</span>}
       </button>
+      {puedeAbrir && (
+        <span id={tooltipId} role="tooltip" className="tl-archivo-chip-tooltip">
+          <strong>{nombreArchivo}</strong>
+          <span>{tipoArchivo.tipo}</span>
+          <code>{carpetaArchivo}</code>
+          {referenciaAbierta.linea && <span>Línea {referenciaAbierta.linea}</span>}
+        </span>
+      )}
       <button
         type="button"
         className="tl-archivo-chip-copiar"

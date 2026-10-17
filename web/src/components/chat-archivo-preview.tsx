@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { errorText } from "../lib/model";
-import type { ReferenciaArchivo } from "./chat-contenido";
+import { describirTipoArchivo, type ReferenciaArchivo } from "./chat-contenido";
 
 export function ChatArchivoPreview({
   projectId,
@@ -32,13 +32,17 @@ export function ChatArchivoPreview({
 
   const lineas = archivo.data?.texto.split("\n") ?? [];
   const nombre = referencia.ruta.split(/[\\/]/).at(-1) || referencia.ruta;
+  const tipoArchivo = describirTipoArchivo(referencia.ruta);
   const lineaExiste = Boolean(referencia.linea && referencia.linea > 0 && referencia.linea <= lineas.length);
 
   return (
     <aside className="tl-chat-archivo-panel" aria-label={`Vista del archivo ${referencia.ruta}`}>
       <header className="tl-chat-archivo-cabecera">
         <div className="tl-chat-archivo-titulo">
-          <h2>{nombre}</h2>
+          <div className="tl-chat-archivo-nombre">
+            <h2>{nombre}</h2>
+            <span className="tl-chat-archivo-tipo" aria-label={tipoArchivo.tipo}>{tipoArchivo.etiqueta}</span>
+          </div>
           <p title={referencia.ruta}>{referencia.ruta}{referencia.linea ? ` · línea ${referencia.linea}` : ""}</p>
         </div>
         <button autoFocus type="button" className="tl-accion-icono" aria-label="Cerrar vista de archivo" title="Cerrar vista de archivo" onClick={onClose}>
