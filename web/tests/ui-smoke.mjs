@@ -23,7 +23,11 @@ try {
     const context = await browser.newContext({ viewport: { width, height: 1000 }, serviceWorkers: "block", permissions: ["clipboard-read", "clipboard-write"] });
     const page = await context.newPage();
     await page.addInitScript(() => {
-      localStorage.setItem("telo:cola:c1", JSON.stringify([{ id: "q1", texto: "Mensaje reservado de prueba", creado: Date.now() }]));
+      localStorage.setItem("telo:cola:c1", JSON.stringify([
+        { id: "q1", texto: "Primer mensaje reservado", creado: Date.now() },
+        { id: "q2", texto: "Segundo mensaje reservado", creado: Date.now() + 1 },
+        { id: "q3", texto: "Tercer mensaje reservado", creado: Date.now() + 2 },
+      ]));
       localStorage.setItem("telo:cola-activa:c1", "false");
     });
     page.setDefaultTimeout(10_000);
@@ -201,6 +205,16 @@ try {
     await inputChat.press("Shift+Tab");
     await page.keyboard.press("Tab");
     assert.equal(await page.locator(".tl-composer-caja").evaluate(el => getComputedStyle(el).outlineWidth), "2px");
+    const primerPrompt = page.getByRole("button", { name: "Ir al prompt 1: git commit y push", exact: true });
+    await primerPrompt.click();
+    await page.waitForFunction(() => document.querySelector(".tl-hilo-hito[aria-current='location']")?.getAttribute("aria-label")?.startsWith("Ir al prompt 1:"));
+    const mensajeMarcado = page.locator("#mensaje-u2");
+    await mensajeMarcado.hover();
+    const marcarImportante = mensajeMarcado.getByRole("button", { name: "Marcar mensaje como importante", exact: true });
+    await marcarImportante.click();
+    assert.equal(await mensajeMarcado.getByRole("button", { name: "Quitar marca de importante", exact: true }).getAttribute("aria-pressed"), "true");
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("telo:hitos:c1") ?? "[]")), ["u2"]);
+    await page.screenshot({ path: `scratch/capturas-ci/chat-timeline-${width}.png` });
     const referenciaArchivo = page.locator(".tl-archivo-chip-abrir").filter({ hasText: "server/src/ejecutar.ts:3" });
     assert.equal(await referenciaArchivo.locator(".tl-archivo-chip-tipo").textContent(), "TS");
     await referenciaArchivo.hover();
@@ -220,13 +234,13 @@ try {
     await vistaArchivo.waitFor();
     assert.equal(await vistaArchivo.locator(".tl-chat-archivo-tipo").textContent(), "TS");
     const colaVisible = page.locator(".tl-cola");
-    await colaVisible.locator(".tl-cola-texto").waitFor();
+    await colaVisible.locator(".tl-cola-texto").first().waitFor();
     const cajaCola = await colaVisible.boundingBox();
     const cajaVisor = await vistaArchivo.boundingBox();
     assert.ok(cajaCola && cajaVisor);
     if (width === 390) assert.ok(cajaCola.y + cajaCola.height <= cajaVisor.y, "la cola debe quedar visible antes del visor móvil");
     else assert.ok(cajaCola.x + cajaCola.width <= cajaVisor.x, "la cola debe quedar en la columna del chat, junto al visor");
-    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("telo:cola:c1") ?? "[]").length), 1, "la cola pausada debe conservar el mensaje");
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("telo:cola:c1") ?? "[]").length), 3, "la cola pausada debe conservar los mensajes");
     const cerrarVistaArchivo = vistaArchivo.getByRole("button", { name: "Cerrar vista de archivo", exact: true });
     if (width === 390) {
       const objetivoCerrar = await cerrarVistaArchivo.boundingBox();
@@ -241,6 +255,22 @@ try {
     await vistaArchivo.waitFor({ state: "detached" });
     await page.waitForFunction(() => document.activeElement?.classList.contains("tl-archivo-chip-abrir"));
     assert.equal(await page.locator(".tl-archivo-chip-abrir").filter({ hasText: "server/src/ejecutar.ts:3" }).evaluate(el => el === document.activeElement), true);
+    await colaVisible.getByRole("button", { name: "Arrastrar mensaje 2 para reordenar", exact: true }).dragTo(colaVisible.locator(".tl-cola-item").nth(0));
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("telo:cola:c1") ?? "[]").map(({ id }) => id)), ["q2", "q1", "q3"]);
+    await colaVisible.getByRole("button", { name: "Más opciones para mensaje 2", exact: true }).click();
+    const bajarEnCola = page.getByRole("menuitem", { name: "Bajar en la cola", exact: true });
+    await bajarEnCola.focus();
+    await page.keyboard.press("Enter");
+    assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("telo:cola:c1") ?? "[]").map(({ id }) => id)), ["q2", "q3", "q1"]);
+    await colaVisible.getByRole("button", { name: "Más opciones para mensaje 1", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Editar mensaje", exact: true }).click();
+    await colaVisible.getByRole("textbox", { name: "Editar mensaje en cola", exact: true }).fill("Segundo mensaje corregido");
+    await colaVisible.getByRole("button", { name: "Guardar", exact: true }).click();
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("telo:cola:c1") ?? "[]")[0].texto), "Segundo mensaje corregido");
+    await colaVisible.getByRole("button", { name: "Redirigir mensaje 1 al compositor", exact: true }).click();
+    assert.equal(await inputChat.inputValue(), "Segundo mensaje corregido");
+    await inputChat.fill("");
+    await colaVisible.getByRole("button", { name: "Quitar mensaje 1 de la cola", exact: true }).click();
     await colaVisible.getByRole("button", { name: "Quitar mensaje 1 de la cola", exact: true }).click();
     await colaVisible.waitFor({ state: "detached" });
     const arbolArchivos = page.locator(".tl-codigo").filter({ hasText: "└── src/" });
