@@ -57,6 +57,8 @@ type Conversation = {
   pendiente_aprobacion?: boolean;
   completada?: boolean;
   estado_tarea?: "en_proceso" | "pendiente_aprobacion" | "completada" | null;
+  estado_tarea_id?: string | null;
+  estado_tarea_version?: string | null;
 };
 type Message = {
   id: string;
@@ -82,8 +84,8 @@ chat.get("/conversations", (c) => {
   return c.json(
     rows.map((r) => {
       const tarea = db
-        .query<{ status: string; finished_at: string | null }, [string]>(
-          "SELECT status, finished_at FROM tasks WHERE conversation_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        .query<{ id: string; status: string; finished_at: string | null; plan_hash: string | null }, [string]>(
+          "SELECT id, status, finished_at, plan_hash FROM tasks WHERE conversation_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1",
         )
         .get(r.id);
 
@@ -105,6 +107,8 @@ chat.get("/conversations", (c) => {
             : completada
               ? "completada"
               : null,
+        estado_tarea_id: tarea?.id ?? null,
+        estado_tarea_version: tarea?.plan_hash ?? tarea?.finished_at ?? null,
       };
     }),
   );

@@ -105,6 +105,8 @@ Telo puede usar una GitHub App instalada en tu cuenta para clonar repositorios p
    TELO_GITHUB_APP_PRIVATE_KEY_PATH=/etc/orquestador/github-app.pem
    ```
 
+Para mostrar el Artificial Analysis Intelligence Index junto a los modelos, configura también `TELO_ARTIFICIAL_ANALYSIS_API_KEY` con una clave de la API gratuita de Artificial Analysis. Telo la usa solo desde el servidor y guarda los resultados en caché por 12 horas; sin clave, el selector conserva todas sus funciones y explica que el índice no está configurado.
+
 3. Reinicia el servicio. En Telo, abre Ajustes > Cuenta de GitHub y elige la instalación. Si agregas o quitas repositorios, cambia la selección desde los ajustes de instalación de GitHub; Telo solo podrá operar en esos repositorios.
 
 La App debe tener instalados los permisos antes de emitir credenciales. Los tokens de instalación duran una hora como máximo y Telo no los almacena. La antigua sesión o clave SSH del proyecto sigue disponible como compatibilidad durante la transición; al vincular la App, sus credenciales tienen prioridad.

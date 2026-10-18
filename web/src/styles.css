@@ -2961,7 +2961,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .conv-row .sidebar-conv { flex: 1; min-width: 0; }
 .conv-busy { margin-left: auto; flex-shrink: 0; }
 /* Iconos de cada chat: renombrar, anclar y eliminar. Se ven al pasar el cursor o enfocar la fila, y siempre en pantallas táctiles. */
-.conv-acciones { flex-shrink: 0; display: flex; align-items: center; gap: 2px; }
+.conv-acciones { position: relative; z-index: 1; flex-shrink: 0; display: flex; align-items: center; gap: 2px; }
 .conv-icono {
   width: 28px;
   height: 28px;
@@ -2978,7 +2978,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .conv-row:hover .conv-icono,
 .conv-row:focus-within .conv-icono { opacity: 1; }
-.conv-icono:hover { color: var(--ink); background: var(--surface); }
+.conv-icono:hover { color: var(--ink); background: var(--surface-hover); }
 .conv-icono.is-activo { opacity: 1; color: var(--ink); }
 .conv-icono.is-peligro:hover { color: var(--danger); }
 @media (hover: none) {
@@ -3005,6 +3005,18 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .conv-menu > button:hover { background: var(--surface-2); }
 .conv-menu > button.danger { color: var(--danger); }
+.conv-acciones-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 60;
+  min-width: 166px;
+  margin: 0;
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--bg) 35%, transparent);
+}
+.conv-acciones-menu > button { min-height: 36px; cursor: pointer; }
 .conv-confirm { gap: 12px; margin-top: 6px; padding: 12px; border-color: var(--danger-line); border-radius: 10px; }
 .conv-confirm-cabecera { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: start; gap: 10px; }
 .conv-confirm-icono { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: var(--danger-soft); color: var(--danger); }

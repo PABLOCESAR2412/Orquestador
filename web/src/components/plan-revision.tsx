@@ -9,7 +9,7 @@ export function PlanRevision({ tarea }: { tarea: Task }) {
     <section className="panel approval-panel" aria-label="Aprobar plan">
       <header className="approval-heading">
         <h2>Revisa el plan</h2>
-        <Link to="/tareas/$id" params={{ id: tarea.id }}>
+        <Link className="approval-task-link" to="/tareas/$id" params={{ id: tarea.id }}>
           Ver tarea e historial
         </Link>
       </header>

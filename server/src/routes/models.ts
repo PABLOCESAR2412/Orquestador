@@ -1,7 +1,20 @@
 import { Hono } from "hono";
 import { getModels } from "../models";
+import { obtenerIndiceArtificial } from "../artificial-analysis";
+import { db } from "../db";
 
 export const modelsRoute = new Hono();
+
+// Datos públicos del índice de Artificial Analysis. La clave solo vive en el servidor.
+modelsRoute.get("/models/intelligence", async (c) => c.json(await obtenerIndiceArtificial()));
+
+// Conteo de respuestas reales por modelo: permite priorizar lo que más se usa en este servidor.
+modelsRoute.get("/models/usage", (c) => {
+  const rows = db.query<{ model: string; total: number }, []>(
+    "SELECT model, COUNT(*) AS total FROM messages WHERE role='assistant' AND model IS NOT NULL GROUP BY model",
+  ).all();
+  return c.json({ counts: Object.fromEntries(rows.map((row) => [row.model, row.total])) });
+});
 
 // GET /api/models            -> modelos recomendados
 // GET /api/models?all=1      -> catálogo completo
