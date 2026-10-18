@@ -268,6 +268,8 @@ export async function runOpenCode(opts: {
   onLinea?: (linea: string) => void;
   // Variables extra solo para esta ejecución. Nunca se aceptan nombres TELO_*.
   extraEnv?: Record<string, string>;
+  // Perfiles temporales que solicita explícitamente la tarea para sus subagentes.
+  opencodeConfigDir?: string;
   soloLectura?: boolean;
   // Se persiste cada paso antes de conocer el resultado del proceso.
   onUso?: (uso: Usage) => void;
@@ -285,9 +287,13 @@ export async function runOpenCode(opts: {
 
   // `setsid` deja al agente como líder de su propio grupo (pgid == pid),
   // para poder cerrar todo su árbol de procesos de una vez.
+  const env = entornoDelAgente(opts.extraEnv);
+  // `entornoDelAgente` filtra variables OPENCODE_ recibidas del proyecto; esta ruta la crea
+  // internamente Telo y apunta a perfiles efímeros aislados para esta ejecución.
+  if (opts.opencodeConfigDir) env.OPENCODE_CONFIG_DIR = opts.opencodeConfigDir;
   const proc = Bun.spawn(["setsid", ...aislamiento, ...args], {
     cwd: opts.cwd,
-    env: entornoDelAgente(opts.extraEnv),
+    env,
     stdout: "pipe",
     stderr: "pipe",
   });
