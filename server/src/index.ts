@@ -27,6 +27,7 @@ import { asegurarRutaInstalada } from "./instalacion";
 import { prepararCarpetaGlobal } from "./skills";
 import { github } from "./routes/github";
 import { uso } from "./routes/uso";
+import { media, reanudarGeneracionesMedios } from "./routes/media";
 import { jevRoute } from "./routes/jev";
 import { startScheduler } from "./programadas";
 import { startWorker } from "./worker";
@@ -141,6 +142,7 @@ app.route("/api", repositoryActions);
 app.route("/api", uso);
 app.route("/api", jevRoute);
 app.route("/api", github);
+app.route("/api", media);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
 // El CLI de OpenCode instalado desde la app vuelve a estar en PATH tras un reinicio.
@@ -152,6 +154,7 @@ prepararCarpetaGlobal();
 avisarTurnosInterrumpidos();
 startWorker();
 startScheduler();
+reanudarGeneracionesMedios();
 limpiarSesionesAntiguas();
 
 app.get("*", async (c) => {

@@ -362,7 +362,34 @@ export type PasoActividad = {
   herramienta: string | null;
   titulo: string;
   detalle: string | null;
-  estado: "hecha" | "error" | "texto";
+  estado: "hecha" | "error" | "texto" | "en_curso";
+};
+
+export type MedioJob = {
+  id: string;
+  conversation_id: string;
+  message_id: string;
+  tipo: "imagen" | "video";
+  prompt: string;
+  modelo: string;
+  resolucion: string;
+  relacion: string;
+  duracion_segundos: number | null;
+  costo_estimado_usd: number;
+  estado: "pendiente" | "generando" | "completada" | "error" | "cancelada";
+  mime: string | null;
+  bytes: number | null;
+  nombre_archivo: string | null;
+  error: string | null;
+  api_google_configurada: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CapacidadesMediosApi = {
+  apiGoogleConfigurada: boolean;
+  imagen: { modelo: string; gratis: boolean; resoluciones: string[] };
+  video: { modeloEconomico: string; modelo4k: string; gratis: boolean; resoluciones: string[]; duracionesSegundos: number[] };
 };
 
 export type EventoVivo =
@@ -574,6 +601,10 @@ export const api = {
   // Pasos del agente de un turno (el id es el del mensaje del usuario).
   listTurnoActividad: (conversacionId: string, turnoId: string) =>
     request<PasoActividad[]>(`/api/conversations/${conversacionId}/turnos/${turnoId}/actividad`),
+  capacidadesMedios: () => request<CapacidadesMediosApi>("/api/media/capacidades"),
+  medio: (id: string) => request<MedioJob>(`/api/media/${encodeURIComponent(id)}`),
+  confirmarMedio: (id: string) => request<MedioJob>(`/api/media/${encodeURIComponent(id)}/confirmar`, { method: "POST", body: "{}" }),
+  cancelarMedio: (id: string) => request<{ ok: boolean }>(`/api/media/${encodeURIComponent(id)}/cancelar`, { method: "POST", body: "{}" }),
   sendMessage: (id: string, content: string) =>
     request<{ messages: Message[] }>(`/api/conversations/${id}/messages`, {
       method: "POST",

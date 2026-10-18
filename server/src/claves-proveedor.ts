@@ -142,6 +142,32 @@ export function valorClaveProveedor(id: string): string | null {
   return null;
 }
 
+// Solo devuelve claves API guardadas o variables de entorno. A diferencia de valorClaveProveedor,
+// no usa credenciales OAuth del CLI: las APIs directas de medios requieren una API key.
+export function valorClaveApiProveedor(id: string): string | null {
+  try {
+    const proveedor = proveedorConClave(id);
+    if (!proveedor) return null;
+    const clave = claveMaestra();
+    if (clave) {
+      const fila = db
+        .query<FilaClave, [string]>("SELECT iv, tag, value_enc FROM provider_keys WHERE proveedor = ?")
+        .get(id);
+      if (fila) {
+        const descifrada = descifrar(clave, fila, textoAsociado(id));
+        if (descifrada) return descifrada;
+      }
+    }
+    for (const variable of proveedor.variables) {
+      const valor = process.env[variable];
+      if (valor && claveProveedorValida(valor)) return valor;
+    }
+  } catch {
+    // Una credencial ausente o ilegible se presenta como no configurada, nunca como secreto.
+  }
+  return null;
+}
+
 export function estadoClaves(): {
   id: string;
   etiqueta: string;

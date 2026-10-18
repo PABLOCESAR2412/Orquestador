@@ -54,6 +54,7 @@ try {
     let approvals = 0;
     let skillInstallRequests = 0;
     let diffRequests = 0;
+    let medioEstado = "pendiente";
     let sinDatos = false;
     let anunciarEnvioA;
     let liberarEnvioA;
@@ -63,6 +64,19 @@ try {
       let data = [];
       if (path === "/api/sesion") return route.fulfill({ status: authenticated ? 200 : 401, json: { ok: authenticated } });
       if (path === "/api/login") { authenticated = true; data = { ok: true }; }
+      else if (path === "/api/media/capacidades") data = {
+        apiGoogleConfigurada: true,
+        imagen: { modelo: "gemini-nano-banana-2.1", gratis: false, resoluciones: ["1K", "2K", "4K"] },
+        video: { modeloEconomico: "veo-3.1-lite-generate-preview", modelo4k: "veo-3.1-fast-generate-preview", gratis: false, resoluciones: ["720p", "1080p", "4k"], duracionesSegundos: [4, 6, 8] },
+      };
+      else if (path === "/api/media/00000000-0000-4000-8000-000000000001/confirmar" && route.request().method() === "POST") {
+        medioEstado = "completada";
+        data = { id: "00000000-0000-4000-8000-000000000001", conversation_id: "c1", message_id: "a-media", tipo: "imagen", prompt: "Ilustración de un colibrí", modelo: "Google · Nano Banana 2.1", resolucion: "1K", relacion: "1:1", duracion_segundos: null, costo_estimado_usd: 0.0336, estado: medioEstado, mime: "image/svg+xml", bytes: 140, nombre_archivo: "colibri.svg", error: null, api_google_configurada: true, created_at: now, updated_at: now };
+      }
+      else if (path === "/api/media/00000000-0000-4000-8000-000000000001") data = {
+        id: "00000000-0000-4000-8000-000000000001", conversation_id: "c1", message_id: "a-media", tipo: "imagen", prompt: "Ilustración de un colibrí", modelo: "Google · Nano Banana 2.1", resolucion: "1K", relacion: "1:1", duracion_segundos: null, costo_estimado_usd: 0.0336, estado: medioEstado, mime: medioEstado === "completada" ? "image/svg+xml" : null, bytes: medioEstado === "completada" ? 140 : null, nombre_archivo: "colibri.svg", error: null, api_google_configurada: true, created_at: now, updated_at: now,
+      };
+      else if (path === "/api/media/00000000-0000-4000-8000-000000000001/archivo") return route.fulfill({ status: 200, contentType: "image/svg+xml", headers: { "Content-Disposition": 'attachment; filename="colibri.svg"' }, body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240"><rect width="320" height="240" fill="#d9a441"/><path d="M90 150q50-100 100 0q40-50 80 0" fill="#181c22"/><circle cx="170" cy="95" r="18" fill="#e7e9ec"/></svg>' });
       else if (path === "/api/conversations") data = [
         { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, created_at: now },
         { id: "c2", title: "Chat paralelo", model: "nvidia/nemotron-test", project_id: null, project_name: null, created_at: now },
@@ -77,6 +91,13 @@ try {
             await new Promise(resolve => { liberarEnvioA = resolve; });
             messages.push({ id: "u-paralelo", role: "user", content: body.content, created_at: now }, { id: "a-paralelo", role: "assistant", content: "Respuesta del chat A", created_at: now });
             return route.fulfill({ json: { messages: messages.slice(-2) } });
+          }
+          if (body.content === "Haz una imagen de un colibrí") {
+            messages.push(
+              { id: "u-media", role: "user", content: body.content, created_at: now },
+              { id: "a-media", role: "assistant", content: "[[telo-media:00000000-0000-4000-8000-000000000001]]", model: "Google · Nano Banana 2.1", created_at: now },
+            );
+            return route.fulfill({ status: 202, json: { messages: messages.slice(-2) } });
           }
           messages.push({ id: "u3", role: "user", content: body.content, created_at: now }, { id: "a3", role: "assistant", content: "Mensaje recibido", created_at: now });
           data = { messages: messages.slice(-2) };
@@ -448,6 +469,8 @@ try {
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Prueba de mensaje");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByText("Mensaje recibido", { exact: true }).waitFor();
+    await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Haz una imagen de un colibrí");
+    await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByRole("button", { name: "Uso", exact: true }).click();
     const panelUso = page.getByRole("dialog", { name: "Uso del proveedor" });
     await panelUso.waitFor();
@@ -463,7 +486,8 @@ try {
     const panelMedios = page.getByRole("dialog", { name: "Capacidades multimedia" });
     await panelMedios.waitFor();
     assert.equal((await panelMedios.textContent()).includes("Google Test"), true);
-    assert.equal((await panelMedios.textContent()).includes("La generación no está conectada a este chat"), true);
+    assert.equal((await panelMedios.textContent()).includes("Google Nano Banana 2.1"), true);
+    assert.equal((await panelMedios.textContent()).includes("estos modelos no tienen nivel gratuito"), true);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/medios-${width}.png` });
     await page.keyboard.press("Escape");
@@ -508,6 +532,19 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/uso-${width}.png` });
     await page.keyboard.press("Escape");
+    const tarjetaMedio = page.getByRole("region", { name: "Generar imagen" });
+    await tarjetaMedio.getByText("0,0336", { exact: false }).waitFor();
+    assert.equal(await tarjetaMedio.getByRole("button", { name: "Autorizar generación", exact: true }).isEnabled(), true);
+    await tarjetaMedio.getByRole("button", { name: "Autorizar generación", exact: true }).click();
+    await tarjetaMedio.getByRole("img", { name: "Ilustración de un colibrí" }).waitFor();
+    assert.equal(await tarjetaMedio.getByRole("link", { name: "Descargar imagen", exact: true }).count(), 1);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await tarjetaMedio.screenshot({ path: `scratch/capturas-ci/medio-resultado-${width}.png` });
+    const [descargaMedio] = await Promise.all([
+      page.waitForEvent("download"),
+      tarjetaMedio.getByRole("link", { name: "Descargar imagen", exact: true }).click(),
+    ]);
+    assert.equal(descargaMedio.suggestedFilename(), "colibri.svg");
     task.status = "sin_cuota";
     task.modelo_agotado = "google/prueba";
     await page.locator(".cuota-aviso").waitFor();

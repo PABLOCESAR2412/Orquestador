@@ -21,6 +21,9 @@ import {
   ocuparConversacion,
   proyectoRevisandose,
 } from "../ocupacion";
+import { prepararSubagentes } from "../subagentes";
+import { detectarSolicitudMedio } from "../generacion-medios";
+import { crearSolicitudMedio } from "./media";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
 // Texto de un mensaje: incluye los adjuntos de texto. El cuerpo HTTP sigue limitado a 64 KB.
@@ -261,11 +264,13 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
   const conversationId = conv.id;
   const inicio = Date.now();
   let result: ResultadoAgente;
+  let perfilesSubagente: Awaited<ReturnType<typeof prepararSubagentes>> = null;
   try {
     const cwd = join(chatWorkspace, conversationId);
     mkdirSync(cwd, { recursive: true });
+    perfilesSubagente = await prepararSubagentes({ prompt, modelo: model, esfuerzo: conv.effort, idEjecucion: crypto.randomUUID() });
     result = await ejecutarAgente({
-      prompt,
+      prompt: perfilesSubagente ? `${perfilesSubagente.instruccion}\n\n${prompt}` : prompt,
       model,
       variant: conv.effort,
       sessionId: conv.runner_session_id,
@@ -275,6 +280,7 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       projectId: conv.project_id,
       conversationId,
       estilo: "chat",
+      opencodeConfigDir: perfilesSubagente?.directorio,
       // Cada paso del agente (texto intermedio o acción) se guarda y se publica mientras corre.
       onLinea: (linea) => {
         const item = itemDeLinea(linea);
@@ -307,6 +313,8 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       `No se pudo responder. ${mensajeSeguro(err).slice(0, MAX_DETALLE_ERROR)}`,
     );
     return;
+  } finally {
+    perfilesSubagente?.limpiar();
   }
 
   // La respuesta del chat es lo dicho tras la última herramienta; lo anterior queda en el proceso.
@@ -396,6 +404,18 @@ chat.post("/conversations/:id/messages", async (c) => {
     ? tareaActual.modelo_agotado ?? tareaActual.model
     : null);
   if (modeloAgotado) return c.json({ error: "chat_quota_pending" }, 409);
+
+  // Los pedidos explícitos de imagen/video se convierten en una tarjeta pendiente; ningún modelo
+  // de chat los ejecuta y la API de medios no se llama hasta que el usuario confirme el coste.
+  const solicitudMedio = detectarSolicitudMedio(content);
+  if (solicitudMedio) {
+    const turno = guardarMensajeUsuario(conversationId, content);
+    const trabajo = crearSolicitudMedio(conversationId, turno.id, solicitudMedio);
+    const respuesta = db.query<Message, [string]>(
+      "SELECT id,conversation_id,role,content,created_at,model,effort FROM messages WHERE id=?",
+    ).get(trabajo.messageId)!;
+    return c.json({ messages: [turno, respuesta] }, 202);
+  }
 
   // Las órdenes directas de Git crean una tarjeta de autorización, sin ejecutar al agente.
   const pedido = /^(?:(?:haz|hacer|ejecuta|realiza|crea|crear|prepara|reintenta|por favor)\s+)*(?:de nuevo\s+)?(?:(?:un|el)\s+)?(?:git\s+(init|commit|push)|(?:un\s+)?(commit|push|pr)|(?:gh\s+pr\s+create)|(pull request))(?:\s+.*)?[.!]?$/i.exec(content);
