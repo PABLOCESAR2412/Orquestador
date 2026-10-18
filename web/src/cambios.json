@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Chat: elimina el scroll de página duplicado y conserva el desplazamiento dentro del hilo", "pr": 83 },
     { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Barra lateral móvil: separa la actividad del chat de su menú de opciones", "pr": 82 },
     { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Chat: abre imágenes generadas al hacer clic y permite descargarlas", "pr": 82 },
     { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: previsualiza y permite descargar PDFs generados por el agente", "pr": 82 },

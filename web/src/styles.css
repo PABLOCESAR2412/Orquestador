@@ -117,7 +117,7 @@
 *, *::before, *::after { box-sizing: border-box; }
 * { scrollbar-color: auto; scrollbar-width: auto; }
 html, body, #root { height: 100%; }
-html, body { overflow-x: hidden; }
+html, body { overflow: hidden; }
 body { margin: 0; background: var(--bg); font-family: var(--font); color: var(--ink); }
 button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }

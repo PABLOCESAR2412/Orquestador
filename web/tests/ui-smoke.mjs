@@ -343,7 +343,10 @@ try {
     assert.equal(await page.locator(".tl-atajos-barra").count(), 0);
     const inputChat = page.getByRole("textbox", { name: "Mensaje", exact: true });
     const hiloChat = page.locator(".tl-hilo");
+    assert.equal(await page.evaluate(() => getComputedStyle(document.body).overflowY), "hidden", "el body no debe mostrar un segundo scroll junto al hilo");
     assert.equal(await hiloChat.evaluate(el => getComputedStyle(el).overflowX), "hidden", "el hilo no debe permitir desplazamiento horizontal");
+    assert.equal(await hiloChat.evaluate(el => getComputedStyle(el).overflowY), "auto", "el hilo conserva su desplazamiento vertical");
+    assert.ok(await hiloChat.evaluate(el => el.scrollHeight > el.clientHeight), "el hilo debe poder desplazarse cuando hay muchos mensajes");
     const recomendacion = await inputChat.getAttribute("placeholder");
     assert.ok(recomendacion && recomendacion.length > 20);
     assert.doesNotMatch(recomendacion, /Usa \/ para ver comandos|para comandos/);
