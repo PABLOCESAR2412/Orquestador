@@ -84,10 +84,13 @@ const cabecerasSeguras = secureHeaders({
     formAction: ["'self'"],
   },
 });
-// La vista previa de un documento se embebe en un marco del mismo origen y pone sus propias cabeceras
-// (ver routes/documentos.ts). Hono sobrescribe las cabeceras después de la ruta, así que se salta aquí.
+// Estas vistas se embeben en marcos del mismo origen y ponen sus propias cabeceras.
+// Hono sobrescribe las cabeceras después de la ruta, así que se saltan aquí.
 app.use("*", (c, next) =>
-  /^\/api\/documentos\/[^/]+\/vista$/.test(c.req.path) ? next() : cabecerasSeguras(c, next),
+  /^\/api\/documentos\/[^/]+\/vista$/.test(c.req.path) ||
+  /^\/api\/conversations\/[^/]+\/archivo-pdf$/.test(c.req.path)
+    ? next()
+    : cabecerasSeguras(c, next),
 );
 
 // Ninguna petición de la API necesita más de 64 KB (el prompt más largo es de 10 000 caracteres).

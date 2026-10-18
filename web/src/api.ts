@@ -93,6 +93,23 @@ export type ProjectFileEntry = {
   modificado: string;
 };
 
+export type ChatPdfInfo = { ruta: string; nombre: string; tamano: number };
+export type ChatImageInfo = { ruta: string; nombre: string; mime: string; tamano: number };
+
+export function urlPdfConversacion(conversationId: string, ruta: string, descargar = false, meta = false): string {
+  const query = new URLSearchParams({ ruta });
+  if (descargar) query.set("descargar", "1");
+  if (meta) query.set("meta", "1");
+  return `/api/conversations/${encodeURIComponent(conversationId)}/archivo-pdf?${query}`;
+}
+
+export function urlImagenConversacion(conversationId: string, ruta: string, descargar = false, meta = false): string {
+  const query = new URLSearchParams({ ruta });
+  if (descargar) query.set("descargar", "1");
+  if (meta) query.set("meta", "1");
+  return `/api/conversations/${encodeURIComponent(conversationId)}/archivo-imagen?${query}`;
+}
+
 export type ProjectSecretsList = {
   disponible: boolean;
   secretos: { nombre: string; actualizado_en: string }[];
@@ -607,6 +624,8 @@ export const api = {
       body: JSON.stringify({ projectId: projectId ?? null, title }),
     }),
   listMessages: (id: string) => request<Message[]>(`/api/conversations/${id}/messages`),
+  chatPdfInfo: (id: string, ruta: string) => request<ChatPdfInfo>(urlPdfConversacion(id, ruta, false, true)),
+  chatImageInfo: (id: string, ruta: string) => request<ChatImageInfo>(urlImagenConversacion(id, ruta, false, true)),
   // Pasos del agente de un turno (el id es el del mensaje del usuario).
   listTurnoActividad: (conversacionId: string, turnoId: string) =>
     request<PasoActividad[]>(`/api/conversations/${conversacionId}/turnos/${turnoId}/actividad`),

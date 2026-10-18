@@ -19,6 +19,8 @@ import { isAbsolute, join, relative, sep } from "node:path";
 
 export const LIMITE_LISTADO = 500;
 export const LIMITE_LECTURA = 256 * 1024;
+export const LIMITE_PDF = 50 * 1024 * 1024;
+export const LIMITE_IMAGEN = 50 * 1024 * 1024;
 const LONGITUD_RUTA_MAX = 1024;
 const MAX_ENTRADAS_BUSQUEDA = 20_000;
 const MAX_RESULTADOS_BUSQUEDA = 9;
@@ -29,7 +31,7 @@ const CARPETAS_IGNORADAS_BUSQUEDA = new Set([
 export class ArchivoError extends Error {
   constructor(
     readonly code: string,
-    readonly status: 400 | 404 | 415,
+    readonly status: 400 | 404 | 413 | 415,
   ) {
     super(code);
   }
@@ -228,6 +230,92 @@ export function leerArchivo(
     texto: decodificar(bytes, truncado),
     truncado,
   };
+}
+
+function leerBinario(
+  raizProyecto: string,
+  segmentos: string[],
+  extensiones: readonly string[],
+  limite: number,
+  errorFormato: string,
+): { ruta: string; tamano: number; contenido: Buffer } {
+  const extension = segmentos.at(-1)?.split(".").at(-1)?.toLowerCase();
+  if (!extension || !extensiones.includes(extension)) {
+    throw new ArchivoError(errorFormato, 415);
+  }
+  const real = resolverEnProyecto(raizProyecto, segmentos);
+  if (!statSync(real).isFile()) throw new ArchivoError("project_path_not_file", 400);
+
+  let fd: number;
+  try {
+    fd = openSync(real, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK);
+  } catch {
+    throw new ArchivoError("project_path_not_file", 400);
+  }
+
+  let contenido: Buffer;
+  let tamano: number;
+  try {
+    const info = fstatSync(fd);
+    if (!info.isFile()) throw new ArchivoError("project_path_not_file", 400);
+    if (fueraDelProyecto(fd, realpathSync(raizProyecto))) throw new ArchivoError("project_path_outside_root", 400);
+    tamano = info.size;
+    if (tamano > limite) throw new ArchivoError("archivo_muy_grande", 413);
+
+    contenido = Buffer.alloc(tamano);
+    let leidos = 0;
+    while (leidos < tamano) {
+      const n = readSync(fd, contenido, leidos, tamano - leidos, leidos);
+      if (n === 0) break;
+      leidos += n;
+    }
+    if (leidos !== tamano) contenido = contenido.subarray(0, leidos);
+  } finally {
+    closeSync(fd);
+  }
+
+  return { ruta: segmentos.join("/"), tamano, contenido };
+}
+
+// Lee un PDF generado en el workspace del chat y valida su firma.
+export function leerPdf(
+  raizProyecto: string,
+  segmentos: string[],
+): { ruta: string; tamano: number; contenido: Buffer } {
+  const archivo = leerBinario(raizProyecto, segmentos, ["pdf"], LIMITE_PDF, "formato_pdf_invalido");
+  // La cabecera PDF puede aparecer dentro de los primeros 1024 bytes según la especificación.
+  if (archivo.contenido.subarray(0, 1024).indexOf(Buffer.from("%PDF-", "ascii")) < 0) {
+    throw new ArchivoError("formato_pdf_invalido", 415);
+  }
+  return archivo;
+}
+
+const MIME_IMAGEN: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  gif: "image/gif",
+};
+
+// Solo se sirven formatos raster con firma verificada; SVG no se expone como documento activo.
+export function leerImagen(
+  raizProyecto: string,
+  segmentos: string[],
+): { ruta: string; nombre: string; mime: string; tamano: number; contenido: Buffer } {
+  const archivo = leerBinario(raizProyecto, segmentos, Object.keys(MIME_IMAGEN), LIMITE_IMAGEN, "formato_imagen_invalido");
+  const nombre = archivo.ruta.split("/").at(-1)!;
+  const extension = nombre.split(".").at(-1)!.toLowerCase();
+  const bytes = archivo.contenido;
+  const valida = extension === "png"
+    ? bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    : extension === "jpg" || extension === "jpeg"
+      ? bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+      : extension === "webp"
+        ? bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP"
+        : bytes.toString("ascii", 0, 6) === "GIF87a" || bytes.toString("ascii", 0, 6) === "GIF89a";
+  if (!valida) throw new ArchivoError("formato_imagen_invalido", 415);
+  return { ...archivo, nombre, mime: MIME_IMAGEN[extension]! };
 }
 
 // Busca una referencia sin carpeta dentro del proyecto cuando el modelo solo citó el nombre.

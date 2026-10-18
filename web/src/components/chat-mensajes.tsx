@@ -162,6 +162,7 @@ export function MensajeAgente({
   modelo,
   esfuerzo,
   onAbrirArchivo,
+  permitirAbrirArchivo,
   onReintentar,
   onGuardar,
   guardando = false,
@@ -174,6 +175,7 @@ export function MensajeAgente({
   modelo: string | null;
   esfuerzo?: string | null;
   onAbrirArchivo?: (referencia: ReferenciaArchivo, triggerId: string) => void;
+  permitirAbrirArchivo?: (referencia: ReferenciaArchivo) => boolean;
   // Vuelve a enviar el mensaje del usuario que originó esta respuesta.
   onReintentar?: () => void;
   // Carga el texto en el compositor para editarlo o iterar.
@@ -360,7 +362,11 @@ export function MensajeAgente({
       <div className="tl-msg-texto">
         {mediaId ? <MediaJobCard id={mediaId} /> : (
           <>
-            <Contenido texto={reporte?.resumen ?? texto} onAbrirArchivo={onAbrirArchivo} />
+            <Contenido
+              texto={reporte?.resumen ?? texto}
+              onAbrirArchivo={onAbrirArchivo}
+              permitirAbrirArchivo={permitirAbrirArchivo}
+            />
             {reporte?.causa && <p className="tl-alerta">{reporte.causa}</p>}
             {reporte && (
               <details className="tl-detalles-reporte">

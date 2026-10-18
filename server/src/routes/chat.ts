@@ -24,6 +24,7 @@ import {
 import { prepararSubagentes } from "../subagentes";
 import { detectarSolicitudMedio } from "../generacion-medios";
 import { crearSolicitudMedio } from "./media";
+import { ArchivoError, leerImagen, leerPdf, normalizarRuta } from "../archivos-proyecto";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
 // Texto de un mensaje: incluye los adjuntos de texto. El cuerpo HTTP sigue limitado a 64 KB.
@@ -41,6 +42,7 @@ type ConversationRow = {
   runner_session_model: string | null;
   project_id: string | null;
   repo_path: string | null;
+  workspace: string | null;
   // Modelo que se quedó sin cuota en el último turno; null si el chat puede seguir.
   cuota_modelo: string | null;
 };
@@ -159,6 +161,116 @@ chat.get("/conversations/:id/messages", (c) => {
   return c.json(messages);
 });
 
+// Vista previa y descarga de un PDF creado dentro del workspace aislado de esta conversación.
+chat.get("/conversations/:id/archivo-pdf", (c) => {
+  const id = c.req.param("id");
+  const conversacion = leerConversacion(id);
+  if (!conversacion) return c.json({ error: "conversation_not_found" }, 404);
+  const raiz = raizArchivosConversacion(conversacion);
+  if (!raiz) return c.json({ error: "project_path_not_found" }, 404);
+
+  try {
+    const archivo = leerPdf(raiz, normalizarRuta(c.req.query("ruta")));
+    const nombre = archivo.ruta.split("/").at(-1)!.replace(/[\r\n"\\]/g, "_");
+    const nombreAscii = nombre.normalize("NFKD").replace(/\p{Diacritic}/gu, "").replace(/[^\x20-\x7E]/g, "_").replace(/["\\;]/g, "_");
+    const nombreUtf8 = encodeURIComponent(nombre).replace(/[!'()*]/g, (caracter) => `%${caracter.charCodeAt(0).toString(16).toUpperCase()}`);
+    const cabeceras = {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `${c.req.query("descargar") === "1" ? "attachment" : "inline"}; filename="${nombreAscii}"; filename*=UTF-8''${nombreUtf8}`,
+      "Accept-Ranges": "bytes",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "SAMEORIGIN",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "Referrer-Policy": "no-referrer",
+      "Cache-Control": "private, no-store",
+      "Content-Security-Policy": "default-src 'none'; frame-ancestors 'self'; object-src 'none'; base-uri 'none'",
+    };
+
+    if (c.req.query("meta") === "1") {
+      return new Response(JSON.stringify({ ruta: archivo.ruta, nombre, tamano: archivo.tamano }), {
+        headers: { ...cabeceras, "Content-Type": "application/json; charset=utf-8" },
+      });
+    }
+
+    const rango = c.req.header("range");
+    if (!rango) {
+      return new Response(archivo.contenido, {
+        headers: { ...cabeceras, "Content-Length": String(archivo.contenido.byteLength) },
+      });
+    }
+
+    const coincide = /^bytes=(\d+)-(\d*)$/.exec(rango);
+    if (!coincide) {
+      return new Response(null, {
+        status: 416,
+        headers: { ...cabeceras, "Content-Range": `bytes */${archivo.tamano}` },
+      });
+    }
+    const inicio = Number(coincide[1]);
+    const fin = coincide[2] ? Math.min(Number(coincide[2]), archivo.tamano - 1) : archivo.tamano - 1;
+    if (inicio >= archivo.tamano || fin < inicio) {
+      return new Response(null, {
+        status: 416,
+        headers: { ...cabeceras, "Content-Range": `bytes */${archivo.tamano}` },
+      });
+    }
+    const fragmento = archivo.contenido.subarray(inicio, fin + 1);
+    return new Response(fragmento, {
+      status: 206,
+      headers: {
+        ...cabeceras,
+        "Content-Length": String(fragmento.byteLength),
+        "Content-Range": `bytes ${inicio}-${fin}/${archivo.tamano}`,
+      },
+    });
+  } catch (err) {
+    if (err instanceof ArchivoError) {
+      const code = err.code === "project_path_not_found" ? "archivo_chat_no_encontrado" : err.code;
+      return c.json({ error: code }, err.status);
+    }
+    throw err;
+  }
+});
+
+// Vista previa y descarga de imágenes raster del workspace del chat o de su proyecto.
+chat.get("/conversations/:id/archivo-imagen", (c) => {
+  const id = c.req.param("id");
+  const conversacion = leerConversacion(id);
+  if (!conversacion) return c.json({ error: "conversation_not_found" }, 404);
+  const raiz = raizArchivosConversacion(conversacion);
+  if (!raiz) return c.json({ error: "project_path_not_found" }, 404);
+
+  try {
+    const archivo = leerImagen(raiz, normalizarRuta(c.req.query("ruta")));
+    const nombreSeguro = archivo.nombre.replace(/[\r\n"\\]/g, "_");
+    const nombreAscii = nombreSeguro.normalize("NFKD").replace(/\p{Diacritic}/gu, "").replace(/[^\x20-\x7E]/g, "_").replace(/["\\;]/g, "_");
+    const nombreUtf8 = encodeURIComponent(nombreSeguro).replace(/[!'()*]/g, (caracter) => `%${caracter.charCodeAt(0).toString(16).toUpperCase()}`);
+    const disposicion = c.req.query("descargar") === "1" ? "attachment" : "inline";
+    const cabeceras = {
+      "Content-Type": archivo.mime,
+      "Content-Disposition": `${disposicion}; filename="${nombreAscii}"; filename*=UTF-8''${nombreUtf8}`,
+      "X-Content-Type-Options": "nosniff",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "Cache-Control": "private, no-store",
+    };
+
+    if (c.req.query("meta") === "1") {
+      return new Response(JSON.stringify({ ruta: archivo.ruta, nombre: archivo.nombre, mime: archivo.mime, tamano: archivo.tamano }), {
+        headers: { ...cabeceras, "Content-Type": "application/json; charset=utf-8" },
+      });
+    }
+    return new Response(archivo.contenido, {
+      headers: { ...cabeceras, "Content-Length": String(archivo.contenido.byteLength) },
+    });
+  } catch (err) {
+    if (err instanceof ArchivoError) {
+      const code = err.code === "project_path_not_found" ? "archivo_chat_no_encontrado" : err.code;
+      return c.json({ error: code }, err.status);
+    }
+    throw err;
+  }
+});
+
 chat.get("/conversations/:id/tasks", (c) => {
   const id = c.req.param("id");
   if (!leerConversacion(id)) return c.json({ error: "conversation_not_found" }, 404);
@@ -179,10 +291,14 @@ function leerConversacion(id: string): ConversationRow | null {
   return (
     db
       .query<ConversationRow, [string]>(
-        "SELECT c.id, c.model, c.effort, c.runner_session_id, c.runner_session_model, c.project_id, c.cuota_modelo, p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id = c.project_id WHERE c.id = ?",
+        "SELECT c.id, c.model, c.effort, c.runner_session_id, c.runner_session_model, c.project_id, c.cuota_modelo, p.repo_path AS repo_path, (SELECT t.workspace FROM tasks t WHERE t.conversation_id=c.id AND t.workspace IS NOT NULL ORDER BY t.created_at DESC,t.rowid DESC LIMIT 1) AS workspace FROM conversations c LEFT JOIN projects p ON p.id = c.project_id WHERE c.id = ?",
       )
       .get(id) ?? null
   );
+}
+
+function raizArchivosConversacion(conversacion: ConversationRow): string | null {
+  return conversacion.workspace ?? (conversacion.project_id ? conversacion.repo_path : join(chatWorkspace, conversacion.id));
 }
 
 // Un mensaje en curso o un proyecto que se está revisando impiden responder: el chat espera.
