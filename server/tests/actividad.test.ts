@@ -56,6 +56,7 @@ describe("líneas del agente", () => {
     expect(item).toEqual({
       tipo: "accion",
       herramienta: "read",
+      callId: "toolu_1",
       titulo: "Leyó src/app.ts",
       detalle: "const a = 1;\nexport {};",
       estado: "hecha",
@@ -75,9 +76,9 @@ describe("líneas del agente", () => {
     expect(detalle).toBe("No se encontró el texto\n\n- x\n+ y");
   });
 
-  test("una herramienta que todavía corre no se muestra", () => {
+  test("una herramienta en curso se publica con su id para completar el mismo paso", () => {
     const linea = JSON.stringify({ type: "tool_use", part: { type: "tool", tool: "bash", state: { status: "running" } } });
-    expect(itemDeLinea(linea)).toBeNull();
+    expect(itemDeLinea(linea)).toMatchObject({ tipo: "accion", herramienta: "bash", estado: "en_curso" });
   });
 
   test("líneas que no son JSON, sin tipo o sin contenido se descartan", () => {
@@ -160,6 +161,31 @@ describe("registro por turno", () => {
       turno_id: turno,
       paso: { seq: 2, tipo: "accion", herramienta: "read", estado: "hecha" },
     });
+  });
+
+  test("el cierre de una herramienta actualiza el paso en curso sin duplicarlo", () => {
+    const turno = "turno-herramienta-en-curso";
+    const recibidos: EventoVivo[] = [];
+    const baja = suscribir((e) => recibidos.push(e));
+    try {
+      const inicio = itemDeLinea(herramienta("bash", { status: "running", input: { command: "bun test" } }));
+      const fin = itemDeLinea(herramienta("bash", { status: "completed", input: { command: "bun test" }, output: "5 pass" }));
+      expect(inicio?.tipo).toBe("accion");
+      expect(fin?.tipo).toBe("accion");
+      if (inicio && fin) {
+        registrarActividad(CONVERSACION, turno, inicio);
+        registrarActividad(CONVERSACION, turno, fin);
+      }
+    } finally {
+      baja();
+    }
+    const filas = actividadDelTurno(CONVERSACION, turno);
+    expect(filas).toHaveLength(1);
+    expect(filas[0]).toMatchObject({ seq: 1, estado: "hecha", detalle: "$ bun test\n5 pass" });
+    const publicados = recibidos.filter((e) => e.tipo === "actividad");
+    expect(publicados).toHaveLength(2);
+    expect(publicados[0]).toMatchObject({ tipo: "actividad", paso: { seq: 1, estado: "en_curso" } });
+    expect(publicados[1]).toMatchObject({ tipo: "actividad", paso: { seq: 1, estado: "hecha" } });
   });
 
   test("un turno no admite más de 300 pasos", () => {

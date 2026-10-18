@@ -8,6 +8,7 @@ import { Contenido, copiarTexto, type ReferenciaArchivo } from "./chat-contenido
 import { ProcesoAgente, ProcesoGuardado } from "./chat-proceso";
 import { FORMATOS_OPCIONES } from "./documentos";
 import type { PasoActividad } from "../api";
+import { MediaJobCard } from "./media-job-card";
 
 // Mensajes del chat. cuando es la fecha de la base; null, un mensaje que todavía se está enviando.
 
@@ -186,6 +187,7 @@ export function MensajeAgente({
   proceso?: { conversacionId: string; turnoId: string };
 }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const mediaId = /^\[\[telo-media:([a-f0-9-]+)\]\]$/i.exec(texto.trim())?.[1] ?? null;
   const reporte = interpretarRespuestaTarea(texto);
   const [leyendo, setLeyendo] = useState(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -257,8 +259,8 @@ export function MensajeAgente({
           <span> · {haceTexto(cuando)}</span>{duracion ? <span className="tl-msg-duracion"> · Respondió en {duracion}</span> : null}
         </span>
         <div className="tl-msg-acciones">
-          <BotonCopiar texto={reporte ? `${reporte.resumen}\n${reporte.causa ?? ""}`.trim() : texto} etiqueta="Copiar respuesta" />
-          {onCitar && (
+          {!mediaId && <BotonCopiar texto={reporte ? `${reporte.resumen}\n${reporte.causa ?? ""}`.trim() : texto} etiqueta="Copiar respuesta" />}
+          {!mediaId && onCitar && (
             <button
               type="button"
               className="tl-accion-icono"
@@ -272,7 +274,7 @@ export function MensajeAgente({
               </svg>
             </button>
           )}
-          {"speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined" && (
+          {!mediaId && "speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined" && (
             <button
               type="button"
               className="tl-accion-icono"
@@ -296,7 +298,7 @@ export function MensajeAgente({
               </svg>
             </button>
           )}
-          {onReintentar && (
+          {!mediaId && onReintentar && (
             <button
               type="button"
               className="tl-accion-icono"
@@ -310,7 +312,7 @@ export function MensajeAgente({
               </svg>
             </button>
           )}
-          {onGuardar && (
+          {!mediaId && onGuardar && (
             <div className="tl-menu-wrap">
               <button
                 type="button"
@@ -352,17 +354,21 @@ export function MensajeAgente({
           )}
         </div>
       </div>
-      {proceso && (
+      {!mediaId && proceso && (
         <ProcesoGuardado conversacionId={proceso.conversacionId} turnoId={proceso.turnoId} textoFinal={texto} />
       )}
       <div className="tl-msg-texto">
-        <Contenido texto={reporte?.resumen ?? texto} onAbrirArchivo={onAbrirArchivo} />
-        {reporte?.causa && <p className="tl-alerta">{reporte.causa}</p>}
-        {reporte && (
-          <details className="tl-detalles-reporte">
-            <summary>Ver detalles técnicos</summary>
-            <pre>{reporte.detalles}</pre>
-          </details>
+        {mediaId ? <MediaJobCard id={mediaId} /> : (
+          <>
+            <Contenido texto={reporte?.resumen ?? texto} onAbrirArchivo={onAbrirArchivo} />
+            {reporte?.causa && <p className="tl-alerta">{reporte.causa}</p>}
+            {reporte && (
+              <details className="tl-detalles-reporte">
+                <summary>Ver detalles técnicos</summary>
+                <pre>{reporte.detalles}</pre>
+              </details>
+            )}
+          </>
         )}
       </div>
     </article>

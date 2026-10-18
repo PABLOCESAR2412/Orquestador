@@ -571,6 +571,62 @@ const migrations: Migration[] = [
       ALTER TABLE messages ADD COLUMN effort TEXT;
     `,
   },
+  {
+    // Las herramientas que siguen corriendo actualizan el paso que se publicó al iniciarse.
+    name: "033_actividad_chat_en_curso",
+    sql: `
+      DROP INDEX chat_actividad_turno_seq;
+      ALTER TABLE chat_actividad RENAME TO chat_actividad_anterior;
+      CREATE TABLE chat_actividad (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        turno_id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        tipo TEXT NOT NULL CHECK (tipo IN ('texto', 'accion')),
+        herramienta TEXT,
+        call_id TEXT,
+        titulo TEXT NOT NULL,
+        detalle TEXT,
+        estado TEXT NOT NULL CHECK (estado IN ('hecha', 'error', 'texto', 'en_curso')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO chat_actividad (id, conversation_id, turno_id, seq, tipo, herramienta, titulo, detalle, estado, created_at)
+        SELECT id, conversation_id, turno_id, seq, tipo, herramienta, titulo, detalle, estado, created_at FROM chat_actividad_anterior;
+      DROP TABLE chat_actividad_anterior;
+      CREATE UNIQUE INDEX chat_actividad_turno_seq ON chat_actividad(conversation_id, turno_id, seq);
+      CREATE INDEX chat_actividad_call ON chat_actividad(conversation_id, turno_id, call_id);
+    `,
+  },
+  {
+    // Trabajos de imagen y video: el archivo final se conserva en la base junto con el chat.
+    name: "034_generacion_medios",
+    sql: `
+      CREATE TABLE media_jobs (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        turno_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+        message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+        tipo TEXT NOT NULL CHECK (tipo IN ('imagen', 'video')),
+        prompt TEXT NOT NULL,
+        modelo TEXT NOT NULL,
+        resolucion TEXT NOT NULL,
+        relacion TEXT NOT NULL,
+        duracion_segundos INTEGER,
+        costo_estimado_usd REAL NOT NULL,
+        estado TEXT NOT NULL CHECK (estado IN ('pendiente', 'generando', 'completada', 'error', 'cancelada')),
+        operacion TEXT,
+        nombre_archivo TEXT,
+        mime TEXT,
+        bytes INTEGER,
+        contenido BLOB,
+        error TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX media_jobs_conversation ON media_jobs(conversation_id, created_at);
+      CREATE INDEX media_jobs_estado ON media_jobs(estado, created_at);
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

@@ -39,6 +39,8 @@ export type OpcionesAgente = {
   aprender?: boolean;
   // Solo para chats: añade instrucciones de estilo (respuestas concretas y verificables). Las tareas no lo usan.
   estilo?: "chat";
+  // Directorio temporal de perfiles de subagentes por ejecución de OpenCode.
+  opencodeConfigDir?: string;
 };
 
 // `modelo` es el que realmente respondió (puede ser el de respaldo), para registrar el uso.
@@ -415,6 +417,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     signal: opts.signal,
     onLinea: opts.onLinea ? (linea: string) => opts.onLinea?.(ocultarValores(linea, ocultos)) : undefined,
     extraEnv: propias,
+    opencodeConfigDir: opts.opencodeConfigDir,
     soloLectura: opts.soloLectura,
   };
 

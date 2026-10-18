@@ -5,11 +5,11 @@ import { publicar } from "./bus";
 // editar, ejecutar) con una vista previa. OpenCode los emite como líneas JSON con `--format json`.
 // Se guardan por turno para verlos después, y se publican al canal en vivo mientras el agente corre.
 
-export type EstadoAccion = "hecha" | "error";
+export type EstadoAccion = "hecha" | "error" | "en_curso";
 
 export type ItemActividad =
   | { tipo: "texto"; texto: string }
-  | { tipo: "accion"; herramienta: string; titulo: string; detalle: string | null; estado: EstadoAccion };
+  | { tipo: "accion"; herramienta: string; titulo: string; detalle: string | null; estado: EstadoAccion; callId?: string | null };
 
 // Tope por turno: un agente que se desboca no debe llenar la base.
 const MAX_ITEMS_TURNO = 300;
@@ -202,7 +202,7 @@ export function itemDeLinea(linea: string): ItemActividad | null {
   if (parte.type === "tool") {
     const estado = esRegistro(parte.state) ? parte.state : null;
     const situacion = cadena(estado?.status);
-    if (!estado || (situacion !== "completed" && situacion !== "error")) return null;
+    if (!estado || (situacion !== "running" && situacion !== "completed" && situacion !== "error")) return null;
     const herramienta = (cadena(parte.tool) ?? "herramienta").toLowerCase();
     const entrada = esRegistro(estado.input) ? estado.input : {};
     const salida = situacion === "completed" ? cadena(estado.output) : null;
@@ -213,7 +213,10 @@ export function itemDeLinea(linea: string): ItemActividad | null {
       herramienta,
       titulo: recortar(titulo, MAX_TITULO),
       detalle,
-      estado: situacion === "completed" ? "hecha" : "error",
+      estado: situacion === "running" ? "en_curso" : situacion === "completed" ? "hecha" : "error",
+      ...((cadena(parte.callID) ?? cadena(parte.callId))
+        ? { callId: cadena(parte.callID) ?? cadena(parte.callId) }
+        : {}),
     };
   }
   return null;
@@ -225,12 +228,37 @@ export type FilaActividad = {
   herramienta: string | null;
   titulo: string;
   detalle: string | null;
-  estado: "hecha" | "error" | "texto";
+  estado: "hecha" | "error" | "texto" | "en_curso";
 };
 
 // Guarda el paso con el siguiente número del turno y lo publica al canal en vivo.
 // Devuelve null si el turno ya llegó a su tope.
 export function registrarActividad(conversacionId: string, turnoId: string, item: ItemActividad): number | null {
+  const callId = item.tipo === "accion" ? item.callId ?? null : null;
+  if (callId) {
+    const existente = db.query<{ seq: number }, [string, string, string]>(
+      "SELECT seq FROM chat_actividad WHERE conversation_id=? AND turno_id=? AND call_id=?",
+    ).get(conversacionId, turnoId, callId);
+    if (existente) {
+      const { titulo, detalle } = item.tipo === "accion"
+        ? { titulo: item.titulo, detalle: item.detalle }
+        : { titulo: item.texto, detalle: null };
+      const estado = item.tipo === "accion" ? item.estado : "texto";
+      db.query("UPDATE chat_actividad SET titulo=?,detalle=?,estado=? WHERE conversation_id=? AND turno_id=? AND seq=?")
+        .run(titulo, detalle, estado, conversacionId, turnoId, existente.seq);
+      const paso: FilaActividad = {
+        seq: existente.seq,
+        tipo: item.tipo,
+        herramienta: item.tipo === "accion" ? item.herramienta : null,
+        titulo,
+        detalle,
+        estado,
+      };
+      publicar({ tipo: "actividad", conversacion_id: conversacionId, turno_id: turnoId, paso });
+      return existente.seq;
+    }
+  }
+
   const { n } = db
     .query<{ n: number }, [string, string]>(
       "SELECT COUNT(*) AS n FROM chat_actividad WHERE conversation_id = ? AND turno_id = ?",
@@ -244,12 +272,12 @@ export function registrarActividad(conversacionId: string, turnoId: string, item
   const detalle = item.tipo === "accion" ? item.detalle : null;
   const estado = item.tipo === "accion" ? item.estado : "texto";
   const { seq } = db
-    .query<{ seq: number }, [string, string, string, string, string, string | null, string, string | null, string]>(
-      `INSERT INTO chat_actividad (conversation_id, turno_id, seq, tipo, herramienta, titulo, detalle, estado)
-       VALUES (?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM chat_actividad WHERE conversation_id = ? AND turno_id = ?), ?, ?, ?, ?, ?)
+    .query<{ seq: number }, [string, string, string, string, string, string | null, string | null, string, string | null, string]>(
+      `INSERT INTO chat_actividad (conversation_id, turno_id, seq, tipo, herramienta, call_id, titulo, detalle, estado)
+       VALUES (?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM chat_actividad WHERE conversation_id = ? AND turno_id = ?), ?, ?, ?, ?, ?, ?)
        RETURNING seq`,
     )
-    .get(conversacionId, turnoId, conversacionId, turnoId, item.tipo, herramienta, titulo, detalle, estado) as {
+    .get(conversacionId, turnoId, conversacionId, turnoId, item.tipo, herramienta, callId, titulo, detalle, estado) as {
       seq: number;
     };
 

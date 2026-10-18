@@ -8,6 +8,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "./config";
 import { db } from "./db";
+import { prepararSubagentes } from "./subagentes";
 import { publicar } from "./bus";
 import { publicarEstado, registrarEvento } from "./eventos";
 import { ejecutarAgente, ErrorCuota, promptContinuacion, type ResultadoAgente } from "./ejecutar";
@@ -227,9 +228,21 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
   }, TASK_TIMEOUT_MS);
   const modeloSolicitado = task.model;
   const esfuerzoSolicitado = task.effort;
+  let perfilesSubagente: Awaited<ReturnType<typeof prepararSubagentes>> = null;
   try {
+    if (aprender) {
+      perfilesSubagente = await prepararSubagentes({
+        prompt: task.prompt,
+        modelo: task.model,
+        esfuerzo: task.effort,
+        idEjecucion: crypto.randomUUID(),
+      });
+    }
+    const promptAvisos = ctx.avisos?.length
+      ? `${prompt}\n\nComprobaciones previas de Telo (incorpora su resolución al plan antes de ejecutar pruebas):\n${ctx.avisos.join("\n")}`
+      : prompt;
     const result = await ejecutarAgente({
-      prompt: ctx.avisos?.length ? `${prompt}\n\nComprobaciones previas de Telo (incorpora su resolución al plan antes de ejecutar pruebas):\n${ctx.avisos.join("\n")}` : prompt,
+      prompt: perfilesSubagente ? `${perfilesSubagente.instruccion}\n\n${promptAvisos}` : promptAvisos,
       model: task.model,
       variant: task.effort,
       sessionId: task.provider_session_id,
@@ -241,6 +254,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
       conversationId: task.conversation_id,
       soloLectura: estadoActual(task.id) === "analyzing",
       projectId: task.project_id,
+      opencodeConfigDir: perfilesSubagente?.directorio,
       // Solo el obrero aprende del proyecto: al terminar, guarda su memoria.
       aprender,
       // Guarda la sesión apenas aparece, para poder reanudar si el servidor se reinicia a mitad.
@@ -281,6 +295,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
     throw err;
   } finally {
     clearTimeout(temporizador);
+    perfilesSubagente?.limpiar();
   }
 }
 

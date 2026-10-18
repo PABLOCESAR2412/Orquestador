@@ -130,8 +130,9 @@ function AccionFila({ paso }: { paso: PasoActividad }) {
   const vista = paso.detalle ?? "";
   const primeraLinea = vista.split("\n").find((l) => l.trim()) ?? "";
   const fallo = paso.estado === "error";
+  const enCurso = paso.estado === "en_curso";
   return (
-    <details className={`tl-paso-accion${fallo ? " is-error" : ""}`}>
+    <details className={`tl-paso-accion${fallo ? " is-error" : ""}${enCurso ? " is-running" : ""}`}>
       <summary className="tl-paso-resumen">
         <span className="tl-paso-chevron" aria-hidden="true">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -143,10 +144,10 @@ function AccionFila({ paso }: { paso: PasoActividad }) {
         <span
           className="tl-paso-estado"
           role="img"
-          aria-label={fallo ? "Falló" : "Hecho"}
-          title={fallo ? "Falló" : "Hecho"}
+          aria-label={fallo ? "Falló" : enCurso ? "En curso" : "Hecho"}
+          title={fallo ? "Falló" : enCurso ? "En curso" : "Hecho"}
         >
-          {fallo ? "✕" : "✓"}
+          {enCurso ? <span className="tl-paso-spinner" aria-hidden="true" /> : fallo ? "✕" : "✓"}
         </span>
         {primeraLinea && <span className="tl-paso-vista">{primeraLinea}</span>}
       </summary>

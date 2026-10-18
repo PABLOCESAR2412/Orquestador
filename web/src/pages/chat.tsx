@@ -428,9 +428,12 @@ export function ChatPage() {
     setVivos((prev) => {
       const previo = prev[evento.conversacion_id];
       const pasos = previo && previo.turnoId === evento.turno_id ? previo.pasos : [];
-      // El canal puede repetir un paso al reconectar: se ignora si ya está.
-      if (pasos.some((p) => p.seq === evento.paso.seq)) return prev;
-      return { ...prev, [evento.conversacion_id]: { turnoId: evento.turno_id, pasos: [...pasos, evento.paso] } };
+      // Las transiciones de una herramienta conservan seq; los eventos repetidos sustituyen su estado.
+      const indice = pasos.findIndex((p) => p.seq === evento.paso.seq);
+      const siguientes = indice < 0
+        ? [...pasos, evento.paso]
+        : pasos.map((paso, i) => i === indice ? evento.paso : paso);
+      return { ...prev, [evento.conversacion_id]: { turnoId: evento.turno_id, pasos: siguientes } };
     });
   });
 
