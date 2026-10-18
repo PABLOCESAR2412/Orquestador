@@ -40,7 +40,7 @@ try {
       { id: "u1", role: "user", content: "git commit y push", created_at: now },
       { id: "a1", role: "assistant", content: '{"estado":"fallo","resumen":"Faltan dependencias","desviacion":"Instala antes de probar","pendientes":["x".replace("x","y")]}<telo-memoria>MEMORIA_INTERNA</telo-memoria>', model: "groq/llama-test", effort: "low", created_at: now },
       { id: "u2", role: "user", content: "prepara de nuevo el git commit y push", created_at: now },
-      { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\nAbre `server/src/ejecutar.ts:3` para ver el ejemplo.\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Uso por área\",\"unit\":\"tokens\",\"data\":[{\"label\":\"Chat\",\"value\":120},{\"label\":\"Tareas\",\"value\":80}]}\n```\n\n```chart\n{\"type\":\"line\",\"title\":\"Uso diario\",\"data\":[{\"label\":\"Lun\",\"value\":20},{\"label\":\"Mar\",\"value\":35}]}\n```\n\n```chart\n{\"type\":\"pie\",\"title\":\"Distribución\",\"data\":[{\"label\":\"A\",\"value\":3},{\"label\":\"B\",\"value\":2}]}\n```\n\n```chart\n{\"type\":\"donut\",\"title\":\"Resultados\",\"data\":[{\"label\":\"Correcto\",\"value\":9},{\"label\":\"Pendiente\",\"value\":1}]}\n```\n\n```chart\n{\"type\":\"stats\",\"title\":\"Resumen\",\"unit\":\"pruebas\",\"data\":[{\"label\":\"Correctas\",\"value\":11,\"detail\":\"En verde\"}]}\n```\n\n```chart\nesto no es JSON\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Balance\",\"data\":[{\"label\":\"Ingresos\",\"value\":5},{\"label\":\"Ajustes\",\"value\":-2}]}\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", model: "nvidia/nemotron-test", effort: "high", created_at: now },
+      { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\nAbre `server/src/ejecutar.ts:3-20` para ver el ejemplo. También revisa `Chat.tsx` y `Gone.tsx`.\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Uso por área\",\"unit\":\"tokens\",\"data\":[{\"label\":\"Chat\",\"value\":120},{\"label\":\"Tareas\",\"value\":80}]}\n```\n\n```chart\n{\"type\":\"line\",\"title\":\"Uso diario\",\"data\":[{\"label\":\"Lun\",\"value\":20},{\"label\":\"Mar\",\"value\":35}]}\n```\n\n```chart\n{\"type\":\"pie\",\"title\":\"Distribución\",\"data\":[{\"label\":\"A\",\"value\":3},{\"label\":\"B\",\"value\":2}]}\n```\n\n```chart\n{\"type\":\"donut\",\"title\":\"Resultados\",\"data\":[{\"label\":\"Correcto\",\"value\":9},{\"label\":\"Pendiente\",\"value\":1}]}\n```\n\n```chart\n{\"type\":\"stats\",\"title\":\"Resumen\",\"unit\":\"pruebas\",\"data\":[{\"label\":\"Correctas\",\"value\":11,\"detail\":\"En verde\"}]}\n```\n\n```chart\nesto no es JSON\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Balance\",\"data\":[{\"label\":\"Ingresos\",\"value\":5},{\"label\":\"Ajustes\",\"value\":-2}]}\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", model: "nvidia/nemotron-test", effort: "high", created_at: now },
     ];
     const actions = [
       { id: "git-old", action: "push", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ mensaje: "Falló el intento anterior" }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
@@ -165,6 +165,10 @@ try {
       else if (path.startsWith("/api/documentos")) data = [];
       else if (path === "/api/projects/p1/archivo") {
         const ruta = new URL(route.request().url()).searchParams.get("ruta");
+        if (ruta === "Chat.tsx") {
+          return route.fulfill({ status: 409, json: { error: "project_path_ambiguous", matches: ["src/components/Chat.tsx", "src/pages/Chat.tsx"] } });
+        }
+        if (ruta === "Gone.tsx") return route.fulfill({ status: 404, json: { error: "project_path_not_found" } });
         data = { ruta, tamano: 42, texto: "export function responder() {\n  return 'ok';\n}\n", truncado: false };
       }
       else if (path === "/api/uso") data = { generado: now, proveedores: [{
@@ -319,7 +323,7 @@ try {
     assert.equal(await mensajeMarcado.getByRole("button", { name: "Quitar marca de importante", exact: true }).getAttribute("aria-pressed"), "true");
     assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("telo:hitos:c1") ?? "[]")), ["u2"]);
     await page.screenshot({ path: `scratch/capturas-ci/chat-timeline-${width}.png` });
-    const referenciaArchivo = page.locator(".tl-archivo-chip-abrir").filter({ hasText: "server/src/ejecutar.ts:3" });
+    const referenciaArchivo = page.locator(".tl-archivo-chip-abrir").filter({ hasText: "server/src/ejecutar.ts:3-20" });
     assert.equal(await referenciaArchivo.locator(".tl-archivo-chip-tipo").textContent(), "TS");
     await referenciaArchivo.hover();
     const ayudaArchivo = page.getByRole("tooltip");
@@ -336,6 +340,8 @@ try {
     await referenciaArchivo.click();
     const vistaArchivo = page.getByRole("complementary", { name: "Vista del archivo server/src/ejecutar.ts" });
     await vistaArchivo.waitFor();
+    const cerrarVistaArchivo = vistaArchivo.getByRole("button", { name: "Cerrar vista de archivo", exact: true });
+    assert.equal(await cerrarVistaArchivo.evaluate(el => el === document.activeElement), true);
     assert.equal(await vistaArchivo.locator(".tl-chat-archivo-tipo").textContent(), "TS");
     const colaVisible = page.locator(".tl-cola");
     await colaVisible.locator(".tl-cola-texto").first().waitFor();
@@ -344,13 +350,38 @@ try {
     assert.ok(cajaCola && cajaVisor);
     if (width === 390) assert.ok(cajaCola.y + cajaCola.height <= cajaVisor.y, "la cola debe quedar visible antes del visor móvil");
     else assert.ok(cajaCola.x + cajaCola.width <= cajaVisor.x, "la cola debe quedar en la columna del chat, junto al visor");
+    const separadorArchivo = page.getByRole("separator", { name: "Ajustar el espacio entre el chat y el archivo" });
+    const tamanoInicial = await vistaArchivo.boundingBox();
+    assert.ok(tamanoInicial);
+    await separadorArchivo.focus();
+    await page.keyboard.press(width === 390 ? "ArrowUp" : "ArrowLeft");
+    await page.waitForFunction(({ mobile, anterior }) => {
+      const visor = document.querySelector(".tl-chat-archivo-panel");
+      if (!visor) return false;
+      const actual = visor.getBoundingClientRect();
+      return mobile ? actual.height > anterior.height : actual.width > anterior.width;
+    }, { mobile: width === 390, anterior: tamanoInicial });
+    const antesDeArrastrar = await vistaArchivo.boundingBox();
+    assert.ok(antesDeArrastrar);
+    const puntoSeparador = await separadorArchivo.boundingBox();
+    assert.ok(puntoSeparador);
+    const centroX = puntoSeparador.x + puntoSeparador.width / 2;
+    const centroY = puntoSeparador.y + puntoSeparador.height / 2;
+    await page.mouse.move(centroX, centroY);
+    await page.mouse.down();
+    await page.mouse.move(centroX + (width === 390 ? 0 : -32), centroY + (width === 390 ? -32 : 0));
+    await page.mouse.up();
+    await page.waitForFunction(({ mobile, anterior }) => {
+      const visor = document.querySelector(".tl-chat-archivo-panel");
+      if (!visor) return false;
+      const actual = visor.getBoundingClientRect();
+      return mobile ? actual.height > anterior.height + 20 : actual.width > anterior.width + 20;
+    }, { mobile: width === 390, anterior: antesDeArrastrar });
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("telo:cola:c1") ?? "[]").length), 3, "la cola pausada debe conservar los mensajes");
-    const cerrarVistaArchivo = vistaArchivo.getByRole("button", { name: "Cerrar vista de archivo", exact: true });
     if (width === 390) {
       const objetivoCerrar = await cerrarVistaArchivo.boundingBox();
       assert.ok(objetivoCerrar && objetivoCerrar.width >= 44 && objetivoCerrar.height >= 44);
     }
-    assert.equal(await cerrarVistaArchivo.evaluate(el => el === document.activeElement), true);
     await vistaArchivo.locator('[data-linea="3"].is-activa').waitFor();
     assert.equal((await vistaArchivo.locator(".tl-chat-archivo-titulo p").textContent()).includes("línea 3"), true);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
@@ -358,7 +389,23 @@ try {
     await vistaArchivo.getByRole("button", { name: "Cerrar vista de archivo", exact: true }).click();
     await vistaArchivo.waitFor({ state: "detached" });
     await page.waitForFunction(() => document.activeElement?.classList.contains("tl-archivo-chip-abrir"));
-    assert.equal(await page.locator(".tl-archivo-chip-abrir").filter({ hasText: "server/src/ejecutar.ts:3" }).evaluate(el => el === document.activeElement), true);
+    assert.equal(await page.locator(".tl-archivo-chip-abrir").filter({ hasText: "server/src/ejecutar.ts:3-20" }).evaluate(el => el === document.activeElement), true);
+    const referenciaChat = page.locator(".tl-archivo-chip-abrir").filter({ hasText: "Chat.tsx" }).first();
+    await referenciaChat.click();
+    const vistaAmbigua = page.getByRole("complementary", { name: "Vista del archivo Chat.tsx" });
+    await vistaAmbigua.getByRole("button", { name: "src/pages/Chat.tsx", exact: true }).waitFor();
+    await vistaAmbigua.getByRole("button", { name: "src/pages/Chat.tsx", exact: true }).click();
+    const vistaChatResuelta = page.getByRole("complementary", { name: "Vista del archivo src/pages/Chat.tsx" });
+    await vistaChatResuelta.locator(".tl-chat-archivo-cuerpo").waitFor();
+    await vistaChatResuelta.getByRole("button", { name: "Cerrar vista de archivo", exact: true }).click();
+    await vistaChatResuelta.waitFor({ state: "detached" });
+    const referenciaBorrada = page.locator(".tl-archivo-chip-abrir").filter({ hasText: "Gone.tsx" }).first();
+    await referenciaBorrada.click();
+    const vistaBorrada = page.getByRole("complementary", { name: "Vista del archivo Gone.tsx" });
+    await vistaBorrada.getByText(/movido, cambiado de nombre o eliminado/).waitFor();
+    assert.equal(await vistaBorrada.getByRole("button", { name: "Reintentar", exact: true }).count(), 0);
+    await vistaBorrada.getByRole("button", { name: "Cerrar vista de archivo", exact: true }).click();
+    await vistaBorrada.waitFor({ state: "detached" });
     await colaVisible.getByRole("button", { name: "Arrastrar mensaje 2 para reordenar", exact: true }).dragTo(colaVisible.locator(".tl-cola-item").nth(0));
     assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("telo:cola:c1") ?? "[]").map(({ id }) => id)), ["q2", "q1", "q3"]);
     await colaVisible.getByRole("button", { name: "Más opciones para mensaje 2", exact: true }).click();

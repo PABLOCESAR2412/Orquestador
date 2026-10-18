@@ -166,7 +166,7 @@ function formatearRespuestaTarea(reporte: Reporte, texto: string): string {
   if (detalles.length > 0) {
     return mensaje ? `${mensaje}\n\n${detalles.join("\n\n")}` : detalles.join("\n\n");
   }
-  return mensaje || "Tarea completada con éxito.";
+  return mensaje || "El agente terminó sin devolver un resumen ni cambios o pruebas verificables. No se puede confirmar el resultado.";
 }
 
 function avisarChat(id: string, texto?: string, modelo?: { model: string; effort: string | null }) {

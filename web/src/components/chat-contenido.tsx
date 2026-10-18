@@ -283,8 +283,8 @@ export function describirTipoArchivo(ruta: string): { etiqueta: string; tipo: st
   };
 }
 
-function separarReferenciaArchivo(texto: string): ReferenciaArchivo {
-  const linea = /^(.*?)(?::(\d+)(?::\d+)?|#L(\d+))$/i.exec(texto);
+export function separarReferenciaArchivo(texto: string): ReferenciaArchivo {
+  const linea = /^(.*?)(?::(\d+)(?:-\d+|:\d+)?|#L(\d+)(?:-L?\d+)?)$/i.exec(texto);
   if (linea && esRutaArchivo(linea[1]!)) {
     return { ruta: linea[1]!, linea: Number(linea[2] ?? linea[3]) };
   }

@@ -390,7 +390,11 @@ export function errorText(err: unknown): string {
       case "invalid_project_path":
         return "La ruta no es válida.";
       case "project_path_not_found":
-        return "Esa ruta no existe en el servidor.";
+        return "No encontramos esa ruta en la versión actual del proyecto. Puede haberse movido, cambiado de nombre o eliminado.";
+      case "project_path_ambiguous":
+        return "Hay varios archivos con ese nombre. Elige la ruta correcta para abrirlo.";
+      case "project_search_incomplete":
+        return "No pudimos revisar todas las carpetas del proyecto. Abre el archivo desde la ruta completa o vuelve a intentarlo más tarde.";
       case "project_path_outside_root":
         return "La ruta queda fuera de la carpeta permitida.";
       case "project_path_not_directory":

@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: resuelve referencias de archivos, ajusta el visor y muestra el resultado real de las tareas", "pr": 81 },
     { "fecha": "2026-10-18", "tipo": "grande", "titulo": "Chat: genera imágenes y video con autorización, crea subagentes por modelo y muestra actividad en vivo", "pr": 80 },
     { "fecha": "2026-10-17", "tipo": "minimo", "titulo": "Chat móvil: ordena estado y acciones de mensajes, cola y compositor del plan", "pr": 78 },
     { "fecha": "2026-10-17", "tipo": "minimo", "titulo": "Chat: elimina el scroll horizontal y permite volver al mensaje reciente", "pr": 77 },

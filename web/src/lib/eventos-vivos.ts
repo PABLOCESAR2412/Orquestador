@@ -13,13 +13,17 @@ type Suscriptor = {
 const ESPERA_MIN_MS = 1_000;
 const ESPERA_MAX_MS = 30_000;
 const DEMORA_DESCONEXION_MS = 2_000;
+const MAX_ERRORES_SEGUIDOS = 4;
+const TIEMPO_CONEXION_ESTABLE_MS = 45_000;
 
 // Estado compartido del canal SSE en este navegador/pestaña
 let fuente: EventSource | null = null;
 let conectado = false;
 let intentos = 0;
+let erroresSeguidos = 0;
 let timerEspera: number | undefined;
 let timerDesconexion: number | undefined;
+let timerConexionEstable: number | undefined;
 let descargando = false;
 const suscriptores = new Set<Suscriptor>();
 
@@ -28,6 +32,16 @@ function notificarEstado(nuevo: boolean) {
   for (const s of suscriptores) {
     s.onEstado(nuevo);
   }
+}
+
+function programarReconexion() {
+  if (timerEspera !== undefined || suscriptores.size === 0) return;
+  const demora = Math.min(ESPERA_MAX_MS, ESPERA_MIN_MS * 2 ** intentos);
+  intentos += 1;
+  timerEspera = window.setTimeout(() => {
+    timerEspera = undefined;
+    conectar();
+  }, demora);
 }
 
 function entregar(tipo: "tarea" | "evento" | "salida" | "actividad" | "chat", crudo: string) {
@@ -69,7 +83,13 @@ function conectar() {
     fuente = nueva;
 
     nueva.onopen = () => {
-      intentos = 0;
+      if (timerConexionEstable !== undefined) window.clearTimeout(timerConexionEstable);
+      // Solo reinicia el backoff después de que la conexión sobreviva un corte breve del proxy.
+      timerConexionEstable = window.setTimeout(() => {
+        timerConexionEstable = undefined;
+        erroresSeguidos = 0;
+        intentos = 0;
+      }, TIEMPO_CONEXION_ESTABLE_MS);
       notificarEstado(true);
     };
 
@@ -80,18 +100,22 @@ function conectar() {
     nueva.addEventListener("chat", (ev) => entregar("chat", (ev as MessageEvent<string>).data));
 
     nueva.onerror = () => {
-      if (descargando) return;
+      if (descargando || fuente !== nueva) return;
       notificarEstado(false);
-      // Con CONNECTING el navegador reintenta solo. Con CLOSED hay que volver a abrirlo.
-      if (nueva.readyState === EventSource.CLOSED) {
+      erroresSeguidos += 1;
+      // EventSource reintenta para siempre si un proxy corta HTTP/2 y deja readyState en CONNECTING.
+      // Tras varios fallos se cierra y se reabre con backoff; el sondeo HTTP sigue activo mientras tanto.
+      if (nueva.readyState === EventSource.CLOSED || erroresSeguidos >= MAX_ERRORES_SEGUIDOS) {
+        if (timerConexionEstable !== undefined) {
+          window.clearTimeout(timerConexionEstable);
+          timerConexionEstable = undefined;
+        }
         try {
           nueva.close();
         } catch {}
         fuente = null;
-        const demora = Math.min(ESPERA_MAX_MS, ESPERA_MIN_MS * 2 ** intentos);
-        intentos += 1;
-        if (timerEspera !== undefined) window.clearTimeout(timerEspera);
-        timerEspera = window.setTimeout(conectar, demora);
+        erroresSeguidos = 0;
+        programarReconexion();
       }
     };
   } catch {
@@ -99,8 +123,7 @@ function conectar() {
   }
 }
 
-// Cierra la conexión SSE de forma limpia antes de recargar o cerrar la página.
-// Esto evita abortos bruscos de flujos HTTP/2 que provocan net::ERR_HTTP2_PROTOCOL_ERROR.
+// Cierra la conexión SSE antes de recargar o cerrar la página para no dejar reintentos en segundo plano.
 export function cerrarEventosVivos(): void {
   descargando = true;
   if (timerEspera !== undefined) {
@@ -110,6 +133,10 @@ export function cerrarEventosVivos(): void {
   if (timerDesconexion !== undefined) {
     window.clearTimeout(timerDesconexion);
     timerDesconexion = undefined;
+  }
+  if (timerConexionEstable !== undefined) {
+    window.clearTimeout(timerConexionEstable);
+    timerConexionEstable = undefined;
   }
   if (fuente) {
     try {
@@ -176,6 +203,14 @@ export function useEventosVivos(
         // Pausa breve antes de desconectar para que los cambios de pantalla no corten el canal
         timerDesconexion = window.setTimeout(() => {
           if (suscriptores.size === 0 && fuente) {
+            if (timerEspera !== undefined) {
+              window.clearTimeout(timerEspera);
+              timerEspera = undefined;
+            }
+            if (timerConexionEstable !== undefined) {
+              window.clearTimeout(timerConexionEstable);
+              timerConexionEstable = undefined;
+            }
             try {
               fuente.close();
             } catch {}

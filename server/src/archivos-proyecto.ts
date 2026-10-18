@@ -20,6 +20,11 @@ import { isAbsolute, join, relative, sep } from "node:path";
 export const LIMITE_LISTADO = 500;
 export const LIMITE_LECTURA = 256 * 1024;
 const LONGITUD_RUTA_MAX = 1024;
+const MAX_ENTRADAS_BUSQUEDA = 20_000;
+const MAX_RESULTADOS_BUSQUEDA = 9;
+const CARPETAS_IGNORADAS_BUSQUEDA = new Set([
+  ".git", "node_modules", "dist", "build", "coverage", ".next", ".nuxt", ".turbo", "vendor", "target",
+]);
 
 export class ArchivoError extends Error {
   constructor(
@@ -223,6 +228,57 @@ export function leerArchivo(
     texto: decodificar(bytes, truncado),
     truncado,
   };
+}
+
+// Busca una referencia sin carpeta dentro del proyecto cuando el modelo solo citó el nombre.
+// La búsqueda no sigue enlaces y limita tanto el recorrido como los resultados.
+export async function buscarArchivosPorNombre(
+  raizProyecto: string,
+  nombre: string,
+): Promise<{ rutas: string[]; truncada: boolean }> {
+  if (!nombre || nombre.length > 255 || /[\\/\0]/.test(nombre) || nombre === "." || nombre === "..") {
+    return { rutas: [], truncada: false };
+  }
+
+  let raizReal: string;
+  try {
+    raizReal = realpathSync(raizProyecto);
+  } catch {
+    throw new ArchivoError("project_path_not_found", 404);
+  }
+
+  const pendientes = [{ absoluta: raizReal, relativa: "" }];
+  const rutas: string[] = [];
+  let visitadas = 0;
+  let truncada = false;
+  while (pendientes.length > 0 && rutas.length < MAX_RESULTADOS_BUSQUEDA && !truncada) {
+    const actual = pendientes.pop()!;
+    let entradas: Dirent[];
+    try {
+      entradas = await readdir(actual.absoluta, { withFileTypes: true });
+    } catch {
+      truncada = true;
+      continue;
+    }
+    for (let indice = 0; indice < entradas.length; indice += 1) {
+      const entrada = entradas[indice]!;
+      if (++visitadas > MAX_ENTRADAS_BUSQUEDA) {
+        truncada = true;
+        break;
+      }
+      const relativa = actual.relativa ? `${actual.relativa}/${entrada.name}` : entrada.name;
+      if (entrada.isFile() && entrada.name.toLowerCase() === nombre.toLowerCase()) rutas.push(relativa);
+      else if (entrada.isDirectory() && !CARPETAS_IGNORADAS_BUSQUEDA.has(entrada.name.toLowerCase())) {
+        pendientes.push({ absoluta: join(actual.absoluta, entrada.name), relativa });
+      }
+      if (rutas.length >= MAX_RESULTADOS_BUSQUEDA) {
+        truncada = pendientes.length > 0 || indice < entradas.length - 1;
+        break;
+      }
+    }
+  }
+  rutas.sort((a, b) => a.localeCompare(b, "es"));
+  return { rutas, truncada };
 }
 
 // Tamaño y número de archivos de una carpeta. No sigue enlaces y se detiene al pasar maxEntradas.

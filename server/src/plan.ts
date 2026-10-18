@@ -138,9 +138,10 @@ export function requiereAprobacion(plan: Plan): boolean {
 // Un reporte sin JSON no se pierde: el texto del agente pasa a ser el resumen.
 export function validarReporte(valor: unknown, textoPlano: string): Reporte {
   if (!esObjeto(valor)) {
+    const resumen = textoPlano.trim().slice(0, 4000);
     return {
-      estado: "completado",
-      resumen: textoPlano.slice(0, 4000),
+      estado: resumen ? "completado" : "fallo",
+      resumen: resumen || "El agente terminó sin devolver un resumen ni cambios o pruebas verificables. No se puede confirmar el resultado.",
       cambios: [],
       pruebas: [],
       pendientes: [],
@@ -167,12 +168,27 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
       })
     : [];
 
+  const pendientes = listaDeTextos(valor.pendientes);
+  const resumen = texto(valor.resumen, 4000);
+  // Los pendientes describen trabajo sin terminar; no cuentan como evidencia de éxito.
+  const hayDetalles = cambios.length > 0 || pruebas.length > 0;
+  const sinResumenComprobable = estado === "completado" && !resumen && !hayDetalles;
+  const estadoFinal = sinResumenComprobable ? "fallo" : estado;
+  const resumenFinal = resumen
+    ?? (estadoFinal === "fallo"
+      ? sinResumenComprobable
+        ? "El agente terminó sin devolver un resumen ni cambios o pruebas verificables. No se puede confirmar el resultado."
+        : "El agente indicó que la tarea no se completó, pero no explicó el motivo."
+      : estadoFinal === "desviacion"
+        ? motivo ?? "La tarea necesita un plan actualizado."
+        : `El reporte no incluyó un resumen, pero registró ${cambios.length} cambio(s), ${pruebas.length} prueba(s) y ${pendientes.length} pendiente(s).`);
+
   return {
-    estado,
-    resumen: texto(valor.resumen, 4000) ?? "Sin resumen.",
+    estado: estadoFinal,
+    resumen: resumenFinal,
     cambios: cambios.slice(0, MAX_LISTA),
     pruebas: pruebas.slice(0, MAX_LISTA),
-    pendientes: listaDeTextos(valor.pendientes),
+    pendientes,
     diff_disponible: valor.diff_disponible === true,
     desviacion: estado === "desviacion" ? (motivo ?? "Sin motivo indicado.") : null,
   };
@@ -268,7 +284,7 @@ export function promptObrero(plan: Plan): string {
   if (plan.notas) lineas.push("", "Notas y respuestas del usuario al aprobar:", plan.notas);
   lineas.push(
     "",
-    "Al terminar, responde solo con un objeto JSON, sin texto antes ni después, con esta forma:",
+    "Al terminar, responde solo con un objeto JSON, sin texto antes ni después. El resumen es obligatorio: explica qué hiciste aunque no hayas modificado archivos. No devuelvas una respuesta vacía. Usa esta forma:",
     '{ "estado": "completado", "resumen": "...", "cambios": [{ "archivo": "ruta", "tipo": "crear | editar | borrar" }], "pruebas": [{ "comando": "...", "resultado": "ok | fallo | no_aplica" }], "pendientes": ["..."], "diff_disponible": true, "desviacion": null }',
   );
   return lineas.join("\n");

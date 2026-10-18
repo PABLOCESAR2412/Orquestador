@@ -433,6 +433,7 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: string,
     readonly detail?: string,
+    readonly matches?: string[],
   ) {
     super(code);
   }
@@ -448,8 +449,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (res.status === 401 && !path.startsWith("/api/login") && location.pathname !== "/entrar") {
       location.assign("/entrar");
     }
-    const body = (await res.json().catch(() => ({}))) as { error?: string; detail?: string; mensaje?: string };
-    throw new ApiError(res.status, body.error ?? `http_${res.status}`, body.detail ?? body.mensaje);
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      detail?: string;
+      mensaje?: string;
+      matches?: unknown;
+    };
+    const matches = Array.isArray(body.matches)
+      ? body.matches.filter((ruta): ruta is string => typeof ruta === "string")
+      : undefined;
+    throw new ApiError(res.status, body.error ?? `http_${res.status}`, body.detail ?? body.mensaje, matches);
   }
   return res.json() as Promise<T>;
 }
