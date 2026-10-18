@@ -5,6 +5,26 @@ import { extname, resolve } from "node:path";
 
 // Solo fixtures locales: estas pruebas nunca llaman a proveedores ni a repositorios reales.
 const root = existsSync("web/dist") ? resolve("web/dist") : resolve("dist");
+function crearPdfPrueba() {
+  const objetos = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] >>",
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (let i = 0; i < objetos.length; i += 1) {
+    offsets.push(Buffer.byteLength(pdf));
+    pdf += `${i + 1} 0 obj\n${objetos[i]}\nendobj\n`;
+  }
+  const xref = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${objetos.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets.slice(1)) pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  pdf += `trailer\n<< /Root 1 0 R /Size ${objetos.length + 1} >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(pdf);
+}
+const pdfPrueba = crearPdfPrueba();
+const pngPrueba = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC", "base64");
 const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
   const path = resolve(root, "." + new URL(req.url).pathname);
   const file = Bun.file(path);
@@ -20,7 +40,7 @@ const browser = await chromium.launch({
 mkdirSync("scratch/capturas-ci", { recursive: true });
 try {
   for (const width of [390, 1440]) {
-    const context = await browser.newContext({ viewport: { width, height: 1000 }, reducedMotion: "reduce", serviceWorkers: "block", permissions: ["clipboard-read", "clipboard-write"] });
+    const context = await browser.newContext({ viewport: { width, height: 1000 }, hasTouch: width === 390, reducedMotion: "reduce", serviceWorkers: "block", permissions: ["clipboard-read", "clipboard-write"] });
     const page = await context.newPage();
     await page.addInitScript(() => {
       if (window.top !== window) return;
@@ -40,7 +60,7 @@ try {
       { id: "u1", role: "user", content: "git commit y push", created_at: now },
       { id: "a1", role: "assistant", content: '{"estado":"fallo","resumen":"Faltan dependencias","desviacion":"Instala antes de probar","pendientes":["x".replace("x","y")]}<telo-memoria>MEMORIA_INTERNA</telo-memoria>', model: "groq/llama-test", effort: "low", created_at: now },
       { id: "u2", role: "user", content: "prepara de nuevo el git commit y push", created_at: now },
-      { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\nAbre `server/src/ejecutar.ts:3-20` para ver el ejemplo. También revisa `Chat.tsx` y `Gone.tsx`.\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Uso por área\",\"unit\":\"tokens\",\"data\":[{\"label\":\"Chat\",\"value\":120},{\"label\":\"Tareas\",\"value\":80}]}\n```\n\n```chart\n{\"type\":\"line\",\"title\":\"Uso diario\",\"data\":[{\"label\":\"Lun\",\"value\":20},{\"label\":\"Mar\",\"value\":35}]}\n```\n\n```chart\n{\"type\":\"pie\",\"title\":\"Distribución\",\"data\":[{\"label\":\"A\",\"value\":3},{\"label\":\"B\",\"value\":2}]}\n```\n\n```chart\n{\"type\":\"donut\",\"title\":\"Resultados\",\"data\":[{\"label\":\"Correcto\",\"value\":9},{\"label\":\"Pendiente\",\"value\":1}]}\n```\n\n```chart\n{\"type\":\"stats\",\"title\":\"Resumen\",\"unit\":\"pruebas\",\"data\":[{\"label\":\"Correctas\",\"value\":11,\"detail\":\"En verde\"}]}\n```\n\n```chart\nesto no es JSON\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Balance\",\"data\":[{\"label\":\"Ingresos\",\"value\":5},{\"label\":\"Ajustes\",\"value\":-2}]}\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", model: "nvidia/nemotron-test", effort: "high", created_at: now },
+      { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\nAbre `server/src/ejecutar.ts:3-20` para ver el ejemplo. También revisa `Chat.tsx` y `Gone.tsx`.\n\nPDF generado: `informe revisión.pdf`.\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Uso por área\",\"unit\":\"tokens\",\"data\":[{\"label\":\"Chat\",\"value\":120},{\"label\":\"Tareas\",\"value\":80}]}\n```\n\n```chart\n{\"type\":\"line\",\"title\":\"Uso diario\",\"data\":[{\"label\":\"Lun\",\"value\":20},{\"label\":\"Mar\",\"value\":35}]}\n```\n\n```chart\n{\"type\":\"pie\",\"title\":\"Distribución\",\"data\":[{\"label\":\"A\",\"value\":3},{\"label\":\"B\",\"value\":2}]}\n```\n\n```chart\n{\"type\":\"donut\",\"title\":\"Resultados\",\"data\":[{\"label\":\"Correcto\",\"value\":9},{\"label\":\"Pendiente\",\"value\":1}]}\n```\n\n```chart\n{\"type\":\"stats\",\"title\":\"Resumen\",\"unit\":\"pruebas\",\"data\":[{\"label\":\"Correctas\",\"value\":11,\"detail\":\"En verde\"}]}\n```\n\n```chart\nesto no es JSON\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Balance\",\"data\":[{\"label\":\"Ingresos\",\"value\":5},{\"label\":\"Ajustes\",\"value\":-2}]}\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", model: "nvidia/nemotron-test", effort: "high", created_at: now },
     ];
     const actions = [
       { id: "git-old", action: "push", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ mensaje: "Falló el intento anterior" }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
@@ -103,13 +123,42 @@ try {
           data = { messages: messages.slice(-2) };
         } else data = messages;
       }
+      else if (path === "/api/conversations/c1/archivo-pdf" || path === "/api/conversations/c2/archivo-pdf") {
+        const params = new URL(route.request().url()).searchParams;
+        const nombre = path.includes("/c2/") ? "libre.pdf" : "informe revisión.pdf";
+        if (params.get("ruta") !== nombre) return route.fulfill({ status: 404, json: { error: "project_path_not_found" } });
+        if (params.get("meta") === "1") return route.fulfill({ status: 200, json: { ruta: nombre, nombre, tamano: pdfPrueba.byteLength } });
+        return route.fulfill({
+          status: 200,
+          contentType: "application/pdf",
+          headers: {
+            "Content-Disposition": `${params.get("descargar") === "1" ? "attachment" : "inline"}; filename="${nombre}"`,
+            "Accept-Ranges": "bytes",
+          },
+          body: pdfPrueba,
+        });
+      }
+      else if (path === "/api/conversations/c2/archivo-imagen") {
+        const params = new URL(route.request().url()).searchParams;
+        const nombre = "infografía final.png";
+        if (params.get("ruta") !== nombre) return route.fulfill({ status: 404, json: { error: "archivo_chat_no_encontrado" } });
+        if (params.get("meta") === "1") return route.fulfill({ status: 200, json: { ruta: nombre, nombre, mime: "image/png", tamano: pngPrueba.byteLength } });
+        return route.fulfill({
+          status: 200,
+          contentType: "image/png",
+          headers: { "Content-Disposition": `${params.get("descargar") === "1" ? "attachment" : "inline"}; filename="${nombre}"` },
+          body: pngPrueba,
+        });
+      }
       else if (path === "/api/conversations/c1" && route.request().method() === "PATCH") {
         const body = route.request().postDataJSON();
         if ("model" in body) modeloC1 = body.model;
         if ("effort" in body) esfuerzoC1 = body.effort;
         data = { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, pinned_at: null, costTier: null, costWarning: null };
       }
-      else if (path === "/api/conversations/c2/messages") data = [];
+      else if (path === "/api/conversations/c2/messages") data = [
+        { id: "a-c2-pdf", role: "assistant", content: "PDF libre generado: `libre.pdf`. Imagen lista: `infografía final.png`.", model: "nvidia/nemotron-test", created_at: now },
+      ];
       else if (path === "/api/conversations/c1/acciones") data = actions;
       else if (path === "/api/conversations/c1/tasks" || path === "/api/tasks") data = [task];
       else if (path === "/api/tasks/t1/diff") {
@@ -194,6 +243,21 @@ try {
     await page.waitForURL("**/chat");
     console.log(`${width}px: sesión local de prueba iniciada`);
     await page.getByText("Conversaciones", { exact: true }).waitFor();
+    if (width === 390) {
+      await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
+      const filaChatAnterior = page.locator('.sidebar-conv[aria-label="Chat anterior"]').locator("..");
+      const tiempoChat = filaChatAnterior.locator(".sidebar-conv-tiempo");
+      const opcionesChat = filaChatAnterior.getByRole("button", { name: "Más opciones para Chat anterior", exact: true });
+      const [cajaTiempo, cajaOpciones] = await Promise.all([tiempoChat.boundingBox(), opcionesChat.boundingBox()]);
+      assert.ok(cajaTiempo && cajaOpciones, "la fecha y el menú del chat son visibles en el cajón móvil");
+      assert.equal(await opcionesChat.evaluate(elemento => getComputedStyle(elemento).opacity), "1", "las opciones aparecen en pantallas táctiles");
+      assert.ok(cajaTiempo.x + cajaTiempo.width <= cajaOpciones.x || cajaOpciones.x + cajaOpciones.width <= cajaTiempo.x,
+        "el menú de opciones no se superpone con la última actividad del chat en móvil");
+      assert.ok(cajaOpciones.width >= 36, "el botón de opciones conserva un objetivo táctil cómodo");
+    }
+    await page.screenshot({ path: `scratch/capturas-ci/barra-lateral-${width}.png` });
+    if (width === 390) await page.getByRole("button", { name: "Cerrar barra lateral", exact: true }).click();
+    assert.equal(await page.locator('.sidebar-conv[aria-label^="Chat paralelo"] .sidebar-conv-chat-icon').count(), 1, "cada chat libre muestra su icono");
     assert.equal((await (await respuestaDiffTransitoria).json()).estado, "en_curso");
     await page.locator(".tl-diagrama-visual svg").waitFor();
     await page.locator(".tl-grafico-chat").first().waitFor();
@@ -299,8 +363,16 @@ try {
         return hilo && hilo.scrollHeight - hilo.scrollTop - hilo.clientHeight <= 2;
       });
     }
+    await inputChat.evaluate(el => el.blur());
+    const bordeSinFoco = await page.locator(".tl-composer-caja").evaluate(el => getComputedStyle(el).borderColor);
     await inputChat.focus();
-    assert.equal(await page.locator(".tl-composer-caja").evaluate(el => getComputedStyle(el).outlineWidth), "1px");
+    const estiloFoco = await page.locator(".tl-composer-caja").evaluate(el => ({
+      borde: getComputedStyle(el).borderColor,
+      sombra: getComputedStyle(el).boxShadow,
+    }));
+    assert.notEqual(estiloFoco.borde, bordeSinFoco, "el foco debe resaltar sutilmente el compositor");
+    assert.equal(estiloFoco.sombra, "none", "el compositor no debe mostrar un halo fuerte al enfocar");
+    assert.equal(await inputChat.evaluate(el => getComputedStyle(el).outlineStyle), "none", "el input no debe mostrar un contorno nativo grueso");
     console.log(`${width}px: inicia navegación del hilo`);
     const irAlInicio = page.getByRole("button", { name: "Ir al primer mensaje", exact: true });
     await irAlInicio.waitFor();
@@ -406,6 +478,24 @@ try {
     assert.equal(await vistaBorrada.getByRole("button", { name: "Reintentar", exact: true }).count(), 0);
     await vistaBorrada.getByRole("button", { name: "Cerrar vista de archivo", exact: true }).click();
     await vistaBorrada.waitFor({ state: "detached" });
+    const referenciaPdf = page.locator(".tl-archivo-chip-abrir").filter({ hasText: "informe revisión.pdf" }).first();
+    await referenciaPdf.hover();
+    const ayudaPdf = referenciaPdf.locator("xpath=..").getByRole("tooltip");
+    await ayudaPdf.waitFor();
+    assert.match(await ayudaPdf.textContent(), /Documento PDF/);
+    await referenciaPdf.click();
+    const vistaPdf = page.getByRole("complementary", { name: "Vista del archivo informe revisión.pdf" });
+    await vistaPdf.waitFor();
+    await vistaPdf.getByTitle("Vista previa de informe revisión.pdf").waitFor();
+    assert.equal(await vistaPdf.locator(".tl-chat-archivo-tipo").textContent(), "PDF");
+    const enlacePdf = vistaPdf.getByRole("link", { name: "Descargar PDF", exact: true });
+    assert.match(await enlacePdf.getAttribute("href"), /archivo-pdf.*descargar=1/);
+    assert.equal(await enlacePdf.getAttribute("download"), "informe revisión.pdf");
+    const [descargaPdf] = await Promise.all([page.waitForEvent("download"), enlacePdf.click()]);
+    assert.equal(descargaPdf.suggestedFilename(), "informe revisión.pdf");
+    await page.screenshot({ path: `scratch/capturas-ci/archivo-pdf-chat-${width}.png` });
+    await vistaPdf.getByRole("button", { name: "Cerrar vista de archivo", exact: true }).click();
+    await vistaPdf.waitFor({ state: "detached" });
     await colaVisible.getByRole("button", { name: "Arrastrar mensaje 2 para reordenar", exact: true }).dragTo(colaVisible.locator(".tl-cola-item").nth(0));
     assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("telo:cola:c1") ?? "[]").map(({ id }) => id)), ["q2", "q1", "q3"]);
     await colaVisible.getByRole("button", { name: "Más opciones para mensaje 2", exact: true }).click();
@@ -442,6 +532,7 @@ try {
       assert.equal(await page.locator(".tl-proyecto-meta .tl-indicador-spinner").count(), 1, "la carpeta cerrada conserva un indicador agregado");
       await carpetaPruebas.click();
       const chatEnProceso = page.locator('.sidebar-conv[aria-label^="Prueba de flujo"]');
+      assert.equal(await chatEnProceso.locator(".sidebar-conv-chat-icon").count(), 1, "cada chat de proyecto muestra su icono");
       await chatEnProceso.hover();
       await chatEnProceso.locator("..").getByRole("button", { name: "Más opciones para Prueba de flujo", exact: true }).click();
       const menuChat = page.getByRole("group", { name: "Acciones de Prueba de flujo" });
@@ -457,6 +548,7 @@ try {
       assert.equal(await chatPendiente.locator(".tl-indicador-dot.is-pendiente").count(), 1);
       await chatPendiente.click();
       await page.waitForFunction(() => localStorage.getItem("telo_aprobacion_vista:c3") === "review-c3:hash-c3");
+      await chatPendiente.locator(".tl-indicador-dot.is-pendiente").waitFor({ state: "detached" });
       assert.equal(await chatPendiente.locator(".tl-indicador-dot.is-pendiente").count(), 0, "el aviso visual desaparece tras revisar ese chat");
       await page.locator('.sidebar-conv[aria-label^="Prueba de flujo"]').click();
     }
@@ -603,6 +695,35 @@ try {
     await page.locator(".picker").waitFor();
     await page.keyboard.press("Escape");
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("");
+    if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
+    await page.locator('.sidebar-conv').filter({ hasText: "Chat paralelo" }).click();
+    const pdfLibre = page.locator(".tl-msg-agente").filter({ hasText: "PDF libre generado" }).locator(".tl-archivo-chip-abrir").filter({ hasText: "libre.pdf" });
+    await pdfLibre.waitFor();
+    await pdfLibre.click();
+    const visorPdfLibre = page.getByRole("complementary", { name: "Vista del archivo libre.pdf" });
+    await visorPdfLibre.getByTitle("Vista previa de libre.pdf").waitFor();
+    const descargarPdfLibre = visorPdfLibre.getByRole("link", { name: "Descargar PDF", exact: true });
+    assert.match(await descargarPdfLibre.getAttribute("href"), /\/conversations\/c2\/archivo-pdf/);
+    const [archivoPdfLibre] = await Promise.all([page.waitForEvent("download"), descargarPdfLibre.click()]);
+    assert.equal(archivoPdfLibre.suggestedFilename(), "libre.pdf");
+    await visorPdfLibre.getByRole("button", { name: "Cerrar vista de archivo", exact: true }).click();
+    const imagenLibre = page.locator(".tl-msg-agente").filter({ hasText: "Imagen lista" }).locator(".tl-archivo-chip-abrir").filter({ hasText: "infografía final.png" });
+    await imagenLibre.waitFor();
+    assert.match(await imagenLibre.getAttribute("aria-label"), /^Abrir infografía final\.png, Imagen PNG/);
+    assert.equal(await imagenLibre.locator("xpath=..").locator(".tl-archivo-chip-copiar").count(), 0);
+    await imagenLibre.click();
+    const visorImagenLibre = page.getByRole("complementary", { name: "Vista del archivo infografía final.png" });
+    const previewImagen = visorImagenLibre.getByRole("img", { name: "infografía final.png" });
+    await previewImagen.waitFor();
+    await page.waitForFunction(() => {
+      const imagen = document.querySelector(".tl-chat-archivo-imagen");
+      return Boolean(imagen?.complete && imagen.naturalWidth > 0);
+    });
+    const descargarImagenLibre = visorImagenLibre.getByRole("link", { name: "Descargar imagen", exact: true });
+    assert.match(await descargarImagenLibre.getAttribute("href"), /\/conversations\/c2\/archivo-imagen/);
+    const [archivoImagenLibre] = await Promise.all([page.waitForEvent("download"), descargarImagenLibre.click()]);
+    assert.equal(archivoImagenLibre.suggestedFilename(), "infografía final.png");
+    await visorImagenLibre.getByRole("button", { name: "Cerrar vista de archivo", exact: true }).click();
     console.log(`${width}px: mensajes y aprobación comprobados`);
     assert.equal(await page.getByText("Historial de Git", { exact: true }).count(), 0);
     await page.screenshot({ path: `scratch/capturas-ci/chat-${width}.png` });

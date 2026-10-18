@@ -54,6 +54,7 @@ type Restaurar = { texto: string; pendientes: Pendiente[] };
 
 // Quita tildes y pasa a minúsculas para buscar comandos: "analiticas" encuentra "Analíticas".
 const sinTildes = (texto: string) => texto.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+const ES_IMAGEN_RASTER = (ruta: string) => /\.(?:png|jpe?g|webp|gif)$/i.test(ruta);
 
 function etiquetaPrompt(texto: string): string {
   const limpio = texto.replace(/\s+/g, " ").trim() || "Mensaje con adjuntos";
@@ -1212,6 +1213,9 @@ export function ChatPage() {
     cambiarBorrador("");
     c.ejecutar();
   };
+  const mostrarPanelArchivo = Boolean(
+    archivoAbierto && current && (current.project_id || /\.pdf$/i.test(archivoAbierto.ruta) || ES_IMAGEN_RASTER(archivoAbierto.ruta)),
+  );
 
   return (
     <section
@@ -1220,7 +1224,7 @@ export function ChatPage() {
         "--tl-chat-archivo-ancho": anchoArchivo ? `${anchoArchivo}px` : undefined,
         "--tl-chat-archivo-alto": altoArchivo ? `${altoArchivo}px` : undefined,
       } as CSSProperties}
-      className={`tl-chat${archivoAbierto && current?.project_id ? " tl-chat-con-archivo" : ""}`}
+      className={`tl-chat${mostrarPanelArchivo ? " tl-chat-con-archivo" : ""}`}
       aria-label="Chat"
     >
       {!selectedId ? (
@@ -1385,7 +1389,8 @@ export function ChatPage() {
                         cuando={m.created_at}
                         modelo={m.model ? modelList.find((modelo) => modelo.id === m.model)?.name ?? m.model : null}
                         esfuerzo={m.effort}
-                        onAbrirArchivo={current?.project_id ? abrirArchivo : undefined}
+                        onAbrirArchivo={current ? abrirArchivo : undefined}
+                        permitirAbrirArchivo={(referencia) => Boolean(current?.project_id || /\.pdf$/i.test(referencia.ruta) || ES_IMAGEN_RASTER(referencia.ruta))}
                         duracion={duracionDeRespuesta(i)}
                         proceso={
                           selectedId && turnoDeRespuesta(i)
@@ -2025,7 +2030,7 @@ export function ChatPage() {
             </p>
           </form>
 
-          {archivoAbierto && current?.project_id && (
+          {mostrarPanelArchivo && archivoAbierto && (
             <div
               className="tl-chat-archivo-separador"
               role="separator"
@@ -2046,8 +2051,9 @@ export function ChatPage() {
               onKeyDown={tecladoSeparadorArchivo}
             />
           )}
-          {archivoAbierto && current?.project_id && (
+          {mostrarPanelArchivo && archivoAbierto && current && (
             <ChatArchivoPreview
+              conversationId={current.id}
               projectId={current.project_id}
               referencia={archivoAbierto}
               onClose={cerrarArchivo}

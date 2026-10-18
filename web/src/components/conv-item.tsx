@@ -104,6 +104,11 @@ export function ConvItem({ conv, active, variant = "arbol", onSelect, onRename, 
               )}
             </span>
           )}
+          {variant === "arbol" && (
+            <span className="sidebar-conv-chat-icon" aria-hidden="true">
+              <svg {...SVG}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+            </span>
+          )}
           <span className="sidebar-conv-texto">
             <span className="sidebar-conv-title">{conv.title}</span>
             {variant !== "arbol" && <span className={`sidebar-conv-sub ${esProyecto ? "is-proyecto" : "is-libre"}`}>{esProyecto ? (conv.project_name || "Proyecto") : "Chat libre"}</span>}

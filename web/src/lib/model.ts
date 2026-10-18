@@ -391,6 +391,14 @@ export function errorText(err: unknown): string {
         return "La ruta no es válida.";
       case "project_path_not_found":
         return "No encontramos esa ruta en la versión actual del proyecto. Puede haberse movido, cambiado de nombre o eliminado.";
+      case "archivo_chat_no_encontrado":
+        return "Este archivo ya no está en el espacio de trabajo del chat. Puede haberse movido o eliminado; vuelve a generarlo para abrirlo.";
+      case "formato_pdf_invalido":
+        return "El archivo no contiene un PDF válido o está dañado. Comprueba que el agente terminó de generarlo e inténtalo de nuevo.";
+      case "formato_imagen_invalido":
+        return "El archivo no contiene una imagen compatible o está dañado. Comprueba que el agente terminó de generarla e inténtalo de nuevo.";
+      case "archivo_muy_grande":
+        return "El archivo supera el límite de vista previa de 50 MB. Pide al agente una versión más pequeña para abrirlo.";
       case "project_path_ambiguous":
         return "Hay varios archivos con ese nombre. Elige la ruta correcta para abrirlo.";
       case "project_search_incomplete":

@@ -154,22 +154,24 @@ const EXTENSIONES_CODIGO = new Set([
   "json", "css", "scss", "html", "htm",
   "md", "markdown", "py", "sql", "sh", "bash",
   "yaml", "yml", "toml", "lock", "svg", "png", "jpg", "jpeg",
-  "env", "dockerfile", "gitignore", "txt", "conf", "ini"
+  "env", "dockerfile", "gitignore", "txt", "conf", "ini", "pdf", "webp", "gif"
 ]);
+const EXTENSIONES_IMAGEN_RASTER = new Set(["png", "jpg", "jpeg", "webp", "gif"]);
 
 const PREFIJOS_CARPETAS = /^(web|server|src|components|lib|pages|styles|routes|runners|tests|\.opencode|\.config|\.github|skills|data|dist|public)\//i;
 
 export function esRutaArchivo(texto: string): boolean {
   if (!texto || texto.length < 3 || texto.length > 200) return false;
   if (/^[a-z][a-z\d+.-]*:\/\//i.test(texto)) return false;
-  if (/[\s;{}()="'<>`$*?!]/.test(texto)) return false;
+  if (/[\r\n;{}()="'<>`$*?!]/.test(texto)) return false;
+  const tieneEspacios = /\s/.test(texto);
   const tieneBarras = texto.includes("/") || texto.includes("\\");
   const partes = texto.split(/[/\\]/);
   const ultimoSegmento = partes[partes.length - 1];
   const puntoIdx = ultimoSegmento.lastIndexOf(".");
   if (puntoIdx > 0 && puntoIdx < ultimoSegmento.length - 1) {
     const ext = ultimoSegmento.slice(puntoIdx + 1).toLowerCase();
-    if (EXTENSIONES_CODIGO.has(ext)) return true;
+    if (EXTENSIONES_CODIGO.has(ext) && (!tieneEspacios || ext === "pdf" || EXTENSIONES_IMAGEN_RASTER.has(ext))) return true;
   }
   if (tieneBarras && PREFIJOS_CARPETAS.test(texto)) return true;
   return false;
@@ -260,10 +262,13 @@ const TIPOS_ARCHIVO: Record<string, { etiqueta: string; tipo: string }> = {
   png: { etiqueta: "PNG", tipo: "Imagen PNG" },
   jpg: { etiqueta: "JPG", tipo: "Imagen JPEG" },
   jpeg: { etiqueta: "JPG", tipo: "Imagen JPEG" },
+  webp: { etiqueta: "WEBP", tipo: "Imagen WebP" },
+  gif: { etiqueta: "GIF", tipo: "Imagen GIF" },
   env: { etiqueta: "ENV", tipo: "Variables de entorno" },
   dockerfile: { etiqueta: "DOCKER", tipo: "Dockerfile" },
   gitignore: { etiqueta: "GIT", tipo: "Reglas de Git ignore" },
   txt: { etiqueta: "TXT", tipo: "Texto plano" },
+  pdf: { etiqueta: "PDF", tipo: "Documento PDF" },
   conf: { etiqueta: "CONF", tipo: "Configuración" },
   ini: { etiqueta: "INI", tipo: "Configuración INI" },
 };
@@ -295,10 +300,12 @@ export function PastillaArchivo({
   ruta,
   referencia,
   onAbrir,
+  permitirAbrir,
 }: {
   ruta: string;
   referencia?: string;
   onAbrir?: (referencia: ReferenciaArchivo, triggerId: string) => void;
+  permitirAbrir?: (referencia: ReferenciaArchivo) => boolean;
 }) {
   const [copiado, setCopiado] = useState(false);
   const tooltipId = useId();
@@ -306,13 +313,14 @@ export function PastillaArchivo({
   const referenciaAbierta = separarReferenciaArchivo(etiquetaReferencia);
   const triggerKey = JSON.stringify([referenciaAbierta.ruta, referenciaAbierta.linea ?? null]);
   const rutaAbsoluta = /^(?:[a-z]:[\\/]|[\\/]|file:)/i.test(referenciaAbierta.ruta);
-  const puedeAbrir = Boolean(onAbrir && !rutaAbsoluta && !referenciaAbierta.ruta.split(/[\\/]/).includes(".."));
+  const puedeAbrir = Boolean(onAbrir && permitirAbrir?.(referenciaAbierta) !== false && !rutaAbsoluta && !referenciaAbierta.ruta.split(/[\\/]/).includes(".."));
   const partes = ruta.split(/[/\\]/);
   const nombreArchivo = referenciaAbierta.ruta.split(/[\\/]/).at(-1) || partes[partes.length - 1];
   const carpetaArchivo = referenciaAbierta.ruta.split(/[\\/]/).slice(0, -1).join("/") || "Raíz del proyecto";
   const tipoArchivo = describirTipoArchivo(referenciaAbierta.ruta);
   const puntoIdx = nombreArchivo.lastIndexOf(".");
   const ext = puntoIdx > 0 ? nombreArchivo.slice(puntoIdx + 1).toLowerCase() : "";
+  const imagenRaster = EXTENSIONES_IMAGEN_RASTER.has(ext);
 
   const copiar = async () => {
     const ok = await copiarTexto(etiquetaReferencia);
@@ -352,15 +360,17 @@ export function PastillaArchivo({
           {referenciaAbierta.linea && <span>Línea {referenciaAbierta.linea}</span>}
         </span>
       )}
-      <button
-        type="button"
-        className="tl-archivo-chip-copiar"
-        title={copiado ? "Ruta copiada" : "Copiar ruta"}
-        aria-label={copiado ? "Ruta copiada" : `Copiar ruta ${etiquetaReferencia}`}
-        onClick={() => void copiar()}
-      >
-        <span aria-hidden="true">{copiado ? "✓" : "Copiar"}</span>
-      </button>
+      {!imagenRaster && (
+        <button
+          type="button"
+          className="tl-archivo-chip-copiar"
+          title={copiado ? "Ruta copiada" : "Copiar ruta"}
+          aria-label={copiado ? "Ruta copiada" : `Copiar ruta ${etiquetaReferencia}`}
+          onClick={() => void copiar()}
+        >
+          <span aria-hidden="true">{copiado ? "✓" : "Copiar"}</span>
+        </button>
+      )}
     </span>
   );
 }
@@ -374,7 +384,10 @@ function textoDe(nodo: ReactNode): string {
   return "";
 }
 
-const crearComponentes = (onAbrirArchivo?: (referencia: ReferenciaArchivo, triggerId: string) => void): Components => ({
+const crearComponentes = (
+  onAbrirArchivo?: (referencia: ReferenciaArchivo, triggerId: string) => void,
+  permitirAbrirArchivo?: (referencia: ReferenciaArchivo) => boolean,
+): Components => ({
   // Los bloques ``` llegan como <pre><code class="language-x">: se muestran con su pestaña y copiar.
   pre({ children }: { children?: ReactNode }) {
     const hijo = Children.toArray(children)[0];
@@ -395,7 +408,7 @@ const crearComponentes = (onAbrirArchivo?: (referencia: ReferenciaArchivo, trigg
     const texto = textoDe(children).trim();
     const referencia = separarReferenciaArchivo(texto);
     if (esRutaArchivo(referencia.ruta)) {
-      return <PastillaArchivo ruta={referencia.ruta} referencia={texto} onAbrir={onAbrirArchivo} />;
+      return <PastillaArchivo ruta={referencia.ruta} referencia={texto} onAbrir={onAbrirArchivo} permitirAbrir={permitirAbrirArchivo} />;
     }
     return <code className={className} {...props}>{children}</code>;
   },
@@ -410,7 +423,7 @@ const crearComponentes = (onAbrirArchivo?: (referencia: ReferenciaArchivo, trigg
         ? textoHref.replace(/^file:\/\/\/?/, "")
         : (esRutaArchivo(referenciaTexto.ruta) ? referenciaTexto.ruta : referenciaHref.ruta);
       const referencia = esRutaArchivo(referenciaTexto.ruta) ? textoHijo : textoHref;
-      return <PastillaArchivo ruta={rutaReal} referencia={referencia} onAbrir={onAbrirArchivo} />;
+      return <PastillaArchivo ruta={rutaReal} referencia={referencia} onAbrir={onAbrirArchivo} permitirAbrir={permitirAbrirArchivo} />;
     }
     return (
       <a href={href} target="_blank" rel="noopener noreferrer">
@@ -431,11 +444,13 @@ const crearComponentes = (onAbrirArchivo?: (referencia: ReferenciaArchivo, trigg
 export const Contenido = memo(function Contenido({
   texto,
   onAbrirArchivo,
+  permitirAbrirArchivo,
 }: {
   texto: string;
   onAbrirArchivo?: (referencia: ReferenciaArchivo, triggerId: string) => void;
+  permitirAbrirArchivo?: (referencia: ReferenciaArchivo) => boolean;
 }) {
-  const componentes = useMemo(() => crearComponentes(onAbrirArchivo), [onAbrirArchivo]);
+  const componentes = useMemo(() => crearComponentes(onAbrirArchivo, permitirAbrirArchivo), [onAbrirArchivo, permitirAbrirArchivo]);
   return (
     <div className="tl-md">
       <Markdown remarkPlugins={[remarkGfm]} components={componentes}>

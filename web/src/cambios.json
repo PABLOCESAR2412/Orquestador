@@ -3,6 +3,10 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Barra lateral móvil: separa la actividad del chat de su menú de opciones", "pr": null },
+    { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Chat: abre imágenes generadas al hacer clic y permite descargarlas", "pr": null },
+    { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: previsualiza y permite descargar PDFs generados por el agente", "pr": null },
+    { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Barra lateral: muestra un icono junto a cada chat", "pr": null },
     { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: resuelve referencias de archivos, ajusta el visor y muestra el resultado real de las tareas", "pr": 81 },
     { "fecha": "2026-10-18", "tipo": "grande", "titulo": "Chat: genera imágenes y video con autorización, crea subagentes por modelo y muestra actividad en vivo", "pr": 80 },
     { "fecha": "2026-10-17", "tipo": "minimo", "titulo": "Chat móvil: ordena estado y acciones de mensajes, cola y compositor del plan", "pr": 78 },

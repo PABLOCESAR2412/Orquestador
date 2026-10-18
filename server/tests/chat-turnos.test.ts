@@ -92,6 +92,66 @@ function enviar(id: string, content: string) {
   });
 }
 
+describe("archivos PDF de una conversación", () => {
+  test("prepara la vista, sirve rangos y descarga con el nombre del archivo", async () => {
+    const id = conversacion();
+    const nombre = "informe ñ.pdf";
+    const carpetaChat = join(process.env.DATA_DIR!, "chat-workspace", id);
+    mkdirSync(carpetaChat, { recursive: true });
+    const bytes = Buffer.from("%PDF-1.7\ncontenido de prueba\n%%EOF\n", "utf8");
+    writeFileSync(join(carpetaChat, nombre), bytes);
+    const ruta = `/api/conversations/${id}/archivo-pdf?ruta=${encodeURIComponent(nombre)}`;
+
+    const meta = await app.request(`${ruta}&meta=1`);
+    expect(meta.status).toBe(200);
+    expect(meta.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+    expect(meta.headers.get("content-security-policy")).toContain("frame-ancestors 'self'");
+    expect(await meta.json()).toEqual({ ruta: nombre, nombre, tamano: bytes.byteLength });
+
+    const vista = await app.request(ruta);
+    expect(vista.status).toBe(200);
+    expect(vista.headers.get("content-type")).toBe("application/pdf");
+    expect(vista.headers.get("content-disposition")).toStartWith("inline;");
+    expect(vista.headers.get("accept-ranges")).toBe("bytes");
+    expect(vista.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+    expect(Buffer.from(await vista.arrayBuffer())).toEqual(bytes);
+
+    const rango = await app.request(ruta, { headers: { range: "bytes=0-4" } });
+    expect(rango.status).toBe(206);
+    expect(rango.headers.get("content-range")).toBe(`bytes 0-4/${bytes.byteLength}`);
+    expect(Buffer.from(await rango.arrayBuffer())).toEqual(bytes.subarray(0, 5));
+
+    const descarga = await app.request(`${ruta}&descargar=1`);
+    expect(descarga.status).toBe(200);
+    expect(descarga.headers.get("content-disposition")).toStartWith("attachment;");
+    expect(Buffer.from(await descarga.arrayBuffer())).toEqual(bytes);
+  });
+
+  test("rechaza referencias que salen del workspace y archivos que no son PDF", async () => {
+    const id = conversacion();
+    const carpetaChat = join(process.env.DATA_DIR!, "chat-workspace", id);
+    mkdirSync(carpetaChat, { recursive: true });
+    writeFileSync(join(carpetaChat, "dañado.pdf"), "esto no es un PDF");
+    writeFileSync(join(carpetaChat, "nota.txt"), "texto");
+
+    const traversal = await app.request(`/api/conversations/${id}/archivo-pdf?ruta=${encodeURIComponent("../nota.pdf")}`);
+    expect(traversal.status).toBe(400);
+    expect(await traversal.json()).toEqual({ error: "invalid_project_path" });
+
+    const dañado = await app.request(`/api/conversations/${id}/archivo-pdf?ruta=${encodeURIComponent("dañado.pdf")}`);
+    expect(dañado.status).toBe(415);
+    expect(await dañado.json()).toEqual({ error: "formato_pdf_invalido" });
+
+    const otroFormato = await app.request(`/api/conversations/${id}/archivo-pdf?ruta=nota.txt`);
+    expect(otroFormato.status).toBe(415);
+    expect(await otroFormato.json()).toEqual({ error: "formato_pdf_invalido" });
+
+    const noExiste = await app.request(`/api/conversations/${id}/archivo-pdf?ruta=no-existe.pdf`);
+    expect(noExiste.status).toBe(404);
+    expect(await noExiste.json()).toEqual({ error: "archivo_chat_no_encontrado" });
+  });
+});
+
 // Estas pruebas lanzan grupos de procesos con `setsid`, igual que el servidor Linux.
 describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
   test("diez conversaciones responden en paralelo y cada una conserva su modelo y su mensaje", async () => {
@@ -186,6 +246,58 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
       model: "opencode/modelo-b",
       effort: "low",
     });
+  });
+});
+
+describe("imágenes de una conversación", () => {
+  test("abre y descarga imágenes del chat libre con su nombre original", async () => {
+    const id = conversacion();
+    const nombre = "infografía de prueba.png";
+    const carpetaChat = join(process.env.DATA_DIR!, "chat-workspace", id);
+    mkdirSync(carpetaChat, { recursive: true });
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01, 0x02]);
+    writeFileSync(join(carpetaChat, nombre), bytes);
+    const ruta = `/api/conversations/${id}/archivo-imagen?ruta=${encodeURIComponent(nombre)}`;
+
+    const meta = await app.request(`${ruta}&meta=1`);
+    expect(meta.status).toBe(200);
+    expect(await meta.json()).toEqual({ ruta: nombre, nombre, mime: "image/png", tamano: bytes.byteLength });
+
+    const vista = await app.request(ruta);
+    expect(vista.status).toBe(200);
+    expect(vista.headers.get("content-type")).toBe("image/png");
+    expect(vista.headers.get("content-disposition")).toStartWith("inline;");
+    expect(vista.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(Buffer.from(await vista.arrayBuffer())).toEqual(bytes);
+
+    const descarga = await app.request(`${ruta}&descargar=1`);
+    expect(descarga.headers.get("content-disposition")).toStartWith("attachment;");
+    expect(descarga.headers.get("content-disposition")).toContain("filename*=UTF-8''infograf%C3%ADa%20de%20prueba.png");
+  });
+
+  test("sirve archivos del proyecto y rechaza rutas o firmas no permitidas", async () => {
+    const proyectoId = crypto.randomUUID();
+    const conversacionId = crypto.randomUUID();
+    const raizProyecto = join(carpeta, "proyecto-imagen");
+    const workspaceTarea = join(carpeta, "workspace-imagen");
+    mkdirSync(raizProyecto, { recursive: true });
+    mkdirSync(workspaceTarea, { recursive: true });
+    db.query("INSERT INTO projects(id,name,repo_path) VALUES (?,?,?)").run(proyectoId, proyectoId, raizProyecto);
+    db.query("INSERT INTO conversations(id,title,project_id) VALUES (?, 'Chat con imagen', ?)").run(conversacionId, proyectoId);
+    db.query("INSERT INTO tasks(id,title,prompt,model,status,workspace,project_id,conversation_id) VALUES (?,?,?,'modelo','done',?,?,?)")
+      .run(crypto.randomUUID(), "Tarea de imagen", "Abrir imagen generada", workspaceTarea, proyectoId, conversacionId);
+    writeFileSync(join(workspaceTarea, "captura.webp"), Buffer.from("RIFF0000WEBPdatos", "ascii"));
+    writeFileSync(join(workspaceTarea, "falso.png"), "no es una imagen");
+
+    const imagen = await app.request(`/api/conversations/${conversacionId}/archivo-imagen?ruta=captura.webp`);
+    expect(imagen.status).toBe(200);
+    expect(imagen.headers.get("content-type")).toBe("image/webp");
+
+    const traversal = await app.request(`/api/conversations/${conversacionId}/archivo-imagen?ruta=${encodeURIComponent("../captura.png")}`);
+    expect(traversal.status).toBe(400);
+    const firmaInvalida = await app.request(`/api/conversations/${conversacionId}/archivo-imagen?ruta=falso.png`);
+    expect(firmaInvalida.status).toBe(415);
+    expect(await firmaInvalida.json()).toEqual({ error: "formato_imagen_invalido" });
   });
 });
 
