@@ -11,14 +11,37 @@
 .tl-chat-con-archivo {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, min(42vw, 560px));
+  grid-template-columns: minmax(0, 1fr) 12px minmax(260px, var(--tl-chat-archivo-ancho, min(42vw, 560px)));
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
 .tl-chat-con-archivo > .tl-chat-cabecera { grid-column: 1; grid-row: 1; }
 .tl-chat-con-archivo > .tl-hilo { grid-column: 1; grid-row: 2; min-width: 0; }
 .tl-chat-con-archivo > .tl-composer { grid-column: 1; grid-row: 3; min-width: 0; }
-.tl-chat-archivo-panel {
+.tl-chat-archivo-separador {
   grid-column: 2;
+  grid-row: 1 / 4;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  min-height: 0;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+.tl-chat-archivo-separador::before {
+  width: 2px;
+  height: 32px;
+  border-radius: 2px;
+  background: var(--line-strong);
+  content: "";
+}
+.tl-chat-archivo-separador:hover::before,
+.tl-chat-archivo-separador:focus-visible::before,
+.tl-chat-archivo-separador:active::before { width: 3px; background: var(--signal); }
+.tl-chat-archivo-panel {
+  grid-column: 3;
   grid-row: 1 / 4;
   display: flex;
   flex-direction: column;
@@ -80,6 +103,21 @@
 }
 .tl-chat-archivo-estado[role="alert"] { display: grid; gap: 8px; }
 .tl-chat-archivo-estado p { margin: 0; }
+.tl-chat-archivo-coincidencias { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.tl-chat-archivo-ruta-opcion {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--file-link);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.tl-chat-archivo-ruta-opcion:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.tl-chat-archivo-ruta-opcion:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .tl-chat-archivo-cuerpo {
   min-height: 0;
   flex: 1 1 auto;
@@ -971,12 +1009,22 @@
   .tl-chat-con-archivo > .tl-composer { width: 100%; }
   .tl-chat-con-archivo > .tl-hilo,
   .tl-chat-con-archivo > .tl-composer { min-height: 0; }
+  .tl-chat-archivo-separador {
+    flex: 0 0 12px;
+    width: 100%;
+    min-height: 12px;
+    cursor: row-resize;
+  }
+  .tl-chat-archivo-separador::before { width: 32px; height: 2px; }
+  .tl-chat-archivo-separador:hover::before,
+  .tl-chat-archivo-separador:focus-visible::before,
+  .tl-chat-archivo-separador:active::before { width: 40px; height: 3px; }
   .tl-chat-archivo-panel {
     position: relative;
     z-index: auto;
     inset: auto;
-    flex: 0 0 min(34dvh, 320px);
-    min-height: 200px;
+    flex: 0 0 var(--tl-chat-archivo-alto, min(34dvh, 320px));
+    min-height: 180px;
     overflow: hidden;
     border-top: 1px solid var(--line);
     border-left: 0;

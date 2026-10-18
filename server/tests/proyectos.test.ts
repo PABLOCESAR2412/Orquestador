@@ -16,7 +16,7 @@ process.env.TELO_PROYECTOS_DIR = join(RAIZ_PRUEBAS, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 
 const { slugProyecto, projects } = await import("../src/routes/projects");
-const { normalizarRuta, resolverEnProyecto, leerArchivo, listarCarpeta, medirCarpeta, ArchivoError } = await import(
+const { normalizarRuta, resolverEnProyecto, leerArchivo, listarCarpeta, medirCarpeta, buscarArchivosPorNombre, ArchivoError } = await import(
   "../src/archivos-proyecto"
 );
 
@@ -151,6 +151,16 @@ describe("archivos del proyecto", () => {
     expect(codigoDe(() => leerArchivo(PROYECTO, ["no-existe.txt"]))).toBe("project_path_not_found");
   });
 
+  test("busca nombres citados sin carpeta sin seguir enlaces ni entrar en dependencias", async () => {
+    writeFileSync(join(PROYECTO, "sub", "Projects.tsx"), "export const Projects = true;");
+    mkdirSync(join(PROYECTO, "node_modules", "paquete"), { recursive: true });
+    writeFileSync(join(PROYECTO, "node_modules", "paquete", "Projects.tsx"), "no buscar");
+    expect(await buscarArchivosPorNombre(PROYECTO, "Projects.tsx")).toEqual({
+      rutas: ["sub/Projects.tsx"],
+      truncada: false,
+    });
+  });
+
   test("medirCarpeta suma bytes y archivos sin seguir enlaces", async () => {
     const medida = await medirCarpeta(PROYECTO);
     expect(medida.archivos).toBeGreaterThan(3);
@@ -182,6 +192,30 @@ describe("API de proyectos", () => {
     expect(await Bun.file(join(carpeta, "README.md")).text()).toBe("# Prueba Creación\n");
     const log = Bun.spawnSync(["git", "log", "--format=%s"], { cwd: carpeta });
     expect(log.stdout.toString().trim()).toBe("Proyecto creado");
+  });
+
+  test("abre una referencia por nombre único y enumera las rutas si hay duplicados", async () => {
+    const carpeta = join(process.env.TELO_PROYECTOS_DIR!, "referencias-archivos");
+    mkdirSync(join(carpeta, "src", "uno"), { recursive: true });
+    mkdirSync(join(carpeta, "src", "dos"), { recursive: true });
+    writeFileSync(join(carpeta, "src", "uno", "Projects.tsx"), "export const Projects = true;");
+    writeFileSync(join(carpeta, "src", "uno", "Chat.tsx"), "export const ChatUno = true;");
+    writeFileSync(join(carpeta, "src", "dos", "Chat.tsx"), "export const ChatDos = true;");
+
+    const registro = await projects.request("/projects", json({ name: "Referencias Archivos", path: "referencias-archivos" }));
+    expect(registro.status).toBe(201);
+    const { id: idPrueba } = await registro.json() as { id: string };
+
+    const encontrado = await projects.request(`/projects/${idPrueba}/archivo?ruta=Projects.tsx`);
+    expect(encontrado.status).toBe(200);
+    expect(await encontrado.json()).toMatchObject({ ruta: "src/uno/Projects.tsx", texto: "export const Projects = true;" });
+
+    const ambiguo = await projects.request(`/projects/${idPrueba}/archivo?ruta=Chat.tsx`);
+    expect(ambiguo.status).toBe(409);
+    expect(await ambiguo.json()).toMatchObject({
+      error: "project_path_ambiguous",
+      matches: ["src/dos/Chat.tsx", "src/uno/Chat.tsx"],
+    });
   });
 
   test("una carpeta que ya existe da 409", async () => {

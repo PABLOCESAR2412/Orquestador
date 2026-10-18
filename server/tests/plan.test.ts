@@ -99,6 +99,30 @@ describe("validarReporte", () => {
     expect(r.desviacion).toBeNull();
   });
 
+  test("una respuesta vacía no se presenta como una tarea completada", () => {
+    const r = validarReporte(undefined, "");
+    expect(r.estado).toBe("fallo");
+    expect(r.resumen).toContain("No se puede confirmar el resultado");
+  });
+
+  test("un reporte sin resumen ni resultados verificables tampoco pasa como éxito", () => {
+    const r = validarReporte({ estado: "completado", resumen: "", cambios: [], pruebas: [], pendientes: [] }, "");
+    expect(r.estado).toBe("fallo");
+    expect(r.resumen).toContain("No se puede confirmar el resultado");
+  });
+
+  test("un reporte que solo enumera pendientes no confirma que la tarea se completó", () => {
+    const r = validarReporte({ estado: "completado", resumen: "", cambios: [], pruebas: [], pendientes: ["Revisar el resultado"] }, "");
+    expect(r.estado).toBe("fallo");
+    expect(r.pendientes).toEqual(["Revisar el resultado"]);
+  });
+
+  test("si hay resultados pero falta el resumen, explica lo que sí quedó registrado", () => {
+    const r = validarReporte({ estado: "completado", resumen: "", cambios: [{ archivo: "src/app.ts", tipo: "editar" }], pruebas: [{ comando: "bun test", resultado: "ok" }] }, "");
+    expect(r.estado).toBe("completado");
+    expect(r.resumen).toContain("registró 1 cambio(s), 1 prueba(s)");
+  });
+
   test("una desviación con motivo cambia el estado aunque venga como 'completado'", () => {
     const r = validarReporte({ estado: "completado", resumen: "", desviacion: "Falta permiso" }, "");
     expect(r.estado).toBe("desviacion");

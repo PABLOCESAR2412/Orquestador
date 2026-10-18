@@ -4,7 +4,7 @@ import { basename, isAbsolute, join, relative, sep } from "node:path";
 import { config } from "../config";
 import { db } from "../db";
 import { gitOk, gitSeguro, esRepositorio, GitError, prepararRepoSeguro, tieneGitReal } from "../git";
-import { ArchivoError, leerArchivo, listarCarpeta, medirCarpeta, normalizarRuta } from "../archivos-proyecto";
+import { ArchivoError, buscarArchivosPorNombre, leerArchivo, listarCarpeta, medirCarpeta, normalizarRuta } from "../archivos-proyecto";
 import { redactar } from "../redaccion";
 import { conProyectoRevisado } from "../ocupacion";
 import { ARCHIVOS_GUIA, MAX_MEMORIA, componerInstrucciones, guardarMemoria, memoriaDelProyecto, aprobarMemoriaPropuesta, descartarMemoriaPropuesta } from "../memoria";
@@ -536,14 +536,35 @@ projects.get("/projects/:id/archivos", (c) => {
 });
 
 // GET /api/projects/:id/archivo?ruta=  -> texto de un archivo (hasta 256 KB)
-projects.get("/projects/:id/archivo", (c) => {
+projects.get("/projects/:id/archivo", async (c) => {
   const row = leerProyecto(c.req.param("id"));
   if (!row) return c.json({ error: "project_not_found" }, 404);
   if (!row.repo_path) return c.json({ error: "project_path_not_found" }, 404);
+  const rutaOriginal = c.req.query("ruta");
+  let segmentos: string[] = [];
   try {
-    const segmentos = normalizarRuta(c.req.query("ruta"));
+    segmentos = normalizarRuta(rutaOriginal);
     return c.json(leerArchivo(row.repo_path, segmentos));
   } catch (err) {
+    if (!(err instanceof ArchivoError) || err.code !== "project_path_not_found" || !segmentos.length) {
+      return errorArchivo(c, err);
+    }
+    const busqueda = await buscarArchivosPorNombre(row.repo_path, segmentos.at(-1)!);
+    if (busqueda.rutas.length === 1 && !busqueda.truncada) {
+      try {
+        return c.json(leerArchivo(row.repo_path, normalizarRuta(busqueda.rutas[0])));
+      } catch (errorResuelto) {
+        return errorArchivo(c, errorResuelto);
+      }
+    }
+    if (busqueda.rutas.length > 0) {
+      return c.json({
+        error: "project_path_ambiguous",
+        matches: busqueda.rutas,
+        ...(busqueda.truncada ? { detail: "La búsqueda alcanzó su límite; estas rutas pueden no ser todas las coincidencias." } : {}),
+      }, 409);
+    }
+    if (busqueda.truncada) return c.json({ error: "project_search_incomplete" }, 409);
     return errorArchivo(c, err);
   }
 });

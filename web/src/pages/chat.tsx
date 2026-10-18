@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad, type RepositoryAction } from "../api";
@@ -147,6 +147,10 @@ export function ChatPage() {
   const [aviso, setAviso] = useState<string | null>(null);
   const [vistaDoc, setVistaDoc] = useState<Documento | null>(null);
   const [archivoAbierto, setArchivoAbierto] = useState<ReferenciaArchivo | null>(null);
+  const [anchoArchivo, setAnchoArchivo] = useState<number | null>(null);
+  const [altoArchivo, setAltoArchivo] = useState<number | null>(null);
+  const [vistaMovil, setVistaMovil] = useState(false);
+  const chatLayoutRef = useRef<HTMLElement>(null);
   const archivoDisparadorRef = useRef<string | null>(null);
   const [historialAbierto, setHistorialAbierto] = useState(false);
   const [resaltadoId, setResaltadoId] = useState<string | null>(null);
@@ -160,6 +164,13 @@ export function ChatPage() {
   const seguirHiloAlFinalRef = useRef(true);
   const [mostrarIrAlInicio, setMostrarIrAlInicio] = useState(false);
   const [mostrarIrAlFinal, setMostrarIrAlFinal] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 760px)");
+    const actualizar = () => setVistaMovil(media.matches);
+    actualizar();
+    media.addEventListener("change", actualizar);
+    return () => media.removeEventListener("change", actualizar);
+  }, []);
   const irAlInicio = useCallback(() => {
     const hilo = hiloRef.current;
     if (!hilo) return;
@@ -196,6 +207,48 @@ export function ChatPage() {
     setArchivoAbierto(referencia);
   }, []);
   const cerrarArchivo = () => setArchivoAbierto(null);
+  const limitesSeparadorArchivo = () => {
+    const caja = chatLayoutRef.current?.getBoundingClientRect();
+    if (vistaMovil) {
+      return {
+        minimo: 180,
+        maximo: Math.max(180, Math.min(700, caja ? caja.height - 200 : 700)),
+      };
+    }
+    return {
+      minimo: 260,
+      maximo: Math.max(260, Math.min(900, caja ? caja.width - 320 : 900)),
+    };
+  };
+  const moverSeparadorArchivo = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    const caja = chatLayoutRef.current?.getBoundingClientRect();
+    if (!caja) return;
+    const { minimo, maximo } = limitesSeparadorArchivo();
+    if (vistaMovil) {
+      setAltoArchivo(Math.round(Math.min(maximo, Math.max(minimo, caja.bottom - event.clientY))));
+    } else {
+      setAnchoArchivo(Math.round(Math.min(maximo, Math.max(minimo, caja.right - event.clientX - 6))));
+    }
+  };
+  const tecladoSeparadorArchivo = (event: KeyboardEvent<HTMLDivElement>) => {
+    const { minimo, maximo } = limitesSeparadorArchivo();
+    const tecla = vistaMovil ? ["ArrowUp", "ArrowDown"] : ["ArrowLeft", "ArrowRight"];
+    if (tecla.includes(event.key)) {
+      event.preventDefault();
+      if (vistaMovil) {
+        const actual = altoArchivo ?? Math.max(minimo, Math.min(320, window.innerHeight * 0.34));
+        setAltoArchivo(Math.max(minimo, Math.min(maximo, actual + (event.key === "ArrowUp" ? 24 : -24))));
+      } else {
+        const actual = anchoArchivo ?? Math.max(minimo, Math.min(560, window.innerWidth * 0.42));
+        setAnchoArchivo(Math.max(minimo, Math.min(maximo, actual + (event.key === "ArrowLeft" ? 24 : -24))));
+      }
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      if (vistaMovil) setAltoArchivo(event.key === "Home" ? minimo : maximo);
+      else setAnchoArchivo(event.key === "Home" ? minimo : maximo);
+    }
+  };
 
   useEffect(() => {
     if (archivoAbierto || !archivoDisparadorRef.current) return;
@@ -1158,7 +1211,15 @@ export function ChatPage() {
   };
 
   return (
-    <section className={`tl-chat${archivoAbierto && current?.project_id ? " tl-chat-con-archivo" : ""}`} aria-label="Chat">
+    <section
+      ref={chatLayoutRef}
+      style={{
+        "--tl-chat-archivo-ancho": anchoArchivo ? `${anchoArchivo}px` : undefined,
+        "--tl-chat-archivo-alto": altoArchivo ? `${altoArchivo}px` : undefined,
+      } as CSSProperties}
+      className={`tl-chat${archivoAbierto && current?.project_id ? " tl-chat-con-archivo" : ""}`}
+      aria-label="Chat"
+    >
       {!selectedId ? (
         <div className="tl-vacio">
           <div className="tl-vacio-caja">
@@ -1962,10 +2023,32 @@ export function ChatPage() {
           </form>
 
           {archivoAbierto && current?.project_id && (
+            <div
+              className="tl-chat-archivo-separador"
+              role="separator"
+              tabIndex={0}
+              aria-label="Ajustar el espacio entre el chat y el archivo"
+              aria-orientation={vistaMovil ? "horizontal" : "vertical"}
+              aria-valuemin={vistaMovil ? 180 : 260}
+              aria-valuemax={limitesSeparadorArchivo().maximo}
+              aria-valuenow={vistaMovil
+                ? altoArchivo ?? Math.round(Math.max(180, Math.min(320, window.innerHeight * 0.34)))
+                : anchoArchivo ?? Math.round(Math.max(260, Math.min(560, window.innerWidth * 0.42)))}
+              title={vistaMovil ? "Arrastra o usa ↑/↓ para cambiar el alto" : "Arrastra o usa ←/→ para cambiar el ancho"}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerMove={moverSeparadorArchivo}
+              onKeyDown={tecladoSeparadorArchivo}
+            />
+          )}
+          {archivoAbierto && current?.project_id && (
             <ChatArchivoPreview
               projectId={current.project_id}
               referencia={archivoAbierto}
               onClose={cerrarArchivo}
+              onSelectPath={(ruta) => setArchivoAbierto({ ruta, linea: archivoAbierto.linea })}
             />
           )}
 
