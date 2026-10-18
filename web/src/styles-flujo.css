@@ -147,6 +147,20 @@
 .approval-panel li .approval-files { display: inline; margin-left: 6px; font-size: 12px; }
 .approval-heading { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; justify-content: space-between; }
 .approval-heading > a, .approval-heading > span { font-size: 12px; }
+.approval-heading > .approval-task-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.approval-heading > .approval-task-link:hover { background: var(--surface-2); border-color: var(--line-strong); }
+.approval-heading > .approval-task-link:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .approval-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--ink-2); font-size: 12px; }
 .approval-auth {
   display: grid;

@@ -12,6 +12,8 @@ export type Conversation = {
   pendiente_aprobacion?: boolean;
   completada?: boolean;
   estado_tarea?: "en_proceso" | "pendiente_aprobacion" | "completada" | null;
+  estado_tarea_id?: string | null;
+  estado_tarea_version?: string | null;
   last_message_at?: string | null;
   // Modelo que se quedó sin cuota en el último turno: el chat espera a que se cambie de modelo y se siga.
   cuota_modelo?: string | null;
@@ -242,6 +244,13 @@ export type ModelInfo = {
   costWarning: string | null;
   group: string;
   recommended: boolean;
+};
+
+export type ArtificialAnalysisIndex = {
+  configurado: boolean;
+  disponible: boolean;
+  version: number | null;
+  modelos: { slug: string; name: string; creador: string | null; score: number }[];
 };
 
 // analyzing: el analizador escribe el plan. waiting_approval: el plan espera la decisión del usuario.
@@ -571,6 +580,8 @@ export const api = {
       body: JSON.stringify({ content }),
     }),
   listModels: () => request<{ models: ModelInfo[]; total: number }>("/api/models?all=1"),
+  modelIntelligence: () => request<ArtificialAnalysisIndex>("/api/models/intelligence"),
+  modelUsage: () => request<{ counts: Record<string, number> }>("/api/models/usage"),
   updateConversation: (
     id: string,
     patch: { model?: string | null; effort?: string | null; title?: string; pinned?: boolean },

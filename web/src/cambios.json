@@ -97,6 +97,7 @@
     { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Barra lateral: grupos recientes simplificados y atenuados", "pr": 57 },
     { "fecha": "2026-10-16", "tipo": "mediano", "titulo": "Chat: hasta diez ejecuciones concurrentes y estado aislado por conversación", "pr": 58 },
     { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Se retira la conexión OAuth de Google que no se utilizaba para modelos ni métricas", "pr": 61 },
-    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Ajustes: muestra el estado de GitHub y el alcance de cada instalación con más claridad", "pr": 61 }
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Ajustes: muestra el estado de GitHub y el alcance de cada instalación con más claridad", "pr": 61 },
+    { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: modelos favoritos y puntuación de inteligencia, estado visible, acciones compactas y navegación del hilo", "pr": 79 }
   ]
 }

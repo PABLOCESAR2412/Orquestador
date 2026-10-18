@@ -541,7 +541,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 4px 10px;
+  padding: 4px 32px 4px 10px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -665,17 +665,26 @@
   display: flex;
   align-items: center;
   gap: 1px;
-  background: var(--surface);
+  background: transparent;
   border-radius: 4px;
-  padding: 1px;
-}
-.tl-rail .conv-item.is-arbol .sidebar-conv.active ~ .conv-acciones {
-  background: var(--surface-2);
+  padding: 0;
 }
 .tl-rail .conv-item.is-arbol .conv-icono {
   width: 22px;
   height: 22px;
 }
+.tl-rail .conv-row:hover .conv-icono,
+.tl-rail .conv-row:focus-within .conv-icono { background: var(--surface-hover); }
+.tl-rail .sidebar-conv.active ~ .conv-acciones .conv-icono { background: var(--surface-2); }
+.tl-rail .conv-item.is-arbol .conv-icono:hover,
+.tl-rail .conv-item.is-arbol .conv-icono.is-activo {
+  background: var(--surface-hover);
+}
+.tl-rail .conv-item.is-arbol .sidebar-conv.active ~ .conv-acciones .conv-icono:hover,
+.tl-rail .conv-item.is-arbol .sidebar-conv.active ~ .conv-acciones .conv-icono.is-activo {
+  background: var(--surface-2);
+}
+.tl-rail .conv-acciones-menu { background: var(--surface); }
 
 /* Animaciones e indicadores de estado */
 @keyframes tl-spin {
@@ -722,6 +731,9 @@
   background: var(--signal, #d9a441);
   display: inline-block;
   animation: tl-pulse-amber 1.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-indicador-dot.is-pendiente { animation: none; }
 }
 
 @keyframes tl-pulse-green {

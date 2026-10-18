@@ -188,16 +188,6 @@
   overflow-x: hidden;
   overflow-y: auto;
 }
-.tl-hilo-ir-final {
-  flex: 0 0 44px;
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  justify-content: center;
-  color: var(--signal);
-}
 .tl-hilo-columna {
   --tl-hilo-gutter: 72px;
   position: relative;
@@ -730,16 +720,37 @@
 }
 /* El compositor no usa el halo claro del foco del navegador. El teclado conserva un foco ámbar visible. */
 .tl-composer-caja:focus-within {
-  border-color: var(--line-strong);
+  border-color: color-mix(in srgb, var(--signal) 32%, var(--line-strong));
   box-shadow: none;
 }
 .tl-composer-caja:has(.tl-composer-input:focus-visible) {
-  outline: 2px solid color-mix(in srgb, var(--signal) 58%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--signal) 52%, transparent);
   outline-offset: 2px;
 }
 @media (forced-colors: active) {
   .tl-composer-caja:has(.tl-composer-input:focus-visible) { outline: 2px solid Highlight; }
 }
+.tl-chat-navegacion {
+  width: min(100%, var(--ancho-contenido));
+  margin: 0 auto 6px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.tl-chat-navegacion button {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink-2);
+}
+.tl-chat-navegacion button:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); background: var(--surface-2); }
+.tl-chat-navegacion button:disabled { opacity: 0.38; cursor: default; }
+.tl-chat-navegacion button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .tl-composer-input {
   width: 100%;
   min-height: 44px;
@@ -1018,7 +1029,6 @@
   .tl-modelo-boton { gap: 5px; padding-inline: 7px; }
   .tl-chip-dato { display: none; }
   .tl-chat-cabecera-der .tl-boton { width: 32px; padding: 0; }
-  .tl-chat-cabecera-der .tl-hilo-ir-final { width: 44px; }
   .tl-chat-cabecera-der .tl-boton-texto { display: none; }
   .tl-composer-nota { font-size: 11.5px; }
   .tl-cola-cabecera { gap: 6px; padding-right: 9px; padding-left: 10px; }

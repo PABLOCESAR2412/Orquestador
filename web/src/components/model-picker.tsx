@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from "reac
 import { useQuery } from "@tanstack/react-query";
 import { api, type ModeloCodex, type ModelInfo } from "../api";
 import { formatPrice, nombreProveedor } from "../lib/model";
+import { guardarPreferenciasSelector, leerPreferenciasSelector, normalizarIdAnalisis, type PreferenciasSelectorModelos } from "../lib/model-picker-preferencias";
 import { CostMeter, EffortControl, useDialogo } from "./controls";
 import "../styles-picker.css";
 
@@ -51,6 +52,17 @@ export function ModelPicker({
   const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders, staleTime: 5 * 60_000 });
   const codexConectado = proveedores.data?.some((proveedor) => proveedor.id === "codex" && proveedor.sesion) ?? false;
   const codexEnAgente = proveedores.data?.some((proveedor) => proveedor.id === "codex" && proveedor.enAgente) ?? false;
+  const inteligencia = useQuery({
+    queryKey: ["model-intelligence"],
+    queryFn: api.modelIntelligence,
+    staleTime: 12 * 60 * 60_000,
+    retry: false,
+  });
+  const usosModelos = useQuery({
+    queryKey: ["model-usage"],
+    queryFn: api.modelUsage,
+    staleTime: 5 * 60_000,
+  });
   const catalogoCodex = useQuery({
     queryKey: ["codex-models"],
     queryFn: api.codexModels,
@@ -59,6 +71,7 @@ export function ModelPicker({
     retry: false,
   });
   const [onlyFree, setOnlyFree] = useState(false);
+  const [preferencias, setPreferencias] = useState<PreferenciasSelectorModelos>(leerPreferenciasSelector);
   const [draftId, setDraftId] = useState(currentId);
   const [draftEffort, setDraftEffort] = useState(currentEffort);
   const draftModel = models.find((m) => m.id === draftId) ?? null;
@@ -94,6 +107,35 @@ export function ModelPicker({
     onSelect(m, conEsfuerzo ? esfuerzo : undefined);
   };
 
+  const alternarFijado = (id: string) => {
+    const fijados = preferencias.fijados.includes(id)
+      ? preferencias.fijados.filter((actual) => actual !== id)
+      : [...preferencias.fijados, id];
+    const siguiente = { ...preferencias, fijados };
+    setPreferencias(siguiente);
+    guardarPreferenciasSelector(siguiente);
+  };
+
+  const candidatos = useMemo(
+    () => models.filter((m) => m.recommended && (!onlyFree || m.free)),
+    [models, onlyFree],
+  );
+  const destacados = useMemo(() => {
+    const fijados = preferencias.fijados.flatMap((id) => {
+      const modelo = candidatos.find((m) => m.id === id);
+      return modelo ? [modelo] : [];
+    });
+    const masUsados = [...candidatos]
+      .filter((m) => !preferencias.fijados.includes(m.id) && (usosModelos.data?.counts[m.id] ?? 0) > 0)
+      .sort((a, b) => (usosModelos.data?.counts[b.id] ?? 0) - (usosModelos.data?.counts[a.id] ?? 0))
+      .slice(0, 3);
+    return [...fijados, ...masUsados];
+  }, [candidatos, preferencias, usosModelos.data]);
+  const puntajes = useMemo(() => new Map(
+    (inteligencia.data?.modelos ?? []).map((modelo) => [normalizarIdAnalisis(modelo.slug), modelo]),
+  ), [inteligencia.data]);
+  const puntajeDe = (id: string) => puntajes.get(normalizarIdAnalisis(id)) ?? null;
+
   const seleccionar = (m: ModelInfo | null) => {
     if (!m) return elegir(null, null);
     if (!conEsfuerzo || !m.variants || m.variants.length === 0) return elegir(m, null);
@@ -103,10 +145,8 @@ export function ModelPicker({
   const esActual = (m: ModelInfo) => m.id === currentId;
 
   const groups = useMemo(() => {
-    const matches = models.filter((m) => {
-      if (onlyFree && !m.free) return false;
-      return m.recommended;
-    });
+    const destacadosIds = new Set(destacados.map((m) => m.id));
+    const matches = candidatos.filter((m) => !destacadosIds.has(m.id));
 
     // Primero por proveedor (de dónde viene el modelo) y dentro, por familia.
     const porProveedor = new Map<string, Map<string, ModelInfo[]>>();
@@ -122,35 +162,56 @@ export function ModelPicker({
       [...familias.entries()],
     ]);
     return grupos;
-  }, [models, onlyFree]);
+  }, [candidatos, destacados]);
 
   // Modelos listados tras filtrar: es el contador "N modelos disponibles".
   const listados = useMemo(
-    () => groups.reduce((total, [, familias]) => total + familias.reduce((n, [, items]) => n + items.length, 0), 0),
-    [groups],
+    () => destacados.length + groups.reduce((total, [, familias]) => total + familias.reduce((n, [, items]) => n + items.length, 0), 0),
+    [groups, destacados],
   );
 
   // Fila de un modelo: nombre con "✓ Activo" si es el actual; precio arriba y costo abajo.
-  const fila = (m: ModelInfo) => (
-    <button type="button" className="picker-item" aria-current={esActual(m) || undefined} aria-pressed={conEsfuerzo ? m.id === draftId : undefined} onClick={() => seleccionar(m)}>
-      <span className="picker-main">
-        <span className="picker-nombre-linea">
-          <span className="picker-name">{m.name}</span>
-          {esActual(m) && <span className="picker-activo">✓ Activo</span>}
-        </span>
-        <span className="picker-id">{m.id}</span>
-      </span>
-      <span className="picker-meta">
-        <span className="picker-price" title="Precio de entrada / salida por millón de tokens">
-          {formatPrice(m)}
-        </span>
-        <span className="picker-costo">
-          <span className="picker-costo-etiqueta">Costo</span>
-          <CostMeter tier={m.costTier} />
-        </span>
-      </span>
-    </button>
-  );
+  const fila = (m: ModelInfo) => {
+    const fijado = preferencias.fijados.includes(m.id);
+    const indice = puntajeDe(m.id);
+    return (
+      <div className="picker-modelo-fila">
+        <button type="button" className="picker-item" aria-current={esActual(m) || undefined} aria-pressed={conEsfuerzo ? m.id === draftId : undefined} onClick={() => seleccionar(m)}>
+          <span className="picker-main">
+            <span className="picker-nombre-linea">
+              <span className="picker-name">{m.name}</span>
+              {esActual(m) && <span className="picker-activo">✓ Activo</span>}
+            </span>
+            <span className="picker-id">{m.id}</span>
+          </span>
+          <span className="picker-meta">
+            <span className="picker-price" title="Precio de entrada / salida por millón de tokens">
+              {formatPrice(m)}
+            </span>
+            {indice && <span className="picker-intelligence" title={`Artificial Analysis Intelligence Index v${inteligencia.data?.version ?? "?"}`}>
+              AA {indice.score.toLocaleString("es", { maximumFractionDigits: 1 })}
+            </span>}
+            <span className="picker-costo">
+              <span className="picker-costo-etiqueta">Costo</span>
+              <CostMeter tier={m.costTier} />
+            </span>
+          </span>
+        </button>
+        <button
+          type="button"
+          className={`picker-fijar${fijado ? " is-fijado" : ""}`}
+          aria-label={fijado ? `Quitar ${m.name} de favoritos` : `Anclar ${m.name} en favoritos`}
+          aria-pressed={fijado}
+          title={fijado ? "Quitar de favoritos" : "Anclar modelo"}
+          onClick={() => alternarFijado(m.id)}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 17v5M9 10.76V6a3 3 0 0 1 6 0v4.76l2.5 2.5V15h-11v-1.74z" />
+          </svg>
+        </button>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -171,6 +232,27 @@ export function ModelPicker({
         </div>
 
         <div className="picker-list">
+          {!cargando && !error && inteligencia.data?.disponible && (
+            <p className="picker-proveedor-nota picker-aa-nota">
+              Índice de inteligencia v{inteligencia.data.version ?? "?"} de{" "}
+              <a href="https://artificialanalysis.ai/" target="_blank" rel="noreferrer">Artificial Analysis</a>.
+            </p>
+          )}
+          {!cargando && inteligencia.data?.configurado === false && (
+            <p className="picker-proveedor-nota picker-aa-nota">
+              Puntuación no configurada. Añade <code>TELO_ARTIFICIAL_ANALYSIS_API_KEY</code> al entorno del servidor.
+            </p>
+          )}
+          {!cargando && inteligencia.data?.configurado && !inteligencia.data.disponible && (
+            <p className="picker-proveedor-nota picker-aa-nota">Artificial Analysis no respondió. Puedes seguir eligiendo modelos sin esa puntuación.</p>
+          )}
+          {destacados.length > 0 && (
+            <section className="picker-proveedor picker-tus-modelos" aria-labelledby="picker-tus-modelos">
+              <h3 className="group-title" id="picker-tus-modelos">Tus modelos</h3>
+              {preferencias.fijados.some((id) => candidatos.some((m) => m.id === id)) && <p className="picker-proveedor-nota">Anclados y más usados</p>}
+              {destacados.map((m) => <div key={m.id} className="picker-modelo">{fila(m)}</div>)}
+            </section>
+          )}
           <button
             type="button"
             className="picker-item"
@@ -219,11 +301,7 @@ export function ModelPicker({
                       <h4 className="picker-familia-titulo">{familia}</h4>
                       <span className="picker-familia-conteo">{plural(items.length)}</span>
                     </div>
-                    {items.map((m) => (
-                      <div key={m.id} className="picker-modelo">
-                        {fila(m)}
-                      </div>
-                    ))}
+                    {items.map((m) => <div key={m.id} className="picker-modelo">{fila(m)}</div>)}
                   </div>
                 ))}
               </section>

@@ -158,7 +158,14 @@ export function ChatPage() {
   const hiloRef = useRef<HTMLDivElement>(null);
   const chatHiloIdRef = useRef<string | null>(null);
   const seguirHiloAlFinalRef = useRef(true);
+  const [mostrarIrAlInicio, setMostrarIrAlInicio] = useState(false);
   const [mostrarIrAlFinal, setMostrarIrAlFinal] = useState(false);
+  const irAlInicio = useCallback(() => {
+    const hilo = hiloRef.current;
+    if (!hilo) return;
+    seguirHiloAlFinalRef.current = false;
+    hilo.scrollTo({ top: 0, left: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }, []);
   const irAlFinal = useCallback(() => {
     const hilo = hiloRef.current;
     if (!hilo) return;
@@ -175,6 +182,7 @@ export function ChatPage() {
     if (!hilo) return;
     const cercaDelFinal = hilo.scrollHeight - hilo.scrollTop - hilo.clientHeight <= 48;
     seguirHiloAlFinalRef.current = cercaDelFinal;
+    setMostrarIrAlInicio(hilo.scrollTop > 48);
     setMostrarIrAlFinal(!cercaDelFinal);
   }, []);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -536,6 +544,8 @@ export function ChatPage() {
       ]);
       cambiarBorrador("");
       setPendientes([]);
+      seguirHiloAlFinalRef.current = true;
+      requestAnimationFrame(irAlFinal);
       return;
     }
     const restaurar: Restaurar = { texto: draft, pendientes };
@@ -549,6 +559,7 @@ export function ChatPage() {
     }
     cambiarBorrador("");
     setPendientes([]);
+    seguirHiloAlFinalRef.current = true;
     iniciarEnvio({ id: selectedId, content, restaurar });
   };
 
@@ -745,10 +756,13 @@ export function ChatPage() {
     if (chatHiloIdRef.current !== selectedId) {
       chatHiloIdRef.current = selectedId;
       seguirHiloAlFinalRef.current = true;
+      setMostrarIrAlInicio(false);
       setMostrarIrAlFinal(false);
     }
     if (!hilo || !seguirHiloAlFinalRef.current) return;
     hilo.scrollTo({ top: hilo.scrollHeight, left: 0, behavior: "auto" });
+    setMostrarIrAlInicio(hilo.scrollTop > 48);
+    setMostrarIrAlFinal(false);
   }, [messages.data?.length, enviandoActual, selectedId, tareaChat?.status, tareaChat?.plan_hash, current?.ocupada, selectedId ? vivos[selectedId]?.pasos.length : 0]);
 
   // Solo llega aquí un fallo que no se guardó (409 si el chat ya responde, 4xx o 5xx del servidor).
@@ -1250,14 +1264,6 @@ export function ChatPage() {
                   <HistorialPrompts prompts={prompts} onElegir={irAPrompt} onCerrar={() => setHistorialAbierto(false)} />
                 )}
               </div>
-              {mostrarIrAlFinal && (
-                <button type="button" className="tl-boton tl-hilo-ir-final" onClick={irAlFinal} aria-label="Ir al último mensaje" title="Ir al último mensaje">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M12 5v14" />
-                    <path d="m19 12-7 7-7-7" />
-                  </svg>
-                </button>
-              )}
             </div>
           </header>
 
@@ -1598,6 +1604,14 @@ export function ChatPage() {
               </section>
             )}
 
+            <div className="tl-chat-navegacion" role="group" aria-label="Navegación del chat">
+              <button type="button" onClick={irAlInicio} disabled={!mostrarIrAlInicio} aria-label="Ir al primer mensaje" title="Ir al primer mensaje">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7M5 3h14" /></svg>
+              </button>
+              <button type="button" onClick={irAlFinal} disabled={!mostrarIrAlFinal} aria-label="Ir al último mensaje" title="Ir al último mensaje">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14m-7-7 7 7 7-7M5 21h14" /></svg>
+              </button>
+            </div>
             <div
               className={`tl-composer-caja${arrastrando ? " is-arrastrando" : ""}`}
               onDragOver={alArrastrar}

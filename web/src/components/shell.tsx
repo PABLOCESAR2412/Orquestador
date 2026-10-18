@@ -15,6 +15,7 @@ import { PaletaComandos } from "./paleta-comandos";
 import { useShell } from "./shell-context";
 import { ShellTopbar } from "./shell-topbar";
 import { nuevoChatDelProyecto } from "../lib/chat-proyecto";
+import { aprobacionRevisada } from "../lib/actividad-chat";
 import "../styles-shell.css";
 
 
@@ -500,6 +501,8 @@ export function Shell({ children }: { children: ReactNode }) {
                 {proyectosFiltrados.map((p) => {
                   const expandido = Boolean(filtroTexto) || (proyectosExpandidos[p.id] ?? true);
                   const chats = chatsPorProyecto.get(p.id) || [];
+                  const tieneRevisionNueva = chats.some((chat) => chat.pendiente_aprobacion && !aprobacionRevisada(chat)) ||
+                    (p.pendiente_aprobacion && !chats.some((chat) => chat.pendiente_aprobacion));
                   const chatsVisibles = filtroTexto
                     ? chats.filter((c) => c.title.toLowerCase().includes(q))
                     : chats;
@@ -524,13 +527,13 @@ export function Shell({ children }: { children: ReactNode }) {
                           </span>
                           <span className="tl-proyecto-nombre">{p.name}</span>
                           <span className="tl-proyecto-meta">
-                            {p.en_proceso ? (
+                            {!expandido && p.en_proceso ? (
                               <span className="tl-indicador-spinner" title="Proyecto con tareas en proceso…">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
                                   <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                                 </svg>
                               </span>
-                            ) : p.pendiente_aprobacion ? (
+                            ) : !expandido && tieneRevisionNueva ? (
                               <span className="tl-indicador-alerta" title="Requiere aprobación / atención">
                                 <span className="tl-indicador-dot is-pendiente" />
                               </span>

@@ -30,6 +30,31 @@
   white-space: nowrap;
 }
 
+.picker-aa-nota { padding: 2px 6px 8px; }
+.picker-aa-nota a { color: var(--ink); text-underline-offset: 2px; }
+.picker-aa-nota code { font-size: 11px; }
+.picker-modelo-fila { display: flex; align-items: stretch; gap: 2px; min-width: 0; }
+.picker-modelo-fila > .picker-item { flex: 1 1 auto; min-width: 0; }
+.picker-intelligence { color: var(--signal); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.picker-fijar {
+  flex: 0 0 34px;
+  align-self: center;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.picker-fijar:hover, .picker-fijar.is-fijado { background: var(--surface-2); color: var(--signal); }
+.picker-tus-modelos { padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.picker-tus-modelos .group-title { color: var(--ink); }
+.picker-tus-modelos .picker-proveedor-nota { margin-bottom: 2px; }
+
 .picker-configuracion {
   display: flex;
   flex-direction: column;

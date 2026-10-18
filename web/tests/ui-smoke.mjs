@@ -20,7 +20,7 @@ const browser = await chromium.launch({
 mkdirSync("scratch/capturas-ci", { recursive: true });
 try {
   for (const width of [390, 1440]) {
-    const context = await browser.newContext({ viewport: { width, height: 1000 }, serviceWorkers: "block", permissions: ["clipboard-read", "clipboard-write"] });
+    const context = await browser.newContext({ viewport: { width, height: 1000 }, reducedMotion: "reduce", serviceWorkers: "block", permissions: ["clipboard-read", "clipboard-write"] });
     const page = await context.newPage();
     await page.addInitScript(() => {
       if (window.top !== window) return;
@@ -64,9 +64,9 @@ try {
       if (path === "/api/sesion") return route.fulfill({ status: authenticated ? 200 : 401, json: { ok: authenticated } });
       if (path === "/api/login") { authenticated = true; data = { ok: true }; }
       else if (path === "/api/conversations") data = [
-        { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, project_id: "p1", project_name: "Pruebas", created_at: now },
+        { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, created_at: now },
         { id: "c2", title: "Chat paralelo", model: "nvidia/nemotron-test", project_id: null, project_name: null, created_at: now },
-        { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
+        { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, pendiente_aprobacion: true, estado_tarea: "pendiente_aprobacion", estado_tarea_id: "review-c3", estado_tarea_version: "hash-c3", created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
         { id: "c4", title: "Chat anterior", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() },
       ];
       else if (path === "/api/conversations/c1/messages") {
@@ -98,10 +98,13 @@ try {
           : { estado: "con_cambios", rama: "telo/prueba", base_commit: null, commit: "abcdef012345", archivos: [{ ruta: "src/app.ts", estado: "modificado", adiciones: 2, eliminaciones: 1, binario: false, sensible: false }], hash: "0123456789abcdef", diff: "diff de prueba", truncado: false, remoto: true, aprobaciones: { commit: null, push: null } };
       }
       else if (path.endsWith("/decidir")) { approvals++; actions[1].state = "approved"; actions[1].result = JSON.stringify({ sha: "abcdef012345" }); return route.fulfill({ status: 409, json: { error: "action_already_decided" } }); }
+      else if (path === "/api/models/intelligence") data = { configurado: true, disponible: true, version: 4.3, modelos: [{ slug: "prueba", name: "Google Test", creador: "Google", score: 42.5 }] };
+      else if (path === "/api/models/usage") data = { counts: { "groq/llama-test": 12, "google/prueba": 5, "nvidia/nemotron-test": 3 } };
       else if (path === "/api/models") data = { models: [
         { id: "opencode/claude-fable-5", provider: "opencode", name: "Claude Fable 5", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Claude", recommended: true },
         { id: "google/prueba", provider: "google", name: "Google Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Gemini", recommended: true },
         { id: "nvidia/nemotron-test", provider: "nvidia", name: "Nemotron Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Nemotron", recommended: true },
+        { id: "nvidia/llama-test", provider: "nvidia", name: "NVIDIA Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Llama", recommended: true },
         { id: "groq/llama-test", provider: "groq", name: "Llama Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Llama", recommended: true },
         { id: "groq/other-test", provider: "groq", name: "Other Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Other", recommended: true },
       ] };
@@ -133,7 +136,7 @@ try {
       else if (path.includes("/projects/") && path.includes("/git/comprobar")) data = { ok: true, repo: "ejemplo/pruebas", push: true, verificacion: "confirmada", autenticacion: { tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "PABLOCESAR2412", instalacion_id: 1 } };
       else if (path.includes("/projects/") && path.endsWith("/git")) data = { remote: "https://github.com/ejemplo/pruebas", repository: "ejemplo/pruebas", author_name: "Telo", base_branch: "main", inicializado: true, ocupado: false, token: false, tokenProyecto: false, tokenGlobal: false, prToken: false, ssh: false, github: { conectado: true, metodo: "app", login: "PABLOCESAR2412" } };
       else if (path === "/api/runner") data = { opencode: true, bwrap: true, aislamiento: true };
-      else if (path === "/api/projects") data = [{ id: "p1", name: "Pruebas" }];
+      else if (path === "/api/projects") data = [{ id: "p1", name: "Pruebas", en_proceso: true }];
       else if (path === "/api/documentos" && route.request().method() === "POST") data = { id: "doc1", conversation_id: "c1", titulo: "Documento de prueba", formato: "md", bytes: 123, created_at: now };
       else if (path === "/api/documentos/doc1/vista") {
         return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: "<!doctype html><html><body><p>Vista previa de prueba</p></body></html>" });
@@ -220,6 +223,9 @@ try {
     const imprimirPdf = vistaDocumento.getByRole("link", { name: "PDF / Imprimir" });
     assert.equal(await imprimirPdf.getAttribute("href"), "/api/documentos/doc1/vista");
     assert.equal(await imprimirPdf.getAttribute("target"), "_blank");
+    const descargarDocumento = vistaDocumento.getByRole("link", { name: "Descargar", exact: true });
+    assert.equal(await descargarDocumento.getAttribute("href"), "/api/documentos/doc1/archivo");
+    assert.ok(await descargarDocumento.getAttribute("download") !== null, "la vista permite bajar el archivo generado");
     await vistaDocumento.getByRole("button", { name: "Cerrar", exact: true }).click();
     assert.equal(await page.locator(".tl-tabla-wrap table tbody tr").count(), 1);
     assert.ok((await page.locator(".tl-md pre code").allTextContents()).some(codigo => codigo.includes("└── src/")));
@@ -229,6 +235,12 @@ try {
     assert.equal(await page.locator(".tl-msg-esfuerzo").filter({ hasText: "Alto" }).count(), 1);
     await page.locator(".tl-modelo-boton").click();
     const selectorModelo = page.getByRole("dialog", { name: "Elegir modelo" });
+    assert.match(await selectorModelo.locator(".picker-tus-modelos").innerText(), /Llama Test/);
+    assert.match(await selectorModelo.locator(".picker-tus-modelos").innerText(), /Google Test/);
+    assert.equal(await selectorModelo.locator(".picker-intelligence").filter({ hasText: "AA 42,5" }).count(), 1);
+    const anclarGoogle = selectorModelo.getByRole("button", { name: "Anclar Google Test en favoritos", exact: true });
+    await anclarGoogle.click();
+    assert.equal(await selectorModelo.getByRole("button", { name: "Quitar Google Test de favoritos", exact: true }).getAttribute("aria-pressed"), "true");
     await selectorModelo.locator(".picker-item").filter({ hasText: "Other Test" }).click();
     await page.locator(".tl-modelo-boton .tl-modelo-nombre").filter({ hasText: "Other Test" }).waitFor();
     assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Llama Test" }).count(), 1);
@@ -238,6 +250,7 @@ try {
     await page.locator(".tl-modelo-boton").click();
     await selectorModelo.locator(".picker-item").filter({ hasText: "Google Test" }).click();
     await page.locator(".tl-modelo-boton .tl-modelo-nombre").filter({ hasText: "Google Test" }).waitFor();
+    console.log(`${width}px: selector de modelos y puntuación comprobados`);
     assert.equal(await page.locator(".tl-atajos-barra").count(), 0);
     const inputChat = page.getByRole("textbox", { name: "Mensaje", exact: true });
     const hiloChat = page.locator(".tl-hilo");
@@ -250,6 +263,7 @@ try {
     await inputChat.press("Tab");
     assert.equal(await inputChat.inputValue(), recomendacion, "Tab inserta la recomendación del placeholder");
     await inputChat.fill("");
+    console.log(`${width}px: recomendaciones del compositor comprobadas`);
     if (width === 390) {
       await hiloChat.evaluate(el => { el.scrollTop = 0; el.dispatchEvent(new Event("scroll")); });
       const irAlUltimo = page.getByRole("button", { name: "Ir al último mensaje", exact: true });
@@ -261,7 +275,19 @@ try {
       });
     }
     await inputChat.focus();
-    assert.equal(await page.locator(".tl-composer-caja").evaluate(el => getComputedStyle(el).outlineWidth), "2px");
+    assert.equal(await page.locator(".tl-composer-caja").evaluate(el => getComputedStyle(el).outlineWidth), "1px");
+    console.log(`${width}px: inicia navegación del hilo`);
+    const irAlInicio = page.getByRole("button", { name: "Ir al primer mensaje", exact: true });
+    await irAlInicio.waitFor();
+    await hiloChat.evaluate(el => { el.scrollTop = el.scrollHeight; el.dispatchEvent(new Event("scroll")); });
+    await page.waitForFunction(() => !document.querySelector('.tl-chat-navegacion button[aria-label="Ir al primer mensaje"]')?.disabled);
+    await irAlInicio.click();
+    await page.waitForFunction(() => document.querySelector(".tl-hilo")?.scrollTop <= 2);
+    const irAlUltimoMensaje = page.getByRole("button", { name: "Ir al último mensaje", exact: true });
+    await page.waitForFunction(() => !document.querySelector('.tl-chat-navegacion button[aria-label="Ir al último mensaje"]')?.disabled);
+    await irAlUltimoMensaje.click();
+    await page.waitForFunction(() => { const hilo = document.querySelector(".tl-hilo"); return hilo && hilo.scrollHeight - hilo.scrollTop - hilo.clientHeight <= 2; });
+    console.log(`${width}px: navegación al inicio y al final comprobada`);
     const primerPrompt = page.getByRole("button", { name: "Ir al prompt 1: git commit y push", exact: true });
     await primerPrompt.click();
     await page.waitForFunction(() => document.querySelector(".tl-hilo-hito[aria-current='location']")?.getAttribute("aria-label")?.startsWith("Ir al prompt 1:"));
@@ -340,6 +366,32 @@ try {
     const arbolArchivos = page.locator(".tl-codigo").filter({ hasText: "└── src/" });
     assert.equal(await arbolArchivos.getByRole("button", { name: "Aplicar", exact: true }).count(), 0);
     assert.deepEqual(await page.locator(".tl-rail-seccion-titulo").allTextContents(), ["Proyectos", "Conversaciones"]);
+    if (width === 1440) {
+      const carpetaPruebas = page.locator(".tl-proyecto-carpeta");
+      assert.equal(await page.locator(".tl-proyecto-hijos .sidebar-conv-meta .tl-indicador-spinner").count(), 1);
+      assert.equal(await page.locator(".tl-proyecto-meta .tl-indicador-spinner").count(), 0, "la actividad vive en el chat cuando la carpeta está abierta");
+      await carpetaPruebas.click();
+      assert.equal(await page.locator(".tl-proyecto-meta .tl-indicador-spinner").count(), 1, "la carpeta cerrada conserva un indicador agregado");
+      await carpetaPruebas.click();
+      const chatEnProceso = page.locator('.sidebar-conv[aria-label^="Prueba de flujo"]');
+      await chatEnProceso.hover();
+      await chatEnProceso.locator("..").getByRole("button", { name: "Más opciones para Prueba de flujo", exact: true }).click();
+      const menuChat = page.getByRole("group", { name: "Acciones de Prueba de flujo" });
+      await menuChat.getByRole("button", { name: "Renombrar", exact: true }).waitFor();
+      await menuChat.getByRole("button", { name: "Anclar arriba", exact: true }).waitFor();
+      await menuChat.getByRole("button", { name: "Eliminar", exact: true }).waitFor();
+      await page.keyboard.press("Escape");
+      await chatEnProceso.hover();
+      await chatEnProceso.locator("..").getByRole("button", { name: "Más opciones para Prueba de flujo", exact: true }).click();
+      await chatEnProceso.click();
+      assert.equal(await menuChat.count(), 0, "el menú se cierra al abrir el chat");
+      const chatPendiente = page.locator('.sidebar-conv[aria-label^="Chat de esta semana"]');
+      assert.equal(await chatPendiente.locator(".tl-indicador-dot.is-pendiente").count(), 1);
+      await chatPendiente.click();
+      await page.waitForFunction(() => localStorage.getItem("telo_aprobacion_vista:c3") === "review-c3:hash-c3");
+      assert.equal(await chatPendiente.locator(".tl-indicador-dot.is-pendiente").count(), 0, "el aviso visual desaparece tras revisar ese chat");
+      await page.locator('.sidebar-conv[aria-label^="Prueba de flujo"]').click();
+    }
     if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
     const versionButton = page.getByRole("button", { name: /Ver historial de cambios de la versión/ });
     await versionButton.click();
@@ -391,7 +443,7 @@ try {
     assert.equal((await page.locator(".tl-hilo-columna").textContent()).includes("Envío del chat A"), false);
     liberarEnvioA();
     if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
-    await page.getByRole("button", { name: "Prueba de flujo", exact: true }).click();
+    await page.locator('.sidebar-conv[aria-label^="Prueba de flujo"]').click();
     await page.getByText("Respuesta del chat A", { exact: true }).waitFor();
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Prueba de mensaje");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
@@ -471,7 +523,10 @@ try {
     assert.equal(await page.getByText("Historial de Git", { exact: true }).count(), 0);
     await page.screenshot({ path: `scratch/capturas-ci/chat-${width}.png` });
     if (width === 1440) {
-      await page.getByRole("button", { name: "Eliminar Prueba de flujo" }).click();
+      const chatFila = page.locator('.sidebar-conv[aria-label^="Prueba de flujo"]').locator("..");
+      await chatFila.hover();
+      await chatFila.getByRole("button", { name: "Más opciones para Prueba de flujo", exact: true }).click();
+      await page.getByRole("group", { name: "Acciones de Prueba de flujo" }).getByRole("button", { name: "Eliminar", exact: true }).click();
       const confirmarEliminar = page.locator(".conv-confirm");
       await confirmarEliminar.waitFor();
       assert.equal(await confirmarEliminar.getByText("Se eliminarán «Prueba de flujo» y todos sus mensajes. No se puede deshacer.", { exact: true }).isVisible(), true);

@@ -27,7 +27,7 @@ export function ShellTopbar({
   drawerOpen: boolean;
   onMenu: () => void;
 }) {
-  const { triggerConfig, activeProjectId, activeProjectName } = useShell();
+  const { triggerConfig, activeProjectId } = useShell();
   const enChat = useRouterState({ select: (r) => r.location.pathname === "/chat" });
   const sinConexion = latencia.estado === "sin_conexion";
   const midiendo = latencia.estado === "midiendo";
@@ -58,20 +58,7 @@ export function ShellTopbar({
       </div>
 
       <div className="tl-top-acciones">
-        {enChat && activeProjectId ? (
-          <Link
-            to="/proyectos/$id"
-            params={{ id: activeProjectId }}
-            className="tl-boton"
-            title={activeProjectName ? `Ir al proyecto: ${activeProjectName}` : "Ir al proyecto (carpeta, resumen, instrucciones)"}
-            aria-label="Proyecto"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            </svg>
-            <span className="tl-boton-texto">Proyecto</span>
-          </Link>
-        ) : enChat ? (
+        {enChat && !activeProjectId ? (
           <button
             type="button"
             className="tl-boton"
