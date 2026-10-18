@@ -141,6 +141,23 @@ test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama
   expect(llamadas).toHaveLength(2);
 });
 
+test("no prepara un PR hasta que el commit y el push vigentes estén aprobados", { timeout: 15000 }, async () => {
+  const p = await tareaConCommit();
+  guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
+  db.query("DELETE FROM task_approvals WHERE task_id=? AND accion='commit'").run(p.taskId);
+  const sinCommit = await pedir(`/projects/${p.id}/acciones`, { action: "pr", taskId: p.taskId });
+  expect(sinCommit.status).toBe(409);
+  expect(await sinCommit.json()).toMatchObject({ error: "pr_commit_requerido" });
+  expect(db.query("SELECT 1 FROM repository_actions WHERE task_id=? AND action='pr'").get(p.taskId)).toBeNull();
+
+  await aprobarTarea(p.taskId, { accion: "commit", hash: p.diff.hash!, mensaje: "Commit de prueba" });
+  db.query("DELETE FROM task_approvals WHERE task_id=? AND accion='push'").run(p.taskId);
+  const sinPush = await pedir(`/projects/${p.id}/acciones`, { action: "pr", taskId: p.taskId });
+  expect(sinPush.status).toBe(409);
+  expect(await sinPush.json()).toMatchObject({ error: "pr_push_requerido" });
+  expect(db.query("SELECT 1 FROM repository_actions WHERE task_id=? AND action='pr'").get(p.taskId)).toBeNull();
+});
+
 test("PR sin commits nuevos muestra cómo corregir rama y base", { timeout: 15000 }, async () => {
   const p = await tareaConCommit();
   guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);

@@ -346,30 +346,42 @@ export function ChatPage() {
   const modelList: ModelInfo[] = models.data?.models ?? [];
   const modelInfo = modelList.find((m) => m.id === current?.model) ?? null;
   const lista = messages.data ?? [];
-  const accionesTrasRespuesta = useMemo(() => {
-    const porRespuesta = new Map<string, Map<string, RepositoryAction[]>>();
+  const accionesPorMensaje = useMemo(() => {
+    const porMensaje = new Map<string, Map<string, RepositoryAction[]>>();
     const indices = new Map(lista.map((mensaje, indice) => [mensaje.id, indice] as const));
     for (const accion of accionesGit.data ?? []) {
       if (!accion.message_id) continue;
       const indice = indices.get(accion.message_id);
       if (indice === undefined) continue;
-      let respuestaId: string | undefined;
+      let destinoId: string | undefined;
       for (let i = indice + 1; i < lista.length; i++) {
         if (lista[i]!.role === "user") break;
         if (lista[i]!.role === "assistant") {
-          respuestaId = lista[i]!.id;
+          destinoId = lista[i]!.id;
           break;
         }
       }
-      if (!respuestaId) continue;
-      const porAccion = porRespuesta.get(respuestaId) ?? new Map<string, RepositoryAction[]>();
+      // Mantén la tarjeta oculta mientras el turno aún no tenga respuesta.
+      if (!destinoId) continue;
+      const porAccion = porMensaje.get(destinoId) ?? new Map<string, RepositoryAction[]>();
       const intentos = porAccion.get(accion.action) ?? [];
       intentos.push(accion);
       porAccion.set(accion.action, intentos);
-      porRespuesta.set(respuestaId, porAccion);
+      porMensaje.set(destinoId, porAccion);
     }
-    return porRespuesta;
+    return porMensaje;
   }, [accionesGit.data, lista]);
+  const renderAccionesDe = (mensajeId: string) => current?.project_id && selectedId
+    ? Array.from(accionesPorMensaje.get(mensajeId)?.entries() ?? []).map(([action, intentos]) => {
+        const ultima = intentos.at(-1)!;
+        return (
+          <Fragment key={`${ultima.message_id}-${action}`}>
+            <AccionRepositorioMensaje accion={ultima} conversationId={selectedId} projectId={current.project_id!} taskId={tareaChat?.id} />
+            {intentos.length > 1 && <AccionesAnteriores acciones={intentos.slice(0, -1)} />}
+          </Fragment>
+        );
+      })
+    : null;
 
   const configure = useMutation({
     mutationFn: (patch: Patch) => api.updateConversation(selectedId!, patch),
@@ -1374,14 +1386,17 @@ export function ChatPage() {
                       )}
                     </article>
                   ) : m.role === "user" ? (
-                    <MensajeUsuario
-                      id={`mensaje-${m.id}`}
-                      texto={m.content}
-                      cuando={m.created_at}
-                      resaltado={resaltadoId === m.id}
-                      marcado={hitos.includes(m.id)}
-                      onToggleMarca={() => marcarPrompt(m.id)}
-                    />
+                    <>
+                      <MensajeUsuario
+                        id={`mensaje-${m.id}`}
+                        texto={m.content}
+                        cuando={m.created_at}
+                        resaltado={resaltadoId === m.id}
+                        marcado={hitos.includes(m.id)}
+                        onToggleMarca={() => marcarPrompt(m.id)}
+                      />
+                      {renderAccionesDe(m.id)}
+                    </>
                   ) : (
                     <>
                       <MensajeAgente
@@ -1409,17 +1424,7 @@ export function ChatPage() {
                           window.setTimeout(() => inputRef.current?.focus(), 0);
                         }}
                       />
-                      {current?.project_id && Array.from(accionesTrasRespuesta.get(m.id)?.entries() ?? []).map(([action, intentos]) => {
-                        const ultima = intentos.at(-1)!;
-                        const anteriores = intentos.slice(0, -1);
-                        const accionAlFinal = ultima.task_id === tareaChat?.id;
-                        return (
-                          <Fragment key={`${ultima.message_id}-${action}`}>
-                            {!accionAlFinal && <AccionRepositorioMensaje accion={ultima} conversationId={selectedId!} projectId={current.project_id!} taskId={tareaChat?.id} />}
-                            {anteriores.length > 0 && <AccionesAnteriores acciones={anteriores} />}
-                          </Fragment>
-                        );
-                      })}
+                      {renderAccionesDe(m.id)}
                     </>
                   )}
                 </div>

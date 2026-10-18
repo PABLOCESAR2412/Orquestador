@@ -71,6 +71,15 @@ export function nombreDeMedio(prompt: string, tipo: TipoMedio): string {
   return `${base || (tipo === "imagen" ? "imagen-generada" : "video-generado")}.${tipo === "imagen" ? "png" : "mp4"}`;
 }
 
+function promptVisual(solicitud: SolicitudMedio): string {
+  const direccion = solicitud.tipo === "video"
+    ? "Dirección visual: conserva la continuidad del sujeto, la escena y el estilo durante todo el clip; usa movimiento de cámara deliberado y evita parpadeos, deformaciones o cambios de identidad. Respeta la duración, orientación y estilo solicitados."
+    : /infograf[ií]a|l[ií]nea del tiempo|cronolog[ií]a|gr[aá]fico|diagrama|mapa mental|estad[ií]stica/i.test(solicitud.prompt)
+      ? "Dirección visual para infografía: organiza la información en una retícula clara con zonas separadas, jerarquía tipográfica y márgenes generosos. Mantén títulos, líneas de tiempo, gráficos, etiquetas y cifras en áreas distintas; alinea los elementos y deja espacio suficiente para que no se solapen ni se recorten. Conserva nombres, fechas y cifras exactamente como se solicitaron, no inventes datos y prioriza legibilidad sobre decoración."
+      : "Dirección visual: respeta la estética indicada y crea una composición intencional con un foco claro, equilibrio, espacio negativo y contraste legible. Evita texto accidental, elementos duplicados, solapamientos o recortes; incluye texto solo si se pidió. Respeta la orientación y resolución solicitadas.";
+  return `${solicitud.prompt}\n\n${direccion}`;
+}
+
 function registro(valor: unknown): Record<string, any> | null {
   return typeof valor === "object" && valor !== null && !Array.isArray(valor) ? valor as Record<string, any> : null;
 }
@@ -105,7 +114,7 @@ export async function generarImagen(
     signal: AbortSignal.timeout(120_000),
     body: JSON.stringify({
       model: solicitud.modelo,
-      input: solicitud.prompt,
+      input: promptVisual(solicitud),
       response_format: {
         type: "image",
         mime_type: "image/png",
@@ -138,7 +147,7 @@ export async function iniciarVideo(
     headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
     signal: AbortSignal.timeout(30_000),
     body: JSON.stringify({
-      instances: [{ prompt: solicitud.prompt }],
+      instances: [{ prompt: promptVisual(solicitud) }],
       parameters: {
         aspectRatio: solicitud.relacion,
         durationSeconds: String(solicitud.duracionSegundos),

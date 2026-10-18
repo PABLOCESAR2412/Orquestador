@@ -353,9 +353,6 @@ export function AccionesRepositorioChat({
   const pendiente = lista.find(
     (a) => a.state === "pending" || a.state === "executing",
   );
-  const accionesDeTarea = taskId
-    ? [...new Map(lista.filter((accion) => accion.task_id === taskId).map((accion) => [accion.action, accion])).values()]
-    : [];
   const diff = diffQuery.data?.estado === "en_curso" ? undefined : diffQuery.data;
   const archivos = diff?.archivos ?? [];
   const adiciones = archivos.reduce((total, archivo) => total + archivo.adiciones, 0);
@@ -365,8 +362,14 @@ export function AccionesRepositorioChat({
     diff.aprobaciones.commit.hash === diff.hash &&
     diff.aprobaciones.commit.sha === diff.commit,
   );
+  const pushAprobacion = diff?.aprobaciones.push;
   const pushVigente = Boolean(
-    commitVigente && diff?.aprobaciones.push?.sha === diff?.commit,
+    commitVigente &&
+    diff?.remoto &&
+    pushAprobacion &&
+    pushAprobacion.sha === diff.commit &&
+    pushAprobacion.remoto === diff.remoto_url &&
+    pushAprobacion.rama === diff.rama,
   );
   const ramaSubida = diff?.aprobaciones.push?.rama ?? diff?.rama;
   const prCreado = lista.find(
@@ -457,15 +460,6 @@ export function AccionesRepositorioChat({
           )}
         </section>
       )}
-      {projectId && taskId && accionesDeTarea.map((accion) => (
-        <AccionRepositorioMensaje
-          key={accion.id}
-          accion={accion}
-          conversationId={conversationId}
-          projectId={projectId}
-          taskId={taskId}
-        />
-      ))}
       {projectId && terminada && taskId && diff && !pendiente && (
         <div className="approval-buttons" aria-label="Acciones del repositorio">
           {tieneCambios && !pushVigente && (

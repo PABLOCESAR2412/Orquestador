@@ -168,6 +168,7 @@ export type TaskDiff =
       truncado: boolean;
       hash: string | null;
       remoto: boolean;
+      remoto_url?: string | null;
       aprobaciones: {
         commit: { estado: "pendiente" | "aprobada"; sha: string; hash: string; decidida_en: string; mensaje: string } | null;
         push: { sha: string; remoto: string; rama?: string; autenticacion?: FuenteAutenticacionGithub | null; decidida_en: string } | null;
@@ -480,6 +481,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function requestPdf(path: string): Promise<Blob> {
+  const res = await fetch(path, { headers: { Accept: "application/pdf" } });
+  if (!res.ok) {
+    if (res.status === 401 && location.pathname !== "/entrar") location.assign("/entrar");
+    const body = (await res.json().catch(() => ({}))) as { error?: string; detail?: string; mensaje?: string };
+    throw new ApiError(res.status, body.error ?? `http_${res.status}`, body.detail ?? body.mensaje);
+  }
+  if (!res.headers.get("content-type")?.toLowerCase().includes("application/pdf")) {
+    throw new ApiError(415, "formato_pdf_invalido", "El servidor no devolvió un documento PDF.");
+  }
+  const archivo = await res.blob();
+  if (archivo.size === 0) throw new ApiError(415, "formato_pdf_invalido", "El PDF está vacío.");
+  return archivo;
+}
+
 // Instalación de una herramienta del servidor (hoy OpenCode). El servidor solo ejecuta su comando fijo.
 export type InstalacionHerramienta = {
   herramienta: string;
@@ -625,6 +641,7 @@ export const api = {
     }),
   listMessages: (id: string) => request<Message[]>(`/api/conversations/${id}/messages`),
   chatPdfInfo: (id: string, ruta: string) => request<ChatPdfInfo>(urlPdfConversacion(id, ruta, false, true)),
+  chatPdf: (id: string, ruta: string) => requestPdf(urlPdfConversacion(id, ruta)),
   chatImageInfo: (id: string, ruta: string) => request<ChatImageInfo>(urlImagenConversacion(id, ruta, false, true)),
   // Pasos del agente de un turno (el id es el del mensaje del usuario).
   listTurnoActividad: (conversacionId: string, turnoId: string) =>

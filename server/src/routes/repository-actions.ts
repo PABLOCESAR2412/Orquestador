@@ -94,6 +94,31 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
     }
     if (b.action === "push" && !diff?.remoto)
       return c.json({ error: "sin_remoto" }, 409);
+    if (b.action === "pr" && diff) {
+      const commitVigente = Boolean(
+        diff.aprobaciones.commit &&
+        diff.aprobaciones.commit.hash === diff.hash &&
+        diff.aprobaciones.commit.sha === diff.commit,
+      );
+      if (!commitVigente) {
+        return c.json({
+          error: "pr_commit_requerido",
+          detail: "Primero crea y aprueba el commit de esta versión de los cambios.",
+        }, 409);
+      }
+      const pushVigente = Boolean(
+        diff.aprobaciones.push &&
+        diff.aprobaciones.push.sha === diff.commit &&
+        diff.aprobaciones.push.rama === diff.rama &&
+        diff.aprobaciones.push.remoto === diff.remoto_url,
+      );
+      if (!pushVigente) {
+        return c.json({
+          error: "pr_push_requerido",
+          detail: "Primero sube a GitHub el commit aprobado de esta rama.",
+        }, 409);
+      }
+    }
     const cfg = configGit(projectId);
     const remotoDePr = b.pr_url ? urlGithubPermitida(b.pr_url.replace(/\/pull\/\d+.*$/, "")) : null;
     const remotoDestino = diff?.remoto_url ?? remotoDePr ?? cfg.remote ?? null;

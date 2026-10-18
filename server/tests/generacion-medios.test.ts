@@ -58,6 +58,19 @@ describe("Google API multimedia", () => {
     expect(new TextDecoder().decode(salida.contenido)).toBe("png-data");
   });
 
+  test("añade una composición legible sin alterar los datos pedidos para una infografía", async () => {
+    const solicitud = detectarSolicitudMedio("Crea una infografía con cronología 1939-1945 y 70-85 millones de víctimas")!;
+    let promptEnviado = "";
+    const fetcher = (async (_input: string | URL, init?: RequestInit) => {
+      promptEnviado = JSON.parse(String(init?.body)).input;
+      return new Response(JSON.stringify({ output_image: { data: Buffer.from("png-data").toString("base64"), mime_type: "image/png" } }), { status: 200 });
+    }) as typeof fetch;
+    await generarImagen(solicitud, "test-api-key", fetcher);
+    expect(promptEnviado).toContain("cronología 1939-1945 y 70-85 millones de víctimas");
+    expect(promptEnviado).toContain("no se solapen ni se recorten");
+    expect(promptEnviado).toContain("no inventes datos");
+  });
+
   test("inicia video con opciones soportadas y guarda su operación", async () => {
     const solicitud = detectarSolicitudMedio("Hazme un video vertical de 8 segundos")!;
     let payload: Record<string, any> | null = null;

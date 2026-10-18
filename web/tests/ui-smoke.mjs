@@ -489,7 +489,9 @@ try {
     await referenciaPdf.click();
     const vistaPdf = page.getByRole("complementary", { name: "Vista del archivo informe revisión.pdf" });
     await vistaPdf.waitFor();
-    await vistaPdf.getByTitle("Vista previa de informe revisión.pdf").waitFor();
+    const paginaPdf = vistaPdf.getByRole("img", { name: "Página 1 de 1 del PDF", exact: true });
+    await paginaPdf.waitFor();
+    assert.ok(await paginaPdf.evaluate(canvas => canvas.width > 0 && canvas.height > 0), "PDF.js dibuja la primera página en un canvas real");
     assert.equal(await vistaPdf.locator(".tl-chat-archivo-tipo").textContent(), "PDF");
     const enlacePdf = vistaPdf.getByRole("link", { name: "Descargar PDF", exact: true });
     assert.match(await enlacePdf.getAttribute("href"), /archivo-pdf.*descargar=1/);
@@ -574,20 +576,17 @@ try {
     assert.equal(await page.getByRole("article", { name: "Acción de Git" }).count(), 1);
     await page.getByText("Ver 1 intento anterior", { exact: true }).waitFor();
     await page.locator(".tl-resumen-cambios").waitFor();
-    const cambiosAntesDeAccion = await page.locator(".tl-hilo-columna").evaluate(root => {
-      const cambios = root.querySelector(".tl-resumen-cambios");
+    const accionTrasSuRespuesta = await page.locator(".tl-hilo-columna").evaluate(root => {
+      const respuesta = [...root.querySelectorAll(".tl-msg-agente")].find(mensaje => mensaje.textContent?.includes("El segundo intento está listo para revisar."));
       const accion = root.querySelector('article[aria-label="Acción de Git"]');
-      return Boolean(cambios && accion && (cambios.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING));
+      return Boolean(respuesta && accion && (respuesta.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING));
     });
-    assert.equal(cambiosAntesDeAccion, true);
+    assert.equal(accionTrasSuRespuesta, true, "la tarjeta Git aparece después de la respuesta que la originó");
     assert.equal(await page.locator(".tl-detalles-reporte pre").isVisible(), false);
     assert.equal((await page.locator("body").textContent()).includes("MEMORIA_INTERNA"), false);
     await page.getByRole("button", { name: "Autorizar commit y push", exact: true }).click();
     await page.getByText("Completada", { exact: true }).waitFor();
-    assert.equal(await page.locator(".tl-resumen-cambios").evaluate(cambios => {
-      const accion = document.querySelector('article[aria-label="Acción de Git"]');
-      return Boolean(accion && (cambios.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING));
-    }), true);
+    assert.equal(await page.locator('article[aria-label="Acción de Git"]').count(), 1, "la decisión actualiza la misma tarjeta dentro de su turno");
     assert.equal(approvals, 1);
     assert.equal(await page.locator('article[aria-label="Acción de Git"] [role="alert"]').count(), 0);
     await hiloChat.evaluate(el => { el.scrollTop = 0; el.dispatchEvent(new Event("scroll")); });
@@ -611,6 +610,10 @@ try {
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Prueba de mensaje");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByText("Mensaje recibido", { exact: true }).waitFor();
+    assert.equal(await page.locator('article[aria-label="Acción de Git"]').evaluate(accion => {
+      const respuestaPosterior = [...document.querySelectorAll(".tl-msg-agente")].find(mensaje => mensaje.textContent?.includes("Mensaje recibido"));
+      return Boolean(respuestaPosterior && (accion.compareDocumentPosition(respuestaPosterior) & Node.DOCUMENT_POSITION_FOLLOWING));
+    }), true, "la tarjeta Git permanece junto a su turno y no salta al final de los mensajes nuevos");
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Haz una imagen de un colibrí");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByRole("button", { name: "Uso", exact: true }).click();
@@ -704,7 +707,7 @@ try {
     await pdfLibre.waitFor();
     await pdfLibre.click();
     const visorPdfLibre = page.getByRole("complementary", { name: "Vista del archivo libre.pdf" });
-    await visorPdfLibre.getByTitle("Vista previa de libre.pdf").waitFor();
+    await visorPdfLibre.getByRole("img", { name: "Página 1 de 1 del PDF", exact: true }).waitFor();
     const descargarPdfLibre = visorPdfLibre.getByRole("link", { name: "Descargar PDF", exact: true });
     assert.match(await descargarPdfLibre.getAttribute("href"), /\/conversations\/c2\/archivo-pdf/);
     const [archivoPdfLibre] = await Promise.all([page.waitForEvent("download"), descargarPdfLibre.click()]);

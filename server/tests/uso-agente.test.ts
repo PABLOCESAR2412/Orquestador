@@ -13,7 +13,7 @@ process.env.TELO_PROYECTOS_DIR = join(RAIZ_PRUEBAS, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 
 const { db } = await import("../src/db");
-const { registrarUsoAgente } = await import("../src/ejecutar");
+const { registrarUsoAgente, conEstilo } = await import("../src/ejecutar");
 const projectId = crypto.randomUUID();
 const conversationId = crypto.randomUUID();
 const taskId = crypto.randomUUID();
@@ -34,6 +34,10 @@ afterAll(() => {
 });
 
 describe("registro inmediato del uso del agente", () => {
+  test("las respuestas de chat incluyen una guía visual breve para los entregables", () => {
+    expect(conEstilo("Crea un gráfico con estos datos", "chat")).toContain("Calidad visual por defecto");
+  });
+
   test("guarda cada paso y el intento de respaldo con su modelo", () => {
     const contexto = { projectId, conversationId, taskId };
     registrarUsoAgente(
