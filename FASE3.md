@@ -1,5 +1,7 @@
 # Fase 3: correcciones tras probar en el VM
 
+> Documento histórico de traspaso. Ramas, conteos de pruebas y estados son snapshots de la fecha indicada, no describen el checkout actual. Los harnesses visuales bajo `scratchpad/` eran locales y no están versionados.
+
 Documento de traspaso. Quien lo continúe debe leer también `CLAUDE.md`, `DESIGN.md` y `FASE2.md`.
 
 Rama de trabajo: `fix/notas-acciones-git`, desde `main` (`90f324e`). Contiene las correcciones de la Tarea 11 y de las pruebas de Codex. Sin commit ni push todavía. La rama `feat/seguir-tras-cuota` ya está en `main` por el PR 35.
@@ -23,12 +25,12 @@ Leyenda: [x] hecho y verificado · [~] escrito, sin probar · [ ] pendiente
 ## Comandos de verificación
 
 ```
-cd server && bun test                      # suite del servidor (hoy 246 pasan)
+cd server && bun test                      # suite actual; los conteos indicados en tareas son históricos
 cd server && bunx tsc --noEmit -p .       # typecheck servidor
 cd web && bun run build                    # typecheck + build web (obligatorio antes de revisar UI)
 ```
 
-Revisión visual: `scratchpad/claves-ui/visual.mjs` levanta un servidor propio en el puerto 4770, con `opencode` falso (`scratchpad/cuota-e2e/bin`), y usa Playwright (`/opt/npm-tools/node_modules/playwright-core`, `executablePath: /opt/pw-browsers/chromium`). Hay que reconstruir `web/dist` antes de cada revisión. Para `waitUntil` usar `domcontentloaded`: la página mantiene abierto el SSE y `networkidle` nunca llega.
+La revisión visual histórica usó un harness local no versionado. El canal en vivo admite SSE y sondeo; la interfaz actual usa `GET /api/eventos-vivos/poll`.
 
 ---
 
@@ -37,13 +39,13 @@ Revisión visual: `scratchpad/claves-ui/visual.mjs` levanta un servidor propio e
 Lista de control. Se marca lo hecho en cada tarea y aquí a la vez.
 
 - [x] **Servidor del chat en segundo plano** (commit `6dddd05`). `POST /api/conversations/:id/messages` y `/seguir` guardan el mensaje, lanzan el turno en segundo plano y responden **202** `{ messages: [turno] }`. Los fallos quedan como mensaje `role: "system"` en el chat. Verificado: `bun test tests/chat-turnos.test.ts` pasa (4 de 4) y `tsc --noEmit` del servidor está limpio.
-- [x] Evento SSE `chat` (`bus.ts`, `routes/stream.ts`, `api.ts`, `lib/eventos-vivos.ts`).
+- [x] Evento `chat` en el canal en vivo (`bus.ts`, `routes/stream.ts`, `api.ts`, `lib/eventos-vivos.ts`); la interfaz lo consume mediante sondeo corto.
 - [x] `avisarTurnosInterrumpidos()` en el arranque (`index.ts`).
 - [x] **Tarea 1.** Web del chat (`chat.tsx`). Hecha: envío sin respuesta del servidor comprobado contra la lista (sin duplicar ni perder el texto), `GUARDADO_EN_ERROR` quitado, evento `chat` escuchado, aviso `system` como alerta de estado. Verificada con Playwright (corte de respuesta, 409 simulado, fallo del agente, mensaje de otro dispositivo). Captura a 390 y 1440 px. Entrada en `cambios.json`.
 - [x] **Tarea 2.** Barra lateral: sin enlace Chat; chats de proyecto visibles con su nombre debajo. Verificada a 390 y 1440 px, sin desborde. `DESIGN.md` y `cambios.json` actualizados.
-- [x] **Tarea 3.** Modelos de Groq, NVIDIA y Gemini visibles cuando su clave llega al CLI; Gemini con dos variables; diagnóstico en Ajustes ("N modelos en el selector" o aviso si OpenCode no tiene modelos del proveedor). Verificado: `bun test` completo en verde (209), `tsc` limpio, y Playwright en Ajustes a 390 y 1440 px. **Pendiente en el VM:** confirmar el id `google` y el nombre de variable de NVIDIA con `opencode models`.
+- [x] **Tarea 3.** Modelos de Groq, NVIDIA y Gemini visibles cuando su clave llega al CLI; Gemini con dos variables; diagnóstico en Ajustes. Verificación registrada entonces: 209 pruebas, `tsc` y revisión visual (conteos históricos, no actuales). **Pendiente en el VM:** confirmar el id `google` y el nombre de variable de NVIDIA con `opencode models`.
 - [x] **Tarea 4.** Vista de proyectos con métricas (chats, tareas, última actividad desde `GET /api/projects`) y acciones en iconos de 40 px. Verificada a 390 y 1440 px, claro y oscuro: métricas, 40 px, anclar desde el icono, confirmación al eliminar, sin desborde. Pruebas de servidor en `proyectos.test.ts`.
-- [x] **Tarea 5.** Cierre de la fase 3. Hecho: documentación, `cambios.json`, pruebas (servidor 246 en verde, `tsc` limpio, `bun run build`, navegador 29 de 29 en las tareas 7, 9 y Codex). Subido con aprobación del usuario: `502b781` y merge `79b126e`.
+- [x] **Tarea 5.** Cierre de la fase 3. Verificación registrada entonces: 246 pruebas, `tsc`, `bun run build` y 29 revisiones de navegador (cifras históricas, no actuales). Subido con aprobación del usuario: `502b781` y merge `79b126e`.
 - [~] **Tarea 6.** Estado, logs y gasto de Azure en Ajustes. **Hecho:** estado de la unidad y registros (`GET /api/servidor/servicio` y `/logs`, con redacción y sin shell; botón Ver logs activo). Verificado en el navegador y en `servidor-logs.test.ts`. **Pendiente:** gasto de Azure, que espera la decisión del usuario sobre la identidad del VM (ver tarea 6, punto 3).
 - [x] **Tarea 7.** Skills globales y por proyecto, editables desde la app. Verificada en navegador a 390 y 1440 px, y en `skills.test.ts`. **Pendiente en el VM:** confirmar que OpenCode las lista.
 - [x] **Tarea 8.** Memoria del proyecto editable desde la app (`PUT /api/projects/:id/memoria`, con redacción y límite de 4 000 caracteres; botones Editar, Escribir, Guardar, Cancelar y Borrar). Verificada en el navegador a 390 y 1440 px, y en `proyectos.test.ts`. Supuesto confirmado en el código: "memoria" = memoria aprendida por proyecto.
@@ -55,7 +57,7 @@ Lista de control. Se marca lo hecho en cada tarea y aquí a la vez.
 - [x] **Corrección.** El error «opencode salió con código 143» ya no aparece: el chat explica el límite de 3 minutos. Causa en «Diagnóstico del 143».
 - [x] **Corrección.** `/tmp` propio dentro del sandbox: OpenCode ya no falla con «Read-only file system». Verificado con bwrap real.
 - [x] **Corrección.** Notas del plan: al aprobar con notas, el obrero ya no rechaza el plan con «El plan cambió después de su aprobación». El hash cubre el plan sin las notas (`sinNotas`). La prueba extremo a extremo del analizador pasa.
-- [x] **Corrección.** Pruebas de Codex: `HOME` se fija y se restaura en `beforeAll`/`afterAll`, y las rutas de sesión se calculan en cada uso (`login-cli.ts`). Suite del servidor: 290 pasan, 7 se omiten, 0 fallan.
+- [x] **Corrección.** Pruebas de Codex: `HOME` se fija y se restaura en `beforeAll`/`afterAll`, y las rutas de sesión se calculan en cada uso (`login-cli.ts`). Snapshot de esa suite: 290 aprobadas, 7 omitidas, 0 fallidas.
 - [x] **Barra lateral.** Se quitó el nombre del proyecto debajo de cada chat. Verificada a 390 y 1440 px.
 
 Orden: tareas 1 a 5 primero (ya acordadas), luego 6 a 10 en el orden en que el usuario las pidió. Decisiones tomadas: skills globales y por proyecto (7), instalar OpenCode con confirmación (9), login de Codex en el VM (10a). Pendiente: Claude gratis (10b), el gasto de Azure (6, necesita la identidad del VM) y lo que queda de las acciones git desde los chats (11).
@@ -237,7 +239,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 - La salida pasa por `redaccion.ts`. Los motivos son legibles: npm no disponible, fallo de npm, tiempo agotado, CLI no visible tras instalar.
 - **Por qué npm y no `curl … | bash`.** La documentación de OpenCode recomienda el script, pero ejecutar un script remoto no es un comando fijo. npm instala un paquete versionado. Con `--prefix ~/.opencode` el ejecutable queda en una carpeta que el agente ya ve en solo lectura, así que no hace falta tocar `TELO_LECTURA_EXTRA`.
 - Tras instalar, el servidor añade `~/.opencode/bin` a su PATH sin reiniciar. Al arrancar hace lo mismo (`asegurarRutaInstalada`).
-- **Código:** `server/src/instalacion.ts`, `server/src/routes/herramientas.ts`, `web/src/components/instalar-opencode.tsx`.
+- **Código:** `server/src/instalacion.ts`, `server/src/routes/herramientas.ts`, `web/src/components/instalar-herramienta.tsx`.
 
 **Corrección hecha durante la verificación.** `Bun.which` usa el PATH con el que arrancó el proceso, no el actual. Tras instalar, el CLI no se veía. Ahora `server/src/ejecutable.ts` (`hallarEjecutable`, `lanzarEnGrupo`, `matarGrupo`) pasa el PATH vivo, y lo usan todos los sitios que buscan programas.
 
@@ -279,7 +281,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 - `server/src/login-cli.ts` lanza `codex login --device-auth` en su propio grupo de procesos, con entorno mínimo. Lee la salida mientras el CLI espera y extrae la URL y el código.
 - Rutas: `GET`, `POST` y `DELETE /api/providers/codex/login`. Una sesión a la vez (409 si ya hay una). Tiempo máximo de 15 minutos. Cancelar termina el grupo.
 - **El token no se lee ni se muestra.** La salida se redacta. El éxito se decide por salida 0 y porque exista el archivo de sesión; ese archivo solo se comprueba, nunca se abre.
-- `~/.codex` no está en la lista de bubblewrap: los agentes no lo ven.
+- `~/.codex` está en `HERRAMIENTAS` de `server/src/runners/aislamiento.ts` y se monta en solo lectura.
 - En la tarjeta de Codex: «Iniciar sesión» → enlace y código → «Sesión iniciada en el servidor». «Ya lo hice» comprueba el estado y mantiene el enlace mientras el CLI espera.
 - Codex **no** es todavía proveedor de los agentes. La tarjeta lo dice.
 

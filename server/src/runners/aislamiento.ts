@@ -1,4 +1,5 @@
-import { existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { config } from "../config";
 import { hallarEjecutable } from "../ejecutable";
@@ -24,7 +25,7 @@ export class AislamientoError extends Error {
 // server/src/runners -> raíz del repo
 const RAIZ_REPO = resolve(import.meta.dir, "../../..");
 
-// Estado de OpenCode y herramientas de agente dentro del HOME: lectura y escritura.
+// Estado compartido de compatibilidad para ejecuciones directas sin perfil persistente.
 const ESTADO_OPENCODE = [
   ".local/share/opencode",
   ".local/state/opencode",
@@ -47,6 +48,38 @@ function rutaReal(ruta: string): string | null {
 
 function dentro(ruta: string, raiz: string): boolean {
   return ruta.startsWith(raiz + sep);
+}
+
+function rutaPerfilOpenCode(id: string): string {
+  const sello = createHash("sha256").update(id).digest("hex");
+  return join(config.dataDir, "perfiles-opencode", sello);
+}
+
+// Una sesión por conversación permite reanudarla sin compartir las sesiones entre chats.
+// Las tareas sin chat usan su propio ID y la limpieza de tareas purga el perfil tras la retención.
+export function prepararPerfilOpenCode(id: string): string {
+  const perfil = rutaPerfilOpenCode(id);
+  for (const ruta of ["data/opencode", "state/opencode", "cache/opencode"]) {
+    mkdirSync(join(perfil, ruta), { recursive: true, mode: 0o700 });
+  }
+  return perfil;
+}
+
+export function eliminarPerfilOpenCode(id: string): void {
+  rmSync(rutaPerfilOpenCode(id), { recursive: true, force: true });
+}
+
+function authJsonOpenCode(home: string): string | null {
+  const candidatos = [
+    join(home, ".local", "share", "opencode", "auth.json"),
+    process.env.XDG_DATA_HOME ? join(process.env.XDG_DATA_HOME, "opencode", "auth.json") : null,
+    join(home, ".config", "opencode", "auth.json"),
+    join(home, ".opencode", "auth.json"),
+  ].filter((ruta): ruta is string => Boolean(ruta));
+  for (const ruta of candidatos) {
+    if (existsSync(ruta)) return rutaReal(ruta) ?? ruta;
+  }
+  return null;
 }
 
 // Carpetas donde un agente puede trabajar: un proyecto registrado (dentro de TELO_PROYECTOS_DIR)
@@ -89,6 +122,8 @@ export function prefijoAislamiento(
   cwd: string,
   soloLectura = false,
   adjuntos: { ruta: string; rutaVisible: string }[] = [],
+  perfilOpenCodeDir?: string,
+  opencodeConfigDir?: string,
 ): string[] {
   if (!aislamientoActivo()) return [];
 
@@ -138,9 +173,31 @@ export function prefijoAislamiento(
   }
 
   if (home) {
-    for (const rel of ESTADO_OPENCODE) {
-      const ruta = join(home, rel);
-      args.push("--bind-try", ruta, ruta);
+    if (perfilOpenCodeDir) {
+      const raizPerfiles = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-opencode");
+      const perfilReal = rutaReal(perfilOpenCodeDir);
+      if (!perfilReal || !dentro(perfilReal, raizPerfiles)) {
+        throw new AislamientoError("carpeta_no_permitida", "El perfil de OpenCode no está dentro del almacenamiento de Telo.");
+      }
+      const destino = "/tmp/telo-opencode-profile";
+      args.push("--dir", destino, "--bind", perfilReal, destino);
+      const authJson = authJsonOpenCode(home);
+      if (authJson) {
+        const authDestino = join(perfilReal, "data", "opencode", "auth.json");
+        if (!existsSync(authDestino)) {
+          try {
+            writeFileSync(authDestino, "{}", { encoding: "utf8", flag: "wx", mode: 0o600 });
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+          }
+        }
+        args.push("--ro-bind-try", authJson, join(destino, "data", "opencode", "auth.json"));
+      }
+    } else {
+      for (const rel of ESTADO_OPENCODE) {
+        const ruta = join(home, rel);
+        args.push("--bind-try", ruta, ruta);
+      }
     }
     // Las skills globales las edita la app y la persona, no el agente: se montan en solo lectura encima del
     // estado de OpenCode (bwrap aplica el montaje posterior). Así un agente no deja instrucciones para los demás.
@@ -154,6 +211,15 @@ export function prefijoAislamiento(
       const ruta = join(home, rel);
       args.push("--ro-bind-try", ruta, ruta);
     }
+  }
+
+  if (opencodeConfigDir) {
+    const raizPerfiles = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-subagente");
+    const perfilReal = rutaReal(opencodeConfigDir);
+    if (!perfilReal || !dentro(perfilReal, raizPerfiles)) {
+      throw new AislamientoError("carpeta_no_permitida", "La configuración de subagentes no está dentro del almacenamiento de Telo.");
+    }
+    args.push("--dir", "/tmp/telo-opencode-config", "--ro-bind", perfilReal, "/tmp/telo-opencode-config");
   }
 
   // Rutas extra en solo lectura (TELO_LECTURA_EXTRA, separadas por ":"), por ejemplo la carpeta de opencode

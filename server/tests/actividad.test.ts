@@ -16,7 +16,7 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 const { itemDeLinea, describirAccion, vistaDe, registrarActividad, actividadDelTurno } = await import(
   "../src/actividad"
 );
-const { suscribir } = await import("../src/bus");
+const { suscribirConEventosDesde } = await import("../src/bus");
 import type { EventoVivo } from "../src/bus";
 const { db } = await import("../src/db");
 
@@ -164,7 +164,7 @@ describe("registro por turno", () => {
   test("los pasos se numeran en orden, se leen por turno y se publican al canal en vivo", () => {
     const turno = "turno-orden";
     const recibidos: EventoVivo[] = [];
-    const baja = suscribir((e) => recibidos.push(e));
+    const baja = suscribirConEventosDesde(null, (e) => recibidos.push(e)).baja;
     try {
       registrarActividad(CONVERSACION, turno, { tipo: "texto", texto: "Voy a revisarlo." });
       registrarActividad(CONVERSACION, turno, {
@@ -195,7 +195,7 @@ describe("registro por turno", () => {
   test("el cierre de una herramienta actualiza el paso en curso sin duplicarlo", () => {
     const turno = "turno-herramienta-en-curso";
     const recibidos: EventoVivo[] = [];
-    const baja = suscribir((e) => recibidos.push(e));
+    const baja = suscribirConEventosDesde(null, (e) => recibidos.push(e)).baja;
     try {
       const inicio = itemDeLinea(herramienta("bash", { status: "running", input: { command: "bun test" } }));
       const fin = itemDeLinea(herramienta("bash", { status: "completed", input: { command: "bun test" }, output: "5 pass" }));

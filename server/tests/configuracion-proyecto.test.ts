@@ -1,10 +1,11 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { randomBytes, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 
-const raiz = join(import.meta.dir, ".test-data-config-" + randomUUID().slice(0, 8));
+const raiz = join(tmpdir(), "telo-test-config-" + randomUUID());
 process.env.DATA_DIR = join(raiz, "data");
 process.env.TELO_PROYECTOS_DIR = join(raiz, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });

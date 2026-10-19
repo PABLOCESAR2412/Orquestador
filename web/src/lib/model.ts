@@ -107,7 +107,6 @@ export const EVENT_LABEL: Record<TaskEventKind, string> = {
   plan_aprobado: "Plan aprobado",
   plan_rechazado: "Plan rechazado",
   plan_revision: "El plan necesita revisión",
-  turno_encolado: "Nuevo mensaje de la conversación",
   replanificada: "Replanificada por desviación",
   obrero_iniciado: "Obrero ejecutando el plan",
   clasificacion_jev: "Clasificación sugerida por Jev",

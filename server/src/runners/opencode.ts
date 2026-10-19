@@ -284,13 +284,21 @@ export async function runOpenCode(opts: {
   extraEnv?: Record<string, string>;
   // Perfiles temporales que solicita explícitamente la tarea para sus subagentes.
   opencodeConfigDir?: string;
+  // Estado aislado y persistente de OpenCode por conversación o tarea.
+  perfilOpenCodeDir?: string;
   soloLectura?: boolean;
   imagenes?: ImagenAgente[];
   // Se persiste cada paso antes de conocer el resultado del proceso.
   onUso?: (uso: Usage) => void;
 }): Promise<RunResult> {
   // Lanza AislamientoError si la carpeta no es permitida o falta bubblewrap.
-  const aislamiento = prefijoAislamiento(opts.cwd, opts.soloLectura, opts.imagenes);
+  const aislamiento = prefijoAislamiento(
+    opts.cwd,
+    opts.soloLectura,
+    opts.imagenes,
+    opts.perfilOpenCodeDir,
+    opts.opencodeConfigDir,
+  );
 
   // Un id de sesión que no cumple el patrón se ignora: ni se pasa a -s ni se reutiliza.
   const sesionPedida = sesionValida(opts.sessionId) ? opts.sessionId : null;
@@ -304,9 +312,17 @@ export async function runOpenCode(opts: {
   // `setsid` deja al agente como líder de su propio grupo (pgid == pid),
   // para poder cerrar todo su árbol de procesos de una vez.
   const env = entornoDelAgente(opts.extraEnv);
+  if (opts.perfilOpenCodeDir && aislamientoActivo()) {
+    const destino = "/tmp/telo-opencode-profile";
+    env.XDG_DATA_HOME = `${destino}/data`;
+    env.XDG_STATE_HOME = `${destino}/state`;
+    env.XDG_CACHE_HOME = `${destino}/cache`;
+  }
   // `entornoDelAgente` filtra variables OPENCODE_ recibidas del proyecto; esta ruta la crea
   // internamente Telo y apunta a perfiles efímeros aislados para esta ejecución.
-  if (opts.opencodeConfigDir) env.OPENCODE_CONFIG_DIR = opts.opencodeConfigDir;
+  if (opts.opencodeConfigDir) {
+    env.OPENCODE_CONFIG_DIR = aislamientoActivo() ? "/tmp/telo-opencode-config" : opts.opencodeConfigDir;
+  }
   const proc = Bun.spawn(["setsid", ...aislamiento, ...args], {
     cwd: opts.cwd,
     env,
@@ -320,14 +336,17 @@ export async function runOpenCode(opts: {
 
   // Al cancelar se cierra el grupo entero. No se espera a las tuberías, porque
   // un proceso del agente puede seguir abriéndolas y dejaría la tarea en "running".
+  let onAbort: (() => void) | undefined;
   const aborted = new Promise<never>((_, reject) => {
-    const onAbort = () => {
+    onAbort = () => {
       terminarGrupo(proc.pid);
       reject(new Error("ejecución cancelada"));
     };
     if (opts.signal?.aborted) onAbort();
     else opts.signal?.addEventListener("abort", onAbort, { once: true });
   });
+  // Promise.race no consume el rechazo del perdedor si el proceso termina primero.
+  void aborted.catch(() => {});
 
   let sesionAvisada: string | null = null;
   const alLeerLinea = (linea: string) => {
@@ -371,6 +390,7 @@ export async function runOpenCode(opts: {
     ]);
   } finally {
     clearTimeout(timer);
+    if (onAbort) opts.signal?.removeEventListener("abort", onAbort);
   }
 
   const events = parseEvents(stdout);

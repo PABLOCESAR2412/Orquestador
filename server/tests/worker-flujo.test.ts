@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { delimiter, join, resolve, sep } from "node:path";
 
 // Se ejecuta aparte: el worker queda vivo y no debe consumir fixtures de otras suites.
 const disponible =
@@ -57,7 +57,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     writeFileSync(join(bin, "opencode"), readFileSync(join(import.meta.dir, "fixtures", "opencode-falso.py"), "utf8").replaceAll("\r\n", "\n"));
     chmodSync(join(bin, "opencode"), 0o755);
     process.env.HOME = hogar;
-    process.env.PATH = `${bin}:${pathAnterior}`;
+    process.env.PATH = `${bin}${delimiter}${pathAnterior}`;
     ({ crearTarea } = await import("../src/tareas"));
     ({ cancelTask } = await import("../src/worker"));
     ({ tasks } = await import("../src/routes/tasks"));

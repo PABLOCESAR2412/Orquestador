@@ -126,7 +126,7 @@ describe("id de sesión de OpenCode", () => {
 describe("repos que el agente pudo escribir", () => {
   const REPO = join(RAIZ_PRUEBAS, "seguridad-git");
 
-  test("prepararRepoSeguro quita filtros, fsmonitor y config.worktree", async () => {
+  test.skipIf(process.platform === "win32")("prepararRepoSeguro quita filtros, fsmonitor y config.worktree", async () => {
     rmSync(REPO, { recursive: true, force: true });
     mkdirSync(REPO, { recursive: true });
     Bun.spawnSync(["git", "init", "-q", "-b", "main", REPO]);
@@ -141,7 +141,7 @@ describe("repos que el agente pudo escribir", () => {
     expect(existsSync(join(REPO, ".git", "config.worktree"))).toBe(false);
   });
 
-  test("gitSeguro no ejecuta el filtro que el agente dejó en .git/config (git sin sanear sí lo ejecuta)", async () => {
+  test.skipIf(process.platform === "win32")("gitSeguro no ejecuta el filtro que el agente dejó en .git/config (git sin sanear sí lo ejecuta)", async () => {
     const R = join(RAIZ_PRUEBAS, "seguridad-filtro");
     rmSync(R, { recursive: true, force: true });
     mkdirSync(R, { recursive: true });
@@ -167,7 +167,7 @@ describe("repos que el agente pudo escribir", () => {
     expect(existsSync(marca)).toBe(false);
   });
 
-  test("un .git que es archivo o enlace no cuenta como repo propio", () => {
+  test.skipIf(process.platform === "win32")("un .git que es archivo o enlace no cuenta como repo propio", () => {
     const carpeta = join(RAIZ_PRUEBAS, "git-archivo");
     mkdirSync(carpeta, { recursive: true });
     writeFileSync(join(carpeta, ".git"), "gitdir: /otro/lugar\n");

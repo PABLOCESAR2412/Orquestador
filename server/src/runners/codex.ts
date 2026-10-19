@@ -80,14 +80,6 @@ export async function runCodex(opts: {
     terminarGrupo(proc);
   }, opts.timeoutMs ?? 180_000);
 
-  const onAbort = () => {
-    terminarGrupo(proc);
-  };
-  if (opts.signal) {
-    if (opts.signal.aborted) onAbort();
-    else opts.signal.addEventListener("abort", onAbort, { once: true });
-  }
-
   let sessionId: string | null = opts.sessionId ?? null;
   let text = "";
   let usage: Usage | null = null;
@@ -161,13 +153,17 @@ export async function runCodex(opts: {
     proc.exited,
   ]);
 
+  let onAbort: (() => void) | undefined;
   const abortado = new Promise<never>((_, reject) => {
-    if (opts.signal?.aborted) {
+    onAbort = () => {
+      terminarGrupo(proc);
       reject(new Error("Ejecución cancelada"));
-      return;
-    }
-    opts.signal?.addEventListener("abort", () => reject(new Error("Ejecución cancelada")), { once: true });
+    };
+    if (opts.signal?.aborted) onAbort();
+    else opts.signal?.addEventListener("abort", onAbort, { once: true });
   });
+  // Promise.race no consume el rechazo del perdedor si el proceso termina primero.
+  void abortado.catch(() => {});
 
   let stderr = "";
   let code = 0;
@@ -177,6 +173,7 @@ export async function runCodex(opts: {
     code = res[2];
   } finally {
     clearTimeout(timer);
+    if (onAbort) opts.signal?.removeEventListener("abort", onAbort);
   }
 
   if (code !== 0) {

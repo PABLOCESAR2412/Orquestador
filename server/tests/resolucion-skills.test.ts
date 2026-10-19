@@ -1,9 +1,9 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const raiz = join(import.meta.dir, ".test-data-resolucion-skills");
-rmSync(raiz, { recursive: true, force: true });
+const raiz = mkdtempSync(join(tmpdir(), "telo-resolucion-skills-"));
 const homePrueba = join(raiz, "home");
 mkdirSync(homePrueba, { recursive: true });
 process.env.HOME = homePrueba;

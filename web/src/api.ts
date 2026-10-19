@@ -418,7 +418,6 @@ export type TaskEventKind =
   | "comprobacion_aviso"
   | "plan_revision"
   | "sin_cuota"
-  | "turno_encolado"
   | "clasificacion_jev"
   | "memoria_evaluada"
   | "memoria_propuesta"

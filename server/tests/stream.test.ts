@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 
-const { cantidadSuscriptores, eventosDesde, publicar, ultimoEventoId } = await import("../src/bus");
+const { cantidadSuscriptores, eventosDesde, publicar } = await import("../src/bus");
 const { stream } = await import("../src/routes/stream");
 const app = new Hono().route("/api", stream);
 
 describe("contrapresión del stream de eventos", () => {
   test("desconecta un lector lento con memoria acotada y conserva el buffer para reconectar", async () => {
-    const cursor = ultimoEventoId();
+    const cursor = publicar({ tipo: "chat", conversacion_id: "cursor-inicial", estado: "terminado" });
     const response = await app.request("/api/eventos-vivos");
     expect(response.status).toBe(200);
     const reader = response.body!.getReader();
@@ -50,7 +50,7 @@ describe("contrapresión del stream de eventos", () => {
   });
 
   test("el sondeo fija un cursor inicial y entrega eventos nuevos sin mantener SSE abierto", async () => {
-    const cursorInicial = ultimoEventoId();
+    const cursorInicial = publicar({ tipo: "chat", conversacion_id: "cursor-poll", estado: "terminado" });
     const inicio = await app.request("/api/eventos-vivos/poll?espera=0");
     expect(inicio.status).toBe(200);
     expect(await inicio.json()).toEqual({ cursor: cursorInicial, eventos: [] });

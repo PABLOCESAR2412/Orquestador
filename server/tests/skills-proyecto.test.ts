@@ -1,10 +1,10 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 
-const raiz = join(import.meta.dir, ".test-data-skills-proyecto");
-rmSync(raiz, { recursive: true, force: true });
+const raiz = mkdtempSync(join(tmpdir(), "telo-skills-proyecto-"));
 process.env.DATA_DIR = join(raiz, "data");
 process.env.TELO_PROYECTOS_DIR = join(raiz, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });

@@ -18,7 +18,7 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - **Criterio:** funciona a 390 px y 1440 px, sin scroll horizontal.
 
 ### 2. Tareas en segundo plano: hecho (PR #4)
-- Cola de una tarea a la vez. Cancelar mata el árbol de procesos. Al arrancar, las tareas que quedaron en ejecución se marcan como fallidas.
+- Cola de hasta diez tareas independientes en paralelo; las tareas del mismo proyecto se serializan. Cancelar mata el árbol de procesos. Al arrancar, las que seguían en ejecución pasan a `interrupted`.
 - **Criterio:** cancelar una tarea con un proceso hijo (`sleep`) termina en pocos segundos, sin quedar colgada.
 
 ### 3. App instalable, analíticas y ajustes: mergeada (PR #5)
@@ -89,7 +89,7 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 
 - Stack: TypeScript, Bun, SQLite, PWA. Sin Next.js.
 - Acceso: Tailscale. Cloudflare se descartó (Workers VPC no está disponible en la cuenta) y el Quick Tunnel no sirve como acceso fijo.
-- Una tarea a la vez; las demás se encolan.
+- Hasta diez tareas independientes corren en paralelo; las tareas del mismo proyecto se encolan entre sí.
 - Aprobación del usuario antes de commit, push o PR. La aprobación la aplica el backend, no una instrucción al agente.
 - Sin tope de gasto por tarea; se consulta saldo o cuota.
 - Uso personal, con un solo usuario.

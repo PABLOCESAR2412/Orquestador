@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
 // Skills: ámbito global (HOME/.config/opencode/skills) y por proyecto (carpeta/.opencode/skills).
 // Pruebas de rutas acotadas, enlaces, escritura atómica y secretos. HOME y DATA_DIR son temporales.
-const RAIZ = mkdtempSync(join(import.meta.dir, `.test-data-skills-${randomUUID()}-`));
+const RAIZ = mkdtempSync(join(tmpdir(), `telo-skills-${randomUUID()}-`));
 const HOME_PRUEBA = join(RAIZ, "home");
 const FUERA = join(RAIZ, "fuera");
 mkdirSync(HOME_PRUEBA, { recursive: true });

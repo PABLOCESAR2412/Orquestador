@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 
 // Login de Codex por código de dispositivo, con un CLI falso. El token que imprime el CLI nunca debe aparecer
 // en las respuestas, y el archivo de sesión solo se comprueba por existencia.
@@ -53,7 +53,7 @@ beforeAll(() => {
   PATH_ORIGINAL = process.env.PATH ?? "";
   HOME_ORIGINAL = process.env.HOME;
   process.env.HOME = HOME_PRUEBA;
-  process.env.PATH = `${BIN_VACIO}:/usr/bin:/bin`;
+  process.env.PATH = [BIN_VACIO, "/usr/bin", "/bin"].join(delimiter);
 });
 
 afterAll(() => {
@@ -65,7 +65,7 @@ afterAll(() => {
   } catch {}
 });
 
-describe("login de Codex", () => {
+describe.skipIf(process.platform === "win32")("login de Codex", () => {
   test("sin CLI de Codex responde 503 con código legible", async () => {
     const res = await servidor.request("/providers/codex/login", { method: "POST" });
     expect(res.status).toBe(503);
@@ -73,7 +73,7 @@ describe("login de Codex", () => {
   });
 
   test("muestra URL y código, no deja iniciar dos veces y se puede cancelar", async () => {
-    process.env.PATH = `${BIN_LENTO}:${BIN_VACIO}:/usr/bin:/bin`;
+    process.env.PATH = [BIN_LENTO, BIN_VACIO, "/usr/bin", "/bin"].join(delimiter);
     const res = await servidor.request("/providers/codex/login", { method: "POST" });
     expect(res.status).toBe(202);
 
@@ -95,7 +95,7 @@ describe("login de Codex", () => {
   });
 
   test("al terminar con archivo de sesión queda conectado, sin exponer el contenido", async () => {
-    process.env.PATH = `${BIN_RAPIDO}:${BIN_VACIO}:/usr/bin:/bin`;
+    process.env.PATH = [BIN_RAPIDO, BIN_VACIO, "/usr/bin", "/bin"].join(delimiter);
     await servidor.request("/providers/codex/login", { method: "POST" });
     const fin = await esperar((e) => e.estado === "conectado" || e.estado === "fallido");
     expect(fin.estado).toBe("conectado");

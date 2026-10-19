@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 
 // Registros y estado del servicio: comandos falsos al frente del PATH. La salida del diario pasa por la
 // redacción, y un usuario sin permiso para leer el diario recibe un error claro, no un 500.
@@ -31,7 +31,7 @@ beforeAll(() => {
   mkdirSync(join(carpeta, "bin"));
   comando("journalctl", `echo "ARGS: $*"\necho "2026-10-14T10:00:00 arranque con token ${TOKEN}"`);
   comando("systemctl", `echo "ActiveState=active"\necho "SubState=running"\necho "ActiveEnterTimestamp=Mon 2026-10-12 08:00:00 UTC"\necho "MainPID=1234"`);
-  process.env.PATH = `${join(carpeta, "bin")}:${RESTAURAR.PATH ?? ""}`;
+  process.env.PATH = `${join(carpeta, "bin")}${delimiter}${RESTAURAR.PATH ?? ""}`;
 });
 
 afterAll(() => {
@@ -39,7 +39,7 @@ afterAll(() => {
   rmSync(carpeta, { recursive: true, force: true });
 });
 
-describe("registros del servicio", () => {
+describe.skipIf(process.platform === "win32")("registros del servicio", () => {
   test("devuelve las últimas líneas, con el número de líneas acotado a 300 y sin credenciales", async () => {
     const res = await servidor.request("/servidor/logs?lineas=9999");
     expect(res.status).toBe(200);
@@ -73,13 +73,13 @@ describe("registros del servicio", () => {
       expect(res.status).toBe(503);
       expect(await res.json()).toEqual({ error: "registros_no_disponibles" });
     } finally {
-      process.env.PATH = `${join(carpeta, "bin")}:${RESTAURAR.PATH ?? ""}`;
+      process.env.PATH = `${join(carpeta, "bin")}${delimiter}${RESTAURAR.PATH ?? ""}`;
       rmSync(vacio, { recursive: true, force: true });
     }
   });
 });
 
-describe("estado del servicio", () => {
+describe.skipIf(process.platform === "win32")("estado del servicio", () => {
   test("lee activo, subestado, desde y PID de systemd", async () => {
     const cuerpo = (await (await servidor.request("/servidor/servicio")).json()) as Record<string, unknown>;
     expect(cuerpo).toEqual({

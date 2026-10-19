@@ -1,19 +1,15 @@
 import { createHash } from "node:crypto";
 import {
-  closeSync,
-  constants as fsConstants,
   cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
-  openSync,
   readFileSync,
   realpathSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
-  writeSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { config } from "./config";
@@ -33,6 +29,7 @@ import { valorSecreto, valoresDeProyecto } from "./secretos";
 import { tokenGithubGlobal } from "./github-auth";
 import { tokenGithubAppParaRepo } from "./github-app";
 import { opcionesDeCredenciales } from "./git-credenciales";
+import { eliminarPerfilOpenCode } from "./runners/aislamiento";
 export { opcionesDeCredenciales } from "./git-credenciales";
 
 // Copias de trabajo de las tareas de proyecto con Git. Cada tarea trabaja en su clon
@@ -49,16 +46,12 @@ export { opcionesDeCredenciales } from "./git-credenciales";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
 const TOPE_DIFF = 400 * 1024;
-const TOPE_SALIDA_LOG = 5 * 1024 * 1024;
-const VENTANA_SALIDA = 512 * 1024;
 const TIEMPO_CLON_MS = 10 * 60_000;
 const TIEMPO_ESTADO_MS = 5 * 60_000;
 const TIEMPO_PUSH_MS = 5 * 60_000;
 const MAX_MENSAJE = 200;
 const DIAS_CONSERVAR = 14;
 const CADA_LIMPIEZA_MS = 6 * 3600_000;
-const AVISO_LLENO =
-  "[Telo] Registro lleno: a partir de aquí no se guarda más salida (tope de 5 MB).";
 // Archivo con la URL de subida de la tarea, junto al clon y fuera de su alcance.
 const NOMBRE_REMOTO = "remoto.txt";
 // Único remoto admitido: GitHub por https, sin credenciales, puerto ni otra ruta. Acepta el .git final.
@@ -868,13 +861,16 @@ export async function limpiarCopias(): Promise<void> {
 
       // Si la tarea terminó hace más de 30 días y el clon ya no existe, purgar logs y carpeta contenedora
       const muyVieja = db
-        .query<{ id: string }, [string]>(
-          `SELECT id FROM tasks WHERE id = ? AND status IN ('done', 'failed', 'cancelled')
+        .query<{ conversation_id: string | null }, [string]>(
+          `SELECT conversation_id FROM tasks WHERE id = ? AND status IN ('done', 'failed', 'cancelled')
            AND finished_at < datetime('now', '-30 days')`,
         )
         .get(id);
-      if (muyVieja && existsSync(carpetaTarea(id)) && !existsSync(rutaClon(id))) {
-        rmSync(carpetaTarea(id), { recursive: true, force: true });
+      if (muyVieja) {
+        if (!muyVieja.conversation_id) eliminarPerfilOpenCode(id);
+        if (existsSync(carpetaTarea(id)) && !existsSync(rutaClon(id))) {
+          rmSync(carpetaTarea(id), { recursive: true, force: true });
+        }
       }
     });
   }

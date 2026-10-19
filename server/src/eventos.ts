@@ -8,8 +8,6 @@ import { redactar } from "./redaccion";
 export type TipoEvento =
   | "comprobacion_fallida"
   | "comprobacion_aviso"
-  | "plan_listo"
-  | "plan_aprobado"
   | "plan_revision"
   | "creada"
   | "iniciada"
@@ -31,7 +29,6 @@ export type TipoEvento =
   | "replanificada"
   | "obrero_iniciado"
   | "sin_cuota"
-  | "turno_encolado"
   | "clasificacion_jev"
   | "memoria_evaluada"
   | "memoria_propuesta"

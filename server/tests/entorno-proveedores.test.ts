@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 
 // Prueba de punto a punto: una clave de proveedor guardada llega al agente y a `opencode models`,
 // y ninguna variable TELO_* llega a ninguno de los dos. Usa un `opencode` falso al frente del PATH
@@ -64,7 +64,7 @@ echo '{"type":"text","sessionID":"ses_entorno01","part":{"type":"text","text":"C
   );
   chmodSync(join(bin, "opencode"), 0o755);
 
-  process.env.PATH = `${bin}:${RESTAURAR.PATH ?? ""}`;
+  process.env.PATH = `${bin}${delimiter}${RESTAURAR.PATH ?? ""}`;
   process.env.TELO_AISLAMIENTO = "desactivado";
   process.env.TELO_CLAVE_CIFRADO = CLAVE_MAESTRA;
   process.env.TELO_PRUEBA_SECRETA = "no-debe-llegar-a-ningun-agente";
@@ -91,7 +91,7 @@ function variables(ruta: string): Map<string, string> {
   return mapa;
 }
 
-describe("entorno de los proveedores en el agente y en el CLI", () => {
+describe.skipIf(!Bun.which("setsid"))("entorno de los proveedores en el agente y en el CLI", () => {
   test("el agente recibe GROQ_API_KEY y nunca una variable TELO_*", async () => {
     const resultado = await ejecutarAgente({
       prompt: "Hola",

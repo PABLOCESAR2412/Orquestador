@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { Hono } from "hono";
 
 // Turnos del chat en segundo plano: el POST guarda el mensaje y responde 202; la respuesta llega después,
@@ -57,7 +57,7 @@ echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"Res
 `,
   );
   chmodSync(join(bin, "opencode"), 0o755);
-  process.env.PATH = `${bin}:${RESTAURAR.PATH ?? ""}`;
+  process.env.PATH = `${bin}${delimiter}${RESTAURAR.PATH ?? ""}`;
   process.env.TELO_AISLAMIENTO = "desactivado";
 });
 
@@ -105,6 +105,35 @@ function enviarReintento(id: string, content: string, retryOf: string) {
     body: JSON.stringify({ content, retryOf }),
   });
 }
+
+describe("lista de conversaciones", () => {
+  test("usa el estado de la tarea más reciente sin hacer una consulta por chat", async () => {
+    const id = conversacion();
+    db.query(`INSERT INTO tasks (id, title, prompt, model, status, conversation_id, created_at, finished_at, plan_hash)
+      VALUES (?, 'Tarea anterior', 'p', 'opencode/prueba', 'done', ?, '2026-10-18 10:00:00', '2026-10-18 10:01:00', 'hash-anterior')`)
+      .run(crypto.randomUUID(), id);
+    const ultima = crypto.randomUUID();
+    db.query(`INSERT INTO tasks (id, title, prompt, model, status, conversation_id, created_at, plan_hash)
+      VALUES (?, 'Tarea reciente', 'p', 'opencode/prueba', 'running', ?, '2026-10-18 11:00:00', 'hash-reciente')`)
+      .run(ultima, id);
+
+    const response = await app.request("/api/conversations");
+    const lista = await response.json() as {
+      id: string;
+      estado_tarea: string | null;
+      estado_tarea_id: string | null;
+      estado_tarea_version: string | null;
+      pendiente_aprobacion: boolean;
+    }[];
+    expect(response.status).toBe(200);
+    expect(lista.find((conversation) => conversation.id === id)).toMatchObject({
+      estado_tarea: "en_proceso",
+      estado_tarea_id: ultima,
+      estado_tarea_version: "hash-reciente",
+      pendiente_aprobacion: false,
+    });
+  });
+});
 
 describe("reintentos de mensajes fallidos", () => {
   test("reutiliza el prompt original y elimina el aviso anterior", async () => {
