@@ -9,6 +9,8 @@ const rutaClave = join(tmpdir(), `telo-github-app-key-${randomUUID()}.pem`);
 const dataDirOriginal = process.env.DATA_DIR;
 if (!process.env.DATA_DIR) process.env.DATA_DIR = join(raiz, "data");
 mkdirSync(process.env.DATA_DIR, { recursive: true });
+const claveCifradoOriginal = process.env.TELO_CLAVE_CIFRADO;
+if (!process.env.TELO_CLAVE_CIFRADO) process.env.TELO_CLAVE_CIFRADO = Buffer.alloc(32, 1).toString("base64");
 
 const appIdOriginal = process.env.TELO_GITHUB_APP_ID;
 const rutaClaveOriginal = process.env.TELO_GITHUB_APP_PRIVATE_KEY_PATH;
@@ -36,6 +38,8 @@ afterAll(() => {
   else process.env.TELO_GITHUB_APP_ID = appIdOriginal;
   if (rutaClaveOriginal === undefined) delete process.env.TELO_GITHUB_APP_PRIVATE_KEY_PATH;
   else process.env.TELO_GITHUB_APP_PRIVATE_KEY_PATH = rutaClaveOriginal;
+  if (claveCifradoOriginal === undefined) delete process.env.TELO_CLAVE_CIFRADO;
+  else process.env.TELO_CLAVE_CIFRADO = claveCifradoOriginal;
   rmSync(rutaClave, { force: true });
   if (dataDirOriginal === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = dataDirOriginal;

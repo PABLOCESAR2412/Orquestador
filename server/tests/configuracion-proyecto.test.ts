@@ -137,6 +137,7 @@ describe("configuración del proyecto", () => {
   test("comprobar acceso informa la credencial elegida y valida escritura antes de autorizar", async () => {
     const p = proyecto();
     const secreto = "token-previo-de-prueba";
+    process.env.TELO_CLAVE_CIFRADO = randomBytes(32).toString("base64");
     guardarCuentaGithubGlobal({
       token: secreto,
       login: "pablo",
