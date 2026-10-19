@@ -110,6 +110,10 @@ export function urlImagenConversacion(conversationId: string, ruta: string, desc
   return `/api/conversations/${encodeURIComponent(conversationId)}/archivo-imagen?${query}`;
 }
 
+export function urlAdjuntoImagenChat(conversationId: string, adjuntoId: string): string {
+  return `/api/conversations/${encodeURIComponent(conversationId)}/adjuntos/${encodeURIComponent(adjuntoId)}`;
+}
+
 export type ProjectSecretsList = {
   disponible: boolean;
   secretos: { nombre: string; actualizado_en: string }[];
@@ -168,6 +172,7 @@ export type TaskDiff =
       truncado: boolean;
       hash: string | null;
       remoto: boolean;
+      remoto_url?: string | null;
       aprobaciones: {
         commit: { estado: "pendiente" | "aprobada"; sha: string; hash: string; decidida_en: string; mensaje: string } | null;
         push: { sha: string; remoto: string; rama?: string; autenticacion?: FuenteAutenticacionGithub | null; decidida_en: string } | null;
@@ -459,7 +464,10 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: {
+      ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+      ...init?.headers,
+    },
   });
   if (!res.ok) {
     // Sin sesión, la app va a la pantalla de entrada (salvo la propia petición de entrar).
@@ -478,6 +486,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(res.status, body.error ?? `http_${res.status}`, body.detail ?? body.mensaje, matches);
   }
   return res.json() as Promise<T>;
+}
+
+async function requestPdf(path: string): Promise<Blob> {
+  const res = await fetch(path, { headers: { Accept: "application/pdf" } });
+  if (!res.ok) {
+    if (res.status === 401 && location.pathname !== "/entrar") location.assign("/entrar");
+    const body = (await res.json().catch(() => ({}))) as { error?: string; detail?: string; mensaje?: string };
+    throw new ApiError(res.status, body.error ?? `http_${res.status}`, body.detail ?? body.mensaje);
+  }
+  if (!res.headers.get("content-type")?.toLowerCase().includes("application/pdf")) {
+    throw new ApiError(415, "formato_pdf_invalido", "El servidor no devolvió un documento PDF.");
+  }
+  const archivo = await res.blob();
+  if (archivo.size === 0) throw new ApiError(415, "formato_pdf_invalido", "El PDF está vacío.");
+  return archivo;
 }
 
 // Instalación de una herramienta del servidor (hoy OpenCode). El servidor solo ejecuta su comando fijo.
@@ -531,7 +554,7 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
-  checkProjectGit: (id: string, action: "push" | "pr" = "push") =>
+  checkProjectGit: (id: string, action: "push" | "pr" | "merge" = "push") =>
     request<{
       ok: boolean;
       repo: string;
@@ -624,7 +647,16 @@ export const api = {
       body: JSON.stringify({ projectId: projectId ?? null, title }),
     }),
   listMessages: (id: string) => request<Message[]>(`/api/conversations/${id}/messages`),
+  uploadChatImage: (id: string, archivo: File) => {
+    const body = new FormData();
+    body.append("archivo", archivo, archivo.name);
+    return request<{ id: string; nombre: string; mime: string; bytes: number }>(`/api/conversations/${id}/adjuntos`, {
+      method: "POST",
+      body,
+    });
+  },
   chatPdfInfo: (id: string, ruta: string) => request<ChatPdfInfo>(urlPdfConversacion(id, ruta, false, true)),
+  chatPdf: (id: string, ruta: string) => requestPdf(urlPdfConversacion(id, ruta)),
   chatImageInfo: (id: string, ruta: string) => request<ChatImageInfo>(urlImagenConversacion(id, ruta, false, true)),
   // Pasos del agente de un turno (el id es el del mensaje del usuario).
   listTurnoActividad: (conversacionId: string, turnoId: string) =>
@@ -633,10 +665,10 @@ export const api = {
   medio: (id: string) => request<MedioJob>(`/api/media/${encodeURIComponent(id)}`),
   confirmarMedio: (id: string) => request<MedioJob>(`/api/media/${encodeURIComponent(id)}/confirmar`, { method: "POST", body: "{}" }),
   cancelarMedio: (id: string) => request<{ ok: boolean }>(`/api/media/${encodeURIComponent(id)}/cancelar`, { method: "POST", body: "{}" }),
-  sendMessage: (id: string, content: string) =>
+  sendMessage: (id: string, content: string, retryOf?: string) =>
     request<{ messages: Message[] }>(`/api/conversations/${id}/messages`, {
       method: "POST",
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, ...(retryOf ? { retryOf } : {}) }),
     }),
   listModels: () => request<{ models: ModelInfo[]; total: number }>("/api/models?all=1"),
   modelIntelligence: () => request<ArtificialAnalysisIndex>("/api/models/intelligence"),

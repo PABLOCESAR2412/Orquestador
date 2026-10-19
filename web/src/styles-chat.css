@@ -61,14 +61,41 @@
 .tl-chat-archivo-acciones > .tl-accion-icono { width: 44px; height: 44px; }
 .tl-chat-archivo-acciones { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
 .tl-chat-archivo-acciones .tl-boton { min-height: 38px; padding-inline: 10px; white-space: nowrap; }
-.tl-chat-archivo-pdf {
-  display: block;
-  width: 100%;
+.tl-chat-pdf-visor {
+  display: flex;
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
-  border: 0;
+  flex-direction: column;
+}
+.tl-chat-pdf-barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 48px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.tl-chat-pdf-barra .tl-boton { min-height: 34px; }
+.tl-chat-pdf-contenido {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  justify-content: center;
+  overflow: auto;
+  padding: 16px;
   background: var(--surface-lowest);
+}
+.tl-chat-pdf-pagina {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  align-self: flex-start;
+  background: #fff;
 }
 .tl-chat-archivo-imagen-marco {
   display: grid;
@@ -1436,6 +1463,9 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.tl-adjuntos-imagenes { display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.tl-adjuntos-imagenes a { display: block; max-width: min(280px, 100%); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.tl-adjunto-imagen-enviada { display: block; max-width: 100%; max-height: 220px; object-fit: contain; background: var(--surface-2); }
 
 /* Menú de formatos de un mensaje */
 .tl-menu-wrap { position: relative; display: inline-flex; }

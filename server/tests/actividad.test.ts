@@ -96,6 +96,12 @@ describe("títulos y vistas previas", () => {
     expect(detalle).toBe("$ bun test\n15 pass");
   });
 
+  test("una búsqueda web muestra la consulta y los resultados observados", () => {
+    const { titulo, detalle } = describirAccion("websearch", { query: "límites Gemini API" }, "Encontró la documentación oficial", null);
+    expect(titulo).toBe("Buscó en la web «límites Gemini API»");
+    expect(detalle).toBe("Encontró la documentación oficial");
+  });
+
   test("una edición muestra lo quitado y lo puesto", () => {
     const { titulo, detalle } = describirAccion("edit", { filePath: "web/a.ts", oldString: "viejo", newString: "nuevo" }, "ok", null);
     expect(titulo).toBe("Editó web/a.ts");

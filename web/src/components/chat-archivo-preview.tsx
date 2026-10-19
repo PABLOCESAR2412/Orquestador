@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, urlImagenConversacion, urlPdfConversacion } from "../api";
 import { errorText } from "../lib/model";
+import { PdfPreview } from "./pdf-preview";
 import { describirTipoArchivo, type ReferenciaArchivo } from "./chat-contenido";
 
 export function ChatArchivoPreview({
@@ -28,6 +29,11 @@ export function ChatArchivoPreview({
     queryKey: ["conversation-pdf", conversationId, referencia.ruta],
     queryFn: () => api.chatPdfInfo(conversationId, referencia.ruta),
     enabled: esPdf,
+  });
+  const pdfContenido = useQuery({
+    queryKey: ["conversation-pdf-content", conversationId, referencia.ruta],
+    queryFn: () => api.chatPdf(conversationId, referencia.ruta),
+    enabled: esPdf && Boolean(pdf.data),
   });
   const imagen = useQuery({
     queryKey: ["conversation-image", conversationId, projectId, referencia.ruta],
@@ -57,8 +63,6 @@ export function ChatArchivoPreview({
     ? archivo.error.matches ?? []
     : [];
   const puedeReintentar = !(archivoError instanceof ApiError) || archivoError.status >= 500;
-  const urlPdf = urlPdfConversacion(conversationId, referencia.ruta);
-
   return (
     <aside className="tl-chat-archivo-panel" aria-label={`Vista del archivo ${rutaActual}`}>
       <header className="tl-chat-archivo-cabecera">
@@ -71,14 +75,25 @@ export function ChatArchivoPreview({
         </div>
         <div className="tl-chat-archivo-acciones">
           {esPdf && pdf.data && (
-            <a
-              className="tl-boton tl-boton-compacto"
-              href={urlPdfConversacion(conversationId, referencia.ruta, true)}
-              download={pdf.data.nombre}
-              title={`Descargar ${pdf.data.nombre}`}
-            >
-              Descargar PDF
-            </a>
+            <>
+              <a
+                className="tl-boton tl-boton-compacto"
+                href={urlPdfConversacion(conversationId, referencia.ruta)}
+                target="_blank"
+                rel="noreferrer"
+                title={`Abrir ${pdf.data.nombre} en otra pestaña`}
+              >
+                Abrir PDF
+              </a>
+              <a
+                className="tl-boton tl-boton-compacto"
+                href={urlPdfConversacion(conversationId, referencia.ruta, true)}
+                download={pdf.data.nombre}
+                title={`Descargar ${pdf.data.nombre}`}
+              >
+                Descargar PDF
+              </a>
+            </>
           )}
           {esImagen && imagen.data && (
             <a
@@ -101,19 +116,14 @@ export function ChatArchivoPreview({
       {esPdf ? (
         <>
           {pdf.isPending && <p className="tl-chat-archivo-estado" role="status">Comprobando PDF…</p>}
-          {pdf.isError && (
+          {pdf.data && pdfContenido.isPending && <p className="tl-chat-archivo-estado" role="status">Preparando vista previa…</p>}
+          {(pdf.isError || pdfContenido.isError) && (
             <div className="tl-chat-archivo-estado" role="alert">
-              <p>No se pudo abrir este PDF. {errorText(pdf.error)}</p>
-              {puedeReintentar && <button type="button" className="tl-boton tl-boton-compacto" onClick={() => void pdf.refetch()}>Reintentar</button>}
+              <p>No se pudo abrir este PDF. {errorText(pdf.error ?? pdfContenido.error)}</p>
+              {puedeReintentar && <button type="button" className="tl-boton tl-boton-compacto" onClick={() => { void pdf.refetch(); void pdfContenido.refetch(); }}>Reintentar</button>}
             </div>
           )}
-          {pdf.data && (
-            <iframe
-              className="tl-chat-archivo-pdf"
-              src={urlPdf}
-              title={`Vista previa de ${pdf.data.nombre}`}
-            />
-          )}
+          {pdf.data && pdfContenido.data && <PdfPreview archivo={pdfContenido.data} nombre={pdf.data.nombre} />}
         </>
       ) : esImagen ? (
         <>

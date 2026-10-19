@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { prefijoAislamiento } from "./aislamiento";
+import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
 import { hallarEjecutable } from "../ejecutable";
 import { carpetaHome } from "../hogar";
 import { entornoDelAgente, type RunResult, type Usage } from "./opencode";
+import type { ImagenAgente } from "../chat-adjuntos";
 
 // Termina el grupo de procesos para que herramientas e hijos no queden como zombies huérfanos.
 function terminarGrupo(proc: { pid: number; kill: () => void }) {
@@ -41,6 +42,7 @@ export async function runCodex(opts: {
   onLinea?: (linea: string) => void;
   extraEnv?: Record<string, string>;
   soloLectura?: boolean;
+  imagenes?: ImagenAgente[];
   onUso?: (uso: Usage) => void;
 }): Promise<RunResult> {
   const codex = hallarEjecutable("codex");
@@ -51,13 +53,14 @@ export async function runCodex(opts: {
   // Quitar el prefijo "codex/" para obtener el nombre del modelo que espera Codex (ej: gpt-6-luna)
   const modeloCodex = opts.model.startsWith("codex/") ? opts.model.slice("codex/".length) : opts.model;
 
-  const aislamiento = prefijoAislamiento(opts.cwd, opts.soloLectura);
+  const aislamiento = prefijoAislamiento(opts.cwd, opts.soloLectura, opts.imagenes);
+  const rutasImagenes = (opts.imagenes ?? []).flatMap((imagen) => ["--image", aislamientoActivo() ? imagen.rutaVisible : imagen.ruta]);
 
   const args: string[] = [];
   if (opts.sessionId && /^[0-9a-fA-F-]+$/.test(opts.sessionId)) {
-    args.push("codex", "exec", "resume", "--json", "--dangerously-bypass-approvals-and-sandbox", "-m", modeloCodex, opts.sessionId, opts.prompt);
+    args.push("codex", "exec", "resume", "--json", ...rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", modeloCodex, opts.sessionId, opts.prompt);
   } else {
-    args.push("codex", "exec", "--json", "--dangerously-bypass-approvals-and-sandbox", "-m", modeloCodex, "-C", opts.cwd, "--", opts.prompt);
+    args.push("codex", "exec", "--json", ...rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", modeloCodex, "-C", opts.cwd, "--", opts.prompt);
   }
 
   const comandoCompleto = aislamiento.length > 0 ? ["setsid", ...aislamiento, ...args] : process.platform === "win32" ? ["cmd", "/c", ...args] : ["setsid", ...args];

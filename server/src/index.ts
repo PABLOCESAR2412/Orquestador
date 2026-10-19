@@ -36,6 +36,7 @@ import { COOKIE_SESION, MIN_CARACTERES_CLAVE, sesionValida, limpiarSesionesAntig
 import { getCookie } from "hono/cookie";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
+import { MAX_IMAGEN_BYTES } from "./chat-adjuntos";
 
 // Sin clave, la API quedaría abierta a quien tenga la URL. Por eso el servidor no arranca sin ella.
 if (!config.clave && !config.sinClave) {
@@ -93,13 +94,19 @@ app.use("*", (c, next) =>
     : cabecerasSeguras(c, next),
 );
 
-// Ninguna petición de la API necesita más de 64 KB (el prompt más largo es de 10 000 caracteres).
-app.use(
-  "/api/*",
-  bodyLimit({
-    maxSize: 64 * 1024,
-    onError: (c) => c.json({ error: "body_too_large" }, 413),
-  }),
+// Los prompts siguen limitados a 64 KB; las imágenes usan un límite separado y se validan por firma.
+const limitarApi = bodyLimit({
+  maxSize: 64 * 1024,
+  onError: (c) => c.json({ error: "body_too_large" }, 413),
+});
+const limitarImagen = bodyLimit({
+  maxSize: MAX_IMAGEN_BYTES + 64 * 1024,
+  onError: (c) => c.json({ error: "image_size_invalid" }, 413),
+});
+app.use("/api/*", (c, next) =>
+  c.req.method === "POST" && /^\/api\/conversations\/[^/]+\/adjuntos$/.test(c.req.path)
+    ? limitarImagen(c, next)
+    : limitarApi(c, next),
 );
 
 app.get("/api/health", (c) => {

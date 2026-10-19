@@ -298,7 +298,7 @@ export function SettingsPage() {
                   Skills
                 </h2>
                 <article className="aj-tarjeta">
-                  <SkillsEditor ayuda="Globales: OpenCode las lee en todos los proyectos. Se guardan en ~/.config/opencode/skills." />
+                  <SkillsEditor ayuda="Globales: Telo las comparte con OpenCode y Codex, y las activa para cualquier modelo compatible según la tarea. No migra proyectos a Vite+ ni configura Void automáticamente." />
                 </article>
               </section>
 

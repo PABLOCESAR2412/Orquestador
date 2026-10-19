@@ -6,6 +6,9 @@ import { guardarSkill } from "../src/skills";
 
 const raiz = join(import.meta.dir, ".test-data-resolucion-skills");
 rmSync(raiz, { recursive: true, force: true });
+const homePrueba = join(raiz, "home");
+mkdirSync(homePrueba, { recursive: true });
+process.env.HOME = homePrueba;
 process.env.DATA_DIR = join(raiz, "data");
 process.env.TELO_PROYECTOS_DIR = join(raiz, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
@@ -56,4 +59,21 @@ test("resolver e inyectar skills en el prompt", () => {
   expect(res.promptFinal).toContain("[SKILLS ACTIVADAS POR EL USUARIO]");
   expect(res.promptFinal).toContain("Usa page.goto y espera selectores.");
   expect(res.promptFinal).toContain("Ejecuta $playwright en este proyecto");
+});
+
+test("activa skills globales por tipo de tarea en el prompt compartido por todos los runners", () => {
+  for (const nombre of ["frontend-design", "playwright", "ponytail"]) {
+    guardarSkill(
+      { ambito: "global" },
+      nombre,
+      `---\nname: ${nombre}\ndescription: Instrucciones globales de prueba.\n---\n\nInstrucciones ${nombre}.`,
+    );
+  }
+
+  // La resolución no depende del runner ni del modelo: el mismo prompt enriquecido se usa para Codex y OpenCode.
+  const resultado = inyectarSkillsEnPrompt("Arregla el responsive del chat y verifica su aspecto en el navegador.");
+  expect(resultado.skillsInvocadas).toEqual(["frontend-design", "playwright", "ponytail"]);
+  expect(resultado.promptFinal).toContain("Instrucciones frontend-design.");
+  expect(resultado.promptFinal).toContain("Instrucciones playwright.");
+  expect(resultado.promptFinal).toContain("Instrucciones ponytail.");
 });

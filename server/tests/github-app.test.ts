@@ -154,6 +154,38 @@ test("crear un PR prioriza el token temporal aunque exista una sesión anterior"
   expect(llamada).toBe(3);
 });
 
+test("hacer merge solicita a la GitHub App el permiso Contents de escritura", async () => {
+  let llamada = 0;
+  globalThis.fetch = (async (url: any, init: any) => {
+    llamada++;
+    if (llamada === 1) {
+      expect(String(url)).toBe("https://api.github.com/app/installations?per_page=100");
+      return Response.json([{ id: 456, account: { login: "Pablo" }, repository_selection: "selected" }]);
+    }
+    if (llamada === 2) {
+      expect(String(url)).toBe("https://api.github.com/app/installations/456/access_tokens");
+      expect(JSON.parse(String(init.body))).toEqual({
+        repositories: ["Orquestador"],
+        permissions: { contents: "write" },
+      });
+      return Response.json({ token: "ghs-merge-temporal" });
+    }
+    expect(String(url)).toBe("https://api.github.com/repos/Pablo/Orquestador/pulls/8/merge");
+    expect(init.method).toBe("PUT");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer ghs-merge-temporal");
+    expect(JSON.parse(String(init.body))).toEqual({ commit_title: "Merge #8", merge_method: "squash" });
+    return Response.json({ merged: true, sha: "abc123" });
+  }) as unknown as typeof fetch;
+  await seleccionarInstalacionGithubApp(456);
+
+  const resultado = await githubApiPr("sin-proyecto", "/repos/Pablo/Orquestador/pulls/8/merge", {
+    tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "Pablo", instalacion_id: 456,
+  }, { commit_title: "Merge #8", merge_method: "squash" }, "PUT", "merge");
+
+  expect(resultado).toEqual({ merged: true, sha: "abc123" });
+  expect(llamada).toBe(3);
+});
+
 test("al crear un PR, GitHub expone el detalle de una respuesta 422", async () => {
   globalThis.fetch = (async (url: any) => {
     if (String(url).endsWith("/app/installations?per_page=100")) {

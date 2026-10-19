@@ -23,6 +23,9 @@ export function AvisoCuota({
       <p className="cuota-aviso-texto">
         Cambia de modelo y pulsa Seguir. Continúa donde se quedó, sin repetir lo que ya hizo.
       </p>
+      <p className="cuota-aviso-ayuda">
+        Este límite depende de la cuenta o clave del proveedor del modelo; ChatGPT Plus se administra por separado.
+      </p>
       <div className="cuota-aviso-acciones">
         <button type="button" className="ghost" onClick={onCambiarModelo}>
           Cambiar modelo

@@ -48,4 +48,27 @@ describe("contrapresión del stream de eventos", () => {
     await lectorReconexion.cancel();
     expect(cantidadSuscriptores()).toBe(0);
   });
+
+  test("el sondeo fija un cursor inicial y entrega eventos nuevos sin mantener SSE abierto", async () => {
+    const cursorInicial = ultimoEventoId();
+    const inicio = await app.request("/api/eventos-vivos/poll?espera=0");
+    expect(inicio.status).toBe(200);
+    expect(await inicio.json()).toEqual({ cursor: cursorInicial, eventos: [] });
+
+    const pendiente = app.request(`/api/eventos-vivos/poll?desde=${cursorInicial}&espera=1000`);
+    await Bun.sleep(10);
+    const id = publicar({ tipo: "chat", conversacion_id: "conv-poll", estado: "en_curso" });
+    const response = await pendiente;
+    const lote = await response.json() as { cursor: number; eventos: { id: number; evento: unknown }[] };
+
+    expect(response.status).toBe(200);
+    expect(lote.cursor).toBe(id);
+    expect(lote.eventos).toEqual([{ id, evento: { tipo: "chat", conversacion_id: "conv-poll", estado: "en_curso" } }]);
+    expect(cantidadSuscriptores()).toBe(0);
+  });
+
+  test("el sondeo rechaza cursores y esperas inválidos", async () => {
+    expect((await app.request("/api/eventos-vivos/poll?desde=-1")).status).toBe(400);
+    expect((await app.request("/api/eventos-vivos/poll?espera=20000")).status).toBe(400);
+  });
 });

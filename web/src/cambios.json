@@ -3,6 +3,11 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Chat: reintenta respuestas detenidas por tiempo desde la sesión guardada", "pr": 84 },
+    { "fecha": "2026-10-18", "tipo": "grande", "titulo": "Skills globales para todos los runners, envío de imágenes al agente y permiso correcto para fusionar PR", "pr": null },
+    { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: reduce errores HTTP/2 del canal vivo, conserva sesiones al superar el límite y extiende turnos largos", "pr": 84 },
+    { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Chat: reintenta solicitudes fallidas sin duplicar el prompt ni ofrecer avisos antiguos", "pr": 84 },
+    { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: fija las acciones Git a su respuesta, renderiza PDFs en el chat y mejora el diseño predeterminado de entregables", "pr": 84 },
     { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Chat: elimina el scroll de página duplicado y conserva el desplazamiento dentro del hilo", "pr": 83 },
     { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Barra lateral móvil: separa la actividad del chat de su menú de opciones", "pr": 82 },
     { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Chat: abre imágenes generadas al hacer clic y permite descargarlas", "pr": 82 },
@@ -106,6 +111,7 @@
     { "fecha": "2026-10-16", "tipo": "mediano", "titulo": "Chat: hasta diez ejecuciones concurrentes y estado aislado por conversación", "pr": 58 },
     { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Se retira la conexión OAuth de Google que no se utilizaba para modelos ni métricas", "pr": 61 },
     { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Ajustes: muestra el estado de GitHub y el alcance de cada instalación con más claridad", "pr": 61 },
-    { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: modelos favoritos y puntuación de inteligencia, estado visible, acciones compactas y navegación del hilo", "pr": 79 }
+    { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: modelos favoritos y puntuación de inteligencia, estado visible, acciones compactas y navegación del hilo", "pr": 79 },
+    { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "GitHub: fusionar por número no abre otra rama y las solicitudes de PR repetidas no se duplican", "pr": null }
   ]
 }

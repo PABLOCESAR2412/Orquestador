@@ -169,6 +169,7 @@ describe("prompts", () => {
     expect(texto).toContain("No hagas commit, push ni PR");
     expect(texto).toContain("Telo ejecutará esas operaciones");
     expect(texto).toContain("Telo conserva el remoto fuera del workspace");
+    expect(texto).toContain("evita solapamientos, recortes y etiquetas ilegibles");
     expect(promptAnalizador("Commit y push")).toContain("No incluyas su ejecución como pasos del obrero");
   });
 

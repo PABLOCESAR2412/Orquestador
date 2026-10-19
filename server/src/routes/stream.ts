@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { cantidadSuscriptores, suscribirConEventosDesde, type EventoVivo } from "../bus";
+import { cantidadSuscriptores, suscribirConEventosDesde, type EventoConSecuencia, type EventoVivo } from "../bus";
 import { sinLimiteDeInactividad } from "../conexion";
 
 // Canal en vivo: estados de tareas, eventos del historial, líneas de salida del agente y pasos de los chats.
@@ -12,8 +12,71 @@ const MAX_EVENTOS_PENDIENTES = 100;
 const MAX_BYTES_PENDIENTES = 256 * 1024;
 const MAX_CARACTERES_SALIDA = 8_000;
 const MAX_CARACTERES_DETALLE = 4_000;
+const MAX_ESPERA_POLL_MS = 15_000;
 
 export const stream = new Hono();
+
+// Canal corto para clientes detrás de proxies que cierran las respuestas SSE sobre HTTP/2.
+// Mantiene el mismo cursor y replay, pero cada petición termina como una respuesta HTTP normal.
+stream.get("/eventos-vivos/poll", async (c) => {
+  if (cantidadSuscriptores() >= MAX_SUSCRIPTORES) {
+    return c.json({ error: "demasiadas_conexiones" }, 503);
+  }
+  sinLimiteDeInactividad(c);
+
+  const desdeTexto = c.req.query("desde");
+  const esperaTexto = c.req.query("espera");
+  const desde = desdeTexto === undefined
+    ? null
+    : /^\d+$/.test(desdeTexto) && Number.isSafeInteger(Number(desdeTexto))
+      ? Number(desdeTexto)
+      : NaN;
+  const espera = esperaTexto === undefined ? MAX_ESPERA_POLL_MS : Number(esperaTexto);
+  if (Number.isNaN(desde) || !Number.isInteger(espera) || espera < 0 || espera > MAX_ESPERA_POLL_MS) {
+    return c.json({ error: "invalid_cursor_or_wait" }, 400);
+  }
+
+  return await new Promise<Response>((resolve) => {
+    let terminado = false;
+    let cursor = 0;
+    let baja = () => {};
+    let timerEspera: ReturnType<typeof setTimeout> | undefined;
+    let timerLote: ReturnType<typeof setTimeout> | undefined;
+    let iniciales: EventoConSecuencia[] = [];
+    const nuevos: EventoConSecuencia[] = [];
+
+    const finalizar = () => {
+      if (terminado) return;
+      terminado = true;
+      if (timerEspera !== undefined) clearTimeout(timerEspera);
+      if (timerLote !== undefined) clearTimeout(timerLote);
+      baja();
+      c.req.raw.signal.removeEventListener("abort", finalizar);
+      const eventos = [...iniciales, ...nuevos].sort((a, b) => a.id - b.id);
+      resolve(c.json({ cursor: eventos.at(-1)?.id ?? cursor, eventos }));
+    };
+
+    const suscripcion = suscribirConEventosDesde(desde, (evento, id) => {
+      nuevos.push({ id, evento });
+      if (timerLote === undefined) timerLote = setTimeout(finalizar, 60);
+    });
+    baja = suscripcion.baja;
+    cursor = suscripcion.cursor;
+    iniciales = suscripcion.eventos;
+    c.req.raw.signal.addEventListener("abort", finalizar, { once: true });
+    if (c.req.raw.signal.aborted) {
+      finalizar();
+      return;
+    }
+
+    // La primera petición toma un cursor sin reproducir eventos antiguos; las siguientes recuperan los perdidos.
+    if (iniciales.length > 0 || espera === 0) {
+      finalizar();
+      return;
+    }
+    timerEspera = setTimeout(finalizar, espera);
+  });
+});
 
 function aMensaje(evento: EventoVivo): { event: string; data: string } {
   if (evento.tipo === "tarea") {

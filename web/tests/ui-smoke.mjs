@@ -61,6 +61,10 @@ try {
       { id: "a1", role: "assistant", content: '{"estado":"fallo","resumen":"Faltan dependencias","desviacion":"Instala antes de probar","pendientes":["x".replace("x","y")]}<telo-memoria>MEMORIA_INTERNA</telo-memoria>', model: "groq/llama-test", effort: "low", created_at: now },
       { id: "u2", role: "user", content: "prepara de nuevo el git commit y push", created_at: now },
       { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\nAbre `server/src/ejecutar.ts:3-20` para ver el ejemplo. También revisa `Chat.tsx` y `Gone.tsx`.\n\nPDF generado: `informe revisión.pdf`.\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Uso por área\",\"unit\":\"tokens\",\"data\":[{\"label\":\"Chat\",\"value\":120},{\"label\":\"Tareas\",\"value\":80}]}\n```\n\n```chart\n{\"type\":\"line\",\"title\":\"Uso diario\",\"data\":[{\"label\":\"Lun\",\"value\":20},{\"label\":\"Mar\",\"value\":35}]}\n```\n\n```chart\n{\"type\":\"pie\",\"title\":\"Distribución\",\"data\":[{\"label\":\"A\",\"value\":3},{\"label\":\"B\",\"value\":2}]}\n```\n\n```chart\n{\"type\":\"donut\",\"title\":\"Resultados\",\"data\":[{\"label\":\"Correcto\",\"value\":9},{\"label\":\"Pendiente\",\"value\":1}]}\n```\n\n```chart\n{\"type\":\"stats\",\"title\":\"Resumen\",\"unit\":\"pruebas\",\"data\":[{\"label\":\"Correctas\",\"value\":11,\"detail\":\"En verde\"}]}\n```\n\n```chart\nesto no es JSON\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Balance\",\"data\":[{\"label\":\"Ingresos\",\"value\":5},{\"label\":\"Ajustes\",\"value\":-2}]}\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", model: "nvidia/nemotron-test", effort: "high", created_at: now },
+      { id: "u-stale", role: "user", content: "Solicitud fallida anterior", created_at: now },
+      { id: "s-stale", role: "system", content: "La solicitud anterior falló.", created_at: now },
+      { id: "u-retry", role: "user", content: "Quiero una segunda versión de este PDF", created_at: now },
+      { id: "s-retry", role: "system", content: "El agente superó el límite de 15 minutos y se detuvo. La sesión quedó guardada; reintenta para continuar donde se quedó.", created_at: now },
     ];
     const actions = [
       { id: "git-old", action: "push", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ mensaje: "Falló el intento anterior" }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
@@ -72,6 +76,7 @@ try {
     let codexSesionEnPicker = false;
     let jevConfigurada = false;
     let approvals = 0;
+    let reintentos = [];
     let skillInstallRequests = 0;
     let diffRequests = 0;
     let medioEstado = "pendiente";
@@ -106,6 +111,13 @@ try {
       else if (path === "/api/conversations/c1/messages") {
         if (route.request().method() === "POST") {
           const body = route.request().postDataJSON();
+          if (body.retryOf === "u-retry") {
+            reintentos.push(body);
+            const aviso = messages.findIndex(mensaje => mensaje.id === "s-retry");
+            if (aviso >= 0) messages.splice(aviso, 1);
+            messages.push({ id: "a-retry", role: "assistant", content: "La segunda versión está lista.", created_at: now });
+            return route.fulfill({ status: 202, json: { messages: [messages.find(mensaje => mensaje.id === "u-retry")] } });
+          }
           if (body.content === "Envío del chat A") {
             anunciarEnvioA();
             await new Promise(resolve => { liberarEnvioA = resolve; });
@@ -233,6 +245,7 @@ try {
         tasks: { done: 1 }, calidad: { tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 },
         byTask: [{ taskId: "t1", calls: 1, tokens: sinDatos ? 0 : 10, cost: 0, tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 }],
       };
+      else if (path.includes("eventos-vivos/poll")) data = { cursor: 0, eventos: [] };
       else if (path.includes("eventos-vivos")) return route.fulfill({ contentType: "text/event-stream", body: ": alive\n\n" });
       return route.fulfill({ json: data });
     });
@@ -339,6 +352,16 @@ try {
     await page.locator(".tl-modelo-boton").click();
     await selectorModelo.locator(".picker-item").filter({ hasText: "Google Test" }).click();
     await page.locator(".tl-modelo-boton .tl-modelo-nombre").filter({ hasText: "Google Test" }).waitFor();
+    const botonReintento = page.getByRole("button", { name: "Reintentar solicitud", exact: true });
+    assert.equal(await botonReintento.count(), 1, "solo se puede reintentar el último aviso; los avisos antiguos no muestran la acción");
+    const solicitudReintento = page.waitForRequest(request => request.url().endsWith("/api/conversations/c1/messages") && request.method() === "POST" && request.postDataJSON().retryOf === "u-retry");
+    await botonReintento.click();
+    await solicitudReintento;
+    await page.getByText("La segunda versión está lista.", { exact: true }).waitFor();
+    await botonReintento.waitFor({ state: "detached" });
+    assert.equal(reintentos.length, 1);
+    assert.equal(await page.locator("#mensaje-u-retry").count(), 1, "el reintento no añade una segunda copia del prompt");
+    assert.equal(await page.locator(".tl-msg-usuario").filter({ hasText: "Quiero una segunda versión de este PDF" }).count(), 1);
     console.log(`${width}px: selector de modelos y puntuación comprobados`);
     assert.equal(await page.locator(".tl-atajos-barra").count(), 0);
     const inputChat = page.getByRole("textbox", { name: "Mensaje", exact: true });
@@ -489,7 +512,9 @@ try {
     await referenciaPdf.click();
     const vistaPdf = page.getByRole("complementary", { name: "Vista del archivo informe revisión.pdf" });
     await vistaPdf.waitFor();
-    await vistaPdf.getByTitle("Vista previa de informe revisión.pdf").waitFor();
+    const paginaPdf = vistaPdf.getByRole("img", { name: "Página 1 de 1 del PDF", exact: true });
+    await paginaPdf.waitFor();
+    assert.ok(await paginaPdf.evaluate(canvas => canvas.width > 0 && canvas.height > 0), "PDF.js dibuja la primera página en un canvas real");
     assert.equal(await vistaPdf.locator(".tl-chat-archivo-tipo").textContent(), "PDF");
     const enlacePdf = vistaPdf.getByRole("link", { name: "Descargar PDF", exact: true });
     assert.match(await enlacePdf.getAttribute("href"), /archivo-pdf.*descargar=1/);
@@ -574,20 +599,17 @@ try {
     assert.equal(await page.getByRole("article", { name: "Acción de Git" }).count(), 1);
     await page.getByText("Ver 1 intento anterior", { exact: true }).waitFor();
     await page.locator(".tl-resumen-cambios").waitFor();
-    const cambiosAntesDeAccion = await page.locator(".tl-hilo-columna").evaluate(root => {
-      const cambios = root.querySelector(".tl-resumen-cambios");
+    const accionTrasSuRespuesta = await page.locator(".tl-hilo-columna").evaluate(root => {
+      const respuesta = [...root.querySelectorAll(".tl-msg-agente")].find(mensaje => mensaje.textContent?.includes("El segundo intento está listo para revisar."));
       const accion = root.querySelector('article[aria-label="Acción de Git"]');
-      return Boolean(cambios && accion && (cambios.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING));
+      return Boolean(respuesta && accion && (respuesta.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING));
     });
-    assert.equal(cambiosAntesDeAccion, true);
+    assert.equal(accionTrasSuRespuesta, true, "la tarjeta Git aparece después de la respuesta que la originó");
     assert.equal(await page.locator(".tl-detalles-reporte pre").isVisible(), false);
     assert.equal((await page.locator("body").textContent()).includes("MEMORIA_INTERNA"), false);
     await page.getByRole("button", { name: "Autorizar commit y push", exact: true }).click();
     await page.getByText("Completada", { exact: true }).waitFor();
-    assert.equal(await page.locator(".tl-resumen-cambios").evaluate(cambios => {
-      const accion = document.querySelector('article[aria-label="Acción de Git"]');
-      return Boolean(accion && (cambios.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING));
-    }), true);
+    assert.equal(await page.locator('article[aria-label="Acción de Git"]').count(), 1, "la decisión actualiza la misma tarjeta dentro de su turno");
     assert.equal(approvals, 1);
     assert.equal(await page.locator('article[aria-label="Acción de Git"] [role="alert"]').count(), 0);
     await hiloChat.evaluate(el => { el.scrollTop = 0; el.dispatchEvent(new Event("scroll")); });
@@ -611,6 +633,10 @@ try {
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Prueba de mensaje");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByText("Mensaje recibido", { exact: true }).waitFor();
+    assert.equal(await page.locator('article[aria-label="Acción de Git"]').evaluate(accion => {
+      const respuestaPosterior = [...document.querySelectorAll(".tl-msg-agente")].find(mensaje => mensaje.textContent?.includes("Mensaje recibido"));
+      return Boolean(respuestaPosterior && (accion.compareDocumentPosition(respuestaPosterior) & Node.DOCUMENT_POSITION_FOLLOWING));
+    }), true, "la tarjeta Git permanece junto a su turno y no salta al final de los mensajes nuevos");
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Haz una imagen de un colibrí");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByRole("button", { name: "Uso", exact: true }).click();
@@ -693,6 +719,7 @@ try {
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("No se debe aceptar mientras falte cuota");
     assert.equal(await page.getByRole("button", { name: "Enviar", exact: true }).isDisabled(), true);
     assert.equal((await page.locator(".cuota-aviso").textContent()).includes("Se acabó la cuota de Google Test"), true);
+    assert.equal((await page.locator(".cuota-aviso").textContent()).includes("ChatGPT Plus se administra por separado"), true);
     await page.screenshot({ path: `scratch/capturas-ci/cuota-chat-${width}.png` });
     await page.getByRole("button", { name: "Cambiar modelo", exact: true }).click();
     await page.locator(".picker").waitFor();
@@ -704,7 +731,7 @@ try {
     await pdfLibre.waitFor();
     await pdfLibre.click();
     const visorPdfLibre = page.getByRole("complementary", { name: "Vista del archivo libre.pdf" });
-    await visorPdfLibre.getByTitle("Vista previa de libre.pdf").waitFor();
+    await visorPdfLibre.getByRole("img", { name: "Página 1 de 1 del PDF", exact: true }).waitFor();
     const descargarPdfLibre = visorPdfLibre.getByRole("link", { name: "Descargar PDF", exact: true });
     assert.match(await descargarPdfLibre.getAttribute("href"), /\/conversations\/c2\/archivo-pdf/);
     const [archivoPdfLibre] = await Promise.all([page.waitForEvent("download"), descargarPdfLibre.click()]);

@@ -107,7 +107,7 @@ export function ChatPage() {
   const colasPorChatRef = useRef(colasPorChat);
   const [colaRevision, setColaRevision] = useState(0);
   const [falloCola, setFalloCola] = useState<{ conversacionId: string; mensajeId: string } | null>(null);
-  const enviosPorChatRef = useRef<Record<string, { content: string; colaId?: string }>>({});
+  const enviosPorChatRef = useRef<Record<string, { content: string; colaId?: string; retryOf?: string }>>({});
   const [enviosPorChat, setEnviosPorChat] = useState(enviosPorChatRef.current);
   const [erroresEnvio, setErroresEnvio] = useState<Record<string, string>>({});
   const [menuColaAbierto, setMenuColaAbierto] = useState<string | null>(null);
@@ -143,6 +143,8 @@ export function ChatPage() {
   const [usoAbierto, setUsoAbierto] = useState(false);
   const [mediosAbierto, setMediosAbierto] = useState(false);
   const [pendientes, setPendientes] = useState<Pendiente[]>([]);
+  const [subiendoAdjuntos, setSubiendoAdjuntos] = useState(false);
+  const subiendoAdjuntosRef = useRef(false);
   const [arrastrando, setArrastrando] = useState(false);
   const [dictando, setDictando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -346,30 +348,42 @@ export function ChatPage() {
   const modelList: ModelInfo[] = models.data?.models ?? [];
   const modelInfo = modelList.find((m) => m.id === current?.model) ?? null;
   const lista = messages.data ?? [];
-  const accionesTrasRespuesta = useMemo(() => {
-    const porRespuesta = new Map<string, Map<string, RepositoryAction[]>>();
+  const accionesPorMensaje = useMemo(() => {
+    const porMensaje = new Map<string, Map<string, RepositoryAction[]>>();
     const indices = new Map(lista.map((mensaje, indice) => [mensaje.id, indice] as const));
     for (const accion of accionesGit.data ?? []) {
       if (!accion.message_id) continue;
       const indice = indices.get(accion.message_id);
       if (indice === undefined) continue;
-      let respuestaId: string | undefined;
+      let destinoId: string | undefined;
       for (let i = indice + 1; i < lista.length; i++) {
         if (lista[i]!.role === "user") break;
         if (lista[i]!.role === "assistant") {
-          respuestaId = lista[i]!.id;
+          destinoId = lista[i]!.id;
           break;
         }
       }
-      if (!respuestaId) continue;
-      const porAccion = porRespuesta.get(respuestaId) ?? new Map<string, RepositoryAction[]>();
+      // Mantén la tarjeta oculta mientras el turno aún no tenga respuesta.
+      if (!destinoId) continue;
+      const porAccion = porMensaje.get(destinoId) ?? new Map<string, RepositoryAction[]>();
       const intentos = porAccion.get(accion.action) ?? [];
       intentos.push(accion);
       porAccion.set(accion.action, intentos);
-      porRespuesta.set(respuestaId, porAccion);
+      porMensaje.set(destinoId, porAccion);
     }
-    return porRespuesta;
+    return porMensaje;
   }, [accionesGit.data, lista]);
+  const renderAccionesDe = (mensajeId: string) => current?.project_id && selectedId
+    ? Array.from(accionesPorMensaje.get(mensajeId)?.entries() ?? []).map(([action, intentos]) => {
+        const ultima = intentos.at(-1)!;
+        return (
+          <Fragment key={`${ultima.message_id}-${action}`}>
+            <AccionRepositorioMensaje accion={ultima} conversationId={selectedId} projectId={current.project_id!} taskId={tareaChat?.id} />
+            {intentos.length > 1 && <AccionesAnteriores acciones={intentos.slice(0, -1)} />}
+          </Fragment>
+        );
+      })
+    : null;
 
   const configure = useMutation({
     mutationFn: (patch: Patch) => api.updateConversation(selectedId!, patch),
@@ -404,7 +418,7 @@ export function ChatPage() {
 
   // Pasos del agente en vivo, por chat. Llegan por el canal (evento "actividad") mientras el agente corre.
   const [vivos, setVivos] = useState<Record<string, { turnoId: string; pasos: PasoActividad[] }>>({});
-  useEventosVivos({}, (evento) => {
+  const { conectado: canalVivoConectado } = useEventosVivos({}, (evento) => {
     if (evento.tipo === "tarea" || evento.tipo === "evento") {
       const taskId = evento.tipo === "tarea" ? evento.id : evento.task_id;
       if (taskId !== tareaChat?.id) return;
@@ -447,13 +461,20 @@ export function ChatPage() {
   // Sin respuesta (red caída, móvil dormido) el servidor puede haberlo guardado igual: se mira la lista
   // y, si el mensaje ya está, el envío se da por bueno. Así no se duplica ni se pierde.
   const send = useMutation({
-    mutationFn: async ({ id, content }: { id: string; content: string; restaurar?: Restaurar; colaId?: string }) => {
+    mutationFn: async ({ id, content, retryOf }: { id: string; content: string; restaurar?: Restaurar; colaId?: string; retryOf?: string }) => {
       const previos = contarEnvios(qc.getQueryData<Message[]>(["messages", id]), content);
       try {
-        return await api.sendMessage(id, content);
+        return await api.sendMessage(id, content, retryOf);
       } catch (err) {
         if (err instanceof ApiError) throw err;
         const ahora = await api.listMessages(id).catch(() => null);
+        if (retryOf && ahora) {
+          const original = ahora.find((mensaje) => mensaje.id === retryOf);
+          const avisoPendiente = original && ahora
+            .slice(ahora.indexOf(original) + 1)
+            .some((mensaje) => mensaje.role === "system");
+          if (original && !avisoPendiente) return { messages: [] };
+        }
         if (ahora && contarEnvios(ahora, content) > previos) return { messages: [] };
         throw err;
       }
@@ -496,7 +517,7 @@ export function ChatPage() {
     },
   });
 
-  const iniciarEnvio = (variables: { id: string; content: string; restaurar?: Restaurar; colaId?: string }) => {
+  const iniciarEnvio = (variables: { id: string; content: string; restaurar?: Restaurar; colaId?: string; retryOf?: string }) => {
     if (enviosPorChatRef.current[variables.id]) return false;
     if (variables.id === selectedId) {
       seguirHiloAlFinalRef.current = true;
@@ -507,7 +528,7 @@ export function ChatPage() {
       delete siguiente[variables.id];
       return siguiente;
     });
-    const siguientes = { ...enviosPorChatRef.current, [variables.id]: { content: variables.content, colaId: variables.colaId } };
+    const siguientes = { ...enviosPorChatRef.current, [variables.id]: { content: variables.content, colaId: variables.colaId, retryOf: variables.retryOf } };
     enviosPorChatRef.current = siguientes;
     setEnviosPorChat(siguientes);
     send.mutate(variables);
@@ -569,15 +590,16 @@ export function ChatPage() {
     configure.mutate({ model: m.id, effort: esfuerzo });
   };
 
-  // Adjuntos listos: solo los de texto viajan al agente.
+  // Los textos viajan en el mensaje; las imágenes se suben antes para que ambos runners las reciban como entrada visual.
   const adjuntosListos = pendientes.flatMap((p) => (p.lectura.tipo === "texto" ? [p.lectura.adjunto] : []));
+  const imagenesPendientes = pendientes.flatMap((p) => (p.lectura.tipo === "imagen" ? [p.lectura] : []));
   const envioActual = selectedId ? enviosPorChat[selectedId] : undefined;
   const enviandoActual = !!envioActual;
   const bloqueoEnvioCola = !!modeloAgotadoChat || (!colaActiva && (agenteOcupado || cola.length > 0));
   const puedeEnviar =
-    !!selectedId && !enviandoActual && !bloqueoEnvioCola && (draft.trim() !== "" || adjuntosListos.length > 0);
+    !!selectedId && !enviandoActual && !subiendoAdjuntos && !bloqueoEnvioCola && (draft.trim() !== "" || adjuntosListos.length > 0 || imagenesPendientes.length > 0);
 
-  const submit = () => {
+  const submit = async () => {
     if (planPendiente) {
       const feedback = draft.trim();
       if (feedback) {
@@ -586,8 +608,29 @@ export function ChatPage() {
       }
       return;
     }
-    if (!puedeEnviar || !selectedId) return;
-    const content = componerMensaje(draft, adjuntosListos);
+    if (!puedeEnviar || !selectedId || subiendoAdjuntosRef.current) return;
+    if (imagenesPendientes.length > 4) {
+      setErroresEnvio((prev) => ({ ...prev, [selectedId]: "Adjunta hasta 4 imágenes por mensaje." }));
+      return;
+    }
+    let imagenesSubidas: { id: string; nombre: string }[] = [];
+    if (imagenesPendientes.length > 0) {
+      subiendoAdjuntosRef.current = true;
+      setSubiendoAdjuntos(true);
+      try {
+        imagenesSubidas = await Promise.all(imagenesPendientes.map(async (imagen) => {
+          const subida = await api.uploadChatImage(selectedId, imagen.archivo);
+          return { id: subida.id, nombre: subida.nombre };
+        }));
+      } catch (err) {
+        setErroresEnvio((prev) => ({ ...prev, [selectedId]: errorText(err) }));
+        return;
+      } finally {
+        subiendoAdjuntosRef.current = false;
+        setSubiendoAdjuntos(false);
+      }
+    }
+    const content = componerMensaje(draft, adjuntosListos, imagenesSubidas);
     if (!content) return;
     if (agenteOcupado || cola.length > 0) {
       if (!colaActiva) return;
@@ -716,6 +759,14 @@ export function ChatPage() {
     }
   };
 
+  const reintentarAviso = (mensajeId: string) => {
+    const i = lista.findIndex((m) => m.id === mensajeId);
+    const previo = lista.slice(0, i).reverse().find((m) => m.role === "user");
+    if (i === lista.length - 1 && previo && selectedId && !enviandoActual && !current?.ocupada) {
+      iniciarEnvio({ id: selectedId, content: previo.content, retryOf: previo.id });
+    }
+  };
+
   const avisar = (texto: string) => {
     setAviso(texto);
     window.setTimeout(() => setAviso(null), 2400);
@@ -833,10 +884,27 @@ export function ChatPage() {
 
   // El mensaje que se envió desde este dispositivo ya puede estar en la lista (el sondeo lo trae antes de terminar).
   const ultimoMensaje = lista.at(-1);
-  const yaGuardado = enviandoActual && ultimoMensaje?.role === "user" && ultimoMensaje.content === envioActual?.content;
+  const yaGuardado = enviandoActual && (
+    (envioActual?.retryOf ? lista.some((mensaje) => mensaje.id === envioActual.retryOf) : false)
+    || (ultimoMensaje?.role === "user" && ultimoMensaje.content === envioActual?.content)
+  );
   const tareaActiva = !!tareaChat && ["queued", "analyzing", "running"].includes(tareaChat.status);
   const siguiendoActual = seguirChat.isPending && seguirChat.variables === selectedId;
   const pensando = enviandoActual || siguiendoActual || (tareaChat ? tareaActiva : !!current?.ocupada);
+  const turnoEnCurso = pensando ? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.id : undefined;
+  const actividadGuardada = useQuery({
+    queryKey: ["turno-actividad", selectedId, turnoEnCurso],
+    queryFn: () => api.listTurnoActividad(selectedId!, turnoEnCurso!),
+    enabled: !!selectedId && !!turnoEnCurso && pensando,
+    refetchInterval: pensando && !canalVivoConectado ? 3000 : false,
+  });
+  useEffect(() => {
+    if (!selectedId || !turnoEnCurso || !actividadGuardada.data?.length) return;
+    setVivos((prev) => {
+      if (prev[selectedId]?.turnoId === turnoEnCurso) return prev;
+      return { ...prev, [selectedId]: { turnoId: turnoEnCurso, pasos: actividadGuardada.data! } };
+    });
+  }, [selectedId, turnoEnCurso, actividadGuardada.data]);
   const candidatasSugerencia = useMemo(() => sugerenciasChat(lista), [lista]);
   const sugerenciasOrdenadas = useQuery({
     queryKey: ["jev-recomendaciones", selectedId, lista.at(-1)?.id, candidatasSugerencia],
@@ -1369,19 +1437,23 @@ export function ChatPage() {
                   {m.role === "system" ? (
                     <article className="tl-msg" aria-label="Aviso del sistema">
                       <p className="tl-alerta" role="status">{m.content}</p>
-                      {!agenteOcupado && lista.slice(0, i).some(p => p.role === "user") && (
-                        <button type="button" className="tl-boton" onClick={() => reintentar(m.id)}>Reintentar solicitud</button>
+                      {!agenteOcupado && i === lista.length - 1 && lista.slice(0, i).some(p => p.role === "user") && (
+                        <button type="button" className="tl-boton" onClick={() => reintentarAviso(m.id)}>Reintentar solicitud</button>
                       )}
                     </article>
                   ) : m.role === "user" ? (
-                    <MensajeUsuario
-                      id={`mensaje-${m.id}`}
-                      texto={m.content}
-                      cuando={m.created_at}
-                      resaltado={resaltadoId === m.id}
-                      marcado={hitos.includes(m.id)}
-                      onToggleMarca={() => marcarPrompt(m.id)}
-                    />
+                    <>
+                      <MensajeUsuario
+                        conversationId={selectedId ?? undefined}
+                        id={`mensaje-${m.id}`}
+                        texto={m.content}
+                        cuando={m.created_at}
+                        resaltado={resaltadoId === m.id}
+                        marcado={hitos.includes(m.id)}
+                        onToggleMarca={() => marcarPrompt(m.id)}
+                      />
+                      {renderAccionesDe(m.id)}
+                    </>
                   ) : (
                     <>
                       <MensajeAgente
@@ -1409,23 +1481,13 @@ export function ChatPage() {
                           window.setTimeout(() => inputRef.current?.focus(), 0);
                         }}
                       />
-                      {current?.project_id && Array.from(accionesTrasRespuesta.get(m.id)?.entries() ?? []).map(([action, intentos]) => {
-                        const ultima = intentos.at(-1)!;
-                        const anteriores = intentos.slice(0, -1);
-                        const accionAlFinal = ultima.task_id === tareaChat?.id;
-                        return (
-                          <Fragment key={`${ultima.message_id}-${action}`}>
-                            {!accionAlFinal && <AccionRepositorioMensaje accion={ultima} conversationId={selectedId!} projectId={current.project_id!} taskId={tareaChat?.id} />}
-                            {anteriores.length > 0 && <AccionesAnteriores acciones={anteriores} />}
-                          </Fragment>
-                        );
-                      })}
+                      {renderAccionesDe(m.id)}
                     </>
                   )}
                 </div>
               ))}
               {enviandoActual && !yaGuardado && (
-                <div className="tl-hilo-evento"><MensajeUsuario texto={envioActual?.content ?? ""} cuando={null} /></div>
+                <div className="tl-hilo-evento"><MensajeUsuario conversationId={selectedId ?? undefined} texto={envioActual?.content ?? ""} cuando={null} /></div>
               )}
               {pensando && (
                 <IndicadorPensando
@@ -1730,14 +1792,20 @@ export function ChatPage() {
                   {pendientes.map((p) => {
                     const { lectura } = p;
                     const nombre = lectura.tipo === "texto" ? lectura.adjunto.nombre : lectura.nombre;
-                    const motivo = lectura.tipo === "texto" ? "Se envía con el mensaje" : lectura.motivo;
+                    const motivo = lectura.tipo === "texto"
+                      ? "Se envía con el mensaje"
+                      : lectura.tipo === "imagen"
+                        ? "Se envía al agente como entrada visual; el modelo debe admitir imágenes"
+                        : lectura.motivo;
                     const estado =
                       lectura.tipo === "texto"
                         ? `${etiquetaBytes(lectura.tamano)}${lectura.recortado ? " · recortado" : ""}`
+                        : lectura.tipo === "imagen"
+                          ? `${etiquetaBytes(lectura.tamano)} · se envía al agente`
                         : lectura.tipo === "solo_vista"
                           ? `${etiquetaBytes(lectura.tamano)} · no se envía · solo texto`
                           : "No se añadió";
-                    const imagen = lectura.tipo === "solo_vista" && lectura.imagen;
+                    const imagen = lectura.tipo === "imagen" || (lectura.tipo === "solo_vista" && lectura.imagen);
                     return (
                       <li key={p.key} className={`tl-adjunto-chip is-${lectura.tipo}`} title={motivo}>
                         <span className="tl-adjunto-icono" aria-hidden="true">

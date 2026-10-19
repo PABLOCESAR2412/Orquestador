@@ -25,6 +25,7 @@ import { prepararSubagentes } from "../subagentes";
 import { detectarSolicitudMedio } from "../generacion-medios";
 import { crearSolicitudMedio } from "./media";
 import { ArchivoError, leerImagen, leerPdf, normalizarRuta } from "../archivos-proyecto";
+import { contarImagenesMarcadas, eliminarImagenesConversacion, guardarImagenAdjunta, idsImagenesMarcadas, leerImagenAdjunta, MAX_IMAGENES_MENSAJE } from "../chat-adjuntos";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
 // Texto de un mensaje: incluye los adjuntos de texto. El cuerpo HTTP sigue limitado a 64 KB.
@@ -33,6 +34,17 @@ const MAX_CONTENIDO = 30_000;
 const MAX_DETALLE_ERROR = 300;
 const chatWorkspace = join(config.dataDir, "chat-workspace");
 mkdirSync(chatWorkspace, { recursive: true });
+
+export function numeroPullRequestParaFusionar(texto: string): number | null {
+  const inicio = texto.trim().replace(/^[¿¡]+/, "");
+  const pideFusion = /^(?:(?:por\s+favor|puedes|podr[ií]as|quieres|quiero|necesito)\s+)*(?:(?:haz(?:me)?|hacer|realiza|ejecuta)\s+(?:el\s+)?merge(?:ar)?|fusiona(?:r)?|mergea(?:r)?|merge(?:ar)?)\b/i.test(inicio);
+  if (!pideFusion) return null;
+  const referencia = /\b(?:pull\s*requests?|pr)\s*(?:(?:n(?:ú|u)mero|num(?:ero)?\.?)\s*)?(?:exact[oa]\s*)?#?\s*(\d{1,10})\b/i.exec(texto)?.[1]
+    ?? /github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/(\d{1,10})(?:[/?#]|$)/i.exec(texto)?.[1];
+  if (!referencia) return null;
+  const numero = Number(referencia);
+  return Number.isSafeInteger(numero) && numero > 0 ? numero : null;
+}
 
 type ConversationRow = {
   id: string;
@@ -144,6 +156,7 @@ chat.delete("/conversations/:id", (c) => {
   if (chatOcupado(id)) return c.json({ error: "conversation_busy" }, 409);
   const result = db.query("DELETE FROM conversations WHERE id = ?").run(id);
   if (result.changes === 0) return c.json({ error: "conversation_not_found" }, 404);
+  eliminarImagenesConversacion(id);
   return c.json({ ok: true });
 });
 
@@ -159,6 +172,42 @@ chat.get("/conversations/:id/messages", (c) => {
     )
     .all(c.req.param("id"));
   return c.json(messages);
+});
+
+// Las imágenes se suben por separado del JSON del mensaje para conservar el límite pequeño de la API.
+chat.post("/conversations/:id/adjuntos", async (c) => {
+  const id = c.req.param("id");
+  if (!leerConversacion(id)) return c.json({ error: "conversation_not_found" }, 404);
+  const form = await c.req.formData().catch(() => null);
+  const archivo = form?.get("archivo");
+  if (!(archivo instanceof File)) return c.json({ error: "invalid_image" }, 400);
+  if (!archivo.size || archivo.size > 8 * 1024 * 1024) return c.json({ error: "image_size_invalid" }, 413);
+  try {
+    const imagen = guardarImagenAdjunta(id, archivo.name, new Uint8Array(await archivo.arrayBuffer()));
+    return c.json(imagen, 201);
+  } catch (err) {
+    if (err instanceof Error && err.message === "image_type_unsupported") return c.json({ error: "image_type_unsupported" }, 415);
+    if (err instanceof Error && err.message === "image_size_invalid") return c.json({ error: "image_size_invalid" }, 413);
+    throw err;
+  }
+});
+
+// Muestra únicamente las imágenes raster subidas a este chat; el id de conversación limita el alcance.
+chat.get("/conversations/:id/adjuntos/:adjunto", (c) => {
+  const id = c.req.param("id");
+  if (!leerConversacion(id)) return c.json({ error: "conversation_not_found" }, 404);
+  const imagen = leerImagenAdjunta(id, c.req.param("adjunto"));
+  if (!imagen) return c.json({ error: "attachment_not_found" }, 404);
+  return new Response(imagen.contenido, {
+    headers: {
+      "Content-Type": imagen.mime,
+      "Content-Length": String(imagen.bytes),
+      "Content-Disposition": "inline",
+      "X-Content-Type-Options": "nosniff",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "Cache-Control": "private, no-store",
+    },
+  });
 });
 
 // Vista previa y descarga de un PDF creado dentro del workspace aislado de esta conversación.
@@ -350,7 +399,7 @@ function guardarMensajeUsuario(conversationId: string, content: string): TurnoUs
       msg.content,
     );
     db.query("UPDATE conversations SET title = ? WHERE id = ? AND title = 'Nuevo chat'").run(
-      content.slice(0, 60),
+      content.replace(/<<telo-imagen id="[a-f\d-]{36}" nombre="[^"]*">>/gi, "[Imagen adjunta]").trim().slice(0, 60) || "Imagen adjunta",
       conversationId,
     );
   })();
@@ -366,8 +415,32 @@ function guardarAviso(conversationId: string, texto: string): void {
   );
 }
 
-// Límite de un turno del chat. Al llegar a este tiempo, el agente se detiene (SIGTERM, código 143).
-const TIEMPO_TURNO_MS = 180_000;
+function turnoReintentable(conversationId: string, messageId: string, content: string): { turno: TurnoUsuario; rowid: number; continuar: boolean } | null {
+  const original = db.query<{ id: string; content: string; rowid: number }, [string, string]>(
+    "SELECT id, content, rowid FROM messages WHERE id=? AND conversation_id=? AND role='user'",
+  ).get(messageId, conversationId);
+  if (!original || original.content !== content) return null;
+
+  const ultimoUsuario = db.query<{ id: string }, [string]>(
+    "SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY rowid DESC LIMIT 1",
+  ).get(conversationId);
+  const mensajesPosteriores = db.query<{ role: string; content: string }, [string, number]>(
+    "SELECT role,content FROM messages WHERE conversation_id=? AND rowid>? ORDER BY rowid",
+  ).all(conversationId, original.rowid);
+  if (ultimoUsuario?.id !== messageId || mensajesPosteriores.length === 0 || mensajesPosteriores.some((mensaje) => mensaje.role !== "system")) {
+    return null;
+  }
+  const continuar = mensajesPosteriores.some((mensaje) => /^El agente (?:superó el límite de|tardó más de) \d+ minutos/i.test(mensaje.content));
+  return { turno: { id: original.id, role: "user", content: original.content }, rowid: original.rowid, continuar };
+}
+
+function limpiarAvisosReintentados(conversationId: string, rowid: number | undefined): void {
+  if (rowid === undefined) return;
+  db.query("DELETE FROM messages WHERE conversation_id=? AND role='system' AND rowid>?").run(conversationId, rowid);
+}
+
+// Investigación, subagentes y documentos pueden tardar varios minutos; conservar un tope evita procesos eternos.
+const TIEMPO_TURNO_MS = 900_000;
 
 // Avisa a los clientes que un turno empezó o terminó. Los demás dispositivos piden de nuevo el chat.
 function publicarChat(conversationId: string, estado: "en_curso" | "terminado"): void {
@@ -397,6 +470,11 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       conversationId,
       estilo: "chat",
       opencodeConfigDir: perfilesSubagente?.directorio,
+      // Guarda la sesión al aparecer para que un timeout o reinicio permita continuar el turno.
+      onSesion: (sessionId, sessionModel) => {
+        db.query("UPDATE conversations SET runner_session_id=?, runner_session_model=? WHERE id=?")
+          .run(sessionId, sessionModel, conversationId);
+      },
       // Cada paso del agente (texto intermedio o acción) se guarda y se publica mientras corre.
       onLinea: (linea) => {
         const item = itemDeLinea(linea);
@@ -419,7 +497,7 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
     if (Date.now() - inicio >= TIEMPO_TURNO_MS) {
       guardarAviso(
         conversationId,
-        `El agente tardó más de ${TIEMPO_TURNO_MS / 60_000} minutos y se detuvo. Divide la tarea en partes más pequeñas.`,
+        `El agente superó el límite de ${TIEMPO_TURNO_MS / 60_000} minutos y se detuvo. La sesión quedó guardada; reintenta para continuar donde se quedó.`,
       );
       return;
     }
@@ -508,11 +586,20 @@ chat.post("/conversations/:id/messages", async (c) => {
   const conv = leerConversacion(conversationId);
   if (!conv) return c.json({ error: "conversation_not_found" }, 404);
 
-  const body = await c.req.json<{ content?: unknown }>().catch(() => null);
+  const body = await c.req.json<{ content?: unknown; retryOf?: unknown }>().catch(() => null);
   const content = typeof body?.content === "string" ? body.content.trim() : "";
   if (!content || content.length > MAX_CONTENIDO) {
     return c.json({ error: "invalid_content" }, 400);
   }
+  if (contarImagenesMarcadas(content) > MAX_IMAGENES_MENSAJE || idsImagenesMarcadas(content).some((id) => !leerImagenAdjunta(conversationId, id))) {
+    return c.json({ error: "invalid_attachment" }, 400);
+  }
+  if (body?.retryOf !== undefined && (typeof body.retryOf !== "string" || !body.retryOf.trim())) {
+    return c.json({ error: "invalid_retry" }, 400);
+  }
+  const retryOf = typeof body?.retryOf === "string" ? body.retryOf : null;
+  const reintento = retryOf ? turnoReintentable(conversationId, retryOf, content) : null;
+  if (retryOf && !reintento) return c.json({ error: "message_not_retryable" }, 409);
   const bloqueo = motivoDeBloqueo(conv);
   if (bloqueo) return c.json({ error: bloqueo }, 409);
   const tareaActual = conv.project_id ? tareaDelChat(conversationId) : null;
@@ -525,7 +612,8 @@ chat.post("/conversations/:id/messages", async (c) => {
   // de chat los ejecuta y la API de medios no se llama hasta que el usuario confirme el coste.
   const solicitudMedio = detectarSolicitudMedio(content);
   if (solicitudMedio) {
-    const turno = guardarMensajeUsuario(conversationId, content);
+    const turno = reintento?.turno ?? guardarMensajeUsuario(conversationId, content);
+    limpiarAvisosReintentados(conversationId, reintento?.rowid);
     const trabajo = crearSolicitudMedio(conversationId, turno.id, solicitudMedio);
     const respuesta = db.query<Message, [string]>(
       "SELECT id,conversation_id,role,content,created_at,model,effort FROM messages WHERE id=?",
@@ -533,15 +621,25 @@ chat.post("/conversations/:id/messages", async (c) => {
     return c.json({ messages: [turno, respuesta] }, 202);
   }
 
-  // Las órdenes directas de Git crean una tarjeta de autorización, sin ejecutar al agente.
+  // Fusionar un PR existente por número es una acción directa: no debe crear una tarea ni otra rama.
+  const numeroPr = numeroPullRequestParaFusionar(content);
+  // Las demás órdenes directas de Git crean una tarjeta de autorización, sin ejecutar al agente.
   const pedido = /^(?:(?:haz|hacer|ejecuta|realiza|crea|crear|prepara|reintenta|por favor)\s+)*(?:de nuevo\s+)?(?:(?:un|el)\s+)?(?:git\s+(init|commit|push)|(?:un\s+)?(commit|push|pr)|(?:gh\s+pr\s+create)|(pull request))(?:\s+.*)?[.!]?$/i.exec(content);
-  if (pedido && conv.project_id) {
-    const turno = guardarMensajeUsuario(conversationId, content);
+  if ((pedido || numeroPr !== null) && conv.project_id) {
+    const turno = reintento?.turno ?? guardarMensajeUsuario(conversationId, content);
+    const accion = numeroPr !== null
+      ? "merge"
+      : /\bcommit\s+(?:y|and|&)\s+(?:git\s+)?push\b/i.test(pedido![0])
+        ? "push"
+        : (pedido![1] || pedido![2] || "pr").toLowerCase();
     const response = await repositoryActions.request(`http://telo/projects/${conv.project_id}/acciones`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        action: /\bcommit\s+(?:y|and|&)\s+(?:git\s+)?push\b/i.test(pedido[0]) ? "push" : (pedido[1] || pedido[2] || "pr").toLowerCase(),
-        conversationId, taskId: tareaDelChat(conversationId)?.id, messageId: turno.id,
+        action: accion,
+        conversationId,
+        taskId: accion === "merge" ? undefined : tareaDelChat(conversationId)?.id,
+        messageId: turno.id,
+        ...(numeroPr !== null ? { pr_number: numeroPr, title: `Fusionar PR #${numeroPr}` } : {}),
       }),
     });
     if (!response.ok) {
@@ -553,26 +651,32 @@ chat.post("/conversations/:id/messages", async (c) => {
       };
       const motivo = motivos[error.error ?? ""];
       if (motivo) {
+        limpiarAvisosReintentados(conversationId, reintento?.rowid);
         const aviso = { id: crypto.randomUUID(), role: "assistant" as const, content: motivo };
         db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES (?,?,'assistant',?)").run(aviso.id, conversationId, motivo);
         publicarChat(conversationId, "terminado");
         return c.json({ messages: [turno, aviso] }, 202);
       }
-      db.query("DELETE FROM messages WHERE id=?").run(turno.id);
+      if (!reintento) db.query("DELETE FROM messages WHERE id=?").run(turno.id);
       return response;
     }
+    limpiarAvisosReintentados(conversationId, reintento?.rowid);
     publicarChat(conversationId, "terminado");
     return c.json({ messages: [turno], action: await response.json() }, 202);
   }
 
   const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
-  const turno = guardarMensajeUsuario(conversationId, content);
+  const turno = reintento?.turno ?? guardarMensajeUsuario(conversationId, content);
+  limpiarAvisosReintentados(conversationId, reintento?.rowid);
   if (conv.project_id) {
     const taskId = encolarTurno(conv, content, model);
     publicarChat(conversationId, "en_curso");
     return c.json({ messages: [turno], taskId }, 202);
   }
-  iniciarTurno(conv, turno, content, model);
+  const promptTurno = reintento?.continuar
+    ? promptContinuacion(SEGUIR_INSTRUCCION, sesionCompatible(conv.runner_session_id, conv.runner_session_model, model))
+    : content;
+  iniciarTurno(conv, turno, promptTurno, model);
   return c.json({ messages: [turno] }, 202);
 });
 

@@ -87,7 +87,11 @@ function lecturaExtra(): string[] {
 }
 
 // Argumentos de bwrap que van antes del comando del agente. Vacío si el aislamiento está desactivado.
-export function prefijoAislamiento(cwd: string, soloLectura = false): string[] {
+export function prefijoAislamiento(
+  cwd: string,
+  soloLectura = false,
+  adjuntos: { ruta: string; rutaVisible: string }[] = [],
+): string[] {
   if (!aislamientoActivo()) return [];
 
   const carpeta = rutaReal(cwd);
@@ -130,6 +134,11 @@ export function prefijoAislamiento(cwd: string, soloLectura = false): string[] {
   args.push("--tmpfs", "/tmp");
   for (const ruta of [...new Set(ocultar)]) args.push("--tmpfs", ruta);
 
+  if (adjuntos.length > 0) {
+    args.push("--dir", "/tmp/telo-adjuntos");
+    for (const adjunto of adjuntos) args.push("--ro-bind", adjunto.ruta, adjunto.rutaVisible);
+  }
+
   if (home) {
     for (const rel of ESTADO_OPENCODE) {
       const ruta = join(home, rel);
@@ -139,6 +148,10 @@ export function prefijoAislamiento(cwd: string, soloLectura = false): string[] {
     // estado de OpenCode (bwrap aplica el montaje posterior). Así un agente no deja instrucciones para los demás.
     const skillsGlobales = join(home, ".config", "opencode", "skills");
     args.push("--ro-bind-try", skillsGlobales, skillsGlobales);
+    // Codex descubre las skills globales en ~/.agents/skills. Se expone la misma carpeta de Telo,
+    // sin duplicar archivos ni permitir que el agente edite las instrucciones globales.
+    args.push("--dir", join(home, ".agents"));
+    args.push("--ro-bind-try", skillsGlobales, join(home, ".agents", "skills"));
     for (const rel of HERRAMIENTAS) {
       const ruta = join(home, rel);
       args.push("--ro-bind-try", ruta, ruta);

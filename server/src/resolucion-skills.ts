@@ -49,6 +49,19 @@ export type SkillInvocada = {
   ambito: "proyecto" | "global";
 };
 
+function skillsAutomaticas(texto: string): string[] {
+  const resultado: string[] = [];
+  const interfaz = /\b(frontend|interfaz|ui|css|componente|responsive|diseño|diseño visual|pantalla|formulario|estilo)\b/i.test(texto);
+  if (interfaz) resultado.push("frontend-design", "playwright");
+  else if (/\b(playwright|navegador|browser|prueba visual|e2e)\b/i.test(texto)) resultado.push("playwright");
+
+  const cambioAcotado = texto.length <= 4_000 &&
+    /\b(corrige|arregla|fix|bug|error|implementa|añade|agrega|actualiza|cambia|refactoriza)\b/i.test(texto) &&
+    !/\b(análisis completo|migración|rediseña todo|reescribe|desde cero|varios proyectos)\b/i.test(texto);
+  if (cambioAcotado) resultado.push("ponytail");
+  return resultado;
+}
+
 // Resuelve las skills invocadas priorizando el proyecto activo y cayendo al ámbito global
 export function resolverSkillsInvocadas(
   nombres: string[],
@@ -88,9 +101,10 @@ export function inyectarSkillsEnPrompt(
   projectId?: string | null,
 ): { promptFinal: string; skillsInvocadas: string[] } {
   const menciones = detectarMencionesSkills(prompt);
-  if (menciones.length === 0) return { promptFinal: prompt, skillsInvocadas: [] };
+  const nombres = [...new Set([...menciones, ...skillsAutomaticas(prompt)])];
+  if (nombres.length === 0) return { promptFinal: prompt, skillsInvocadas: [] };
 
-  const skills = resolverSkillsInvocadas(menciones, projectId);
+  const skills = resolverSkillsInvocadas(nombres, projectId);
   if (skills.length === 0) return { promptFinal: prompt, skillsInvocadas: [] };
 
   const bloques = skills.map((s) => {
@@ -103,7 +117,7 @@ export function inyectarSkillsEnPrompt(
 
   const encabezado = [
     "[SKILLS ACTIVADAS POR EL USUARIO]",
-    "El usuario ha invocado explícitamente las siguientes skills mediante comandos ($, @ o /):",
+    "Aplica estas skills, seleccionadas por el usuario o por el tipo de tarea:",
     "",
     bloques.join("\n\n"),
     "",

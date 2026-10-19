@@ -110,7 +110,18 @@ function describirSinError(
     }
     case "patch":
       return { titulo: "Aplicó un parche", detalle: vista };
-    case "webfetch": {
+    case "websearch":
+    case "web_search":
+    case "search_web": {
+      const consulta = cadena(entrada.query) ?? cadena(entrada.q) ?? cadena(entrada.search_term);
+      const entradaTxt = Object.keys(entrada).length ? recortar(JSON.stringify(entrada), MAX_DETALLE) : null;
+      return {
+        titulo: `Buscó en la web${consulta ? ` «${recortar(consulta, 100)}»` : ""}`,
+        detalle: vista ?? entradaTxt,
+      };
+    }
+    case "webfetch":
+    case "fetch_url": {
       const url = cadena(entrada.url) ?? "";
       return { titulo: `Consultó ${recortar(url || "una página", 120)}`, detalle: vista };
     }
