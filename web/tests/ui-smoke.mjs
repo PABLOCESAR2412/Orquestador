@@ -61,6 +61,10 @@ try {
       { id: "a1", role: "assistant", content: '{"estado":"fallo","resumen":"Faltan dependencias","desviacion":"Instala antes de probar","pendientes":["x".replace("x","y")]}<telo-memoria>MEMORIA_INTERNA</telo-memoria>', model: "groq/llama-test", effort: "low", created_at: now },
       { id: "u2", role: "user", content: "prepara de nuevo el git commit y push", created_at: now },
       { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\nAbre `server/src/ejecutar.ts:3-20` para ver el ejemplo. También revisa `Chat.tsx` y `Gone.tsx`.\n\nPDF generado: `informe revisión.pdf`.\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Uso por área\",\"unit\":\"tokens\",\"data\":[{\"label\":\"Chat\",\"value\":120},{\"label\":\"Tareas\",\"value\":80}]}\n```\n\n```chart\n{\"type\":\"line\",\"title\":\"Uso diario\",\"data\":[{\"label\":\"Lun\",\"value\":20},{\"label\":\"Mar\",\"value\":35}]}\n```\n\n```chart\n{\"type\":\"pie\",\"title\":\"Distribución\",\"data\":[{\"label\":\"A\",\"value\":3},{\"label\":\"B\",\"value\":2}]}\n```\n\n```chart\n{\"type\":\"donut\",\"title\":\"Resultados\",\"data\":[{\"label\":\"Correcto\",\"value\":9},{\"label\":\"Pendiente\",\"value\":1}]}\n```\n\n```chart\n{\"type\":\"stats\",\"title\":\"Resumen\",\"unit\":\"pruebas\",\"data\":[{\"label\":\"Correctas\",\"value\":11,\"detail\":\"En verde\"}]}\n```\n\n```chart\nesto no es JSON\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Balance\",\"data\":[{\"label\":\"Ingresos\",\"value\":5},{\"label\":\"Ajustes\",\"value\":-2}]}\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", model: "nvidia/nemotron-test", effort: "high", created_at: now },
+      { id: "u-stale", role: "user", content: "Solicitud fallida anterior", created_at: now },
+      { id: "s-stale", role: "system", content: "La solicitud anterior falló.", created_at: now },
+      { id: "u-retry", role: "user", content: "Quiero una segunda versión de este PDF", created_at: now },
+      { id: "s-retry", role: "system", content: "El agente tardó más de 3 minutos y se detuvo. Divide la tarea en partes más pequeñas.", created_at: now },
     ];
     const actions = [
       { id: "git-old", action: "push", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ mensaje: "Falló el intento anterior" }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
@@ -72,6 +76,7 @@ try {
     let codexSesionEnPicker = false;
     let jevConfigurada = false;
     let approvals = 0;
+    let reintentos = [];
     let skillInstallRequests = 0;
     let diffRequests = 0;
     let medioEstado = "pendiente";
@@ -106,6 +111,13 @@ try {
       else if (path === "/api/conversations/c1/messages") {
         if (route.request().method() === "POST") {
           const body = route.request().postDataJSON();
+          if (body.retryOf === "u-retry") {
+            reintentos.push(body);
+            const aviso = messages.findIndex(mensaje => mensaje.id === "s-retry");
+            if (aviso >= 0) messages.splice(aviso, 1);
+            messages.push({ id: "a-retry", role: "assistant", content: "La segunda versión está lista.", created_at: now });
+            return route.fulfill({ status: 202, json: { messages: [messages.find(mensaje => mensaje.id === "u-retry")] } });
+          }
           if (body.content === "Envío del chat A") {
             anunciarEnvioA();
             await new Promise(resolve => { liberarEnvioA = resolve; });
@@ -339,6 +351,16 @@ try {
     await page.locator(".tl-modelo-boton").click();
     await selectorModelo.locator(".picker-item").filter({ hasText: "Google Test" }).click();
     await page.locator(".tl-modelo-boton .tl-modelo-nombre").filter({ hasText: "Google Test" }).waitFor();
+    const botonReintento = page.getByRole("button", { name: "Reintentar solicitud", exact: true });
+    assert.equal(await botonReintento.count(), 1, "solo se puede reintentar el último aviso; los avisos antiguos no muestran la acción");
+    const solicitudReintento = page.waitForRequest(request => request.url().endsWith("/api/conversations/c1/messages") && request.method() === "POST" && request.postDataJSON().retryOf === "u-retry");
+    await botonReintento.click();
+    await solicitudReintento;
+    await page.getByText("La segunda versión está lista.", { exact: true }).waitFor();
+    await botonReintento.waitFor({ state: "detached" });
+    assert.equal(reintentos.length, 1);
+    assert.equal(await page.locator("#mensaje-u-retry").count(), 1, "el reintento no añade una segunda copia del prompt");
+    assert.equal(await page.locator(".tl-msg-usuario").filter({ hasText: "Quiero una segunda versión de este PDF" }).count(), 1);
     console.log(`${width}px: selector de modelos y puntuación comprobados`);
     assert.equal(await page.locator(".tl-atajos-barra").count(), 0);
     const inputChat = page.getByRole("textbox", { name: "Mensaje", exact: true });

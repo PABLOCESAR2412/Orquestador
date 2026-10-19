@@ -107,7 +107,7 @@ export function ChatPage() {
   const colasPorChatRef = useRef(colasPorChat);
   const [colaRevision, setColaRevision] = useState(0);
   const [falloCola, setFalloCola] = useState<{ conversacionId: string; mensajeId: string } | null>(null);
-  const enviosPorChatRef = useRef<Record<string, { content: string; colaId?: string }>>({});
+  const enviosPorChatRef = useRef<Record<string, { content: string; colaId?: string; retryOf?: string }>>({});
   const [enviosPorChat, setEnviosPorChat] = useState(enviosPorChatRef.current);
   const [erroresEnvio, setErroresEnvio] = useState<Record<string, string>>({});
   const [menuColaAbierto, setMenuColaAbierto] = useState<string | null>(null);
@@ -459,13 +459,20 @@ export function ChatPage() {
   // Sin respuesta (red caída, móvil dormido) el servidor puede haberlo guardado igual: se mira la lista
   // y, si el mensaje ya está, el envío se da por bueno. Así no se duplica ni se pierde.
   const send = useMutation({
-    mutationFn: async ({ id, content }: { id: string; content: string; restaurar?: Restaurar; colaId?: string }) => {
+    mutationFn: async ({ id, content, retryOf }: { id: string; content: string; restaurar?: Restaurar; colaId?: string; retryOf?: string }) => {
       const previos = contarEnvios(qc.getQueryData<Message[]>(["messages", id]), content);
       try {
-        return await api.sendMessage(id, content);
+        return await api.sendMessage(id, content, retryOf);
       } catch (err) {
         if (err instanceof ApiError) throw err;
         const ahora = await api.listMessages(id).catch(() => null);
+        if (retryOf && ahora) {
+          const original = ahora.find((mensaje) => mensaje.id === retryOf);
+          const avisoPendiente = original && ahora
+            .slice(ahora.indexOf(original) + 1)
+            .some((mensaje) => mensaje.role === "system");
+          if (original && !avisoPendiente) return { messages: [] };
+        }
         if (ahora && contarEnvios(ahora, content) > previos) return { messages: [] };
         throw err;
       }
@@ -508,7 +515,7 @@ export function ChatPage() {
     },
   });
 
-  const iniciarEnvio = (variables: { id: string; content: string; restaurar?: Restaurar; colaId?: string }) => {
+  const iniciarEnvio = (variables: { id: string; content: string; restaurar?: Restaurar; colaId?: string; retryOf?: string }) => {
     if (enviosPorChatRef.current[variables.id]) return false;
     if (variables.id === selectedId) {
       seguirHiloAlFinalRef.current = true;
@@ -519,7 +526,7 @@ export function ChatPage() {
       delete siguiente[variables.id];
       return siguiente;
     });
-    const siguientes = { ...enviosPorChatRef.current, [variables.id]: { content: variables.content, colaId: variables.colaId } };
+    const siguientes = { ...enviosPorChatRef.current, [variables.id]: { content: variables.content, colaId: variables.colaId, retryOf: variables.retryOf } };
     enviosPorChatRef.current = siguientes;
     setEnviosPorChat(siguientes);
     send.mutate(variables);
@@ -728,6 +735,14 @@ export function ChatPage() {
     }
   };
 
+  const reintentarAviso = (mensajeId: string) => {
+    const i = lista.findIndex((m) => m.id === mensajeId);
+    const previo = lista.slice(0, i).reverse().find((m) => m.role === "user");
+    if (i === lista.length - 1 && previo && selectedId && !enviandoActual && !current?.ocupada) {
+      iniciarEnvio({ id: selectedId, content: previo.content, retryOf: previo.id });
+    }
+  };
+
   const avisar = (texto: string) => {
     setAviso(texto);
     window.setTimeout(() => setAviso(null), 2400);
@@ -845,7 +860,10 @@ export function ChatPage() {
 
   // El mensaje que se envió desde este dispositivo ya puede estar en la lista (el sondeo lo trae antes de terminar).
   const ultimoMensaje = lista.at(-1);
-  const yaGuardado = enviandoActual && ultimoMensaje?.role === "user" && ultimoMensaje.content === envioActual?.content;
+  const yaGuardado = enviandoActual && (
+    (envioActual?.retryOf ? lista.some((mensaje) => mensaje.id === envioActual.retryOf) : false)
+    || (ultimoMensaje?.role === "user" && ultimoMensaje.content === envioActual?.content)
+  );
   const tareaActiva = !!tareaChat && ["queued", "analyzing", "running"].includes(tareaChat.status);
   const siguiendoActual = seguirChat.isPending && seguirChat.variables === selectedId;
   const pensando = enviandoActual || siguiendoActual || (tareaChat ? tareaActiva : !!current?.ocupada);
@@ -1381,8 +1399,8 @@ export function ChatPage() {
                   {m.role === "system" ? (
                     <article className="tl-msg" aria-label="Aviso del sistema">
                       <p className="tl-alerta" role="status">{m.content}</p>
-                      {!agenteOcupado && lista.slice(0, i).some(p => p.role === "user") && (
-                        <button type="button" className="tl-boton" onClick={() => reintentar(m.id)}>Reintentar solicitud</button>
+                      {!agenteOcupado && i === lista.length - 1 && lista.slice(0, i).some(p => p.role === "user") && (
+                        <button type="button" className="tl-boton" onClick={() => reintentarAviso(m.id)}>Reintentar solicitud</button>
                       )}
                     </article>
                   ) : m.role === "user" ? (

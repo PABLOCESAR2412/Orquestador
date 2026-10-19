@@ -650,10 +650,10 @@ export const api = {
   medio: (id: string) => request<MedioJob>(`/api/media/${encodeURIComponent(id)}`),
   confirmarMedio: (id: string) => request<MedioJob>(`/api/media/${encodeURIComponent(id)}/confirmar`, { method: "POST", body: "{}" }),
   cancelarMedio: (id: string) => request<{ ok: boolean }>(`/api/media/${encodeURIComponent(id)}/cancelar`, { method: "POST", body: "{}" }),
-  sendMessage: (id: string, content: string) =>
+  sendMessage: (id: string, content: string, retryOf?: string) =>
     request<{ messages: Message[] }>(`/api/conversations/${id}/messages`, {
       method: "POST",
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, ...(retryOf ? { retryOf } : {}) }),
     }),
   listModels: () => request<{ models: ModelInfo[]; total: number }>("/api/models?all=1"),
   modelIntelligence: () => request<ArtificialAnalysisIndex>("/api/models/intelligence"),

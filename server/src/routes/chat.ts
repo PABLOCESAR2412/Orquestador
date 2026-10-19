@@ -366,6 +366,29 @@ function guardarAviso(conversationId: string, texto: string): void {
   );
 }
 
+function turnoReintentable(conversationId: string, messageId: string, content: string): { turno: TurnoUsuario; rowid: number } | null {
+  const original = db.query<{ id: string; content: string; rowid: number }, [string, string]>(
+    "SELECT id, content, rowid FROM messages WHERE id=? AND conversation_id=? AND role='user'",
+  ).get(messageId, conversationId);
+  if (!original || original.content !== content) return null;
+
+  const ultimoUsuario = db.query<{ id: string }, [string]>(
+    "SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY rowid DESC LIMIT 1",
+  ).get(conversationId);
+  const mensajesPosteriores = db.query<{ role: string }, [string, number]>(
+    "SELECT role FROM messages WHERE conversation_id=? AND rowid>? ORDER BY rowid",
+  ).all(conversationId, original.rowid);
+  if (ultimoUsuario?.id !== messageId || mensajesPosteriores.length === 0 || mensajesPosteriores.some((mensaje) => mensaje.role !== "system")) {
+    return null;
+  }
+  return { turno: { id: original.id, role: "user", content: original.content }, rowid: original.rowid };
+}
+
+function limpiarAvisosReintentados(conversationId: string, rowid: number | undefined): void {
+  if (rowid === undefined) return;
+  db.query("DELETE FROM messages WHERE conversation_id=? AND role='system' AND rowid>?").run(conversationId, rowid);
+}
+
 // Límite de un turno del chat. Al llegar a este tiempo, el agente se detiene (SIGTERM, código 143).
 const TIEMPO_TURNO_MS = 180_000;
 
@@ -508,11 +531,17 @@ chat.post("/conversations/:id/messages", async (c) => {
   const conv = leerConversacion(conversationId);
   if (!conv) return c.json({ error: "conversation_not_found" }, 404);
 
-  const body = await c.req.json<{ content?: unknown }>().catch(() => null);
+  const body = await c.req.json<{ content?: unknown; retryOf?: unknown }>().catch(() => null);
   const content = typeof body?.content === "string" ? body.content.trim() : "";
   if (!content || content.length > MAX_CONTENIDO) {
     return c.json({ error: "invalid_content" }, 400);
   }
+  if (body?.retryOf !== undefined && (typeof body.retryOf !== "string" || !body.retryOf.trim())) {
+    return c.json({ error: "invalid_retry" }, 400);
+  }
+  const retryOf = typeof body?.retryOf === "string" ? body.retryOf : null;
+  const reintento = retryOf ? turnoReintentable(conversationId, retryOf, content) : null;
+  if (retryOf && !reintento) return c.json({ error: "message_not_retryable" }, 409);
   const bloqueo = motivoDeBloqueo(conv);
   if (bloqueo) return c.json({ error: bloqueo }, 409);
   const tareaActual = conv.project_id ? tareaDelChat(conversationId) : null;
@@ -525,7 +554,8 @@ chat.post("/conversations/:id/messages", async (c) => {
   // de chat los ejecuta y la API de medios no se llama hasta que el usuario confirme el coste.
   const solicitudMedio = detectarSolicitudMedio(content);
   if (solicitudMedio) {
-    const turno = guardarMensajeUsuario(conversationId, content);
+    const turno = reintento?.turno ?? guardarMensajeUsuario(conversationId, content);
+    limpiarAvisosReintentados(conversationId, reintento?.rowid);
     const trabajo = crearSolicitudMedio(conversationId, turno.id, solicitudMedio);
     const respuesta = db.query<Message, [string]>(
       "SELECT id,conversation_id,role,content,created_at,model,effort FROM messages WHERE id=?",
@@ -536,7 +566,7 @@ chat.post("/conversations/:id/messages", async (c) => {
   // Las órdenes directas de Git crean una tarjeta de autorización, sin ejecutar al agente.
   const pedido = /^(?:(?:haz|hacer|ejecuta|realiza|crea|crear|prepara|reintenta|por favor)\s+)*(?:de nuevo\s+)?(?:(?:un|el)\s+)?(?:git\s+(init|commit|push)|(?:un\s+)?(commit|push|pr)|(?:gh\s+pr\s+create)|(pull request))(?:\s+.*)?[.!]?$/i.exec(content);
   if (pedido && conv.project_id) {
-    const turno = guardarMensajeUsuario(conversationId, content);
+    const turno = reintento?.turno ?? guardarMensajeUsuario(conversationId, content);
     const response = await repositoryActions.request(`http://telo/projects/${conv.project_id}/acciones`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -553,20 +583,23 @@ chat.post("/conversations/:id/messages", async (c) => {
       };
       const motivo = motivos[error.error ?? ""];
       if (motivo) {
+        limpiarAvisosReintentados(conversationId, reintento?.rowid);
         const aviso = { id: crypto.randomUUID(), role: "assistant" as const, content: motivo };
         db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES (?,?,'assistant',?)").run(aviso.id, conversationId, motivo);
         publicarChat(conversationId, "terminado");
         return c.json({ messages: [turno, aviso] }, 202);
       }
-      db.query("DELETE FROM messages WHERE id=?").run(turno.id);
+      if (!reintento) db.query("DELETE FROM messages WHERE id=?").run(turno.id);
       return response;
     }
+    limpiarAvisosReintentados(conversationId, reintento?.rowid);
     publicarChat(conversationId, "terminado");
     return c.json({ messages: [turno], action: await response.json() }, 202);
   }
 
   const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
-  const turno = guardarMensajeUsuario(conversationId, content);
+  const turno = reintento?.turno ?? guardarMensajeUsuario(conversationId, content);
+  limpiarAvisosReintentados(conversationId, reintento?.rowid);
   if (conv.project_id) {
     const taskId = encolarTurno(conv, content, model);
     publicarChat(conversationId, "en_curso");

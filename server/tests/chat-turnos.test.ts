@@ -92,6 +92,59 @@ function enviar(id: string, content: string) {
   });
 }
 
+function enviarReintento(id: string, content: string, retryOf: string) {
+  return app.request(`/api/conversations/${id}/messages`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ content, retryOf }),
+  });
+}
+
+describe("reintentos de mensajes fallidos", () => {
+  test("reutiliza el prompt original y elimina el aviso anterior", async () => {
+    const projectId = crypto.randomUUID();
+    const conversationId = crypto.randomUUID();
+    const messageId = crypto.randomUUID();
+    db.query("INSERT INTO projects (id, name) VALUES (?, 'Proyecto de reintento')").run(projectId);
+    db.query("INSERT INTO conversations (id, title, model, project_id) VALUES (?, 'Chat de reintento', 'opencode/prueba', ?)")
+      .run(conversationId, projectId);
+    db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', 'Genera la segunda versión')")
+      .run(messageId, conversationId);
+    db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'system', 'El agente se detuvo')")
+      .run(crypto.randomUUID(), conversationId);
+
+    const response = await enviarReintento(conversationId, "Genera la segunda versión", messageId);
+    expect(response.status).toBe(202);
+    const body = (await response.json()) as { messages: Mensaje[]; taskId: string };
+    expect(body.messages[0]).toMatchObject({ id: messageId, role: "user", content: "Genera la segunda versión" });
+    expect(mensajes(conversationId).filter((mensaje) => mensaje.role === "user")).toHaveLength(1);
+    expect(mensajes(conversationId).some((mensaje) => mensaje.role === "system")).toBe(false);
+    expect(db.query<{ prompt: string }, [string]>("SELECT prompt FROM tasks WHERE id=?").get(body.taskId)?.prompt)
+      .toBe("Genera la segunda versión");
+  });
+
+  test("rechaza reintentar un aviso antiguo cuando ya se envió otro prompt", async () => {
+    const projectId = crypto.randomUUID();
+    const conversationId = crypto.randomUUID();
+    const messageId = crypto.randomUUID();
+    db.query("INSERT INTO projects (id, name) VALUES (?, 'Proyecto con aviso antiguo')").run(projectId);
+    db.query("INSERT INTO conversations (id, title, model, project_id) VALUES (?, 'Chat con aviso antiguo', 'opencode/prueba', ?)")
+      .run(conversationId, projectId);
+    db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', 'Prompt fallido')")
+      .run(messageId, conversationId);
+    db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'system', 'Fallo antiguo')")
+      .run(crypto.randomUUID(), conversationId);
+    db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', 'Prompt más reciente')")
+      .run(crypto.randomUUID(), conversationId);
+
+    const response = await enviarReintento(conversationId, "Prompt fallido", messageId);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "message_not_retryable" });
+    expect(mensajes(conversationId).filter((mensaje) => mensaje.role === "user")).toHaveLength(2);
+    expect(mensajes(conversationId).some((mensaje) => mensaje.role === "system" && mensaje.content === "Fallo antiguo")).toBe(true);
+  });
+});
+
 describe("archivos PDF de una conversación", () => {
   test("prepara la vista, sirve rangos y descarga con el nombre del archivo", async () => {
     const id = conversacion();
