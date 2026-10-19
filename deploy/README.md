@@ -23,6 +23,12 @@ Un timer de systemd revisa `main` cada 5 minutos. Si hay commits nuevos, el scri
 - **`bun install --frozen-lockfile` en cada ciclo** que cambie dependencias.
 - **Si falla el build o el servidor no responde**, vuelve a la versión anterior y no reintenta ese mismo commit hasta que llegue uno nuevo.
 
+## Archivos sensibles del VM
+
+El archivo de entorno `/etc/orquestador/orquestador.env` (con `TELO_CLAVE` y la clave de cifrado) y la clave privada de la GitHub App viven en `/etc/orquestador`. Crea el archivo de entorno con dueño `root:root` y permisos `0600`: `systemd` lo lee como root antes de bajar al servicio, y así ni un accidente de permisos lo deja legible para el usuario `orquestador`.
+
+El aislamiento de los agentes oculta `/etc/orquestador` completo y la ruta que apunte `TELO_GITHUB_APP_PRIVATE_KEY_PATH` (aunque esté fuera de esa carpeta). Para ocultar rutas sensibles adicionales, añádelas en `TELO_OCULTAR_EXTRA` (rutas absolutas separadas por `:`) en el archivo de entorno, y reinicia el servicio.
+
 ## Instalación en el VM (una vez)
 
 Usuario `orquestador`, repo en `/home/orquestador/orquestador`.
