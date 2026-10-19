@@ -18,6 +18,7 @@ import { registrarEvento } from "./eventos";
 import { clavePublicaDe, conClaveSsh, urlSshDeGithub } from "./clave-ssh";
 import {
   esRepositorio,
+  GitError,
   gitOk,
   gitOkSeguro,
   gitSeguro,
@@ -237,6 +238,57 @@ async function origenDelProyecto(repoPath: string): Promise<string> {
   return r.code === 0 ? urlSinCredenciales(r.stdout.trim()) : "";
 }
 
+const TIEMPO_SINCRONIZAR_MS = 15_000;
+
+// Token de lectura para traer la punta del remoto a la copia local: la misma cadena de credenciales
+// del proyecto (App vinculada, sesión de GitHub o GITHUB_TOKEN del proyecto). Sin remoto de GitHub
+// o sin credencial, se intenta la conexión sin autenticación (solo alcanza en repositorios públicos).
+async function tokenDeLectura(para: {
+  projectId: string | null;
+  remoto: string | null;
+}): Promise<Record<string, string>> {
+  if (!para.remoto) return {};
+  let token: string | null = null;
+  try {
+    token = await tokenGithubAppParaRepo(para.remoto, { contents: "read" });
+  } catch {
+    token = tokenGithubGlobal();
+  }
+  if (!token && para.projectId) token = valorSecreto(para.projectId, "GITHUB_TOKEN");
+  return token ? opcionesDeCredenciales(token).env : {};
+}
+
+// Pone la copia local del proyecto al día con su origin antes de clonarla para la tarea. Una copia
+// vieja produce tareas con base desactualizada y subidas rechazadas por non-fast-forward.
+// Reglas de seguridad: solo si el HEAD está en una rama, la copia está limpia (los cambios
+// pendientes del usuario se respetan), y el avance es fast-forward. Si no hay conexión, credenciales
+// u origin, la copia queda como estaba y la tarea sigue con lo disponible.
+async function traerRepoLocalAlDia(repoPath: string, projectId: string | null): Promise<string | null> {
+  try {
+    const rama = (
+      await gitOkSeguro(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS })
+    ).trim();
+    if (!rama || rama === "HEAD") return null;
+    const rRemoto = await gitSeguro(["config", "--get", "remote.origin.url"], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS });
+    if (rRemoto.code !== 0 || !rRemoto.stdout.trim()) return null;
+    const estado = await gitSeguro(["status", "--porcelain", "--untracked-files=no"], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS });
+    if (estado.code !== 0 || estado.stdout.trim() !== "") return null;
+    const remoto = urlGithubPermitida(urlSinCredenciales(rRemoto.stdout.trim()));
+    const entorno = await tokenDeLectura({ projectId, remoto });
+    await gitOkSeguro(["fetch", "origin", rama], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS, env: entorno });
+    const punta = (
+      await gitOkSeguro(["rev-parse", `refs/remotes/origin/${rama}`], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS })
+    ).trim();
+    const local = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS })).trim();
+    if (!punta || punta === local) return null;
+    await gitOkSeguro(["merge", "--ff-only", `origin/${rama}`], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS, env: entorno });
+    return punta;
+  } catch {
+    // Sin conexión o con historial divergente: la copia local queda como está.
+    return null;
+  }
+}
+
 // Antes de cada operación sobre el clon: .git debe ser una carpeta real, se quita config.worktree
 // y se sanea la configuración (ver prepararRepoSeguro en git.ts).
 async function prepararRepo(clon: string): Promise<void> {
@@ -357,7 +409,9 @@ export function prepararCopia(
     mkdirSync(carpeta, { recursive: true });
 
     const nuevo = !existsSync(clon);
+    let traido: string | null = null;
     if (nuevo) {
+      traido = await traerRepoLocalAlDia(repoPath, _projectId);
       try {
         await gitOk(["clone", "--local", "--no-hardlinks", "--template=", repoPath, clon], {
           cwd: carpeta,
@@ -393,7 +447,7 @@ export function prepararCopia(
       base =
         fila.base_commit && (await existeCommit(clon, fila.base_commit)) ? fila.base_commit : head;
       await gitOkSeguro(["checkout", "-B", rama, base], { cwd: clon });
-      registrarEvento(taskId, "clon_creado", `Rama ${rama}`);
+      registrarEvento(taskId, "clon_creado", `Rama ${rama}${traido ? `; copia local llevada a ${traido.slice(0, 8)}` : ""}`);
     } else {
       // Reanudar: se queda en la rama de la tarea sin reiniciarla, así los commits del agente se conservan.
       const actual = (
@@ -763,9 +817,15 @@ async function subirAprobado(
 
   // Rama destino: si se especifica (ej. "main" o "master") se usa directamente; de lo contrario la rama de tarea.
   const ramaDestino = opts?.destinoRama?.trim() || ctx.rama;
-  const refspec = `${head}:refs/heads/${ramaDestino}`;
-
   const credenciales = opcionesDeCredenciales(token);
+  // Subida directa a otra rama (la base): la punta del remoto pudo avanzar desde el clon. Se
+  // reintegra el trabajo de la tarea antes de subir para que el push sea fast-forward; si no se
+  // puede reintegrar sin conflictos, la subida falla con instrucciones concretas para el usuario.
+  if (ramaDestino !== ctx.rama && !destinoSsh) {
+    const nuevoHead = await reintegrarSobrePunta(taskId, ctx, credenciales, remoto, ramaDestino, head);
+    if (nuevoHead) head = nuevoHead;
+  }
+  const refspec = `${head}:refs/heads/${ramaDestino}`;
   try {
     if (destinoSsh && ctx.projectId) {
       await conClaveSsh(ctx.projectId, (entorno) =>
@@ -802,6 +862,75 @@ async function subirAprobado(
   registrarEvento(taskId, "push_aprobado", `${head.slice(0, 8)} a ${remoto} (${ramaDestino})`);
 
   return { accion: "push", sha: head, rama: ramaDestino, remoto };
+}
+
+// Comprueba la punta actual de la rama destino en el remoto antes de una subida directa. Si avanzó
+// respecto al commit base del clon, trae esa rama y reubica el trabajo de la tarea encima (rebase).
+// Devuelve el HEAD nuevo cuando reubicó; null cuando el remoto no avanzó (o no se pudo leer su
+// punta, dejando que el propio push responda con su error). Con conflictos cancela todo y lanza
+// la explicación para que el usuario elija rama de tarea y PR, o una tarea nueva.
+export async function reintegrarSobrePunta(
+  taskId: string,
+  ctx: Contexto,
+  credenciales: { args: string[]; env: Record<string, string> },
+  remoto: string,
+  ramaDestino: string,
+  head: string,
+): Promise<string | null> {
+  let punta = "";
+  try {
+    const salida = await gitOkSeguro(
+      [...credenciales.args, "ls-remote", remoto, `refs/heads/${ramaDestino}`],
+      { cwd: ctx.clon, env: credenciales.env, timeoutMs: TIEMPO_SINCRONIZAR_MS },
+    );
+    punta = salida.trim().split(/\s+/)[0] ?? "";
+  } catch {
+    return null;
+  }
+  if (!punta || punta === ctx.base || punta === head) return null;
+  try {
+    await gitOkSeguro([...credenciales.args, "fetch", remoto, ramaDestino], {
+      cwd: ctx.clon,
+      env: credenciales.env,
+      timeoutMs: TIEMPO_CLON_MS,
+    });
+    const autor = ctx.projectId
+      ? db
+          .query<
+            { author_name: string | null; author_email: string | null },
+            [string]
+          >("SELECT author_name,author_email FROM project_git WHERE project_id=?")
+          .get(ctx.projectId)
+      : null;
+    await gitOkSeguro(
+      [
+        "-c",
+        `user.name=${autor?.author_name ?? "Telo"}`,
+        "-c",
+        `user.email=${autor?.author_email ?? "telo@localhost"}`,
+        "-c",
+        "commit.gpgsign=false",
+        "rebase",
+        "FETCH_HEAD",
+      ],
+      { cwd: ctx.clon, timeoutMs: TIEMPO_CLON_MS },
+    );
+    const nuevo = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: ctx.clon })).trim();
+    registrarEvento(
+      taskId,
+      "push_reintegrado",
+      `La rama '${ramaDestino}' avanzó; el commit se reubica sobre ${nuevo.slice(0, 8)} antes de subir.`,
+    );
+    return nuevo;
+  } catch (err) {
+    await gitSeguro(["rebase", "--abort"], { cwd: ctx.clon });
+    const razon = err instanceof GitError ? mensajeSeguro(err) : "";
+    throw new ErrorTarea(
+      "push_fallido",
+      502,
+      `La rama '${ramaDestino}' en GitHub avanzó desde tu clon y el commit no se pudo reubicar automáticamente${razon ? ` (${razon})` : ""}. Pide la subida otra vez eligiendo la rama de la tarea (${ctx.rama}) para abrir un Pull Request, o crea una tarea nueva sobre la rama actualizada.`,
+    );
+  }
 }
 
 // Al cancelar: el clon se borra solo si no tiene nada que revisar (ni cambios ni commits nuevos).

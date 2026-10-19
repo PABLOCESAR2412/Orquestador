@@ -486,14 +486,19 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
     }
     return c.json({ ok: true, result: JSON.parse(seguro) });
   } catch (e) {
-    const detail = mensajeSeguro(e);
+    // La tarjeta lee ese campo: un ErrorTarea trae su propia explicación en `detail`, así que se
+    // guarda con ella (la web prefiere `mensaje` cuando el resultado es objeto JSON).
+    const detalle =
+      e instanceof ErrorTarea && e.detail
+        ? JSON.stringify({ codigo: e.code, mensaje: e.detail })
+        : mensajeSeguro(e);
     db.query("UPDATE repository_actions SET state='failed',result=? WHERE id=?").run(
-      detail,
+      detalle,
       row.id,
     );
     return e instanceof ErrorTarea
       ? c.json({ error: e.code, detail: e.detail }, e.status)
-      : c.json({ error: "git_action", detail }, 409);
+      : c.json({ error: "git_action", detail: detalle }, 409);
   }
 });
 

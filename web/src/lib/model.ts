@@ -102,6 +102,7 @@ export const EVENT_LABEL: Record<TaskEventKind, string> = {
   commit_aprobado: "Commit aprobado",
   push_aprobado: "Rama subida al remoto",
   push_fallido: "Falló la subida al remoto",
+  push_reintegrado: "Reintegrado con la punta del remoto",
   plan_creado: "Plan del analizador",
   plan_pendiente: "Plan listo, espera tu aprobación",
   plan_aprobado: "Plan aprobado",

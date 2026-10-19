@@ -22,6 +22,7 @@ export type TipoEvento =
   | "commit_aprobado"
   | "push_aprobado"
   | "push_fallido"
+  | "push_reintegrado"
   | "plan_creado"
   | "plan_pendiente"
   | "plan_aprobado"
