@@ -453,6 +453,44 @@ describe("imágenes de una conversación", () => {
     expect(firmaInvalida.status).toBe(415);
     expect(await firmaInvalida.json()).toEqual({ error: "formato_imagen_invalido" });
   });
+
+  test("recupera archivos de workspaces anteriores y del repositorio del proyecto", async () => {
+    const proyectoId = crypto.randomUUID();
+    const conversacionId = crypto.randomUUID();
+    const raizProyecto = join(carpeta, "proyecto-historico");
+    const workspaceAnterior = join(carpeta, "workspace-anterior");
+    const workspaceActual = join(carpeta, "workspace-actual");
+    mkdirSync(raizProyecto, { recursive: true });
+    mkdirSync(join(workspaceAnterior, "preview"), { recursive: true });
+    mkdirSync(workspaceActual, { recursive: true });
+    db.query("INSERT INTO projects(id,name,repo_path) VALUES (?,?,?)").run(proyectoId, proyectoId, raizProyecto);
+    db.query("INSERT INTO conversations(id,title,project_id) VALUES (?, 'Chat con historial', ?)").run(conversacionId, proyectoId);
+    const insertarTarea = db.query(
+      "INSERT INTO tasks(id,title,prompt,model,status,workspace,project_id,conversation_id,created_at) VALUES (?,?,?,'modelo','done',?,?,?,?)",
+    );
+    insertarTarea.run(crypto.randomUUID(), "Tarea anterior", "Crear documentos", workspaceAnterior, proyectoId, conversacionId, "2026-10-18 00:00:00");
+    insertarTarea.run(crypto.randomUUID(), "Tarea actual", "Seguir trabajo", workspaceActual, proyectoId, conversacionId, "2026-10-19 00:00:00");
+    writeFileSync(join(workspaceAnterior, "content.js"), "export const informe = true;");
+    writeFileSync(join(workspaceAnterior, "preview", "informe.pdf"), "%PDF-1.4\ncontenido\n%%EOF\n");
+    writeFileSync(join(workspaceAnterior, "preview", "p01-12.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01]));
+    writeFileSync(join(raizProyecto, "README.md"), "Archivo del repositorio base");
+
+    const texto = await app.request(`/api/conversations/${conversacionId}/archivo?ruta=content.js`);
+    expect(texto.status).toBe(200);
+    expect(await texto.json()).toMatchObject({ ruta: "content.js", texto: "export const informe = true;" });
+
+    const pdf = await app.request(`/api/conversations/${conversacionId}/archivo-pdf?ruta=preview%2Finforme.pdf&meta=1`);
+    expect(pdf.status).toBe(200);
+    expect(await pdf.json()).toMatchObject({ ruta: "preview/informe.pdf", nombre: "informe.pdf" });
+
+    const imagen = await app.request(`/api/conversations/${conversacionId}/archivo-imagen?ruta=preview%2Fp01-12.png&meta=1`);
+    expect(imagen.status).toBe(200);
+    expect(await imagen.json()).toMatchObject({ ruta: "preview/p01-12.png", mime: "image/png" });
+
+    const base = await app.request(`/api/conversations/${conversacionId}/archivo?ruta=README.md`);
+    expect(base.status).toBe(200);
+    expect(await base.json()).toMatchObject({ ruta: "README.md", texto: "Archivo del repositorio base" });
+  });
 });
 
 describe("reinicio del servidor", () => {

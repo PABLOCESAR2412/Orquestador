@@ -186,6 +186,25 @@ test("hacer merge solicita a la GitHub App el permiso Contents de escritura", as
   expect(llamada).toBe(3);
 });
 
+test("un 405 al fusionar indica que el Pull Request no está listo para fusionarse", async () => {
+  globalThis.fetch = (async (url: any) => {
+    if (String(url).endsWith("/app/installations?per_page=100")) {
+      return Response.json([{ id: 456, account: { login: "Pablo" }, repository_selection: "selected" }]);
+    }
+    if (String(url).endsWith("/app/installations/456/access_tokens")) {
+      return Response.json({ token: "ghs-merge-temporal" });
+    }
+    return Response.json({ message: "Pull Request is not mergeable" }, { status: 405 });
+  }) as unknown as typeof fetch;
+  await seleccionarInstalacionGithubApp(456);
+
+  await expect(githubApiPr("sin-proyecto", "/repos/Pablo/Orquestador/pulls/8/merge", {
+    tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "Pablo", instalacion_id: 456,
+  }, { commit_title: "Merge #8", merge_method: "squash" }, "PUT", "merge")).rejects.toThrow(
+    "GitHub indica que este Pull Request no se puede fusionar ahora; puede tener conflictos o requisitos de rama pendientes. Corrígelos en GitHub y solicita una nueva autorización de merge.",
+  );
+});
+
 test("al crear un PR, GitHub expone el detalle de una respuesta 422", async () => {
   globalThis.fetch = (async (url: any) => {
     if (String(url).endsWith("/app/installations?per_page=100")) {

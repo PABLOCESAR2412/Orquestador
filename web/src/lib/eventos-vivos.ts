@@ -73,7 +73,7 @@ async function conectar() {
   controlador = actual;
   try {
     while (!descargando && suscriptores.size > 0 && controlador === actual) {
-      const params = new URLSearchParams({ espera: ultimoEventoId === null ? "0" : "15000" });
+      const params = new URLSearchParams({ espera: ultimoEventoId === null ? "0" : "10000" });
       if (ultimoEventoId !== null) params.set("desde", String(ultimoEventoId));
       const response = await fetch(`/api/eventos-vivos/poll?${params}`, {
         headers: { Accept: "application/json" },

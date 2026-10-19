@@ -54,7 +54,6 @@ type ConversationRow = {
   runner_session_model: string | null;
   project_id: string | null;
   repo_path: string | null;
-  workspace: string | null;
   // Modelo que se quedó sin cuota en el último turno; null si el chat puede seguir.
   cuota_modelo: string | null;
 };
@@ -314,10 +313,11 @@ chat.get("/conversations/:id/adjuntos/:adjunto", (c) => {
 chat.get("/conversations/:id/archivo", (c) => {
   const conversacion = leerConversacion(c.req.param("id"));
   if (!conversacion) return c.json({ error: "conversation_not_found" }, 404);
-  const raiz = raizArchivosConversacion(conversacion);
-  if (!raiz) return c.json({ error: "project_path_not_found" }, 404);
+  const raices = raicesArchivosConversacion(conversacion);
+  if (!raices.length) return c.json({ error: "project_path_not_found" }, 404);
   try {
-    return c.json(leerArchivo(raiz, normalizarRuta(c.req.query("ruta"))));
+    const ruta = normalizarRuta(c.req.query("ruta"));
+    return c.json(leerEnRaices(raices, (raiz) => leerArchivo(raiz, ruta)));
   } catch (err) {
     if (err instanceof ArchivoError) {
       const code = err.code === "project_path_not_found" ? "archivo_chat_no_encontrado" : err.code;
@@ -331,11 +331,12 @@ chat.get("/conversations/:id/archivo-pdf", (c) => {
   const id = c.req.param("id");
   const conversacion = leerConversacion(id);
   if (!conversacion) return c.json({ error: "conversation_not_found" }, 404);
-  const raiz = raizArchivosConversacion(conversacion);
-  if (!raiz) return c.json({ error: "project_path_not_found" }, 404);
+  const raices = raicesArchivosConversacion(conversacion);
+  if (!raices.length) return c.json({ error: "project_path_not_found" }, 404);
 
   try {
-    const archivo = leerPdf(raiz, normalizarRuta(c.req.query("ruta")));
+    const ruta = normalizarRuta(c.req.query("ruta"));
+    const archivo = leerEnRaices(raices, (raiz) => leerPdf(raiz, ruta));
     const nombre = archivo.ruta.split("/").at(-1)!.replace(/[\r\n"\\]/g, "_");
     const nombreAscii = nombre.normalize("NFKD").replace(/\p{Diacritic}/gu, "").replace(/[^\x20-\x7E]/g, "_").replace(/["\\;]/g, "_");
     const nombreUtf8 = encodeURIComponent(nombre).replace(/[!'()*]/g, (caracter) => `%${caracter.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -402,11 +403,12 @@ chat.get("/conversations/:id/archivo-imagen", (c) => {
   const id = c.req.param("id");
   const conversacion = leerConversacion(id);
   if (!conversacion) return c.json({ error: "conversation_not_found" }, 404);
-  const raiz = raizArchivosConversacion(conversacion);
-  if (!raiz) return c.json({ error: "project_path_not_found" }, 404);
+  const raices = raicesArchivosConversacion(conversacion);
+  if (!raices.length) return c.json({ error: "project_path_not_found" }, 404);
 
   try {
-    const archivo = leerImagen(raiz, normalizarRuta(c.req.query("ruta")));
+    const ruta = normalizarRuta(c.req.query("ruta"));
+    const archivo = leerEnRaices(raices, (raiz) => leerImagen(raiz, ruta));
     const nombreSeguro = archivo.nombre.replace(/[\r\n"\\]/g, "_");
     const nombreAscii = nombreSeguro.normalize("NFKD").replace(/\p{Diacritic}/gu, "").replace(/[^\x20-\x7E]/g, "_").replace(/["\\;]/g, "_");
     const nombreUtf8 = encodeURIComponent(nombreSeguro).replace(/[!'()*]/g, (caracter) => `%${caracter.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -456,14 +458,31 @@ function leerConversacion(id: string): ConversationRow | null {
   return (
     db
       .query<ConversationRow, [string]>(
-        "SELECT c.id, c.model, c.effort, c.runner_session_id, c.runner_session_model, c.project_id, c.cuota_modelo, p.repo_path AS repo_path, (SELECT t.workspace FROM tasks t WHERE t.conversation_id=c.id AND t.workspace IS NOT NULL ORDER BY t.created_at DESC,t.rowid DESC LIMIT 1) AS workspace FROM conversations c LEFT JOIN projects p ON p.id = c.project_id WHERE c.id = ?",
+        "SELECT c.id, c.model, c.effort, c.runner_session_id, c.runner_session_model, c.project_id, c.cuota_modelo, p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id = c.project_id WHERE c.id = ?",
       )
       .get(id) ?? null
   );
 }
 
-function raizArchivosConversacion(conversacion: ConversationRow): string | null {
-  return conversacion.workspace ?? (conversacion.project_id ? conversacion.repo_path : join(chatWorkspace, conversacion.id));
+function raicesArchivosConversacion(conversacion: ConversationRow): string[] {
+  const workspaces = db.query<{ workspace: string }, [string]>(
+    "SELECT workspace FROM tasks WHERE conversation_id=? AND workspace IS NOT NULL ORDER BY created_at DESC,rowid DESC",
+  ).all(conversacion.id).map((tarea) => tarea.workspace);
+  const raizOriginal = conversacion.project_id ? conversacion.repo_path : join(chatWorkspace, conversacion.id);
+  return [...new Set([...workspaces, ...(raizOriginal ? [raizOriginal] : [])])];
+}
+
+function leerEnRaices<T>(raices: string[], leer: (raiz: string) => T): T {
+  let noEncontrado: ArchivoError | null = null;
+  for (const raiz of raices) {
+    try {
+      return leer(raiz);
+    } catch (err) {
+      if (!(err instanceof ArchivoError) || err.code !== "project_path_not_found") throw err;
+      noEncontrado = err;
+    }
+  }
+  throw noEncontrado ?? new ArchivoError("project_path_not_found", 404);
 }
 
 // Un mensaje en curso o un proyecto que se está revisando impiden responder: el chat espera.

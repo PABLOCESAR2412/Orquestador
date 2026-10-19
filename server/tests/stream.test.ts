@@ -69,6 +69,7 @@ describe("contrapresión del stream de eventos", () => {
 
   test("el sondeo rechaza cursores y esperas inválidos", async () => {
     expect((await app.request("/api/eventos-vivos/poll?desde=-1")).status).toBe(400);
+    expect((await app.request("/api/eventos-vivos/poll?espera=15000")).status).toBe(400);
     expect((await app.request("/api/eventos-vivos/poll?espera=20000")).status).toBe(400);
   });
 });

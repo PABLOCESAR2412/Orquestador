@@ -2141,7 +2141,6 @@ export function ChatPage() {
           {mostrarPanelArchivo && archivoAbierto && current && (
             <ChatArchivoPreview
               conversationId={current.id}
-              projectId={current.project_id}
               referencia={archivoAbierto}
               onClose={cerrarArchivo}
               onSelectPath={(ruta) => setArchivoAbierto({ ruta, linea: archivoAbierto.linea })}
