@@ -430,7 +430,7 @@ function turnoReintentable(conversationId: string, messageId: string, content: s
   if (ultimoUsuario?.id !== messageId || mensajesPosteriores.length === 0 || mensajesPosteriores.some((mensaje) => mensaje.role !== "system")) {
     return null;
   }
-  const continuar = mensajesPosteriores.some((mensaje) => /^El agente (?:superó el límite|tardó más de) \d+ minutos/i.test(mensaje.content));
+  const continuar = mensajesPosteriores.some((mensaje) => /^El agente (?:superó el límite de|tardó más de) \d+ minutos/i.test(mensaje.content));
   return { turno: { id: original.id, role: "user", content: original.content }, rowid: original.rowid, continuar };
 }
 
