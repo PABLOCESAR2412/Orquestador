@@ -62,3 +62,38 @@ test.skipIf(process.platform === "win32" || !Bun.which("bwrap"))("monta el perfi
   expect(args).toContain("--ro-bind");
   eliminarPerfilOpenCode("chat-con-bwrap");
 });
+
+test.skipIf(process.platform === "win32" || !Bun.which("bwrap"))("oculta el archivo de entorno y la clave privada de la GitHub App, y no los reexpone por lectura extra", () => {
+  const workspace = join(proyectos, "repo");
+  mkdirSync(workspace, { recursive: true });
+  const claveApp = join(raiz, "clave-app-simulada.pem");
+  writeFileSync(claveApp, "-----BEGIN PRIVATE KEY-----\nsimulada\n-----END PRIVATE KEY-----\n");
+  const extraOculto = join(raiz, "sensibles-extra");
+  mkdirSync(extraOculto, { recursive: true });
+  const previos = {
+    clave: process.env.TELO_GITHUB_APP_PRIVATE_KEY_PATH,
+    ocultar: process.env.TELO_OCULTAR_EXTRA,
+    leer: process.env.TELO_LECTURA_EXTRA,
+  };
+  process.env.TELO_GITHUB_APP_PRIVATE_KEY_PATH = claveApp;
+  process.env.TELO_OCULTAR_EXTRA = extraOculto;
+  process.env.TELO_LECTURA_EXTRA = [claveApp, extraOculto].join(":");
+  try {
+    const args = prefijoAislamiento(workspace);
+    for (const ruta of ["/etc/orquestador", claveApp, extraOculto]) {
+      if (!existsSync(ruta)) continue;
+      const indice = args.indexOf(ruta);
+      expect(indice).toBeGreaterThan(0);
+      expect(args[indice - 1]).toBe("--tmpfs");
+    }
+    expect(args.filter((a) => a === claveApp).length).toBe(1);
+    expect(args.filter((a) => a === extraOculto).length).toBe(1);
+  } finally {
+    if (previos.clave === undefined) delete process.env.TELO_GITHUB_APP_PRIVATE_KEY_PATH;
+    else process.env.TELO_GITHUB_APP_PRIVATE_KEY_PATH = previos.clave;
+    if (previos.ocultar === undefined) delete process.env.TELO_OCULTAR_EXTRA;
+    else process.env.TELO_OCULTAR_EXTRA = previos.ocultar;
+    if (previos.leer === undefined) delete process.env.TELO_LECTURA_EXTRA;
+    else process.env.TELO_LECTURA_EXTRA = previos.leer;
+  }
+});

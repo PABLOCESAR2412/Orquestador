@@ -7,9 +7,12 @@ import { hallarEjecutable } from "../ejecutable";
 
 // Aislamiento de los agentes con bubblewrap (bwrap). Cada ejecución ve:
 // - su carpeta de trabajo, con escritura (proyecto o carpeta temporal del chat o tarea);
-// - el estado de OpenCode en el HOME (claves y configuración), y herramientas en solo lectura;
+// - su perfil de OpenCode por conversación o tarea (sesiones; auth.json en solo lectura),
+//   y herramientas en solo lectura;
 // - el resto del sistema en solo lectura, sin el repo de Orquestador, sin DATA_DIR,
-//   sin otros proyectos, sin el resto del HOME (por ejemplo ~/.ssh) y sin los procesos del servidor.
+//   sin otros proyectos, sin el resto del HOME (por ejemplo ~/.ssh), sin los procesos del
+//   servidor y sin los archivos sensibles del VM (archivo de entorno del servicio y clave
+//   privada de la GitHub App, ampliable con TELO_OCULTAR_EXTRA).
 // Si bwrap no está instalado, la ejecución se niega: no se corre el agente sin aislarlo.
 // TELO_AISLAMIENTO=desactivado solo para desarrollo local.
 
@@ -106,7 +109,7 @@ function contiene(raiz: string, ruta: string): boolean {
 // contenga (por ejemplo el HOME o /): eso reabriría lo que el aislamiento oculta.
 // El HOME sí puede ser fuente de una ruta concreta: opencode suele vivir ahí.
 function lecturaExtra(): string[] {
-  const prohibidas = [RAIZ_REPO, config.dataDir, config.projectsDir]
+  const prohibidas = [RAIZ_REPO, config.dataDir, config.projectsDir, ...rutasSensibles()]
     .filter((r): r is string => !!r && existsSync(r))
     .map((r) => rutaReal(r) ?? resolve(r));
   const rutas = (process.env.TELO_LECTURA_EXTRA ?? "")
@@ -115,6 +118,24 @@ function lecturaExtra(): string[] {
     .filter((r) => r.startsWith("/") && existsSync(r))
     .map((r) => rutaReal(r) ?? r);
   return rutas.filter((r) => !prohibidas.some((p) => contiene(r, p) || contiene(p, r)));
+}
+
+// Archivos sensibles del VM que `--ro-bind / /` dejaría legibles si nadie los ocultara:
+// el archivo de entorno del servicio (TELO_CLAVE y la clave maestra) y la clave privada
+// de la GitHub App (legible por el servicio para firmar, y por tanto por el agente).
+// TELO_OCULTAR_EXTRA añade más rutas (separadas por ":"), igual que TELO_LECTURA_EXTRA.
+function rutasSensibles(): string[] {
+  const claveApp = config.githubAppPrivateKeyPath;
+  const extra = (process.env.TELO_OCULTAR_EXTRA ?? "")
+    .split(":")
+    .map((r) => r.trim())
+    .filter((r) => r.startsWith("/") && existsSync(r))
+    .map((r) => rutaReal(r) ?? r);
+  // Solo rutas existentes: si la ruta no existe, bwrap intentaría crear el punto de montaje dentro de la
+  // vista de "/" en solo lectura y moriría con "Read-only file system". Si no existe, tampoco hay nada que ocultar.
+  return ["/etc/orquestador", ...(claveApp && existsSync(claveApp) ? [rutaReal(claveApp) ?? resolve(claveApp)] : []), ...extra].filter(
+    (r) => existsSync(r),
+  );
 }
 
 // Argumentos de bwrap que van antes del comando del agente. Vacío si el aislamiento está desactivado.
@@ -147,7 +168,6 @@ export function prefijoAislamiento(
   const ocultar = [config.dataDir, RAIZ_REPO, config.projectsDir, home]
     .filter((ruta): ruta is string => !!ruta && existsSync(ruta))
     .map((ruta) => rutaReal(ruta) ?? resolve(ruta));
-
   const args = [
     "bwrap",
     "--ro-bind",
@@ -165,7 +185,7 @@ export function prefijoAislamiento(
   // /tmp propio y vacío para cada ejecución. Sin esto, /tmp es de solo lectura dentro del sandbox y OpenCode
   // falla al escribir su TMPDIR. Va después de "--ro-bind / /" y antes de lo que se monta encima.
   args.push("--tmpfs", "/tmp");
-  for (const ruta of [...new Set(ocultar)]) args.push("--tmpfs", ruta);
+  for (const ruta of [...new Set([...ocultar, ...rutasSensibles()])]) args.push("--tmpfs", ruta);
 
   if (adjuntos.length > 0) {
     args.push("--dir", "/tmp/telo-adjuntos");
