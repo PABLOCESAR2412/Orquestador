@@ -47,6 +47,22 @@ export type OpcionesAgente = {
 // `modelo` es el que realmente respondió (puede ser el de respaldo), para registrar el uso.
 export type ResultadoAgente = RunResult & { modelo: string; variante: string | null };
 
+// Contrato común, antes de los prompts de fase, para chats y tareas con cualquier runner.
+export const CONTRATO_EJECUCION = [
+  "Contrato de ejecución común de Telo (aplica a cualquier modelo y proveedor):",
+  "- Interpreta la petición actual como objetivo principal y conserva sus restricciones explícitas. Usa el historial, la memoria, las instrucciones y las skills como contexto pertinente; no repitas trabajo ya terminado.",
+  "- Antes de actuar, identifica el alcance, las precondiciones y qué resultado permitiría comprobar que terminaste. Si falta un dato que realmente bloquea la tarea, pregunta; si no, elige una opción segura y explícala al final.",
+  "- Inspecciona el contexto relevante y las herramientas disponibles antes de usarlas. No afirmes que una herramienta, skill, modelo o capacidad está disponible sin comprobarlo.",
+  "- Haz el cambio o la investigación más acotados que resuelvan el objetivo, dentro del workspace y de las autorizaciones recibidas.",
+  "- Verifica el resultado con comprobaciones adecuadas al proyecto. Comunica evidencia observable y distingue lo que pasó, lo que falló y lo que no se pudo probar; nunca inventes resultados.",
+  "- Sigue el formato que exige la fase que te invocó: JSON validable para análisis o reportes de tareas; conversación natural y directa para chats. En trabajos largos, comparte con el usuario avances breves al iniciar y cuando aparezca un hallazgo o acción concreta; no repitas un plan genérico ni reveles razonamiento privado.",
+  "- Explica decisiones con conclusiones y evidencia útil; no reveles razonamiento interno privado.",
+].join("\n");
+
+export function conContratoEjecucion(prompt: string): string {
+  return `${CONTRATO_EJECUCION}\n---\n${prompt}`;
+}
+
 // Un único límite para chats y tareas, sin depender del proveedor elegido.
 const MAX_AGENTES_SIMULTANEOS = 10;
 let agentesActivos = 0;
@@ -337,8 +353,6 @@ export function conInstrucciones(projectId: string | null | undefined, prompt: s
 export const ESTILO_CHAT = [
   "Estilo de respuesta, presentación y razonamiento nativo de Telo (no lo menciones en la respuesta):",
   "- Conversación natural: habla como un agente que responde al usuario, no como un generador de planes. No repitas planes, listas de pasos ni frases de arranque en cada turno; anuncia brevemente una acción solo si ayuda a entender una espera y entrega el resultado cuando termines.",
-  "- Pregunta solo si falta una decisión o un dato que impide avanzar. Cuando puedas inferirlo del pedido y el contexto, avanza con un supuesto razonable y menciónalo al entregar el resultado.",
-  "- Investiga antes de actuar: inspecciona los archivos, dependencias, documentación o skills relevantes del proyecto antes de proponer cambios.",
   "- Si necesitas documentarte sobre librerías o frameworks modernos, usa skills del proyecto (como context7) o inspecciona el código existente.",
   "- Si una tarea requiere investigación profunda o pasos complejos, organízate paso a paso y puedes coordinar o apoyarte en subagentes especializados.",
   "- Jerarquía visual: Da primero la respuesta o el resultado. Usa ## y ### solo si la explicación tiene secciones reales; en respuestas cortas, usa un párrafo claro. No pongas todo en negrita: reserva **negrita** para etiquetas o conceptos puntuales.",
@@ -356,8 +370,7 @@ export const ESTILO_CHAT = [
   "- Calidad visual por defecto: Si creas una interfaz, documento, gráfico o imagen, adapta el estilo y la paleta al propósito y a lo que pidió el usuario; define una jerarquía clara, alinea el contenido y deja espacio suficiente para leerlo. Evita solapamientos, recortes, texto ilegible y decoración que compita con los datos. Cuando puedas renderizar el resultado, revísalo y corrige los defectos visibles antes de entregarlo.",
   "- Código: Separa cada fragmento en su propio bloque con el lenguaje indicado (```ts, ```sql, ```json, ```bash, ```markdown, etc.) para conservar resaltado y copia. No mezcles explicación dentro del código.",
   "- Archivos: Cuando señales código del proyecto, cita su ruta relativa exacta entre comillas invertidas (por ejemplo `web/src/components/chat-comandos.tsx:42`) y, si ayuda, la línea relevante. No inventes rutas.",
-  "- Explica decisiones con evidencia verificable y comunica conclusiones, no razonamiento interno privado.",
-  "- Comprobaciones y Clean Code: Si ejecutaste un comando o prueba, reporta el resultado concreto. Mantén clean code, tipos estrictos y no dejes stubs ni regresiones.",
+  "- Mantén clean code, tipos estrictos y no dejes stubs ni regresiones.",
 ].join("\n");
 
 export function conEstilo(prompt: string, estilo?: "chat", esChatDeProyecto = false): string {
@@ -430,10 +443,12 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     return {
       ...comunes,
       prompt: conEstilo(
-        conMemoria(
-          conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(visuales.prompt, opts.projectId).promptFinal, opts.conversationId),
-          memoria,
-          opts.aprender === true,
+        conContratoEjecucion(
+          conMemoria(
+            conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(visuales.prompt, opts.projectId).promptFinal, opts.conversationId),
+            memoria,
+            opts.aprender === true,
+          ),
         ),
         opts.estilo,
         opts.estilo === "chat" && Boolean(opts.projectId),

@@ -195,6 +195,83 @@ export function itemDeLinea(linea: string): ItemActividad | null {
     return null;
   }
   if (!esRegistro(evento)) return null;
+  // Codex CLI usa Responses de tipo item.started/item.completed en lugar del formato de OpenCode.
+  // Traducimos solo acciones observables; los eventos de razonamiento nunca se muestran.
+  if ((evento.type === "item.started" || evento.type === "item.completed") && esRegistro(evento.item)) {
+    const item = evento.item;
+    const id = cadena(item.id);
+    const tipo = cadena(item.type);
+    const completado = evento.type === "item.completed";
+    const estadoItem = cadena(item.status);
+    const estado: EstadoAccion = completado
+      ? estadoItem === "failed" || (typeof item.exit_code === "number" && item.exit_code !== 0) ? "error" : "hecha"
+      : "en_curso";
+
+    if (tipo === "command_execution") {
+      const comando = cadena(item.command) ?? "";
+      const salida = completado ? cadena(item.aggregated_output) : null;
+      const codigo = typeof item.exit_code === "number" ? item.exit_code : null;
+      const error = estado === "error" ? salida ?? `El comando terminó con código ${codigo ?? "de error"}` : null;
+      const accion = describirAccion("bash", { command: comando }, salida, error);
+      return {
+        tipo: "accion",
+        herramienta: "bash",
+        titulo: recortar(accion.titulo, MAX_TITULO),
+        detalle: accion.detalle,
+        estado,
+        ...(id ? { callId: id } : {}),
+      };
+    }
+
+    if (tipo === "file_change") {
+      const cambios = Array.isArray(item.changes) ? item.changes.filter(esRegistro) : [];
+      const rutas = cambios
+        .map((cambio) => cadena(cambio.path) ?? cadena(cambio.file_path))
+        .filter((ruta): ruta is string => ruta !== null);
+      const detalle = cambios
+        .map((cambio, indice) => {
+          const clase = cadena(cambio.kind);
+          return `${clase ? `${clase}: ` : ""}${rutas[indice] ?? "archivo"}`;
+        });
+      const titulo = rutas.length === 1
+        ? `Modificó ${rutaCorta(rutas[0])}`
+        : `Modificó ${rutas.length || "varios"} archivos`;
+      return {
+        tipo: "accion",
+        herramienta: "edit",
+        titulo: recortar(titulo, MAX_TITULO),
+        detalle: detalle.length ? vistaDe(detalle.join("\n")) : null,
+        estado,
+        ...(id ? { callId: id } : {}),
+      };
+    }
+
+    if (tipo === "web_search" || tipo === "web_search_call") {
+      const consulta = cadena(item.query);
+      return {
+        tipo: "accion",
+        herramienta: "websearch",
+        titulo: `Buscó en la web${consulta ? ` «${recortar(consulta, 100)}»` : ""}`,
+        detalle: null,
+        estado,
+        ...(id ? { callId: id } : {}),
+      };
+    }
+
+    if (tipo === "mcp_tool_call") {
+      const servidor = cadena(item.server);
+      const herramienta = cadena(item.tool);
+      return {
+        tipo: "accion",
+        herramienta: "mcp",
+        titulo: `Usó ${[servidor, herramienta].filter(Boolean).join(" · ") || "una integración"}`,
+        detalle: null,
+        estado,
+        ...(id ? { callId: id } : {}),
+      };
+    }
+    return null;
+  }
   // OpenCode anuncia esta transición como evento de sesión; se guarda en el mismo registro de pasos.
   if (evento.type === "session.compacted") {
     return { tipo: "accion", herramienta: "compaction", titulo: "Contexto compactado automáticamente", detalle: null, estado: "hecha" };

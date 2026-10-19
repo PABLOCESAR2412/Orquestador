@@ -9,3 +9,4 @@ test-visual-runner.mjs
 web/test-visual-runner.mjs
 server/tests/.test-data-*
 .codex-pr-prep/
+.codex-remote-attachments/

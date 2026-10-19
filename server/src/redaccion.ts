@@ -16,6 +16,7 @@ const PATRONES_CREDENCIAL: RegExp[] = [
   /(?<![A-Za-z0-9_-])apikey_[A-Za-z0-9_-]{20,}(?![A-Za-z0-9_-])/, // claves API de TypeSafe / Jev
   /(?<![A-Za-z0-9_-])gsk_[A-Za-z0-9_-]{20,}(?![A-Za-z0-9_-])/, // claves API de Groq
   /(?<![A-Za-z0-9_-])nvapi-[A-Za-z0-9_-]{20,}(?![A-Za-z0-9_-])/, // claves API de NVIDIA
+  /(?<![A-Za-z0-9_-])sk-ant-[A-Za-z0-9_-]{20,}(?![A-Za-z0-9_-])/, // claves API de Anthropic
   /(?<![A-Za-z0-9_-])sk-proj-[A-Za-z0-9_-]{40,}(?![A-Za-z0-9_-])/, // claves de API modernas de OpenAI (proyecto)
   /(?<![A-Za-z0-9_-])sk-svcacct-[A-Za-z0-9_-]{40,}(?![A-Za-z0-9_-])/, // claves de servicio de OpenAI
   /(?<![A-Za-z0-9_-])sk-[A-Za-z0-9]{20,48}(?![A-Za-z0-9_-])/, // claves de API tradicionales de OpenAI (alfanuméricas sin guiones)

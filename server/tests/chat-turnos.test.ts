@@ -51,6 +51,7 @@ case "$ultimo" in *CAMBIO-MODELO*) printf '{"type":"text","sessionID":"ses_turno
 case "$ultimo" in *ANALIZA-ADJUNTO*) if [ -n "$imagen" ] && [ -s "$imagen" ]; then echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"La imagen llegó al agente como archivo."}}'; else echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"No llegó ningún archivo de imagen."}}'; fi; exit 0 ;; esac
 case "$ultimo" in *CONCURRENTE*) id=$(printf '%s' "$ultimo" | sed -n 's/.*CONCURRENTE-\\([0-9][0-9]*\\) LENTO.*/\\1/p'); printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"%s: %s"}}\\n' "$modelo" "$id"; exit 0 ;; esac
 case "$ultimo" in *"Termina la respuesta que quedó a medias"*) if [ -z "$sesion" ]; then sesion="ses_turno01"; fi; printf '{"type":"text","sessionID":"%s","part":{"type":"text","text":"continuacion;sesion=%s"}}\\n' "$sesion" "$sesion"; exit 0 ;; esac
+case "$ultimo" in *CONTRATO-EJECUCION-PRUEBA*) case "$ultimo" in *"Contrato de ejecución común de Telo"*) resultado="Contrato común presente." ;; *) resultado="Contrato común ausente." ;; esac; printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"%s"}}\\n' "$resultado"; exit 0 ;; esac
 echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"Respuesta lista."}}'
 `,
   );
@@ -228,6 +229,14 @@ describe("archivos de texto de chats sin proyecto", () => {
 
 // Estas pruebas lanzan grupos de procesos con `setsid`, igual que el servidor Linux.
 describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
+  test("inyecta el contrato común aunque el chat use un runner de OpenCode", async () => {
+    const id = conversacion();
+    const response = await enviar(id, "CONTRATO-EJECUCION-PRUEBA");
+    expect(response.status).toBe(202);
+    await esperar(() => mensajes(id).some((mensaje) => mensaje.role === "assistant"));
+    expect(mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content).toBe("Contrato común presente.");
+  });
+
   test("el runner recibe el archivo de imagen adjuntado al mensaje", async () => {
     const id = conversacion();
     const bytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/0ioAAAAASUVORK5CYII=", "base64");
@@ -491,6 +500,36 @@ describe("metadatos del historial de chat", () => {
       model: "groq/modelo-anterior",
       effort: "medium",
     }));
+  });
+});
+
+describe("contexto por conversación", () => {
+  test("resume mensajes, sesión, acciones y uso medido sin mezclar otros chats", async () => {
+    const id = conversacion("opencode/modelo-contexto");
+    db.query("UPDATE conversations SET runner_session_id='sesion-contexto', runner_session_model='opencode/modelo-contexto' WHERE id=?").run(id);
+    db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', 'pregunta')")
+      .run(crypto.randomUUID(), id);
+    db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'assistant', 'respuesta')")
+      .run(crypto.randomUUID(), id);
+    db.query("INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cost, tokens_precision, created_at) VALUES (?, ?, 'opencode', 'opencode/modelo-contexto', 100, 20, 5, 40, 0.01, 'medida', '2026-10-18 10:00:00')")
+      .run(crypto.randomUUID(), id);
+    db.query("INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens, reasoning_tokens, cache_read_tokens, cost, tokens_precision, created_at) VALUES (?, ?, 'opencode', 'opencode/modelo-contexto', 120, 25, 7, 50, 0.02, 'estimado', '2026-10-18 10:05:00')")
+      .run(crypto.randomUUID(), id);
+    db.query("INSERT INTO chat_actividad (conversation_id, turno_id, seq, tipo, herramienta, titulo, estado) VALUES (?, 'turno-contexto', 1, 'accion', 'read', 'Leyó un archivo', 'hecha')")
+      .run(id);
+
+    const respuesta = await app.request(`/api/conversations/${id}/contexto`);
+    const datos = await respuesta.json() as any;
+    expect(respuesta.status).toBe(200);
+    expect(datos.conversation.sessionId).toBe("sesion-contexto");
+    expect(datos.messages).toMatchObject({ total: 2, user: 1, assistant: 1, system: 0 });
+    expect(datos.actions).toBe(1);
+    expect(datos.usage).toMatchObject({ calls: 2, chatCalls: 2, inputTokens: 220, outputTokens: 45, reasoningTokens: 12, cacheReadTokens: 90, measured: 1, estimated: 1 });
+    expect(datos.lastInput).toMatchObject({ inputTokens: 120, tokensPrecision: "estimado" });
+    expect(datos.byModel).toHaveLength(1);
+
+    const inexistente = await app.request("/api/conversations/no-existe/contexto");
+    expect(inexistente.status).toBe(404);
   });
 });
 

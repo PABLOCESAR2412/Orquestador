@@ -19,9 +19,10 @@ const { aprobarTarea, diffDeTarea, prepararCopia } = await import("../src/worksp
 const { repositoryActions } = await import("../src/routes/repository-actions");
 const { guardarSecreto, entornoDeProyecto } = await import("../src/secretos");
 const { fuenteAutenticacionGithub, githubApiPr } = await import("../src/routes/proyecto-config");
-const { borrarCuentaGithubGlobal } = await import("../src/github-auth");
+const { borrarCuentaGithubGlobal, guardarCuentaGithubGlobal, tokenGithubGlobal } = await import("../src/github-auth");
 const originalFetch = globalThis.fetch;
 const claveOriginal = process.env.TELO_CLAVE_CIFRADO;
+process.env.TELO_CLAVE_CIFRADO = Buffer.alloc(32, 7).toString("base64");
 const proyectos: { id: string; cwd: string; taskId?: string }[] = [];
 const REMOTO = "https://github.com/dueno/prueba";
 const TOKEN = "ghp_" + "credencialficticiaparapruebas123456789";
@@ -523,5 +524,26 @@ test("prepararCopia sincroniza carpetas .opencode/skills y skills hacia el clon"
   expect(readFileSync(join(copia.cwd, ".opencode", "skills", "test-skill", "SKILL.md"), "utf8")).toContain("Contenido");
   expect(existsSync(join(copia.cwd, "skills", "otra-skill", "SKILL.md"))).toBe(true);
   expect(readFileSync(join(copia.cwd, "skills", "otra-skill", "SKILL.md"), "utf8")).toContain("Contenido raiz");
+});
+
+test("el token global de GitHub se cifra en SQLite y las filas antiguas se migran al leerlas", () => {
+  guardarCuentaGithubGlobal({
+    token: TOKEN,
+    login: "prueba",
+    name: "Prueba",
+    avatar_url: "",
+    scopes: [],
+    actualizado_en: new Date().toISOString(),
+  });
+  const fila = db.query<{ value: string }, []>("SELECT value FROM app_settings WHERE key='github_global_auth'").get()!;
+  expect(fila.value).not.toContain(TOKEN);
+  expect(tokenGithubGlobal()).toBe(TOKEN);
+
+  borrarCuentaGithubGlobal();
+  db.query("INSERT INTO app_settings (key, value, updated_at) VALUES ('github_global_auth', ?, datetime('now'))")
+    .run(JSON.stringify({ token: TOKEN, login: "prueba", name: "Prueba", avatar_url: "", scopes: [], actualizado_en: "" }));
+  expect(tokenGithubGlobal()).toBe(TOKEN);
+  const migrada = db.query<{ value: string }, []>("SELECT value FROM app_settings WHERE key='github_global_auth'").get()!;
+  expect(migrada.value).not.toContain(TOKEN);
 });
 

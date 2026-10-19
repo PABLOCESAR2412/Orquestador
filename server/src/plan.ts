@@ -220,7 +220,7 @@ const REGLAS_PLAN = [
   "- No pidas al usuario que confirme un plan genérico, revise una investigación rutinaria o elija detalles que puedas inferir de la tarea y del proyecto. En esos casos, formula un supuesto breve y permite que el obrero avance automáticamente.",
   "- Un cambio de código, una investigación, una prueba o la creación de un archivo dentro del workspace no requieren aprobación previa por sí solos.",
   "- Metodología Gauntlet por defecto: Formula el plan con máxima rigurosidad en base a 4 pilares: Tarea (objetivo concreto), Método (planificación y ejecución en bucle con auto-revisión adversarial), Listón comprobable (criterios deterministas uno a uno que no admitan ambigüedad ni placeholders), y Entregable verificable.",
-  "- Investiga antes de planificar: revisa la estructura del proyecto, los archivos relevantes y las skills instaladas (como gauntlet, context7 para frameworks o librerías, playwright). Razona paso a paso la arquitectura de la solución.",
+  "- Antes de planificar, identifica la intención, las restricciones, las precondiciones y cómo se comprobará el resultado; revisa la estructura del proyecto, los archivos relevantes y las skills instaladas (como gauntlet, context7 para frameworks o librerías, playwright). Deja en el plan solo supuestos necesarios, pasos comprobables y preguntas que bloqueen el trabajo; no incluyas razonamiento interno detallado.",
   "- Si la tarea requiere investigación especializada, pruebas o verificación intensiva, prevé el uso de subagentes o skills del proyecto.",
   "- De 3 a 8 pasos, concretos y comprobables. Nunca más de 12.",
   "- Cada paso nombra los archivos que toca, si ya los conoces, con rutas relativas dentro del workspace.",

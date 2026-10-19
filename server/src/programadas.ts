@@ -188,12 +188,12 @@ export function cambiarActiva(id: string, activa: boolean, ahora: Date = new Dat
 
 type CrearTarea = (opts: NuevaTarea) => string;
 
-// Verdadero si la última tarea de esta programada sigue en cola o en curso. Entonces no se lanza otra.
+// No volver a lanzar mientras la última ejecución siga abierta, incluso si espera una decisión del usuario.
 export function ultimaTareaActiva(programadaId: string): boolean {
   return (
     db
       .query(
-        "SELECT 1 FROM programadas p JOIN tasks t ON t.id = p.ultima_tarea_id WHERE p.id = ? AND t.status IN ('queued', 'running')",
+        "SELECT 1 FROM programadas p JOIN tasks t ON t.id = p.ultima_tarea_id WHERE p.id = ? AND t.status IN ('queued', 'analyzing', 'waiting_approval', 'running', 'interrupted', 'sin_cuota')",
       )
       .get(programadaId) !== null
   );

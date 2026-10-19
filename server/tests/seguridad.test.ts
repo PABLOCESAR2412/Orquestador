@@ -47,6 +47,7 @@ describe("redacción de salida", () => {
     expect(redactar("sk-" + "b".repeat(30))).toBe("***");
     expect(redactar("AIza" + "c".repeat(35))).toBe("***");
     expect(redactar("github_pat_" + "d".repeat(40))).toBe("***");
+    expect(redactar("sk-ant-api03-" + "e".repeat(40))).toBe("***");
   });
 
   test("oculta bloques de clave privada completos", () => {
@@ -221,6 +222,16 @@ describe("planificador: sin solapes y sin ráfagas", () => {
       return "x";
     }) as never);
     expect(prompts).not.toContain("Prompt seg-solapa");
+  });
+
+  test("no vuelve a lanzar mientras la última espera análisis, aprobación o reanudación", () => {
+    for (const estado of ["analyzing", "waiting_approval", "interrupted", "sin_cuota"] as const) {
+      const tarea = `seg-tarea-${estado}`;
+      const programada = `seg-solapa-${estado}`;
+      db.query("INSERT INTO tasks (id, title, prompt, model, status) VALUES (?, 't', 'p', 'm', ?)").run(tarea, estado);
+      insertarProgramada(programada, "1999-01-01T00:00:00.000Z", tarea);
+      expect(ultimaTareaActiva(programada)).toBe(true);
+    }
   });
 
   test("como mucho 3 tareas por revisión: el resto sigue vencida para la siguiente", () => {

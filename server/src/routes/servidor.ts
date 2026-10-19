@@ -6,6 +6,7 @@ import { db } from "../db";
 import { medirCarpeta } from "../archivos-proyecto";
 import { redactar } from "../redaccion";
 import { hallarEjecutable } from "../ejecutable";
+import { MAX_TAREAS_SIMULTANEAS } from "../limites";
 
 
 // Estado del servidor para la página Servidor. Ninguna respuesta incluye rutas absolutas,
@@ -191,7 +192,7 @@ function costosYTareas() {
 
   const activas = db
     .query<{ status: string; n: number }, []>(
-      "SELECT status, COUNT(*) AS n FROM tasks WHERE status IN ('queued', 'running') GROUP BY status",
+      "SELECT status, COUNT(*) AS n FROM tasks WHERE status IN ('queued', 'analyzing', 'running') GROUP BY status",
     )
     .all();
 
@@ -205,7 +206,8 @@ function costosYTareas() {
     tareas: {
       ultimos30d: tareas30,
       en_cola: activas.find((r) => r.status === "queued")?.n ?? 0,
-      en_curso: activas.find((r) => r.status === "running")?.n ?? 0,
+      en_curso: activas.filter((r) => r.status === "analyzing" || r.status === "running").reduce((suma, fila) => suma + fila.n, 0),
+      max_simultaneas: MAX_TAREAS_SIMULTANEAS,
     },
   };
 }

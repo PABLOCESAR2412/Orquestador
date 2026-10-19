@@ -174,6 +174,106 @@ chat.get("/conversations/:id/messages", (c) => {
   return c.json(messages);
 });
 
+// Métricas verificables del contexto de un chat; los tokens acumulados no equivalen a la ventana activa.
+chat.get("/conversations/:id/contexto", (c) => {
+  const id = c.req.param("id");
+  const conversation = db.query<{
+    id: string;
+    title: string;
+    provider: string | null;
+    model: string | null;
+    effort: string | null;
+    sessionId: string | null;
+    sessionModel: string | null;
+    createdAt: string;
+    lastActivity: string | null;
+  }, [string]>(`
+    SELECT c.id, c.title, c.provider, c.model, c.effort,
+           c.runner_session_id AS sessionId, c.runner_session_model AS sessionModel,
+           c.created_at AS createdAt,
+           MAX(c.created_at,
+               COALESCE((SELECT MAX(created_at) FROM messages WHERE conversation_id=c.id), c.created_at),
+               COALESCE((SELECT MAX(created_at) FROM usage WHERE conversation_id=c.id), c.created_at),
+               COALESCE((SELECT MAX(created_at) FROM chat_actividad WHERE conversation_id=c.id), c.created_at)) AS lastActivity
+      FROM conversations c WHERE c.id=?
+  `).get(id);
+  if (!conversation) return c.json({ error: "conversation_not_found" }, 404);
+
+  const messages = db.query<{ total: number; user: number; assistant: number; system: number }, [string]>(`
+    SELECT COUNT(*) AS total,
+           COALESCE(SUM(role='user'), 0) AS user,
+           COALESCE(SUM(role='assistant'), 0) AS assistant,
+           COALESCE(SUM(role='system'), 0) AS system
+      FROM messages WHERE conversation_id=?
+  `).get(id)!;
+  const usage = db.query<{
+    calls: number;
+    chatCalls: number;
+    taskCalls: number;
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens: number;
+    cacheReadTokens: number;
+    costUsd: number;
+    measured: number;
+    estimated: number;
+    unavailable: number;
+    unknown: number;
+  }, [string]>(`
+    SELECT COUNT(*) AS calls,
+           COALESCE(SUM(task_id IS NULL), 0) AS chatCalls,
+           COALESCE(SUM(task_id IS NOT NULL), 0) AS taskCalls,
+           COALESCE(SUM(input_tokens), 0) AS inputTokens,
+           COALESCE(SUM(output_tokens), 0) AS outputTokens,
+           COALESCE(SUM(reasoning_tokens), 0) AS reasoningTokens,
+           COALESCE(SUM(cache_read_tokens), 0) AS cacheReadTokens,
+           COALESCE(SUM(cost), 0) AS costUsd,
+           COALESCE(SUM(tokens_precision='medida'), 0) AS measured,
+           COALESCE(SUM(tokens_precision='estimado'), 0) AS estimated,
+           COALESCE(SUM(tokens_precision='no_disponible'), 0) AS unavailable,
+           COALESCE(SUM(tokens_precision='desconocida'), 0) AS unknown
+      FROM usage WHERE conversation_id=?
+  `).get(id)!;
+  const byModel = db.query<{
+    provider: string;
+    model: string;
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number;
+  }, [string]>(`
+    SELECT provider, model, COUNT(*) AS calls,
+           COALESCE(SUM(input_tokens), 0) AS inputTokens,
+           COALESCE(SUM(output_tokens), 0) AS outputTokens,
+           COALESCE(SUM(cost), 0) AS costUsd
+      FROM usage WHERE conversation_id=?
+     GROUP BY provider, model ORDER BY SUM(input_tokens + output_tokens) DESC, model
+  `).all(id);
+  const lastInput = db.query<{
+    provider: string;
+    model: string;
+    inputTokens: number;
+    tokensPrecision: string;
+    createdAt: string;
+  }, [string]>(`
+    SELECT provider, model, input_tokens AS inputTokens,
+           tokens_precision AS tokensPrecision, created_at AS createdAt
+      FROM usage WHERE conversation_id=? AND task_id IS NULL ORDER BY created_at DESC, rowid DESC LIMIT 1
+  `).get(id);
+  const actions = db.query<{ total: number }, [string]>(
+    "SELECT COUNT(*) AS total FROM chat_actividad WHERE conversation_id=? AND tipo='accion'",
+  ).get(id)!.total;
+
+  return c.json({
+    conversation,
+    messages,
+    actions,
+    usage,
+    byModel,
+    lastInput: lastInput ?? null,
+  });
+});
+
 // Las imágenes se suben por separado del JSON del mensaje para conservar el límite pequeño de la API.
 chat.post("/conversations/:id/adjuntos", async (c) => {
   const id = c.req.param("id");

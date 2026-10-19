@@ -18,7 +18,7 @@ Un timer de systemd revisa `main` cada 5 minutos. Si hay commits nuevos, el scri
 
 ## Reglas
 
-- **No reinicia con ejecuciones en curso.** Un reinicio marca como fallidas las tareas activas (`worker.ts`). Si hay un `opencode run` vivo, espera al siguiente ciclo.
+- **No reinicia con ejecuciones en curso.** Un reinicio marca como fallidas las tareas activas (`worker.ts`). Si hay un `opencode run` o `codex exec` vivo, espera al siguiente ciclo.
 - **`web/` no reinicia nada.** El servidor lee `web/dist` en cada petición. Los clientes ven la versión nueva con el aviso de "Recargar ahora".
 - **`bun install --frozen-lockfile` en cada ciclo** que cambie dependencias.
 - **Si falla el build o el servidor no responde**, vuelve a la versión anterior y no reintenta ese mismo commit hasta que llegue uno nuevo.
@@ -115,4 +115,4 @@ La App debe tener instalados los permisos antes de emitir credenciales. Los toke
 
 - No corre migraciones a mano: las aplica el servidor al arrancar.
 - Si `main` tiene cambios locales en el VM, el script se detiene con un aviso en el journal. No descarta nada.
-- El patrón de ejecuciones (`opencode run`) cubre solo el runner actual. Hay que añadir Codex y agy cuando existan.
+- El patrón de ejecuciones incluye OpenCode y Codex. Añadir el patrón de agy cuando ese runner exista.
