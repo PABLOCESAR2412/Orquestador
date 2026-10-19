@@ -121,6 +121,14 @@ try {
         lastInput: { provider: "google", model: "google/prueba", inputTokens: 250, tokensPrecision: "medida", createdAt: now },
       };
       else if (path === "/api/conversations/c5/archivo") data = { ruta: "libre.md", tamano: 24, texto: "# Chat libre\nVista previa disponible", truncado: false };
+      else if (path === "/api/conversations/c1/archivo") {
+        const ruta = new URL(route.request().url()).searchParams.get("ruta");
+        if (ruta === "Chat.tsx") {
+          return route.fulfill({ status: 409, json: { error: "project_path_ambiguous", matches: ["src/components/Chat.tsx", "src/pages/Chat.tsx"] } });
+        }
+        if (ruta === "Gone.tsx") return route.fulfill({ status: 404, json: { error: "archivo_chat_no_encontrado" } });
+        data = { ruta, tamano: 42, texto: "export function responder() {\n  return 'ok';\n}\n", truncado: false };
+      }
       else if (path === "/api/conversations/c1/messages") {
         if (route.request().method() === "POST") {
           const body = route.request().postDataJSON();
