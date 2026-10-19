@@ -652,7 +652,7 @@ try {
     assert.equal(accionTrasSuRespuesta, true, "la tarjeta Git aparece después de la respuesta que la originó");
     assert.equal(await page.locator(".tl-detalles-reporte pre").isVisible(), false);
     assert.equal((await page.locator("body").textContent()).includes("MEMORIA_INTERNA"), false);
-    await page.getByRole("button", { name: "Autorizar commit y push", exact: true }).click();
+    await page.getByRole("button", { name: "Subir a telo/prueba y abrir PR", exact: true }).click();
     await page.getByText("Completada", { exact: true }).waitFor();
     assert.equal(await page.locator('article[aria-label="Acción de Git"]').count(), 1, "la decisión actualiza la misma tarjeta dentro de su turno");
     assert.equal(approvals, 1);

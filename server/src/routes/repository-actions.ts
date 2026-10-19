@@ -260,8 +260,13 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
 });
 
 repositoryActions.post("/acciones/:id/decidir", async (c) => {
-  const b = await leerCuerpoJson<{ approve: boolean }>(c);
+  const b = await leerCuerpoJson<{ approve: boolean; destino?: string }>(c);
   if (!b || typeof b.approve !== "boolean") return c.json({ error: "invalid_body" }, 400);
+  // Destino de una subida: "base" empuja directo a la rama base del proyecto; "rama" sube la rama
+  // de la tarea y prepara el PR. Si no viene, se conserva el comportamiento anterior.
+  if (b.destino !== undefined && b.destino !== "base" && b.destino !== "rama")
+    return c.json({ error: "invalid_destino" }, 400);
+  const destinoEmpuje = b.destino === "base" || b.destino === "rama" ? b.destino : null;
   const row = db
     .query<
       {
@@ -352,7 +357,15 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
       if (row.action === "push") {
         await validarAutenticacionYAcceso(row.project_id, p, "push");
       }
-      const destinoRama = p.rama || undefined;
+      let destinoRama = p.rama || undefined;
+      if (row.action === "push" && destinoEmpuje === "base") {
+        // El destino permitido sale de lo revisado (payload.base); si la configuración cambió
+        // desde la preparación, se exige una autorización nueva.
+        const base = configGit(row.project_id).base_branch;
+        if (p.base && p.base !== base)
+          throw new Error("La configuración del repositorio cambió. Solicita otra autorización.");
+        destinoRama = base;
+      }
       result = await aprobarTarea(row.task_id!, {
         accion: row.action === "commit" ? "commit" : "push",
         hash: p.hash,
@@ -435,17 +448,21 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
           [string]
         >("SELECT plan,conversation_id,status FROM tasks WHERE id=?")
         .get(row.task_id);
-      if (t?.plan && t.conversation_id && t.status === "done") {
-        const acciones = JSON.parse(t.plan).requiere_aprobacion as string[];
+      // Sin plan guardado, la cadena solo continúa si el usuario eligió "rama y PR" en la subida.
+      const puedeCadena = t?.plan || (row.action === "push" && destinoEmpuje === "rama");
+      if (t && t.conversation_id && t.status === "done" && puedeCadena) {
+        const acciones = t.plan ? JSON.parse(t.plan).requiere_aprobacion as string[] : [];
         const siguiente =
           row.action === "commit"
             ? acciones.includes("push")
               ? "push"
               : null
             : row.action === "push"
-              ? acciones.includes("pr")
-                ? "pr"
-                : null
+              ? destinoEmpuje === "base"
+                ? null
+                : acciones.includes("pr") || destinoEmpuje === "rama"
+                  ? "pr"
+                  : null
               : row.action === "pr"
                 ? "merge"
                 : null;

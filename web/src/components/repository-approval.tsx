@@ -83,14 +83,17 @@ export function RepositoryApproval({
     pr_number?: number;
     pr_url?: string;
   };
-  const requiereGitHub = accion.action === "push" || accion.action === "pr" || accion.action === "merge";
-  const credencialObsoleta = requiereGitHub && !p.autenticacion;
+  const necesitaGitHub = accion.action === "push" || accion.action === "pr" || accion.action === "merge";
+  const credencialObsoleta = necesitaGitHub && !p.autenticacion;
   const [confirmarAccesoNoVerificado, setConfirmarAccesoNoVerificado] = useState(false);
   const [avisoAcceso, setAvisoAcceso] = useState<string | null>(null);
+  // En una subida, "siempre pregunta": el usuario elige destino (base directo o rama + PR)
+  // al autorizar. Si el acceso no se pudo verificar, se recuerda aquí qué botón pulsó.
+  const [destinoPendiente, setDestinoPendiente] = useState<"base" | "rama" | null>(null);
   const decide = useMutation({
-    mutationFn: async (approve: boolean) => {
+    mutationFn: async ({ approve, destino }: { approve: boolean; destino?: "base" | "rama" }) => {
       if (!approve) return api.decideRepositoryAction(accion.id, false);
-      if (requiereGitHub) {
+      if (necesitaGitHub) {
         if (!projectId || !p.autenticacion) {
           throw new ApiError(409, "github_access", "Esta autorización no tiene una credencial registrada. Prepara una nueva para comprobar el acceso antes de aprobar.");
         }
@@ -108,16 +111,17 @@ export function RepositoryApproval({
           return { requiereConfirmacion: true as const, aviso: acceso.aviso ?? "No se pudo confirmar el permiso de escritura antes de la acción." };
         }
       }
-      return api.decideRepositoryAction(accion.id, true);
+      return api.decideRepositoryAction(accion.id, true, destino);
     },
-    onSuccess: (resultado, approve) => {
+    onSuccess: (resultado, args) => {
       if ("requiereConfirmacion" in resultado && resultado.requiereConfirmacion) {
         setConfirmarAccesoNoVerificado(true);
+        setDestinoPendiente(args.destino ?? null);
         setAvisoAcceso(resultado.aviso);
         return;
       }
       setAvisoAcceso(null);
-      onChange("result" in resultado ? resultado.result : undefined, approve);
+      onChange("result" in resultado ? resultado.result : undefined, args.approve);
     },
     onError: (error) => onChange(undefined, false, errorText(error)),
   });
@@ -155,7 +159,7 @@ export function RepositoryApproval({
       {subida ? (
         <ol className="approval-steps" aria-label="Pasos autorizados">
           <li>Crear commit con los cambios revisados</li>
-          <li>Subir a {p.rama ?? "la rama indicada"}</li>
+          <li>Subir al destino que elijas abajo: {p.base ?? "main"} directo, o {p.rama ?? "la rama de la tarea"} para abrir el PR</li>
         </ol>
       ) : (
         p.descripcion && <p>{p.descripcion}</p>
@@ -165,7 +169,7 @@ export function RepositoryApproval({
         <p className="approval-auth">Commit local · identidad de Git: {p.autorGit ?? "la configurada en el proyecto"}.{subida ? " La subida usa la credencial indicada abajo." : " GitHub no participa en este paso."}</p>
       )}
       {accion.action === "pr" && <p>Título: {p.title}</p>}
-      {requiereGitHub && p.autenticacion && (
+      {necesitaGitHub && p.autenticacion && (
         <div className={`approval-auth${p.autenticacion.tipo === "credencial_anterior" ? " approval-auth-warning" : ""}`} role={p.autenticacion.tipo === "credencial_anterior" ? "alert" : "status"}>
           <strong>Credencial para esta acción: {p.autenticacion.etiqueta}</strong>
           {p.autenticacion.cuenta && <span>Cuenta: @{p.autenticacion.cuenta}</span>}
@@ -179,7 +183,7 @@ export function RepositoryApproval({
           Esta autorización es antigua y no indica qué credencial usar. Prepara una nueva para comprobar el acceso y mostrar la cuenta antes de aprobar.
         </p>
       )}
-      {credencialObsoleta && accion.state !== "pending" && requiereGitHub && (
+      {credencialObsoleta && accion.state !== "pending" && necesitaGitHub && (
         <p className="approval-auth approval-auth-warning" role="status">
           Esta acción anterior no guardó el método de autenticación; Telo no puede confirmar qué credencial usó.
         </p>
@@ -201,27 +205,57 @@ export function RepositoryApproval({
       )}
       {accion.state === "pending" && (
         <div className="approval-buttons">
-          <button
-            type="button"
-            className="primary"
-            disabled={decide.isPending || credencialObsoleta}
-            onClick={() => decide.mutate(true)}
-          >
-            {decide.isPending
-              ? requiereGitHub ? "Comprobando acceso…" : "Ejecutando…"
-              : subida
-                ? "Autorizar commit y push"
+          {subida ? (
+            destinoPendiente ? (
+              <button
+                type="button"
+                className="primary"
+                disabled={decide.isPending || credencialObsoleta}
+                onClick={() => decide.mutate({ approve: true, destino: destinoPendiente })}
+              >
+                {decide.isPending ? "Comprobando acceso…" : "Confirmar y autorizar"}
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={decide.isPending || credencialObsoleta}
+                  onClick={() => decide.mutate({ approve: true, destino: "base" })}
+                >
+                  Subir a {p.base ?? "main"} directo
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={decide.isPending || credencialObsoleta}
+                  onClick={() => decide.mutate({ approve: true, destino: "rama" })}
+                >
+                  Subir a {p.rama ?? "la rama de la tarea"} y abrir PR
+                </button>
+              </>
+            )
+          ) : (
+            <button
+              type="button"
+              className="primary"
+              disabled={decide.isPending || credencialObsoleta}
+              onClick={() => decide.mutate({ approve: true })}
+            >
+              {decide.isPending
+                ? necesitaGitHub ? "Comprobando acceso…" : "Ejecutando…"
                 : accion.action === "merge"
                   ? "Fusionar Pull Request en GitHub"
                   : confirmarAccesoNoVerificado
                     ? "Confirmar y autorizar"
                     : `Autorizar ${titulo.toLowerCase()}`}
-          </button>
+            </button>
+          )}
           <button
             type="button"
             className="ghost"
             disabled={decide.isPending}
-            onClick={() => decide.mutate(false)}
+            onClick={() => decide.mutate({ approve: false })}
           >
             Rechazar
           </button>
@@ -472,7 +506,7 @@ export function AccionesRepositorioChat({
               {pedir.isPending
                 ? "Preparando…"
                 : diff.remoto
-                  ? "Commit y subir rama para PR"
+                  ? "Commit y subir (elige destino)"
                   : "Crear commit"}
             </button>
           )}

@@ -675,10 +675,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  decideRepositoryAction: (id: string, approve: boolean) =>
+  decideRepositoryAction: (id: string, approve: boolean, destino?: "base" | "rama") =>
     request<{ ok: boolean; result?: unknown }>(`/api/acciones/${id}/decidir`, {
       method: "POST",
-      body: JSON.stringify({ approve }),
+      body: JSON.stringify({ approve, ...(destino ? { destino } : {}) }),
     }),
 
   health: () => request<{ ok: boolean; time: string }>("/api/health"),
