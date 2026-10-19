@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { randomBytes, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 
-const raiz = join(import.meta.dir, ".test-data-config-" + randomUUID().slice(0, 8));
+const raiz = join(tmpdir(), "telo-test-config-" + randomUUID());
 process.env.DATA_DIR = join(raiz, "data");
 process.env.TELO_PROYECTOS_DIR = join(raiz, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
@@ -19,6 +20,15 @@ const app = new Hono().route("/", proyectoConfig).route("/", repositoryActions);
 const proyectos: { id: string; cwd: string }[] = [];
 const claveOriginal = process.env.TELO_CLAVE_CIFRADO;
 const fetchOriginal = globalThis.fetch;
+function hacerEscribible(ruta: string) {
+  for (const nombre of readdirSync(ruta)) {
+    const hijo = join(ruta, nombre);
+    const stat = lstatSync(hijo);
+    if (stat.isDirectory()) hacerEscribible(hijo);
+    else if (!stat.isSymbolicLink()) chmodSync(hijo, 0o666);
+  }
+  chmodSync(ruta, 0o777);
+}
 afterEach(() => {
   globalThis.fetch = fetchOriginal;
   borrarCuentaGithubGlobal();
@@ -29,6 +39,11 @@ afterEach(() => {
     db.query("DELETE FROM projects WHERE id=?").run(proyecto.id);
     try { rmSync(proyecto.cwd, { recursive: true, force: true }); } catch { /* Windows puede retener archivos dentro de .git hasta salir de Bun. */ }
   }
+});
+afterAll(() => {
+  db.close();
+  hacerEscribible(raiz);
+  rmSync(raiz, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 function proyecto() {
   const id = "p-" + randomUUID().slice(0, 8);

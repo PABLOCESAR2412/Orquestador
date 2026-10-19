@@ -50,6 +50,11 @@ describe("redacción de salida", () => {
     expect(redactar("sk-ant-api03-" + "e".repeat(40))).toBe("***");
   });
 
+  test("no redacta nombres de clases CSS que contienen sk-", () => {
+    const texto = ".ask-user-question-panel-header .task-manager-running-state-value";
+    expect(redactar(texto)).toBe(texto);
+  });
+
   test("oculta bloques de clave privada completos", () => {
     const pem = "-----BEGIN " + "OPENSSH PRIVATE KEY-----\nMIIabc\n-----END " + "OPENSSH PRIVATE KEY-----";
     expect(redactar(pem)).toBe("[clave privada oculta]");
@@ -83,6 +88,15 @@ describe("escaneo antes de commit", () => {
     ].join("\n");
     expect(archivosConSecretos(diff, [])).toEqual([]);
   });
+
+  test("no bloquea archivos por nombres de clases CSS que contienen sk-", () => {
+    const diff = [
+      "diff --git a/src/app.css b/src/app.css",
+      "+.ask-user-question-panel-header { color: inherit; }",
+      "+.task-manager-running-state-value { display: block; }",
+    ].join("\n");
+    expect(archivosConSecretos(diff, [])).toEqual([]);
+  });
 });
 
 describe("variables reservadas", () => {
@@ -112,7 +126,7 @@ describe("id de sesión de OpenCode", () => {
 describe("repos que el agente pudo escribir", () => {
   const REPO = join(RAIZ_PRUEBAS, "seguridad-git");
 
-  test("prepararRepoSeguro quita filtros, fsmonitor y config.worktree", async () => {
+  test.skipIf(process.platform === "win32")("prepararRepoSeguro quita filtros, fsmonitor y config.worktree", async () => {
     rmSync(REPO, { recursive: true, force: true });
     mkdirSync(REPO, { recursive: true });
     Bun.spawnSync(["git", "init", "-q", "-b", "main", REPO]);
@@ -127,7 +141,7 @@ describe("repos que el agente pudo escribir", () => {
     expect(existsSync(join(REPO, ".git", "config.worktree"))).toBe(false);
   });
 
-  test("gitSeguro no ejecuta el filtro que el agente dejó en .git/config (git sin sanear sí lo ejecuta)", async () => {
+  test.skipIf(process.platform === "win32")("gitSeguro no ejecuta el filtro que el agente dejó en .git/config (git sin sanear sí lo ejecuta)", async () => {
     const R = join(RAIZ_PRUEBAS, "seguridad-filtro");
     rmSync(R, { recursive: true, force: true });
     mkdirSync(R, { recursive: true });
@@ -153,7 +167,7 @@ describe("repos que el agente pudo escribir", () => {
     expect(existsSync(marca)).toBe(false);
   });
 
-  test("un .git que es archivo o enlace no cuenta como repo propio", () => {
+  test.skipIf(process.platform === "win32")("un .git que es archivo o enlace no cuenta como repo propio", () => {
     const carpeta = join(RAIZ_PRUEBAS, "git-archivo");
     mkdirSync(carpeta, { recursive: true });
     writeFileSync(join(carpeta, ".git"), "gitdir: /otro/lugar\n");

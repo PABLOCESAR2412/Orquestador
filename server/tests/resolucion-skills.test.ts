@@ -1,11 +1,9 @@
-import { afterEach, expect, test } from "bun:test";
-import { mkdirSync, rmSync } from "node:fs";
+import { afterAll, afterEach, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detectarMencionesSkills, inyectarSkillsEnPrompt, resolverSkillsInvocadas } from "../src/resolucion-skills";
-import { guardarSkill } from "../src/skills";
 
-const raiz = join(import.meta.dir, ".test-data-resolucion-skills");
-rmSync(raiz, { recursive: true, force: true });
+const raiz = mkdtempSync(join(tmpdir(), "telo-resolucion-skills-"));
 const homePrueba = join(raiz, "home");
 mkdirSync(homePrueba, { recursive: true });
 process.env.HOME = homePrueba;
@@ -14,7 +12,14 @@ process.env.TELO_PROYECTOS_DIR = join(raiz, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 
 const { db } = await import("../src/db");
+const { detectarMencionesSkills, inyectarSkillsEnPrompt, resolverSkillsInvocadas } = await import("../src/resolucion-skills");
+const { guardarSkill } = await import("../src/skills");
 const carpetaProyecto = join(raiz, "proyectos", "resolucion-test");
+
+afterAll(() => {
+  db.close();
+  rmSync(raiz, { recursive: true, force: true });
+});
 
 afterEach(() => {
   db.query("DELETE FROM projects WHERE id = ?").run("p-res");

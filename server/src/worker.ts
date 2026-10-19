@@ -351,7 +351,6 @@ async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Pr
   db.transaction(() => {
     const contenido = JSON.stringify(plan), hash = hashPlan(plan);
     db.query("UPDATE tasks SET plan=?, plan_hash=?, approved_hash=NULL, plan_aprobado_en=NULL WHERE id=?").run(contenido, hash, task.id);
-    db.query("INSERT INTO task_plans(task_id,plan,hash) VALUES (?,?,?)").run(task.id, contenido, hash);
     registrarEvento(task.id, "plan_creado", `Versión ${numero}: ${plan.objetivo}`);
   })();
 

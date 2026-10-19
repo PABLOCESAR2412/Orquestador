@@ -18,7 +18,7 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - **Criterio:** funciona a 390 px y 1440 px, sin scroll horizontal.
 
 ### 2. Tareas en segundo plano: hecho (PR #4)
-- Cola de una tarea a la vez. Cancelar mata el árbol de procesos. Al arrancar, las tareas que quedaron en ejecución se marcan como fallidas.
+- Cola de hasta diez tareas independientes en paralelo; las tareas del mismo proyecto se serializan. Cancelar mata el árbol de procesos. Al arrancar, las que seguían en ejecución pasan a `interrupted`.
 - **Criterio:** cancelar una tarea con un proceso hijo (`sleep`) termina en pocos segundos, sin quedar colgada.
 
 ### 3. App instalable, analíticas y ajustes: mergeada (PR #5)
@@ -74,24 +74,22 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - **Criterio:** cada proveedor muestra la fecha de su última consulta. Si no hay API de saldo, se marca como manual.
 
 ### 11. Proyectos: memoria, skills y AGENTS.md
-- Estado: instrucciones por proyecto (se añaden al prompt de sus agentes) y sección única de Proyectos con archivos de solo lectura. Pendiente: skills `SKILL.md` y memoria que el sistema actualiza.
+- Estado: completada. Instrucciones, skills `SKILL.md`, memoria y `AGENTS.md` por proyecto se incorporan al contexto del agente; las skills globales se resuelven para todos los runners.
 - Cada proyecto tiene su configuración: skills en formato `SKILL.md`, memoria que el sistema actualiza sola y su propio `AGENTS.md`.
 - **Criterio:** una tarea del proyecto X usa sus skills y su memoria. Cambiar de proyecto no mezcla contexto.
 
 ### 12. Runners por proyecto
-- Estado: pendiente. Sigue sin empezar, como estaba previsto (después de las fases 5, 6 y 11).
-- Agy y Codex en contenedores por proyecto, con la misma interfaz de runner. Agy debe poder editar y subir archivos como lo hace Antigravity. La integración de Codex queda lista aunque no se use.
-- Se empieza solo cuando las fases 5, 6 y 11 estén cerradas.
+- Estado: parcial. OpenCode y Codex comparten la interfaz de ejecución y trabajan dentro del aislamiento del agente. Agy no está integrado y los runners aún no se aíslan en contenedores independientes por proyecto.
 
 ### 13. Panel del VM
-- Estado: la vista `/servidor` muestra estado del proceso, carpetas y tamaños, herramientas instaladas, costos, uso y latencia medida en el navegador. Pendiente: terminal web (no se decide aún si reemplaza a Cockpit).
+- Estado: parcial. La pestaña Servidor en Ajustes muestra estado del proceso, carpetas y tamaños, herramientas instaladas, costos, uso y latencia medida en el navegador. Pendiente: terminal web (no se decide aún si reemplaza a Cockpit).
 - Configuraciones del servidor desde la app y terminal web integrada. Evaluar si reemplaza a Cockpit (puerto 9090) o solo lo enlaza.
 
 ## Decisiones tomadas
 
 - Stack: TypeScript, Bun, SQLite, PWA. Sin Next.js.
 - Acceso: Tailscale. Cloudflare se descartó (Workers VPC no está disponible en la cuenta) y el Quick Tunnel no sirve como acceso fijo.
-- Una tarea a la vez; las demás se encolan.
+- Hasta diez tareas independientes corren en paralelo; las tareas del mismo proyecto se encolan entre sí.
 - Aprobación del usuario antes de commit, push o PR. La aprobación la aplica el backend, no una instrucción al agente.
 - Sin tope de gasto por tarea; se consulta saldo o cuota.
 - Uso personal, con un solo usuario.

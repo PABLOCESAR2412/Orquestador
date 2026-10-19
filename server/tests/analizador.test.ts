@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 
 // El worker es único por proceso, así que el flujo completo corre en un proceso propio con un
 // `opencode` falso al frente del PATH (server/tests/fixtures/bin/opencode). Requiere setsid (Linux).
@@ -20,7 +20,7 @@ describe.skipIf(!Bun.which("setsid"))("analizador y obrero, extremo a extremo", 
           DATA_DIR: join(raiz, "data"),
           TELO_PROYECTOS_DIR: join(raiz, "proyectos"),
           TELO_AISLAMIENTO: "desactivado",
-          PATH: `${join(carpetaFixtures, "bin")}:${process.env.PATH ?? ""}`,
+          PATH: `${join(carpetaFixtures, "bin")}${delimiter}${process.env.PATH ?? ""}`,
         },
         stdout: "pipe",
         stderr: "pipe",

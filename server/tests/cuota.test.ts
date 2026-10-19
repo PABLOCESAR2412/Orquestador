@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { Hono } from "hono";
 
 // Base temporal compartida por todos los archivos de prueba (ver proyectos.test.ts).
@@ -13,10 +13,10 @@ if (!process.env.TELO_PRUEBAS_INICIADAS) {
 process.env.DATA_DIR = join(RAIZ_PRUEBAS, "data");
 process.env.TELO_PROYECTOS_DIR = join(RAIZ_PRUEBAS, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
-process.env.PATH = `${join(import.meta.dir, "fixtures", "bin")}:${process.env.PATH ?? ""}`;
+process.env.PATH = `${join(import.meta.dir, "fixtures", "bin")}${delimiter}${process.env.PATH ?? ""}`;
 
 const { db } = await import("../src/db");
-const { ErrorCuota, esErrorDeCuota, esErrorDeProveedor, esErrorTransitorioDelProveedor } = await import("../src/ejecutar");
+const { ErrorCuota, esErrorDeCuota, esErrorTransitorioDelProveedor } = await import("../src/ejecutar");
 const { ErrorAgente, detalleDelProveedor, explicarErrorProveedor } = await import("../src/runners/opencode");
 const { tasks } = await import("../src/routes/tasks");
 const { chat } = await import("../src/routes/chat");
@@ -85,22 +85,6 @@ describe("clasificación de cuota agotada", () => {
     expect(esErrorDeCuota(new ErrorAgente("opencode salió con código 1", conEvento))).toBe(false);
     const cuota = { type: "error", error: { data: { message: "Quota exceeded" } } } as const;
     expect(esErrorDeCuota(new ErrorAgente("opencode salió con código 1", detalleDelProveedor("", "", [cuota as never])))).toBe(true);
-  });
-
-  test("el respaldo se activa por saturación del proveedor, nunca por una ruta con «429» o «quota»", () => {
-    const ruta = new ErrorAgente("opencode salió con código 1: fallo en /home/x/quota-429/bin/opencode", "");
-    expect(esErrorDeProveedor(ruta)).toBe(false);
-    const saturado = new ErrorAgente(
-      "opencode salió con código 1",
-      '{"type":"error","error":{"message":"429 Too Many Requests"}}',
-    );
-    expect(esErrorDeProveedor(saturado)).toBe(true);
-
-    const errorServidor = new ErrorAgente(
-      "opencode salió con código 1",
-      '{"type":"error","error":{"message":"Unexpected server error. Check server logs for details."}}',
-    );
-    expect(esErrorDeProveedor(errorServidor)).toBe(true);
   });
 
   test("solo 429 y 5xx HTTP explícitos habilitan el modelo de respaldo", () => {

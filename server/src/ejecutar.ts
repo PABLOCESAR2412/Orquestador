@@ -5,7 +5,7 @@ import { getPreferences } from "./preferences";
 import { entornoDeProyecto } from "./secretos";
 import { entornoProveedores } from "./claves-proveedor";
 import { redactar } from "./redaccion";
-import { AislamientoError } from "./runners/aislamiento";
+import { AislamientoError, aislamientoActivo, prepararPerfilOpenCode } from "./runners/aislamiento";
 import { ErrorAgente, runOpenCode, type RunResult, type Usage } from "./runners/opencode";
 import { runCodex } from "./runners/codex";
 import { promptConHistorial, sesionCompatible } from "./conversacion-contexto";
@@ -175,9 +175,7 @@ export function registrarUsoAgente(
 }
 
 // Saturación, error de servidor o límite del proveedor: justifica probar otro modelo.
-const PATRON_PROVEEDOR = /\b(429|5\d\d)\b|rate limit|too many requests|overloaded|quota|server error|internal error|service unavailable|bad gateway|gateway timeout|temporarily unavailable/i;
 // Saldo insuficiente: otro modelo no lo arregla, así que nunca se reintenta.
-const PATRON_SALDO = /insufficient|saldo|funds|balance/i;
 const PATRON_MODELO_NO_ENCONTRADO = /model[_ ]not found|unknown model|no such model/i;
 // Solo límites definitivos (no cualquier 429): la tarea o el chat se detienen para que el usuario elija otro modelo.
 const PATRON_CUOTA = /(?:\b(?:quota|cuota)\b.*\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|reach(?:ed)?|agotad[ao]|consumid[ao])\b|\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|agotad[ao]|consumid[ao])\b.*\b(?:quota|cuota)\b|\busage limit\b.*\b(?:reach(?:ed)?|exceed(?:ed)?|exhaust(?:ed)?)\b|\bfree usage\b.*\b(?:exhaust(?:ed)?|reach(?:ed)?|exceed(?:ed)?)\b|\bresource[_ ]exhausted\b|\binsufficient[_ ]quota\b|\binsufficient\s+(?:account\s+)?(?:funds|balance|credits?)\b|\b(?:sin|no hay)\s+(?:saldo|cr[eé]ditos)\b)/i;
@@ -227,16 +225,6 @@ export function ocultarValores(texto: string, valores: string[]): string {
 // de la salida sin rutas: el mensaje completo trae la ruta del servidor y del proyecto.
 function textoDelProveedor(err: unknown): string {
   return err instanceof ErrorAgente ? err.detalleProveedor : mensajeDe(err);
-}
-
-// Saturación del proveedor (429, 5xx, límite): justifica reintentar con el modelo de respaldo. Como la
-// cuota, mira solo lo que dijo el proveedor, para que una ruta con «429» no active el respaldo.
-export function esErrorDeProveedor(err: unknown, signal?: AbortSignal): boolean {
-  if (err instanceof AislamientoError) return false;
-  if (signal?.aborted) return false;
-  const texto = textoDelProveedor(err);
-  if (PATRON_SALDO.test(texto)) return false;
-  return PATRON_PROVEEDOR.test(texto);
 }
 
 // El respaldo solo se permite cuando el evento del proveedor informa un estado HTTP transitorio.
@@ -411,6 +399,11 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     ...(opts.projectId ? entornoDeProyecto(opts.projectId) : {}),
   };
   const ocultos = valoresAOcultar(propias);
+  const idPerfil = opts.conversationId ?? opts.taskId;
+  // El modelo de respaldo puede usar OpenCode aunque el primario sea Codex.
+  const perfilOpenCodeDir = aislamientoActivo() && idPerfil
+    ? prepararPerfilOpenCode(idPerfil)
+    : undefined;
 
   // Una sesión solo conserva contexto si pertenece exactamente al modelo que se va a ejecutar.
   let sesion = sesionCompatible(opts.sessionId, opts.sessionModel, opts.model) ? opts.sessionId! : null;
@@ -429,6 +422,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     onLinea: opts.onLinea ? (linea: string) => opts.onLinea?.(ocultarValores(linea, ocultos)) : undefined,
     extraEnv: propias,
     opencodeConfigDir: opts.opencodeConfigDir,
+    perfilOpenCodeDir,
     soloLectura: opts.soloLectura,
   };
 
@@ -570,7 +564,11 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       await Bun.sleep(esRateLimitTransitorio ? 2500 : 1200);
       if (!opts.signal?.aborted) {
         try {
-          const r = await ejecutarConRunner(opts.model, baseParaModelo(opts.model, varianteInicial));
+          const parametros = baseParaModelo(opts.model, varianteInicial);
+          // El primer intento puede haber completado acciones antes del 429/5xx. Si el runner ya
+          // abrió una sesión, retómala y pide continuar desde el estado actual en vez de repetir.
+          parametros.prompt = promptContinuacion(parametros.prompt, sesion !== null);
+          const r = await ejecutarConRunner(opts.model, parametros);
           return terminar(r, opts.model, opts.variant ?? null);
         } catch (reintentoErr) {
           err = reintentoErr;
@@ -611,7 +609,11 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       const varianteRespaldo = opts.variant && validacionRespaldo.info.variants.includes(opts.variant)
         ? opts.variant
         : undefined;
-      const r = await ejecutarConRunner(respaldo, baseParaModelo(respaldo, varianteRespaldo));
+      const parametrosRespaldo = baseParaModelo(respaldo, varianteRespaldo);
+      // El primer modelo pudo alcanzar a ejecutar herramientas antes de fallar; el respaldo revisa
+      // el workspace y continúa lo pendiente en vez de repetir el prompt como una tarea nueva.
+      parametrosRespaldo.prompt = promptContinuacion(parametrosRespaldo.prompt, false);
+      const r = await ejecutarConRunner(respaldo, parametrosRespaldo);
       return terminar(r, respaldo, varianteRespaldo ?? null);
     } catch (errRespaldo) {
       if (esErrorDeCuota(errRespaldo)) throw new ErrorCuota(respaldo, sesion);

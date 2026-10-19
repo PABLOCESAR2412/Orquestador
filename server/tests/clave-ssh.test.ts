@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 
 // Base temporal: nunca se toca server/data. Misma convención que secretos.test.ts: una raíz por
 // ejecución, compartida por todos los archivos de prueba.
@@ -232,7 +232,7 @@ esac
     await generarClaveProyecto(id);
 
     const pathOriginal = process.env.PATH;
-    process.env.PATH = `${bin}:${pathOriginal}`;
+    process.env.PATH = `${bin}${delimiter}${pathOriginal}`;
     try {
       const destino = urlSshDeGithub("https://github.com/dueno/repo");
       expect(destino).toBe("git@github.com:dueno/repo.git");

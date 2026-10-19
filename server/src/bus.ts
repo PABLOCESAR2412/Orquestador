@@ -49,18 +49,6 @@ export function eventosDesde(ultimoId: number): EventoConSecuencia[] {
   return bufferEventos.filter((e) => e.id > ultimoId);
 }
 
-export function ultimoEventoId(): number {
-  return contadorSecuencia;
-}
-
-// Devuelve la función que quita la suscripción.
-export function suscribir(fn: Suscriptor): () => void {
-  suscriptores.add(fn);
-  return () => {
-    suscriptores.delete(fn);
-  };
-}
-
 // Registra el cliente y captura su cursor/replay en el mismo tramo síncrono para evitar huecos
 // entre consultar el buffer y comenzar la suscripción.
 export function suscribirConEventosDesde(

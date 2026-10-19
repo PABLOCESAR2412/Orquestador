@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { config } from "../config";
 import { db } from "../db";
 import { publicar } from "../bus";
-import { AislamientoError } from "../runners/aislamiento";
+import { AislamientoError, eliminarPerfilOpenCode } from "../runners/aislamiento";
 import { ejecutarAgente, ErrorCuota, promptContinuacion, type ResultadoAgente } from "../ejecutar";
 import { sesionCompatible } from "../conversacion-contexto";
 import { getPreferences } from "../preferences";
@@ -92,18 +92,38 @@ export const chat = new Hono();
 // Anclados primero (el más reciente anclado, arriba); luego los demás por fecha.
 chat.get("/conversations", (c) => {
   const rows = db
-    .query<Conversation & { last_msg_at: string | null }, []>(
-      "SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name, c.pinned_at, c.cuota_modelo, c.created_at, (SELECT MAX(created_at) FROM messages WHERE conversation_id = c.id) AS last_msg_at FROM conversations c LEFT JOIN projects p ON p.id = c.project_id ORDER BY (c.pinned_at IS NULL), c.pinned_at DESC, c.created_at DESC, c.rowid DESC",
-    )
+    .query<Conversation & {
+      last_msg_at: string | null;
+      task_id: string | null;
+      task_status: string | null;
+      task_finished_at: string | null;
+      task_plan_hash: string | null;
+    }, []>(`
+      WITH latest_messages AS (
+        SELECT conversation_id, MAX(created_at) AS last_msg_at
+          FROM messages GROUP BY conversation_id
+      ), latest_tasks AS (
+        SELECT id, conversation_id, status, finished_at, plan_hash,
+               ROW_NUMBER() OVER (PARTITION BY conversation_id ORDER BY created_at DESC, rowid DESC) AS rn
+          FROM tasks WHERE conversation_id IS NOT NULL
+      )
+      SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name,
+             c.pinned_at, c.cuota_modelo, c.created_at, m.last_msg_at,
+             t.id AS task_id, t.status AS task_status, t.finished_at AS task_finished_at,
+             t.plan_hash AS task_plan_hash
+        FROM conversations c
+        LEFT JOIN projects p ON p.id = c.project_id
+        LEFT JOIN latest_messages m ON m.conversation_id = c.id
+        LEFT JOIN latest_tasks t ON t.conversation_id = c.id AND t.rn = 1
+       ORDER BY (c.pinned_at IS NULL), c.pinned_at DESC, c.created_at DESC, c.rowid DESC
+    `)
     .all();
 
   return c.json(
     rows.map((r) => {
-      const tarea = db
-        .query<{ id: string; status: string; finished_at: string | null; plan_hash: string | null }, [string]>(
-          "SELECT id, status, finished_at, plan_hash FROM tasks WHERE conversation_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1",
-        )
-        .get(r.id);
+      const tarea = r.task_id
+        ? { id: r.task_id, status: r.task_status!, finished_at: r.task_finished_at, plan_hash: r.task_plan_hash }
+        : null;
 
       const enCurso = conversacionEnCurso(r.id) || (tarea ? ["queued", "analyzing", "running"].includes(tarea.status) : false);
       const pendienteAprobacion = tarea?.status === "waiting_approval";
@@ -156,6 +176,7 @@ chat.delete("/conversations/:id", (c) => {
   const result = db.query("DELETE FROM conversations WHERE id = ?").run(id);
   if (result.changes === 0) return c.json({ error: "conversation_not_found" }, 404);
   eliminarImagenesConversacion(id);
+  eliminarPerfilOpenCode(id);
   return c.json({ ok: true });
 });
 
@@ -792,8 +813,12 @@ chat.post("/conversations/:id/messages", async (c) => {
         publicarChat(conversationId, "terminado");
         return c.json({ messages: [turno, aviso] }, 202);
       }
-      if (!reintento) db.query("DELETE FROM messages WHERE id=?").run(turno.id);
-      return response;
+      limpiarAvisosReintentados(conversationId, reintento?.rowid);
+      const textoAviso = `No se pudo completar la acción de GitHub (HTTP ${response.status}). Tu mensaje quedó guardado; puedes revisar la acción y volver a intentarlo.`;
+      const aviso = { id: crypto.randomUUID(), role: "assistant" as const, content: textoAviso };
+      db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES (?,?,'assistant',?)").run(aviso.id, conversationId, textoAviso);
+      publicarChat(conversationId, "terminado");
+      return c.json({ messages: [turno, aviso], actionError: error.error ?? "github_action_failed" }, 202);
     }
     limpiarAvisosReintentados(conversationId, reintento?.rowid);
     publicarChat(conversationId, "terminado");

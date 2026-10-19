@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { Hono } from "hono";
 
 // Turnos del chat en segundo plano: el POST guarda el mensaje y responde 202; la respuesta llega después,
@@ -16,6 +16,7 @@ process.env.TELO_PROYECTOS_DIR = join(RAIZ_PRUEBAS, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 
 const { db } = await import("../src/db");
+const { config } = await import("../src/config");
 const { chat, avisarTurnosInterrumpidos } = await import("../src/routes/chat");
 const { guardarImagenAdjunta, imagenesDelPrompt } = await import("../src/chat-adjuntos");
 
@@ -56,7 +57,7 @@ echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"Res
 `,
   );
   chmodSync(join(bin, "opencode"), 0o755);
-  process.env.PATH = `${bin}:${RESTAURAR.PATH ?? ""}`;
+  process.env.PATH = `${bin}${delimiter}${RESTAURAR.PATH ?? ""}`;
   process.env.TELO_AISLAMIENTO = "desactivado";
 });
 
@@ -105,6 +106,35 @@ function enviarReintento(id: string, content: string, retryOf: string) {
   });
 }
 
+describe("lista de conversaciones", () => {
+  test("usa el estado de la tarea más reciente sin hacer una consulta por chat", async () => {
+    const id = conversacion();
+    db.query(`INSERT INTO tasks (id, title, prompt, model, status, conversation_id, created_at, finished_at, plan_hash)
+      VALUES (?, 'Tarea anterior', 'p', 'opencode/prueba', 'done', ?, '2026-10-18 10:00:00', '2026-10-18 10:01:00', 'hash-anterior')`)
+      .run(crypto.randomUUID(), id);
+    const ultima = crypto.randomUUID();
+    db.query(`INSERT INTO tasks (id, title, prompt, model, status, conversation_id, created_at, plan_hash)
+      VALUES (?, 'Tarea reciente', 'p', 'opencode/prueba', 'running', ?, '2026-10-18 11:00:00', 'hash-reciente')`)
+      .run(ultima, id);
+
+    const response = await app.request("/api/conversations");
+    const lista = await response.json() as {
+      id: string;
+      estado_tarea: string | null;
+      estado_tarea_id: string | null;
+      estado_tarea_version: string | null;
+      pendiente_aprobacion: boolean;
+    }[];
+    expect(response.status).toBe(200);
+    expect(lista.find((conversation) => conversation.id === id)).toMatchObject({
+      estado_tarea: "en_proceso",
+      estado_tarea_id: ultima,
+      estado_tarea_version: "hash-reciente",
+      pendiente_aprobacion: false,
+    });
+  });
+});
+
 describe("reintentos de mensajes fallidos", () => {
   test("reutiliza el prompt original y elimina el aviso anterior", async () => {
     const projectId = crypto.randomUUID();
@@ -147,6 +177,33 @@ describe("reintentos de mensajes fallidos", () => {
     expect(await response.json()).toEqual({ error: "message_not_retryable" });
     expect(mensajes(conversationId).filter((mensaje) => mensaje.role === "user")).toHaveLength(2);
     expect(mensajes(conversationId).some((mensaje) => mensaje.role === "system" && mensaje.content === "Fallo antiguo")).toBe(true);
+  });
+});
+
+describe("errores de acciones Git en el chat", () => {
+  test("conserva el mensaje y explica errores de GitHub no clasificados", async () => {
+    const projectId = crypto.randomUUID();
+    const conversationId = crypto.randomUUID();
+    const cwd = join(config.projectsDir!, `accion-chat-${projectId}`);
+    mkdirSync(cwd, { recursive: true });
+    db.query("INSERT INTO projects (id, name, repo_path) VALUES (?, 'Proyecto sin credencial GitHub', ?)")
+      .run(projectId, cwd);
+    db.query("INSERT INTO conversations (id, title, model, project_id) VALUES (?, 'Chat Git', 'opencode/prueba', ?)")
+      .run(conversationId, projectId);
+
+    try {
+      const response = await enviar(conversationId, "Fusiona el PR #4");
+      expect(response.status).toBe(202);
+      const body = await response.json() as { messages: Mensaje[]; actionError: string };
+      expect(body.actionError).toBe("credenciales_git_faltantes");
+      expect(body.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+      expect(body.messages[1]?.content).toContain("Tu mensaje quedó guardado");
+      expect(mensajes(conversationId).filter((message) => message.role === "user")).toHaveLength(1);
+    } finally {
+      db.query("DELETE FROM conversations WHERE id=?").run(conversationId);
+      db.query("DELETE FROM projects WHERE id=?").run(projectId);
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 });
 

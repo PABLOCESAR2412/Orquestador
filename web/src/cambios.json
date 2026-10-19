@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Servidor: reanuda reintentos transitorios, conserva avisos de Git y endurece el estado del agente", "pr": 88 },
     { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Chat y GitHub: recupera archivos históricos, estabiliza el canal en vivo y explica merges bloqueados", "pr": 86 },
     { "fecha": "2026-10-19", "tipo": "grande", "titulo": "Servidor: protege tareas frente a carreras, cifra credenciales de GitHub y alinea despliegues y capacidad", "pr": 86 },
     { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Chat: inspecciona contexto reciente, consumo por modelo, sesión y mensajes guardados", "pr": 86 },

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 
 // Instalación de OpenCode desde la app. Un npm falso al frente del PATH deja un ejecutable en HOME/.opencode/bin.
 // Se comprueba: el comando es fijo, hace falta confirmación, la salida se redacta y no se puede instalar dos veces.
@@ -55,7 +55,7 @@ async function esperarEstado(estado: string, ms = 8000): Promise<{ estado: strin
 }
 
 beforeAll(() => {
-  process.env.PATH = `${SIN_NPM}:/usr/bin:/bin`;
+  process.env.PATH = [SIN_NPM, "/usr/bin", "/bin"].join(delimiter);
 });
 
 afterAll(() => {
@@ -63,7 +63,7 @@ afterAll(() => {
   rmSync(RAIZ, { recursive: true, force: true });
 });
 
-describe("instalación de OpenCode", () => {
+describe.skipIf(process.platform === "win32")("instalación de OpenCode", () => {
   test("solo instala identificadores de la lista; cualquier otro da 404", async () => {
     for (const id of ["rm", "bash", "opencode;rm", "..%2Fetc"]) {
       const res = await herramientas.request(`/herramientas/${encodeURIComponent(id)}/instalacion`);
@@ -97,7 +97,7 @@ describe("instalación de OpenCode", () => {
   });
 
   test("con confirmación instala, redacta la salida y deja el CLI en PATH", async () => {
-    process.env.PATH = `${BIN_FALSO}:${SIN_NPM}:/usr/bin:/bin`;
+    process.env.PATH = [BIN_FALSO, SIN_NPM, "/usr/bin", "/bin"].join(delimiter);
     const res = await post({ confirmar: true });
     expect(res.status).toBe(202);
 
@@ -108,7 +108,7 @@ describe("instalación de OpenCode", () => {
     expect(final.salida).not.toContain(TOKEN);
     expect(final.salida).toContain("***");
     expect(existsSync(join(HOME_PRUEBA, ".opencode", "bin", "opencode"))).toBe(true);
-    expect(process.env.PATH?.split(":")[0]).toBe(join(HOME_PRUEBA, ".opencode", "bin"));
+    expect(process.env.PATH?.split(delimiter)[0]).toBe(join(HOME_PRUEBA, ".opencode", "bin"));
   });
 
   test("una segunda instalación se rechaza: el CLI ya está", async () => {

@@ -1,5 +1,7 @@
 # Fase 2: seguimiento de cambios
 
+> Registro histórico. Los estados, cantidades y harnesses de esta fase describen la revisión original; las rutas `scratchpad/` eran locales y no están en el repo actual.
+
 Rama: `feat/seguir-tras-cuota` (creada desde `feat/proyectos-tarjetas`, commit 507f01c).
 La fase A está en commit `7a93c2b` y subida a `origin`. La fase B está en el árbol de trabajo, sin commit. No hay PR.
 
@@ -36,8 +38,8 @@ Leyenda: [x] hecho y verificado · [~] hecho, pendiente de confirmar en el VM ·
 ### A3. Pruebas
 
 - [x] `server/tests/cuota.test.ts`: 13 pruebas (clasificación, migración, rechazos de seguir).
-- [x] Punta a punta con servidor real y `opencode` falso (`scratchpad/cuota-e2e/prueba.ts`): 25 de 25.
-- [x] Revisión visual (`scratchpad/cuota-e2e/visual.mjs`) a 390 y 1440 px, claro y oscuro.
+- [x] Punta a punta con servidor real y `opencode` falso (harness local no versionado): 25 de 25 en esa revisión.
+- [x] Revisión visual con un harness local no versionado a 390 y 1440 px, claro y oscuro.
 
 ### A4. Problemas encontrados y resueltos
 
@@ -49,7 +51,7 @@ Leyenda: [x] hecho y verificado · [~] hecho, pendiente de confirmar en el VM ·
 
 - [~] La detección de cuota usa patrones (429, "rate limit", "quota", "usage limit", "insufficient", "saldo", etc.). El texto exacto que devuelve OpenCode con un modelo sin cuota no está verificado. Hay que comprobarlo con un modelo real agotado. Si el texto no coincide, la tarea queda en `failed` como antes: no hay regresión, pero no se detiene con aviso.
   - Cómo: en el VM, provocar una cuota agotada con un modelo de prueba y revisar `task_events` y la salida de la tarea (`journalctl -u orquestador`).
-- [x] `esErrorDeProveedor` (el reintento con respaldo) mira solo el detalle del proveedor, igual que la cuota. Exportada y con prueba de regresión en `server/tests/cuota.test.ts`. Corregido en la fase B.
+- [x] El respaldo ante saturación se decide por un estado HTTP transitorio explícito en `esErrorTransitorioDelProveedor`; la regla amplia antigua se retiró.
 
 ---
 
@@ -84,7 +86,7 @@ Leyenda: [x] hecho y verificado · [~] hecho, pendiente de confirmar en el VM ·
 - [x] `server/tests/entorno-proveedores.test.ts` (nuevo): 3 pruebas de punto a punto con un `opencode` falso. El agente y `opencode models` reciben `GROQ_API_KEY`; ninguno recibe `TELO_*`; la clave que el agente imprime sale oculta en su respuesta.
 - [x] `bun test` del servidor: 203 pasan, 0 fallan.
 - [x] `tsc --noEmit` del servidor y `bun run build` de la web: pasan.
-- [x] Revisión visual (`scratchpad/claves-ui/visual.mjs`) a 390 y 1440 px, claro y oscuro: sin desborde horizontal, sin errores de consola, y el flujo de guardar, quitar, validar y Enter comprobado.
+- [x] Revisión visual con un harness local no versionado a 390 y 1440 px, claro y oscuro: sin desborde horizontal ni errores de consola.
 
 ### Pendiente de confirmar en el VM (B-VM)
 
