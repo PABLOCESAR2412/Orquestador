@@ -389,8 +389,9 @@ export function IndicadorPensando({ modelo, vivo = [], desde = null }: { modelo:
     return () => window.clearInterval(temporizador);
   }, []);
   const transcurrido = tiempoTranscurrido(desde, ahora);
-  const ultimaAccion = [...vivo].reverse().find((paso) => paso.tipo === "accion");
-  let estado = "Escribiendo";
+  const ultimaAccion = [...vivo].reverse().find((paso) => paso.tipo === "accion" && paso.estado === "en_curso");
+  const ultimaNarracion = [...vivo].reverse().find((paso) => paso.tipo === "texto")?.titulo.split("\n", 1)[0]?.slice(0, 120);
+  let estado = ultimaAccion?.titulo || ultimaNarracion || "Escribiendo";
   if (ultimaAccion) {
     const h = (ultimaAccion.herramienta ?? "").toLowerCase();
     if (/^(github|gh)(?:[._-]|$)/i.test(h)) {
@@ -405,7 +406,7 @@ export function IndicadorPensando({ modelo, vivo = [], desde = null }: { modelo:
       estado = ultimaAccion.titulo || "Investigando archivos";
     } else if (h === "bash") {
       estado = ultimaAccion.titulo || "Ejecutando comando";
-    } else if (h === "websearch" || h === "webfetch") {
+    } else if (/^(websearch|web_search|search_web|webfetch|fetch_url)$/.test(h)) {
       estado = ultimaAccion.titulo || "Buscando en la web";
     } else {
       estado = ultimaAccion.titulo || "Trabajando";

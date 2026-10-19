@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: reduce errores HTTP/2 del canal vivo, conserva sesiones al superar el límite y extiende turnos largos", "pr": 84 },
     { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Chat: reintenta solicitudes fallidas sin duplicar el prompt ni ofrecer avisos antiguos", "pr": 84 },
     { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: fija las acciones Git a su respuesta, renderiza PDFs en el chat y mejora el diseño predeterminado de entregables", "pr": 84 },
     { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Chat: elimina el scroll de página duplicado y conserva el desplazamiento dentro del hilo", "pr": 83 },

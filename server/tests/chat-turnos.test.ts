@@ -47,6 +47,7 @@ case "$ultimo" in *LENTO*) sleep 1.5 ;; esac
 case "$ultimo" in *FALLO*) echo "error interno del agente" >&2; exit 1 ;; esac
 case "$ultimo" in *CAMBIO-MODELO*) printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"modelo=%s;sesion=%s;variante=%s;historial=%s"}}\\n' "$modelo" "\${sesion:-nueva}" "\${variante:-auto}" "\${historial:-no}"; exit 0 ;; esac
 case "$ultimo" in *CONCURRENTE*) id=$(printf '%s' "$ultimo" | sed -n 's/.*CONCURRENTE-\\([0-9][0-9]*\\) LENTO.*/\\1/p'); printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"%s: %s"}}\\n' "$modelo" "$id"; exit 0 ;; esac
+case "$ultimo" in *"Termina la respuesta que quedó a medias"*) if [ -z "$sesion" ]; then sesion="ses_turno01"; fi; printf '{"type":"text","sessionID":"%s","part":{"type":"text","text":"continuacion;sesion=%s"}}\\n' "$sesion" "$sesion"; exit 0 ;; esac
 echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"Respuesta lista."}}'
 `,
   );
@@ -265,6 +266,22 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     const aviso = mensajes(id).find((m) => m.role === "system");
     expect(aviso?.content.startsWith("No se pudo responder.")).toBe(true);
     expect(mensajes(id).some((m) => m.role === "assistant")).toBe(false);
+  });
+
+  test("reintentar un turno agotado continúa la sesión guardada y no vuelve a enviar el prompt original", async () => {
+    const id = conversacion();
+    const messageId = crypto.randomUUID();
+    db.query("UPDATE conversations SET runner_session_id=?, runner_session_model=? WHERE id=?")
+      .run("ses_turno01", "opencode/prueba", id);
+    db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', 'Prepara una investigación extensa')")
+      .run(messageId, id);
+    db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'system', 'El agente superó el límite de 15 minutos y se detuvo. La sesión quedó guardada; reintenta para continuar donde se quedó.')")
+      .run(crypto.randomUUID(), id);
+
+    expect((await enviarReintento(id, "Prepara una investigación extensa", messageId)).status).toBe(202);
+    await esperar(() => mensajes(id).some((mensaje) => mensaje.role === "assistant"));
+    expect(mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content).toBe("continuacion;sesion=ses_turno01");
+    expect(mensajes(id).some((mensaje) => mensaje.role === "system")).toBe(false);
   });
 
   test("al cambiar de modelo no reutiliza la sesión anterior y recupera el historial; cambiar esfuerzo conserva la sesión", async () => {

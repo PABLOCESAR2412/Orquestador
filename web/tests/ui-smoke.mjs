@@ -64,7 +64,7 @@ try {
       { id: "u-stale", role: "user", content: "Solicitud fallida anterior", created_at: now },
       { id: "s-stale", role: "system", content: "La solicitud anterior falló.", created_at: now },
       { id: "u-retry", role: "user", content: "Quiero una segunda versión de este PDF", created_at: now },
-      { id: "s-retry", role: "system", content: "El agente tardó más de 3 minutos y se detuvo. Divide la tarea en partes más pequeñas.", created_at: now },
+      { id: "s-retry", role: "system", content: "El agente superó el límite de 15 minutos y se detuvo. La sesión quedó guardada; reintenta para continuar donde se quedó.", created_at: now },
     ];
     const actions = [
       { id: "git-old", action: "push", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ mensaje: "Falló el intento anterior" }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
@@ -245,6 +245,7 @@ try {
         tasks: { done: 1 }, calidad: { tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 },
         byTask: [{ taskId: "t1", calls: 1, tokens: sinDatos ? 0 : 10, cost: 0, tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 }],
       };
+      else if (path.includes("eventos-vivos/poll")) data = { cursor: 0, eventos: [] };
       else if (path.includes("eventos-vivos")) return route.fulfill({ contentType: "text/event-stream", body: ": alive\n\n" });
       return route.fulfill({ json: data });
     });
@@ -718,6 +719,7 @@ try {
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("No se debe aceptar mientras falte cuota");
     assert.equal(await page.getByRole("button", { name: "Enviar", exact: true }).isDisabled(), true);
     assert.equal((await page.locator(".cuota-aviso").textContent()).includes("Se acabó la cuota de Google Test"), true);
+    assert.equal((await page.locator(".cuota-aviso").textContent()).includes("ChatGPT Plus se administra por separado"), true);
     await page.screenshot({ path: `scratch/capturas-ci/cuota-chat-${width}.png` });
     await page.getByRole("button", { name: "Cambiar modelo", exact: true }).click();
     await page.locator(".picker").waitFor();

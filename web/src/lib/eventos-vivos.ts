@@ -13,14 +13,13 @@ type Suscriptor = {
 const ESPERA_MIN_MS = 1_000;
 const ESPERA_MAX_MS = 30_000;
 const DEMORA_DESCONEXION_MS = 2_000;
-const MAX_ERRORES_SEGUIDOS = 4;
 const TIEMPO_CONEXION_ESTABLE_MS = 45_000;
 
-// Estado compartido del canal SSE en este navegador/pestaña
-let fuente: EventSource | null = null;
+// Estado compartido del sondeo de eventos en esta pestaña
+let controlador: AbortController | null = null;
 let conectado = false;
 let intentos = 0;
-let erroresSeguidos = 0;
+let ultimoEventoId: number | null = null;
 let timerEspera: number | undefined;
 let timerDesconexion: number | undefined;
 let timerConexionEstable: number | undefined;
@@ -40,19 +39,11 @@ function programarReconexion() {
   intentos += 1;
   timerEspera = window.setTimeout(() => {
     timerEspera = undefined;
-    conectar();
+    void conectar();
   }, demora);
 }
 
-function entregar(tipo: "tarea" | "evento" | "salida" | "actividad" | "chat", crudo: string) {
-  let dato: unknown;
-  try {
-    dato = JSON.parse(crudo);
-  } catch {
-    return;
-  }
-  if (typeof dato !== "object" || dato === null) return;
-  const evento = { tipo, ...dato } as EventoVivo;
+function entregar(evento: EventoVivo) {
   // Los pasos de un chat no son de una tarea: el filtro por tarea no los deja pasar.
   const tareaId =
     evento.tipo === "tarea"
@@ -72,54 +63,58 @@ function entregar(tipo: "tarea" | "evento" | "salida" | "actividad" | "chat", cr
   }
 }
 
-function conectar() {
+async function conectar() {
   if (descargando) return;
-  if (fuente) return;
+  if (controlador) return;
   if (suscriptores.size === 0) return;
-  if (typeof EventSource === "undefined") return;
+  if (typeof fetch === "undefined") return;
 
+  const actual = new AbortController();
+  controlador = actual;
   try {
-    const nueva = new EventSource("/api/eventos-vivos");
-    fuente = nueva;
-
-    nueva.onopen = () => {
-      if (timerConexionEstable !== undefined) window.clearTimeout(timerConexionEstable);
-      // Solo reinicia el backoff después de que la conexión sobreviva un corte breve del proxy.
-      timerConexionEstable = window.setTimeout(() => {
-        timerConexionEstable = undefined;
-        erroresSeguidos = 0;
-        intentos = 0;
-      }, TIEMPO_CONEXION_ESTABLE_MS);
-      notificarEstado(true);
-    };
-
-    nueva.addEventListener("tarea", (ev) => entregar("tarea", (ev as MessageEvent<string>).data));
-    nueva.addEventListener("evento", (ev) => entregar("evento", (ev as MessageEvent<string>).data));
-    nueva.addEventListener("salida", (ev) => entregar("salida", (ev as MessageEvent<string>).data));
-    nueva.addEventListener("actividad", (ev) => entregar("actividad", (ev as MessageEvent<string>).data));
-    nueva.addEventListener("chat", (ev) => entregar("chat", (ev as MessageEvent<string>).data));
-
-    nueva.onerror = () => {
-      if (descargando || fuente !== nueva) return;
-      notificarEstado(false);
-      erroresSeguidos += 1;
-      // EventSource reintenta para siempre si un proxy corta HTTP/2 y deja readyState en CONNECTING.
-      // Tras varios fallos se cierra y se reabre con backoff; el sondeo HTTP sigue activo mientras tanto.
-      if (nueva.readyState === EventSource.CLOSED || erroresSeguidos >= MAX_ERRORES_SEGUIDOS) {
-        if (timerConexionEstable !== undefined) {
-          window.clearTimeout(timerConexionEstable);
-          timerConexionEstable = undefined;
-        }
-        try {
-          nueva.close();
-        } catch {}
-        fuente = null;
-        erroresSeguidos = 0;
-        programarReconexion();
+    while (!descargando && suscriptores.size > 0 && controlador === actual) {
+      const params = new URLSearchParams({ espera: ultimoEventoId === null ? "0" : "15000" });
+      if (ultimoEventoId !== null) params.set("desde", String(ultimoEventoId));
+      const response = await fetch(`/api/eventos-vivos/poll?${params}`, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+        credentials: "same-origin",
+        signal: actual.signal,
+      });
+      if (!response.ok) throw new Error("El canal de eventos no está disponible");
+      const lote = await response.json() as {
+        cursor?: unknown;
+        eventos?: { id?: unknown; evento?: EventoVivo }[];
+      };
+      if (!Number.isSafeInteger(lote.cursor) || !Array.isArray(lote.eventos)) {
+        throw new Error("Respuesta inválida del canal de eventos");
       }
-    };
+      // El cursor vive en memoria del servidor y vuelve a cero tras un reinicio.
+      if (ultimoEventoId !== null && (lote.cursor as number) < ultimoEventoId) ultimoEventoId = null;
+
+      for (const registro of lote.eventos) {
+        if (!Number.isSafeInteger(registro.id) || !registro.evento) continue;
+        if (ultimoEventoId !== null && (registro.id as number) <= ultimoEventoId) continue;
+        entregar(registro.evento);
+        ultimoEventoId = registro.id as number;
+      }
+      ultimoEventoId = Math.max(ultimoEventoId ?? 0, lote.cursor as number);
+
+      if (timerConexionEstable === undefined) {
+        timerConexionEstable = window.setTimeout(() => {
+          timerConexionEstable = undefined;
+          intentos = 0;
+        }, TIEMPO_CONEXION_ESTABLE_MS);
+      }
+      notificarEstado(true);
+    }
   } catch {
-    notificarEstado(false);
+    if (!actual.signal.aborted && !descargando) notificarEstado(false);
+  } finally {
+    if (controlador === actual) {
+      controlador = null;
+      if (!descargando && suscriptores.size > 0) programarReconexion();
+    }
   }
 }
 
@@ -138,12 +133,8 @@ export function cerrarEventosVivos(): void {
     window.clearTimeout(timerConexionEstable);
     timerConexionEstable = undefined;
   }
-  if (fuente) {
-    try {
-      fuente.close();
-    } catch {}
-    fuente = null;
-  }
+  controlador?.abort();
+  controlador = null;
   notificarEstado(false);
 }
 
@@ -152,15 +143,14 @@ if (typeof window !== "undefined") {
   window.addEventListener("pagehide", cerrarEventosVivos);
   window.addEventListener("pageshow", () => {
     descargando = false;
-    if (suscriptores.size > 0 && !fuente) {
-      conectar();
+    if (suscriptores.size > 0 && !controlador) {
+      void conectar();
     }
   });
 }
 
-// Escucha /api/eventos-vivos (SSE) compartiendo una sola conexión por pestaña.
-// Si el servidor cierra el canal, reintenta con una espera que crece hasta 30 s.
-// El sondeo de cada pantalla sigue activo como respaldo.
+// Usa sondeos de respuesta corta compartidos por pestaña para evitar streams largos que algunos
+// proxies HTTP/2 interrumpen. Si hay una caída, reintenta con backoff; las pantallas conservan su polling.
 export function useEventosVivos(
   filtro: FiltroVivo,
   onEvento: (evento: EventoVivo) => void,
@@ -175,7 +165,7 @@ export function useEventosVivos(
   });
 
   useEffect(() => {
-    if (typeof EventSource === "undefined") return;
+    if (typeof fetch === "undefined") return;
 
     descargando = false;
 
@@ -193,8 +183,8 @@ export function useEventosVivos(
     suscriptores.add(suscriptor);
     setEstaConectado(conectado);
 
-    if (!fuente) {
-      conectar();
+    if (!controlador) {
+      void conectar();
     }
 
     return () => {
@@ -202,7 +192,7 @@ export function useEventosVivos(
       if (suscriptores.size === 0) {
         // Pausa breve antes de desconectar para que los cambios de pantalla no corten el canal
         timerDesconexion = window.setTimeout(() => {
-          if (suscriptores.size === 0 && fuente) {
+          if (suscriptores.size === 0 && controlador) {
             if (timerEspera !== undefined) {
               window.clearTimeout(timerEspera);
               timerEspera = undefined;
@@ -211,10 +201,8 @@ export function useEventosVivos(
               window.clearTimeout(timerConexionEstable);
               timerConexionEstable = undefined;
             }
-            try {
-              fuente.close();
-            } catch {}
-            fuente = null;
+            controlador.abort();
+            controlador = null;
             notificarEstado(false);
           }
         }, DEMORA_DESCONEXION_MS);

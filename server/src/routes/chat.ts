@@ -366,7 +366,7 @@ function guardarAviso(conversationId: string, texto: string): void {
   );
 }
 
-function turnoReintentable(conversationId: string, messageId: string, content: string): { turno: TurnoUsuario; rowid: number } | null {
+function turnoReintentable(conversationId: string, messageId: string, content: string): { turno: TurnoUsuario; rowid: number; continuar: boolean } | null {
   const original = db.query<{ id: string; content: string; rowid: number }, [string, string]>(
     "SELECT id, content, rowid FROM messages WHERE id=? AND conversation_id=? AND role='user'",
   ).get(messageId, conversationId);
@@ -375,13 +375,14 @@ function turnoReintentable(conversationId: string, messageId: string, content: s
   const ultimoUsuario = db.query<{ id: string }, [string]>(
     "SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY rowid DESC LIMIT 1",
   ).get(conversationId);
-  const mensajesPosteriores = db.query<{ role: string }, [string, number]>(
-    "SELECT role FROM messages WHERE conversation_id=? AND rowid>? ORDER BY rowid",
+  const mensajesPosteriores = db.query<{ role: string; content: string }, [string, number]>(
+    "SELECT role,content FROM messages WHERE conversation_id=? AND rowid>? ORDER BY rowid",
   ).all(conversationId, original.rowid);
   if (ultimoUsuario?.id !== messageId || mensajesPosteriores.length === 0 || mensajesPosteriores.some((mensaje) => mensaje.role !== "system")) {
     return null;
   }
-  return { turno: { id: original.id, role: "user", content: original.content }, rowid: original.rowid };
+  const continuar = mensajesPosteriores.some((mensaje) => /^El agente (?:superó el límite|tardó más de) \d+ minutos/i.test(mensaje.content));
+  return { turno: { id: original.id, role: "user", content: original.content }, rowid: original.rowid, continuar };
 }
 
 function limpiarAvisosReintentados(conversationId: string, rowid: number | undefined): void {
@@ -389,8 +390,8 @@ function limpiarAvisosReintentados(conversationId: string, rowid: number | undef
   db.query("DELETE FROM messages WHERE conversation_id=? AND role='system' AND rowid>?").run(conversationId, rowid);
 }
 
-// Límite de un turno del chat. Al llegar a este tiempo, el agente se detiene (SIGTERM, código 143).
-const TIEMPO_TURNO_MS = 180_000;
+// Investigación, subagentes y documentos pueden tardar varios minutos; conservar un tope evita procesos eternos.
+const TIEMPO_TURNO_MS = 900_000;
 
 // Avisa a los clientes que un turno empezó o terminó. Los demás dispositivos piden de nuevo el chat.
 function publicarChat(conversationId: string, estado: "en_curso" | "terminado"): void {
@@ -420,6 +421,11 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       conversationId,
       estilo: "chat",
       opencodeConfigDir: perfilesSubagente?.directorio,
+      // Guarda la sesión al aparecer para que un timeout o reinicio permita continuar el turno.
+      onSesion: (sessionId, sessionModel) => {
+        db.query("UPDATE conversations SET runner_session_id=?, runner_session_model=? WHERE id=?")
+          .run(sessionId, sessionModel, conversationId);
+      },
       // Cada paso del agente (texto intermedio o acción) se guarda y se publica mientras corre.
       onLinea: (linea) => {
         const item = itemDeLinea(linea);
@@ -442,7 +448,7 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
     if (Date.now() - inicio >= TIEMPO_TURNO_MS) {
       guardarAviso(
         conversationId,
-        `El agente tardó más de ${TIEMPO_TURNO_MS / 60_000} minutos y se detuvo. Divide la tarea en partes más pequeñas.`,
+        `El agente superó el límite de ${TIEMPO_TURNO_MS / 60_000} minutos y se detuvo. La sesión quedó guardada; reintenta para continuar donde se quedó.`,
       );
       return;
     }
@@ -605,7 +611,10 @@ chat.post("/conversations/:id/messages", async (c) => {
     publicarChat(conversationId, "en_curso");
     return c.json({ messages: [turno], taskId }, 202);
   }
-  iniciarTurno(conv, turno, content, model);
+  const promptTurno = reintento?.continuar
+    ? promptContinuacion(SEGUIR_INSTRUCCION, sesionCompatible(conv.runner_session_id, conv.runner_session_model, model))
+    : content;
+  iniciarTurno(conv, turno, promptTurno, model);
   return c.json({ messages: [turno] }, 202);
 });
 

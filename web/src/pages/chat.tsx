@@ -416,7 +416,7 @@ export function ChatPage() {
 
   // Pasos del agente en vivo, por chat. Llegan por el canal (evento "actividad") mientras el agente corre.
   const [vivos, setVivos] = useState<Record<string, { turnoId: string; pasos: PasoActividad[] }>>({});
-  useEventosVivos({}, (evento) => {
+  const { conectado: canalVivoConectado } = useEventosVivos({}, (evento) => {
     if (evento.tipo === "tarea" || evento.tipo === "evento") {
       const taskId = evento.tipo === "tarea" ? evento.id : evento.task_id;
       if (taskId !== tareaChat?.id) return;
@@ -867,6 +867,20 @@ export function ChatPage() {
   const tareaActiva = !!tareaChat && ["queued", "analyzing", "running"].includes(tareaChat.status);
   const siguiendoActual = seguirChat.isPending && seguirChat.variables === selectedId;
   const pensando = enviandoActual || siguiendoActual || (tareaChat ? tareaActiva : !!current?.ocupada);
+  const turnoEnCurso = pensando ? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.id : undefined;
+  const actividadGuardada = useQuery({
+    queryKey: ["turno-actividad", selectedId, turnoEnCurso],
+    queryFn: () => api.listTurnoActividad(selectedId!, turnoEnCurso!),
+    enabled: !!selectedId && !!turnoEnCurso && pensando,
+    refetchInterval: pensando && !canalVivoConectado ? 3000 : false,
+  });
+  useEffect(() => {
+    if (!selectedId || !turnoEnCurso || !actividadGuardada.data?.length) return;
+    setVivos((prev) => {
+      if (prev[selectedId]?.turnoId === turnoEnCurso) return prev;
+      return { ...prev, [selectedId]: { turnoId: turnoEnCurso, pasos: actividadGuardada.data! } };
+    });
+  }, [selectedId, turnoEnCurso, actividadGuardada.data]);
   const candidatasSugerencia = useMemo(() => sugerenciasChat(lista), [lista]);
   const sugerenciasOrdenadas = useQuery({
     queryKey: ["jev-recomendaciones", selectedId, lista.at(-1)?.id, candidatasSugerencia],
