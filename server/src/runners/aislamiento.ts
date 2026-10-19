@@ -131,11 +131,11 @@ function rutasSensibles(): string[] {
     .map((r) => r.trim())
     .filter((r) => r.startsWith("/") && existsSync(r))
     .map((r) => rutaReal(r) ?? r);
-  return [
-    "/etc/orquestador",
-    ...(claveApp && existsSync(claveApp) ? [rutaReal(claveApp) ?? resolve(claveApp)] : []),
-    ...extra,
-  ];
+  // Solo rutas existentes: si la ruta no existe, bwrap intentaría crear el punto de montaje dentro de la
+  // vista de "/" en solo lectura y moriría con "Read-only file system". Si no existe, tampoco hay nada que ocultar.
+  return ["/etc/orquestador", ...(claveApp && existsSync(claveApp) ? [rutaReal(claveApp) ?? resolve(claveApp)] : []), ...extra].filter(
+    (r) => existsSync(r),
+  );
 }
 
 // Argumentos de bwrap que van antes del comando del agente. Vacío si el aislamiento está desactivado.
