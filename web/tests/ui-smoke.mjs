@@ -126,7 +126,7 @@ try {
         if (ruta === "Chat.tsx") {
           return route.fulfill({ status: 409, json: { error: "project_path_ambiguous", matches: ["src/components/Chat.tsx", "src/pages/Chat.tsx"] } });
         }
-        if (ruta === "Gone.tsx") return route.fulfill({ status: 404, json: { error: "archivo_chat_no_encontrado" } });
+        if (ruta === "Gone.tsx") return route.fulfill({ status: 404, json: { error: "project_path_not_found" } });
         data = { ruta, tamano: 42, texto: "export function responder() {\n  return 'ok';\n}\n", truncado: false };
       }
       else if (path === "/api/conversations/c1/messages") {
