@@ -461,6 +461,103 @@ test("push_main ya no se acepta, y merge se puede preparar y autorizar directame
   ).toBe("approved");
 });
 
+async function conversacionTarea(p: { id: string; taskId: string }): Promise<string> {
+  const conversationId = randomUUID();
+  db.query("INSERT INTO conversations(id,title,project_id) VALUES (?,'Subida',?)").run(conversationId, p.id);
+  db.query("UPDATE tasks SET conversation_id=? WHERE id=?").run(conversationId, p.taskId);
+  return conversationId;
+}
+
+test("push con destino base sube directo a la rama base y no prepara PR", { timeout: 15000 }, async () => {
+  const p = await tareaConCommit();
+  const conversationId = await conversacionTarea(p);
+  db.query("UPDATE tasks SET plan=? WHERE id=?").run('{"requiere_aprobacion":["commit","push","pr"]}', p.taskId);
+  const accion = await (await pedir(`/projects/${p.id}/acciones`, { action: "push", taskId: p.taskId, conversationId })).json() as any;
+  globalThis.fetch = (async (url: any) => {
+    expect(String(url)).toBe("https://api.github.com/repos/dueno/prueba");
+    return Response.json({ full_name: "dueno/prueba", permissions: { push: true } });
+  }) as unknown as typeof fetch;
+  const original = Bun.spawn;
+  let subidas = 0;
+  const espia = spyOn(Bun, "spawn").mockImplementation(((cmd: any, opts: any) => {
+    if (Array.isArray(cmd) && cmd.includes("push")) {
+      subidas++;
+      const commit = db.query<{ commit_sha: string }, [string]>("SELECT commit_sha FROM task_approvals WHERE task_id=? AND accion='commit' ORDER BY rowid DESC LIMIT 1").get(p.taskId)!;
+      expect(cmd).toContain(`${commit.commit_sha}:refs/heads/main`);
+      return original([process.execPath, "-e", "process.exit(0)"], { stdout: "pipe", stderr: "pipe" });
+    }
+    return original(cmd, opts);
+  }) as typeof Bun.spawn);
+  try {
+    const respuesta = await pedir(`/acciones/${accion.id}/decidir`, { approve: true, destino: "base" });
+    const texto = await respuesta.clone().text();
+    expect(respuesta.status).toBe(200);
+    expect(subidas).toBe(1);
+    const diff = await diffDeTarea(p.taskId);
+    expect(diff.aprobaciones.push?.rama).toBe("main");
+    expect(
+      db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM repository_actions WHERE task_id=? AND action='pr'").get(p.taskId)?.n,
+    ).toBe(0);
+    expect(texto).not.toContain(TOKEN);
+  } finally {
+    espia.mockRestore();
+    db.query("DELETE FROM conversations WHERE id=?").run(conversationId);
+  }
+});
+
+test("push con destino rama prepara el PR aunque el plan no lo pida", { timeout: 15000 }, async () => {
+  const p = await tareaConCommit();
+  guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
+  const conversationId = await conversacionTarea(p);
+  const accion = await (await pedir(`/projects/${p.id}/acciones`, { action: "push", taskId: p.taskId, conversationId })).json() as any;
+  const ramaTarea = (await diffDeTarea(p.taskId)).rama;
+  globalThis.fetch = (async (url: any) => {
+    expect(String(url)).toBe("https://api.github.com/repos/dueno/prueba");
+    return Response.json({ full_name: "dueno/prueba", permissions: { push: true } });
+  }) as unknown as typeof fetch;
+  const original = Bun.spawn;
+  let subidas = 0;
+  const espia = spyOn(Bun, "spawn").mockImplementation(((cmd: any, opts: any) => {
+    if (Array.isArray(cmd) && cmd.includes("push")) {
+      subidas++;
+      const commit = db.query<{ commit_sha: string }, [string]>("SELECT commit_sha FROM task_approvals WHERE task_id=? AND accion='commit' ORDER BY rowid DESC LIMIT 1").get(p.taskId)!;
+      expect(cmd).toContain(`${commit.commit_sha}:refs/heads/${ramaTarea}`);
+      return original([process.execPath, "-e", "process.exit(0)"], { stdout: "pipe", stderr: "pipe" });
+    }
+    return original(cmd, opts);
+  }) as typeof Bun.spawn);
+  try {
+    const respuesta = await pedir(`/acciones/${accion.id}/decidir`, { approve: true, destino: "rama" });
+    const texto = await respuesta.clone().text();
+    if (respuesta.status !== 200) throw new Error(`La subida con destino rama falló (${respuesta.status}): ${texto}`);
+    expect(respuesta.status).toBe(200);
+    expect(subidas).toBe(1);
+    const diff = await diffDeTarea(p.taskId);
+    expect(diff.aprobaciones.push?.rama).toBe(ramaTarea);
+    const pr = db.query<{ state: string }, [string]>("SELECT state FROM repository_actions WHERE task_id=? AND action='pr'").get(p.taskId);
+    expect(pr?.state).toBe("pending");
+    // Autorizar el PR preparado por la cadena: nada se fusiona ni falla sin permisos reales.
+    const prId = db.query<{ id: string }, [string]>("SELECT id FROM repository_actions WHERE task_id=? AND action='pr'").get(p.taskId)!.id;
+    const prAprobada = await pedir(`/acciones/${prId}/decidir`, { approve: false });
+    expect(prAprobada.status).toBe(200);
+  } finally {
+    espia.mockRestore();
+    db.query("DELETE FROM conversations WHERE id=?").run(conversationId);
+  }
+});
+
+test("decidir una subida con destino desconocido responde 400 y conserva la tarjeta", { timeout: 15000 }, async () => {
+  const p = await tareaConCommit();
+  const accion = await (await pedir(`/projects/${p.id}/acciones`, { action: "push", taskId: p.taskId })).json() as any;
+  globalThis.fetch = (async () => {
+    throw new Error("No debe llamar la red");
+  }) as unknown as typeof fetch;
+  const respuesta = await pedir(`/acciones/${accion.id}/decidir`, { approve: true, destino: "nada" });
+  expect(respuesta.status).toBe(400);
+  expect((await respuesta.json() as any).error).toBe("invalid_destino");
+  expect(db.query<{ state: string }, [string]>("SELECT state FROM repository_actions WHERE id=?").get(accion.id)?.state).toBe("pending");
+});
+
 test("crear un pull request usa solo GITHUB_PR_TOKEN, sin respaldo a GITHUB_TOKEN", async () => {
   const p = proyecto();
   process.env.TELO_CLAVE_CIFRADO = randomBytes(32).toString("base64");

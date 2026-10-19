@@ -789,6 +789,8 @@ async function subirAprobado(
       detalle = "La clave Deploy Key de GitHub no tiene permisos de escritura. Ve a Settings > Deploy keys en el repositorio de GitHub y marca la casilla 'Allow write access'.";
     } else if (/protected branch|GH006|pre-receive hook declined/i.test(raw)) {
       detalle = `La rama remota '${ramaDestino}' está protegida en GitHub contra subidas directas. Prepara la subida en una rama propia o abre un Pull Request.`;
+    } else if (/fetch first|non-fast-forward|not a fast-forward/i.test(raw)) {
+      detalle = `La rama '${ramaDestino}' en GitHub tiene commits que tu commit no incluye. En vez de subirla directo, prepara la subida en la rama de la tarea y abre un Pull Request.`;
     }
     registrarEvento(taskId, "push_fallido", detalle);
     throw new ErrorTarea("push_fallido", 502, detalle);

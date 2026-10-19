@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import cambios from "../cambios.json";
+import { historialPorPR, type CambioRegistrado } from "../lib/historial-versiones";
 import { VERSION_SISTEMA } from "../lib/version-sistema";
 import { useDialogo } from "./controls";
 
@@ -228,6 +229,8 @@ export const RELEASES_DESTACADAS: Release[] = [
   },
 ];
 
+const ACTUALIZACIONES_POR_PR = historialPorPR(cambios.cambios as CambioRegistrado[]);
+
 type Cambio = (typeof cambios.cambios)[number];
 type GrupoCambios = { fecha: string; cambios: Cambio[] };
 
@@ -251,15 +254,18 @@ function fechaLegible(fecha: string): string {
   }).format(new Date(`${fecha}T12:00:00`));
 }
 
-function tipoBadgeClase(tag: ReleaseItem["tag"]): string {
+function tipoBadgeClase(tag: ReleaseItem["tag"] | "GRANDE" | "MEDIANO" | "MÍNIMO"): string {
   switch (tag) {
     case "FEATURE":
+    case "MEDIANO":
       return "is-feature";
     case "ARQUITECTURA":
+    case "GRANDE":
       return "is-arquitectura";
     case "MEJORA":
       return "is-mejora";
     case "FIX":
+    case "MÍNIMO":
       return "is-fix";
     default:
       return "is-feature";
@@ -388,7 +394,7 @@ export function HistorialCambios({
               className={`tl-cambios-tab${vista === "destacadas" ? " is-activa" : ""}`}
               onClick={() => setVista("destacadas")}
             >
-              Versiones destacadas
+              Versiones destacadas y PRs
             </button>
             <button
               type="button"
@@ -403,40 +409,83 @@ export function HistorialCambios({
 
           {vista === "destacadas" ? (
             /* Lista de tarjetas de versión estilo Cubo */
-            RELEASES_DESTACADAS.map((rel) => (
-              <article
-                key={rel.version}
-                className={`tl-version-card tl-cambio${rel.actual ? " is-actual" : ""}`}
-                aria-label={`Versión ${rel.version}`}
-              >
-                <div className="tl-version-header">
-                  <span className="tl-version-tag">{rel.version}</span>
-                  {rel.actual && <span className="tl-badge-actual">ACTUAL</span>}
-                  <span className="tl-badge-tipo">{rel.tipoSemver}</span>
-                  <span className="tl-version-fecha">{rel.fecha}</span>
-                </div>
+            <>
+              {RELEASES_DESTACADAS.map((rel) => (
+                <article
+                  key={rel.version}
+                  className={`tl-version-card tl-cambio${rel.actual ? " is-actual" : ""}`}
+                  aria-label={`Versión ${rel.version}`}
+                >
+                  <div className="tl-version-header">
+                    <span className="tl-version-tag">{rel.version}</span>
+                    {rel.actual && <span className="tl-badge-actual">ACTUAL</span>}
+                    <span className="tl-badge-tipo">{rel.tipoSemver}</span>
+                    <span className="tl-version-fecha">{rel.fecha}</span>
+                  </div>
 
-                <h3 className="tl-version-titulo">{rel.titulo}</h3>
-                <p className="tl-version-resumen">{rel.resumen}</p>
+                  <h3 className="tl-version-titulo">{rel.titulo}</h3>
+                  <p className="tl-version-resumen">{rel.resumen}</p>
 
-                <ul className="tl-version-items">
-                  {rel.items.map((item, idx) => (
-                    <li key={idx} className="tl-version-item">
-                      <span className={`tl-item-tag ${tipoBadgeClase(item.tag)}`}>{item.tag}</span>
-                      <div className="tl-item-cuerpo">
-                        <strong>{item.titulo}:</strong>
-                        <span>{item.descripcion}</span>
-                        {item.pr && (
-                          <span className="tl-item-pr" title={`Pull Request #${item.pr}`}>
-                            PR #{item.pr}
-                          </span>
-                        )}
+                  <ul className="tl-version-items">
+                    {rel.items.map((item, idx) => (
+                      <li key={idx} className="tl-version-item">
+                        <span className={`tl-item-tag ${tipoBadgeClase(item.tag)}`}>{item.tag}</span>
+                        <div className="tl-item-cuerpo">
+                          <strong>{item.titulo}:</strong>
+                          <span>{item.descripcion}</span>
+                          {item.pr && (
+                            <span className="tl-item-pr" title={`Pull Request #${item.pr}`}>
+                              PR #{item.pr}
+                            </span>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+
+              <section className="tl-cambios-prs" aria-label="Actualizaciones agrupadas por pull request">
+                <h3 className="tl-cambios-prs-titulo">Cambios por PR ({ACTUALIZACIONES_POR_PR.length})</h3>
+                {ACTUALIZACIONES_POR_PR.map((actualizacion) => {
+                  const tipo = actualizacion.tipo;
+                  const cantidad = actualizacion.cambios.length;
+                  const tipoLabel = {
+                    grande: "Cambio Grande (Major)",
+                    mediano: "Cambio Mediano (Minor)",
+                    minimo: "Optimizaciones (Patch)",
+                  }[tipo];
+                  return (
+                    <article className="tl-version-card" key={actualizacion.pr} aria-label={`PR #${actualizacion.pr}`}>
+                      <div className="tl-version-header">
+                        <span className="tl-version-tag">PR #{actualizacion.pr}</span>
+                        <span className="tl-badge-tipo">{tipoLabel}</span>
+                        <span className="tl-version-fecha">{actualizacion.fecha}</span>
                       </div>
-                    </li>
-                  ))}
-                </ul>
-              </article>
-            ))
+                      <h4 className="tl-version-titulo">
+                        {cantidad === 1 ? actualizacion.cambios[0].titulo : `Cambios incluidos en PR #${actualizacion.pr}`}
+                      </h4>
+                      <p className="tl-version-resumen">
+                        {cantidad} {cantidad === 1 ? "cambio registrado" : "cambios registrados"}.
+                      </p>
+                      {cantidad > 1 && (
+                        <ul className="tl-version-items">
+                          {actualizacion.cambios.map((cambio, idx) => {
+                            const tagCambio = cambio.tipo === "grande" ? "GRANDE" : cambio.tipo === "mediano" ? "MEDIANO" : "MÍNIMO";
+                            return (
+                              <li key={`${actualizacion.pr}-${idx}`} className="tl-version-item">
+                                <span className={`tl-item-tag ${tipoBadgeClase(tagCambio)}`}>{tagCambio}</span>
+                                <div className="tl-item-cuerpo">{cambio.titulo}</div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </article>
+                  );
+                })}
+              </section>
+            </>
           ) : (
             /* Vista de registro completo cronológico */
             <div className="tl-cambios-detallados-wrap">
