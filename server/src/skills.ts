@@ -18,7 +18,8 @@ import { join } from "node:path";
 import { carpetaHome } from "./hogar";
 import { redactar, valoresDeConfiguracion } from "./redaccion";
 
-// Skills de OpenCode, en dos ámbitos:
+// Skills globales y por proyecto. En ejecuciones aisladas, la carpeta global de OpenCode también se expone
+// a Codex como ~/.agents/skills. Las skills seleccionadas se incluyen en el prompt común para cada runner.
 //  - global:   ~/.config/opencode/skills/<nombre>/SKILL.md (OpenCode la lee siempre)
 //  - proyecto: <carpeta del proyecto>/.opencode/skills/<nombre>/SKILL.md (OpenCode la lee desde el directorio de trabajo)
 // Cada escritura va por tramos comprobados (ningún tramo puede ser enlace) y termina con un renombrado atómico.
@@ -208,25 +209,16 @@ export function leerSkill(ambito: AmbitoSkills, nombre: string): SkillDetalle {
   return { ...resumenDe(nombre, archivo.texto, archivo.bytes, archivo.modificada), contenido: archivo.texto };
 }
 
-// Guarda la skill. Rechaza lo que OpenCode no cargaría y cualquier texto con un secreto conocido:
-// esa versión se rechaza en vez de guardarse redactada, para no pisar al editar.
-export function guardarSkill(ambito: AmbitoSkills, nombre: string, contenido: string): { creada: boolean } {
-  validarNombre(nombre);
-  if (Buffer.byteLength(contenido, "utf8") > LIMITE_SKILL) throw new SkillError("skill_demasiado_grande", 413);
-  validarContenido(contenido, nombre);
-  if (redactar(contenido, valoresDeConfiguracion()) !== contenido) {
-    throw new SkillError("skill_contiene_secreto", 400);
-  }
-
-  const { ancla, tramos } = anclaDe(ambito);
+function escribirSkillEn(ancla: string, tramos: string[], nombre: string, contenido: string): boolean {
   const dir = carpetaSegura(ancla, tramos, true)!;
   const carpeta = join(dir, nombre);
   const datosCarpeta = lstatORNull(carpeta);
   if (!datosCarpeta) mkdirSync(carpeta);
-  else if (!datosCarpeta.isDirectory()) throw new SkillError("skill_ruta_no_permitida", 400);
+  else if (!datosCarpeta.isDirectory() || datosCarpeta.isSymbolicLink()) throw new SkillError("skill_ruta_no_permitida", 400);
 
   const destino = join(carpeta, ARCHIVO);
-  const creada = lstatORNull(destino) === null;
+  const datosDestino = lstatORNull(destino);
+  if (datosDestino && (!datosDestino.isFile() || datosDestino.isSymbolicLink())) throw new SkillError("skill_ruta_no_permitida", 400);
   const temporal = join(carpeta, `.${ARCHIVO}.${randomUUID()}.tmp`);
   const fd = openSync(temporal, fc.O_WRONLY | fc.O_CREAT | fc.O_EXCL | fc.O_NOFOLLOW, 0o644);
   try {
@@ -246,27 +238,28 @@ export function guardarSkill(ambito: AmbitoSkills, nombre: string, contenido: st
     unlinkSync(temporal);
     throw new SkillError("skill_no_guardada", 400);
   }
+  return datosDestino === null;
+}
+
+// Guarda la skill. Rechaza lo que OpenCode no cargaría y cualquier texto con un secreto conocido:
+// esa versión se rechaza en vez de guardarse redactada, para no pisar al editar.
+export function guardarSkill(ambito: AmbitoSkills, nombre: string, contenido: string): { creada: boolean } {
+  validarNombre(nombre);
+  if (Buffer.byteLength(contenido, "utf8") > LIMITE_SKILL) throw new SkillError("skill_demasiado_grande", 413);
+  validarContenido(contenido, nombre);
+  if (redactar(contenido, valoresDeConfiguracion()) !== contenido) {
+    throw new SkillError("skill_contiene_secreto", 400);
+  }
+
+  const { ancla, tramos } = anclaDe(ambito);
+  const creada = escribirSkillEn(ancla, tramos, nombre, contenido);
   if (ambito.ambito === "proyecto") {
-    try {
-      const skillsDir = carpetaSegura(ambito.carpeta, ["skills"], true);
-      if (skillsDir) {
-        const sub = join(skillsDir, nombre);
-        if (!lstatORNull(sub)) mkdirSync(sub, { recursive: true });
-        const destVisible = join(sub, ARCHIVO);
-        const tmpVisible = join(sub, `.${ARCHIVO}.${randomUUID()}.tmp`);
-        const fdVis = openSync(tmpVisible, fc.O_WRONLY | fc.O_CREAT | fc.O_EXCL | fc.O_NOFOLLOW, 0o644);
-        try {
-          const b = Buffer.from(contenido, "utf8");
-          let esc = 0;
-          while (esc < b.length) esc += writeSync(fdVis, b, esc, b.length - esc);
-          fsyncSync(fdVis);
-        } finally {
-          closeSync(fdVis);
-        }
-        renameSync(tmpVisible, destVisible);
+    for (const tramosEspejo of [["skills"]]) {
+      try {
+        escribirSkillEn(ambito.carpeta, tramosEspejo, nombre, contenido);
+      } catch {
+        // La carpeta visible `skills` conserva compatibilidad con repositorios instalados anteriormente.
       }
-    } catch {
-      // Si la carpeta skills/ no se puede escribir, no falla la operación principal (.opencode/skills).
     }
   }
   return { creada };
@@ -292,18 +285,20 @@ export function borrarSkill(ambito: AmbitoSkills, nombre: string): void {
   rmdirSync(carpeta);
 
   if (ambito.ambito === "proyecto") {
-    try {
-      const dirVis = carpetaSegura(ambito.carpeta, ["skills"], false);
-      if (dirVis) {
-        const subVis = join(dirVis, nombre);
-        if (lstatORNull(subVis)?.isDirectory()) {
-          const destVis = join(subVis, ARCHIVO);
-          if (lstatORNull(destVis)?.isFile()) unlinkSync(destVis);
-          rmdirSync(subVis);
+    for (const tramosEspejo of [["skills"]]) {
+      try {
+        const dirVis = carpetaSegura(ambito.carpeta, tramosEspejo, false);
+        if (dirVis) {
+          const subVis = join(dirVis, nombre);
+          if (lstatORNull(subVis)?.isDirectory()) {
+            const destVis = join(subVis, ARCHIVO);
+            if (lstatORNull(destVis)?.isFile()) unlinkSync(destVis);
+            rmdirSync(subVis);
+          }
         }
+      } catch {
+        // Ignorar fallo secundario de las rutas de compatibilidad.
       }
-    } catch {
-      // Ignorar fallo secundario en la carpeta visible
     }
   }
 }
@@ -348,14 +343,67 @@ Esta skill aplica los principios del **Gauntlet Prompt** (Matt Shumer / Xavier M
 - Resumen transparente de la auditoría: rondas efectuadas, qué puntos débiles detectó el árbitro y cómo se resolvieron.
 `;
 
+export const SKILL_FRONTEND_DESIGN_CONTENIDO = `---
+name: frontend-design
+description: Diseña y ajusta interfaces frontend con jerarquía visual clara, estilo coherente con el producto y comportamiento responsive. Úsala en tareas de UI, CSS, componentes y accesibilidad.
+---
+
+# Diseño frontend
+
+- Inspecciona primero los patrones, tokens y componentes existentes. Conserva el lenguaje visual del producto y evita introducir otra librería o sistema de estilos sin necesidad.
+- Define la jerarquía de la pantalla antes de ajustar detalles: propósito, acción principal, agrupación, espaciado y tipografía.
+- Diseña desde móvil y revisa después una ventana amplia. Evita desbordes, controles pequeños, scroll anidado accidental y contenido oculto.
+- Usa estados visibles y accesibles para foco, carga, error, vacío y éxito. Respeta teclado, etiquetas, contraste y movimiento reducido.
+- Si el proyecto usa Vite o Bun, conserva sus herramientas. No migres a Vite+ salvo que el proyecto ya lo use o la persona lo pida. Usa Void solo si el proyecto apunta a Void o Cloudflare.
+- Revisa el resultado en el navegador con la herramienta disponible cuando sea posible; corrige los problemas que observes antes de cerrar.
+`;
+
+export const SKILL_PLAYWRIGHT_CONTENIDO = `---
+name: playwright
+description: Verifica interfaces web con Playwright, incluyendo recorridos de usuario, consola, errores de red, responsive y capturas visuales.
+---
+
+# Playwright
+
+- Revisa primero cómo el proyecto ya ejecuta pruebas y si Playwright está instalado. Usa la configuración y los fixtures existentes.
+- Para cambios visuales revisa al menos 390 px y 1440 px cuando el entorno permita ambas medidas. Comprueba consola, fallos de red y desbordes horizontales.
+- Prueba el comportamiento que cambió con selectores accesibles y espera estados observables; evita pausas fijas y selectores frágiles.
+- No instales dependencias ni generes capturas de éxito ficticias. Si no hay navegador o Playwright disponible, informa con precisión qué parte no se pudo comprobar.
+`;
+
+export const SKILL_PONYTAIL_CONTENIDO = `---
+name: ponytail
+description: Guía de ingeniería para correcciones y cambios de código acotados: mínimo alcance, reutilización del diseño existente y verificación pertinente.
+---
+
+# Cambios de código acotados
+
+- Busca la causa y el dueño correcto del comportamiento antes de editar. Haz el menor cambio que resuelva el caso completo y conserve contratos existentes.
+- Reutiliza dependencias, componentes, patrones y pruebas del proyecto. No añadas capas de abstracción, dependencias o migraciones de herramientas sin una necesidad demostrada.
+- Mantén separados los cambios no relacionados. Añade o ajusta una prueba solo cuando compruebe un comportamiento importante que pueda volver a fallar.
+- Ejecuta las comprobaciones pertinentes y reporta su resultado. Si una comprobación no está disponible, dilo en vez de asumir que pasó.
+- No cambies Vite/Bun a Vite+ automáticamente. Usa Void solo cuando la meta sea Void/Cloudflare; antes de desplegar exige CLI, credenciales y aprobación explícita.
+`;
+
 // Crea la carpeta de skills globales si falta. Se llama al arrancar: así bubblewrap siempre puede montarla en
 // solo lectura (si no existiera, el agente podría crearla dentro de ~/.config/opencode, que sí es escribible).
 export function prepararCarpetaGlobal(): void {
   const { ancla, tramos } = anclaDe({ ambito: "global" });
   carpetaSegura(ancla, tramos, true);
-  try {
-    guardarSkill({ ambito: "global" }, "gauntlet", SKILL_GAUNTLET_CONTENIDO);
-  } catch {
-    // Si la carpeta ya existe o no se puede sobrescribir en este arranque, no detiene el arranque.
+  const predeterminadas = [
+    ["gauntlet", SKILL_GAUNTLET_CONTENIDO],
+    ["frontend-design", SKILL_FRONTEND_DESIGN_CONTENIDO],
+    ["playwright", SKILL_PLAYWRIGHT_CONTENIDO],
+    ["ponytail", SKILL_PONYTAIL_CONTENIDO],
+  ] as const;
+  for (const [nombre, contenido] of predeterminadas) {
+    try {
+      const dir = carpetaSegura(ancla, tramos, false);
+      const carpeta = dir ? join(dir, nombre) : null;
+      const datosCarpeta = carpeta ? lstatORNull(carpeta) : null;
+      if (datosCarpeta?.isDirectory() && !datosCarpeta.isSymbolicLink() && lstatORNull(join(carpeta!, ARCHIVO))) continue;
+      if (datosCarpeta && (!datosCarpeta.isDirectory() || datosCarpeta.isSymbolicLink())) continue;
+      guardarSkill({ ambito: "global" }, nombre, contenido);
+    } catch { /* no bloquea el arranque ni reemplaza una skill existente que no pueda leerse */ }
   }
 }

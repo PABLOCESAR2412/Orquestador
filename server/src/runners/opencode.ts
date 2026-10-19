@@ -1,5 +1,6 @@
-import { prefijoAislamiento } from "./aislamiento";
+import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
 import { esVariableReservada, SECRETOS_SOLO_SERVIDOR } from "../secretos";
+import type { ImagenAgente } from "../chat-adjuntos";
 
 // Id de sesión de OpenCode. Empieza por letra o cifra: así nunca se lee como una opción de la CLI.
 const PATRON_SESION = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
@@ -271,17 +272,19 @@ export async function runOpenCode(opts: {
   // Perfiles temporales que solicita explícitamente la tarea para sus subagentes.
   opencodeConfigDir?: string;
   soloLectura?: boolean;
+  imagenes?: ImagenAgente[];
   // Se persiste cada paso antes de conocer el resultado del proceso.
   onUso?: (uso: Usage) => void;
 }): Promise<RunResult> {
   // Lanza AislamientoError si la carpeta no es permitida o falta bubblewrap.
-  const aislamiento = prefijoAislamiento(opts.cwd, opts.soloLectura);
+  const aislamiento = prefijoAislamiento(opts.cwd, opts.soloLectura, opts.imagenes);
 
   // Un id de sesión que no cumple el patrón se ignora: ni se pasa a -s ni se reutiliza.
   const sesionPedida = sesionValida(opts.sessionId) ? opts.sessionId : null;
   const args = ["opencode", "run", "--format", "json", "-m", opts.model];
   if (opts.variant) args.push("--variant", opts.variant);
   if (sesionPedida) args.push("-s", sesionPedida);
+  for (const imagen of opts.imagenes ?? []) args.push("--file", aislamientoActivo() ? imagen.rutaVisible : imagen.ruta);
   // `--` separa las opciones del mensaje: un prompt que empiece por "-" no se lee como opción.
   args.push("--", opts.prompt);
 

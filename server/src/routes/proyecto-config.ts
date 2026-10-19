@@ -161,7 +161,7 @@ proyectoConfig.put("/projects/:id/git", async (c) => {
   return c.json({ ok: true });
 });
 
-export type AccionGithub = "push" | "pr";
+export type AccionGithub = "push" | "pr" | "merge";
 export type FuenteAutenticacionGithub = {
   tipo: "github_app" | "credencial_anterior" | "clave_ssh" | "ninguna";
   origen: "app" | "sesion_anterior" | "token_proyecto" | "token_pr_proyecto" | "ssh" | "ninguna";
@@ -221,7 +221,7 @@ export function fuenteAutenticacionGithub(
       instalacion_id: null,
     };
   }
-  if (accion === "pr" && valorSecreto(projectId, "GITHUB_PR_TOKEN")) {
+  if ((accion === "pr" || accion === "merge") && valorSecreto(projectId, "GITHUB_PR_TOKEN")) {
     return {
       tipo: "credencial_anterior",
       origen: "token_pr_proyecto",
@@ -272,11 +272,13 @@ export async function githubApiPr(
   autenticacion: FuenteAutenticacionGithub,
   body?: unknown,
   metodo?: string,
+  accion: AccionGithub = "pr",
 ) {
   const remoto = remotoDeRutaGithub(path);
   if (!remoto) throw new Error("La ruta de GitHub no identifica un repositorio válido.");
-  const token = await tokenParaFuenteGithub(projectId, remoto, "pr", autenticacion);
-  return githubLlamar(token, path, body, autenticacion.tipo === "github_app" ? "github_app" : "credencial_anterior", "Pull requests", metodo);
+  const token = await tokenParaFuenteGithub(projectId, remoto, accion, autenticacion);
+  const permiso = accion === "merge" ? "Contents" : "Pull requests";
+  return githubLlamar(token, path, body, autenticacion.tipo === "github_app" ? "github_app" : "credencial_anterior", permiso, metodo);
 }
 
 async function tokenParaFuenteGithub(
@@ -305,12 +307,12 @@ async function tokenParaFuenteGithub(
     token = tokenGithubGlobal();
   } else if (autenticacion.origen === "token_proyecto" && accion === "push") {
     token = valorSecreto(projectId, "GITHUB_TOKEN");
-  } else if (autenticacion.origen === "token_pr_proyecto" && accion === "pr") {
+  } else if (autenticacion.origen === "token_pr_proyecto" && (accion === "pr" || accion === "merge")) {
     token = valorSecreto(projectId, "GITHUB_PR_TOKEN");
   }
   if (!token) {
     throw new Error(autenticacion.tipo === "ninguna"
-      ? `No hay una credencial disponible para ${accion === "pr" ? "Pull requests" : "subir cambios"}. Vincula la GitHub App o selecciona una credencial en Ajustes.`
+      ? `No hay una credencial disponible para ${accion === "pr" ? "Pull requests" : accion === "merge" ? "fusionar Pull requests" : "subir cambios"}. Vincula la GitHub App o selecciona una credencial en Ajustes.`
       : "La credencial que autorizaste ya no está disponible. Revisa GitHub en Ajustes y prepara otra autorización.");
   }
   return token;
@@ -408,12 +410,12 @@ export async function comprobarAccesoGithub(
   }
 
   const ruta = "/repos/" + remoto.replace(/^https:\/\/github\.com\//, "");
-  const respuesta = accion === "pr"
-    ? await githubApiPr(projectId, ruta, fuente) as { full_name?: string; permissions?: { push?: boolean } }
+  const respuesta = accion === "pr" || accion === "merge"
+    ? await githubApiPr(projectId, ruta, fuente, undefined, undefined, accion) as { full_name?: string; permissions?: { push?: boolean } }
     : (await githubApi(projectId, ruta, fuente)).data as { full_name?: string; permissions?: { push?: boolean } };
   const escritura = respuesta.permissions?.push === true;
   if (fuente.tipo !== "github_app" && !escritura) {
-    const accionTexto = accion === "pr" ? "crear pull requests" : "subir cambios";
+    const accionTexto = accion === "pr" ? "crear pull requests" : accion === "merge" ? "fusionar pull requests" : "subir cambios";
     throw new Error(`GitHub permite consultar ${respuesta.full_name ?? "el repositorio"}, pero la credencial anterior no tiene permiso para ${accionTexto}. Revisa los permisos de la cuenta en GitHub o cambia a la GitHub App.`);
   }
   return {
@@ -428,7 +430,7 @@ proyectoConfig.post("/projects/:id/git/comprobar", async (c) => {
   const id = c.req.param("id");
   const body = await leerCuerpoJson<{ action?: unknown }>(c);
   const action = body?.action === undefined ? "push" : body.action;
-  if (action !== "push" && action !== "pr") return c.json({ error: "invalid_body" }, 400);
+  if (action !== "push" && action !== "pr" && action !== "merge") return c.json({ error: "invalid_body" }, 400);
   const repoLocal = await datosRepositorio(id);
   if (!repoLocal) return c.json({ error: "proyecto_ocupado" }, 409);
   const remoto = configGit(id).remote ?? repoLocal.remote;

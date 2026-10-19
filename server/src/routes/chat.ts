@@ -25,6 +25,7 @@ import { prepararSubagentes } from "../subagentes";
 import { detectarSolicitudMedio } from "../generacion-medios";
 import { crearSolicitudMedio } from "./media";
 import { ArchivoError, leerImagen, leerPdf, normalizarRuta } from "../archivos-proyecto";
+import { contarImagenesMarcadas, eliminarImagenesConversacion, guardarImagenAdjunta, idsImagenesMarcadas, leerImagenAdjunta, MAX_IMAGENES_MENSAJE } from "../chat-adjuntos";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
 // Texto de un mensaje: incluye los adjuntos de texto. El cuerpo HTTP sigue limitado a 64 KB.
@@ -33,6 +34,17 @@ const MAX_CONTENIDO = 30_000;
 const MAX_DETALLE_ERROR = 300;
 const chatWorkspace = join(config.dataDir, "chat-workspace");
 mkdirSync(chatWorkspace, { recursive: true });
+
+export function numeroPullRequestParaFusionar(texto: string): number | null {
+  const inicio = texto.trim().replace(/^[¿¡]+/, "");
+  const pideFusion = /^(?:(?:por\s+favor|puedes|podr[ií]as|quieres|quiero|necesito)\s+)*(?:(?:haz(?:me)?|hacer|realiza|ejecuta)\s+(?:el\s+)?merge(?:ar)?|fusiona(?:r)?|mergea(?:r)?|merge(?:ar)?)\b/i.test(inicio);
+  if (!pideFusion) return null;
+  const referencia = /\b(?:pull\s*requests?|pr)\s*(?:(?:n(?:ú|u)mero|num(?:ero)?\.?)\s*)?(?:exact[oa]\s*)?#?\s*(\d{1,10})\b/i.exec(texto)?.[1]
+    ?? /github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/(\d{1,10})(?:[/?#]|$)/i.exec(texto)?.[1];
+  if (!referencia) return null;
+  const numero = Number(referencia);
+  return Number.isSafeInteger(numero) && numero > 0 ? numero : null;
+}
 
 type ConversationRow = {
   id: string;
@@ -144,6 +156,7 @@ chat.delete("/conversations/:id", (c) => {
   if (chatOcupado(id)) return c.json({ error: "conversation_busy" }, 409);
   const result = db.query("DELETE FROM conversations WHERE id = ?").run(id);
   if (result.changes === 0) return c.json({ error: "conversation_not_found" }, 404);
+  eliminarImagenesConversacion(id);
   return c.json({ ok: true });
 });
 
@@ -159,6 +172,42 @@ chat.get("/conversations/:id/messages", (c) => {
     )
     .all(c.req.param("id"));
   return c.json(messages);
+});
+
+// Las imágenes se suben por separado del JSON del mensaje para conservar el límite pequeño de la API.
+chat.post("/conversations/:id/adjuntos", async (c) => {
+  const id = c.req.param("id");
+  if (!leerConversacion(id)) return c.json({ error: "conversation_not_found" }, 404);
+  const form = await c.req.formData().catch(() => null);
+  const archivo = form?.get("archivo");
+  if (!(archivo instanceof File)) return c.json({ error: "invalid_image" }, 400);
+  if (!archivo.size || archivo.size > 8 * 1024 * 1024) return c.json({ error: "image_size_invalid" }, 413);
+  try {
+    const imagen = guardarImagenAdjunta(id, archivo.name, new Uint8Array(await archivo.arrayBuffer()));
+    return c.json(imagen, 201);
+  } catch (err) {
+    if (err instanceof Error && err.message === "image_type_unsupported") return c.json({ error: "image_type_unsupported" }, 415);
+    if (err instanceof Error && err.message === "image_size_invalid") return c.json({ error: "image_size_invalid" }, 413);
+    throw err;
+  }
+});
+
+// Muestra únicamente las imágenes raster subidas a este chat; el id de conversación limita el alcance.
+chat.get("/conversations/:id/adjuntos/:adjunto", (c) => {
+  const id = c.req.param("id");
+  if (!leerConversacion(id)) return c.json({ error: "conversation_not_found" }, 404);
+  const imagen = leerImagenAdjunta(id, c.req.param("adjunto"));
+  if (!imagen) return c.json({ error: "attachment_not_found" }, 404);
+  return new Response(imagen.contenido, {
+    headers: {
+      "Content-Type": imagen.mime,
+      "Content-Length": String(imagen.bytes),
+      "Content-Disposition": "inline",
+      "X-Content-Type-Options": "nosniff",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "Cache-Control": "private, no-store",
+    },
+  });
 });
 
 // Vista previa y descarga de un PDF creado dentro del workspace aislado de esta conversación.
@@ -350,7 +399,7 @@ function guardarMensajeUsuario(conversationId: string, content: string): TurnoUs
       msg.content,
     );
     db.query("UPDATE conversations SET title = ? WHERE id = ? AND title = 'Nuevo chat'").run(
-      content.slice(0, 60),
+      content.replace(/<<telo-imagen id="[a-f\d-]{36}" nombre="[^"]*">>/gi, "[Imagen adjunta]").trim().slice(0, 60) || "Imagen adjunta",
       conversationId,
     );
   })();
@@ -542,6 +591,9 @@ chat.post("/conversations/:id/messages", async (c) => {
   if (!content || content.length > MAX_CONTENIDO) {
     return c.json({ error: "invalid_content" }, 400);
   }
+  if (contarImagenesMarcadas(content) > MAX_IMAGENES_MENSAJE || idsImagenesMarcadas(content).some((id) => !leerImagenAdjunta(conversationId, id))) {
+    return c.json({ error: "invalid_attachment" }, 400);
+  }
   if (body?.retryOf !== undefined && (typeof body.retryOf !== "string" || !body.retryOf.trim())) {
     return c.json({ error: "invalid_retry" }, 400);
   }
@@ -569,15 +621,25 @@ chat.post("/conversations/:id/messages", async (c) => {
     return c.json({ messages: [turno, respuesta] }, 202);
   }
 
-  // Las órdenes directas de Git crean una tarjeta de autorización, sin ejecutar al agente.
+  // Fusionar un PR existente por número es una acción directa: no debe crear una tarea ni otra rama.
+  const numeroPr = numeroPullRequestParaFusionar(content);
+  // Las demás órdenes directas de Git crean una tarjeta de autorización, sin ejecutar al agente.
   const pedido = /^(?:(?:haz|hacer|ejecuta|realiza|crea|crear|prepara|reintenta|por favor)\s+)*(?:de nuevo\s+)?(?:(?:un|el)\s+)?(?:git\s+(init|commit|push)|(?:un\s+)?(commit|push|pr)|(?:gh\s+pr\s+create)|(pull request))(?:\s+.*)?[.!]?$/i.exec(content);
-  if (pedido && conv.project_id) {
+  if ((pedido || numeroPr !== null) && conv.project_id) {
     const turno = reintento?.turno ?? guardarMensajeUsuario(conversationId, content);
+    const accion = numeroPr !== null
+      ? "merge"
+      : /\bcommit\s+(?:y|and|&)\s+(?:git\s+)?push\b/i.test(pedido![0])
+        ? "push"
+        : (pedido![1] || pedido![2] || "pr").toLowerCase();
     const response = await repositoryActions.request(`http://telo/projects/${conv.project_id}/acciones`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        action: /\bcommit\s+(?:y|and|&)\s+(?:git\s+)?push\b/i.test(pedido[0]) ? "push" : (pedido[1] || pedido[2] || "pr").toLowerCase(),
-        conversationId, taskId: tareaDelChat(conversationId)?.id, messageId: turno.id,
+        action: accion,
+        conversationId,
+        taskId: accion === "merge" ? undefined : tareaDelChat(conversationId)?.id,
+        messageId: turno.id,
+        ...(numeroPr !== null ? { pr_number: numeroPr, title: `Fusionar PR #${numeroPr}` } : {}),
       }),
     });
     if (!response.ok) {

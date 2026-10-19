@@ -110,6 +110,10 @@ export function urlImagenConversacion(conversationId: string, ruta: string, desc
   return `/api/conversations/${encodeURIComponent(conversationId)}/archivo-imagen?${query}`;
 }
 
+export function urlAdjuntoImagenChat(conversationId: string, adjuntoId: string): string {
+  return `/api/conversations/${encodeURIComponent(conversationId)}/adjuntos/${encodeURIComponent(adjuntoId)}`;
+}
+
 export type ProjectSecretsList = {
   disponible: boolean;
   secretos: { nombre: string; actualizado_en: string }[];
@@ -460,7 +464,10 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: {
+      ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+      ...init?.headers,
+    },
   });
   if (!res.ok) {
     // Sin sesión, la app va a la pantalla de entrada (salvo la propia petición de entrar).
@@ -547,7 +554,7 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
-  checkProjectGit: (id: string, action: "push" | "pr" = "push") =>
+  checkProjectGit: (id: string, action: "push" | "pr" | "merge" = "push") =>
     request<{
       ok: boolean;
       repo: string;
@@ -640,6 +647,14 @@ export const api = {
       body: JSON.stringify({ projectId: projectId ?? null, title }),
     }),
   listMessages: (id: string) => request<Message[]>(`/api/conversations/${id}/messages`),
+  uploadChatImage: (id: string, archivo: File) => {
+    const body = new FormData();
+    body.append("archivo", archivo, archivo.name);
+    return request<{ id: string; nombre: string; mime: string; bytes: number }>(`/api/conversations/${id}/adjuntos`, {
+      method: "POST",
+      body,
+    });
+  },
   chatPdfInfo: (id: string, ruta: string) => request<ChatPdfInfo>(urlPdfConversacion(id, ruta, false, true)),
   chatPdf: (id: string, ruta: string) => requestPdf(urlPdfConversacion(id, ruta)),
   chatImageInfo: (id: string, ruta: string) => request<ChatImageInfo>(urlImagenConversacion(id, ruta, false, true)),

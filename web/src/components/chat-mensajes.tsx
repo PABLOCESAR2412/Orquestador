@@ -3,7 +3,7 @@ import { haceTexto, tiempoTranscurrido } from "../lib/tiempo";
 import { interpretarRespuestaTarea } from "../lib/respuesta-tarea";
 import { partirMensaje } from "../lib/adjuntos";
 import { effortLabel } from "../lib/model";
-import type { FormatoDocumento } from "../api";
+import { urlAdjuntoImagenChat, type FormatoDocumento } from "../api";
 import { Contenido, copiarTexto, type ReferenciaArchivo } from "./chat-contenido";
 import { ProcesoAgente, ProcesoGuardado } from "./chat-proceso";
 import { FORMATOS_OPCIONES } from "./documentos";
@@ -100,6 +100,7 @@ function renderizarTextoConSkills(texto: string) {
 
 // id: ancla para ir a este mensaje desde el historial de prompts. resaltado: destaca el mensaje un momento.
 export function MensajeUsuario({
+  conversationId,
   texto,
   cuando,
   id,
@@ -107,6 +108,7 @@ export function MensajeUsuario({
   marcado = false,
   onToggleMarca,
 }: {
+  conversationId?: string;
   texto: string;
   cuando: string | null;
   id?: string;
@@ -114,7 +116,7 @@ export function MensajeUsuario({
   marcado?: boolean;
   onToggleMarca?: () => void;
 }) {
-  const { texto: prosa, adjuntos } = partirMensaje(texto);
+  const { texto: prosa, adjuntos, imagenes } = partirMensaje(texto);
   return (
     <article id={id} className={`tl-msg tl-msg-usuario${resaltado ? " is-resaltado" : ""}`}>
       <div className="tl-msg-usuario-cabecera">
@@ -148,6 +150,21 @@ export function MensajeUsuario({
                 </summary>
                 <pre className="tl-adjunto-cuerpo">{a.contenido}</pre>
               </details>
+            </li>
+          ))}
+        </ul>
+      )}
+      {imagenes.length > 0 && (
+        <ul className="tl-adjuntos-enviados tl-adjuntos-imagenes" aria-label="Imágenes adjuntas">
+          {imagenes.map((imagen) => (
+            <li key={imagen.id}>
+              {conversationId ? (
+                <a href={urlAdjuntoImagenChat(conversationId, imagen.id)} target="_blank" rel="noreferrer" title={`Abrir ${imagen.nombre}`}>
+                  <img className="tl-adjunto-imagen-enviada" src={urlAdjuntoImagenChat(conversationId, imagen.id)} alt={imagen.nombre} loading="lazy" />
+                </a>
+              ) : (
+                <span className="tl-adjunto-nombre">{imagen.nombre}</span>
+              )}
             </li>
           ))}
         </ul>

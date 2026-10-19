@@ -139,6 +139,56 @@ test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama
   expect(JSON.parse(texto).result).toEqual({ url: "https://github.com/dueno/prueba/pull/1" });
   expect((await pedir(`/acciones/${accion.id}/decidir`, { approve: true })).status).toBe(200);
   expect(llamadas).toHaveLength(2);
+
+  const repetida = await pedir(`/projects/${p.id}/acciones`, { action: "pr", taskId: p.taskId });
+  expect(repetida.status).toBe(200);
+  expect(await repetida.json()).toMatchObject({ id: accion.id, state: "approved", result: { url: "https://github.com/dueno/prueba/pull/1" } });
+  expect(llamadas).toHaveLength(2);
+});
+
+test("fusionar PR por número desde el chat no crea otra tarea ni otra rama", async () => {
+  const p = proyecto();
+  db.query("INSERT INTO project_git(project_id,remote) VALUES (?,?)").run(p.id, REMOTO);
+  process.env.TELO_CLAVE_CIFRADO = randomBytes(32).toString("base64");
+  guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
+  const conversationId = randomUUID();
+  db.query("INSERT INTO conversations(id,title,project_id) VALUES (?,'Git',?)").run(conversationId, p.id);
+  const { chat, numeroPullRequestParaFusionar } = await import("../src/routes/chat");
+  try {
+    expect(numeroPullRequestParaFusionar("Fusiona el PR #4")).toBe(4);
+    expect(numeroPullRequestParaFusionar("haz merge del pull request número 5")).toBe(5);
+    expect(numeroPullRequestParaFusionar("Fusiona https://github.com/dueno/prueba/pull/6")).toBe(6);
+    expect(numeroPullRequestParaFusionar("¿Puedes fusionar el PR #4? ")).toBe(4);
+    expect(numeroPullRequestParaFusionar("merge PR #7")).toBe(7);
+    expect(numeroPullRequestParaFusionar("crea un PR #4")).toBeNull();
+    expect(numeroPullRequestParaFusionar("¿Cómo puedo fusionar el PR #4? ")).toBeNull();
+    expect(numeroPullRequestParaFusionar("fusiona el PR más reciente")).toBeNull();
+
+    const respuesta = await chat.request(`/conversations/${conversationId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "Fusiona el PR #4" }),
+    });
+    expect(respuesta.status).toBe(202);
+    const cuerpo = await respuesta.json() as any;
+    expect(cuerpo.action).toMatchObject({ action: "merge", task_id: null });
+    expect(JSON.parse(cuerpo.action.payload)).toMatchObject({ pr_number: 4, remote: REMOTO });
+    expect(db.query<{ total: number }, [string]>("SELECT COUNT(*) AS total FROM tasks WHERE conversation_id=?").get(conversationId)?.total).toBe(0);
+
+    const repetida = await chat.request(`/conversations/${conversationId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "Fusiona el PR #4" }),
+    });
+    expect(repetida.status).toBe(202);
+    const segundaRespuesta = await repetida.json() as any;
+    expect(segundaRespuesta.action.id).toBe(cuerpo.action.id);
+    expect(JSON.parse(segundaRespuesta.action.payload).messageId).toBe(segundaRespuesta.messages[0].id);
+    expect(db.query<{ total: number }, [string]>("SELECT COUNT(*) AS total FROM repository_actions WHERE conversation_id=? AND action='merge'").get(conversationId)?.total).toBe(1);
+    expect(db.query<{ total: number }, [string]>("SELECT COUNT(*) AS total FROM tasks WHERE conversation_id=?").get(conversationId)?.total).toBe(0);
+  } finally {
+    db.query("DELETE FROM conversations WHERE id=?").run(conversationId);
+  }
 });
 
 test("no prepara un PR hasta que el commit y el push vigentes estén aprobados", { timeout: 15000 }, async () => {

@@ -94,7 +94,7 @@ export function RepositoryApproval({
         if (!projectId || !p.autenticacion) {
           throw new ApiError(409, "github_access", "Esta autorización no tiene una credencial registrada. Prepara una nueva para comprobar el acceso antes de aprobar.");
         }
-        const acceso = await api.checkProjectGit(projectId, accion.action === "merge" ? "pr" : (accion.action as "push" | "pr"));
+        const acceso = await api.checkProjectGit(projectId, accion.action as "push" | "pr" | "merge");
         const esperada = p.autenticacion;
         if (
           acceso.autenticacion.tipo !== esperada.tipo ||

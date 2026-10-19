@@ -418,7 +418,7 @@ async function ejecutarTarea(task: QueuedTask) {
     const mensaje = errores.join("\n");
     registrarEvento(task.id, "comprobacion_fallida", mensaje);
     finish(task.id, "failed", { error: mensaje });
-    avisarChat(task.id, mensaje);
+    avisarChat(task.id, mensaje, { model: task.model, effort: task.effort });
     return;
   }
   // Con proyecto de Git, la tarea trabaja en su clon; con proyecto sin Git, en la carpeta del proyecto;
@@ -545,15 +545,15 @@ async function ejecutarTarea(task: QueuedTask) {
   } catch (err) {
     if (cancelRequested.has(task.id)) {
       finish(task.id, "cancelled", { error: "Cancelada por el usuario." });
-      avisarChat(task.id, "La tarea fue cancelada.");
+      avisarChat(task.id, "La tarea fue cancelada.", { model: task.model, effort: task.effort });
     } else if (err instanceof ErrorCuota) {
       pausarPorCuota(task.id, err, task.provider_session_id !== null, task.conversation_id);
     } else if (err instanceof TiempoAgotado || err instanceof ErrorFase) {
       finish(task.id, "failed", { error: err.message });
-      avisarChat(task.id, err.message);
+      avisarChat(task.id, err.message, { model: task.model, effort: task.effort });
     } else {
       finish(task.id, "failed", { error: mensajeSeguro(err) });
-      avisarChat(task.id, `Error en la tarea: ${mensajeSeguro(err)}`);
+      avisarChat(task.id, `Error en la tarea: ${mensajeSeguro(err)}`, { model: task.model, effort: task.effort });
     }
   } finally {
     salida.cerrar();

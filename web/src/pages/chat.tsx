@@ -143,6 +143,8 @@ export function ChatPage() {
   const [usoAbierto, setUsoAbierto] = useState(false);
   const [mediosAbierto, setMediosAbierto] = useState(false);
   const [pendientes, setPendientes] = useState<Pendiente[]>([]);
+  const [subiendoAdjuntos, setSubiendoAdjuntos] = useState(false);
+  const subiendoAdjuntosRef = useRef(false);
   const [arrastrando, setArrastrando] = useState(false);
   const [dictando, setDictando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -588,15 +590,16 @@ export function ChatPage() {
     configure.mutate({ model: m.id, effort: esfuerzo });
   };
 
-  // Adjuntos listos: solo los de texto viajan al agente.
+  // Los textos viajan en el mensaje; las imágenes se suben antes para que ambos runners las reciban como entrada visual.
   const adjuntosListos = pendientes.flatMap((p) => (p.lectura.tipo === "texto" ? [p.lectura.adjunto] : []));
+  const imagenesPendientes = pendientes.flatMap((p) => (p.lectura.tipo === "imagen" ? [p.lectura] : []));
   const envioActual = selectedId ? enviosPorChat[selectedId] : undefined;
   const enviandoActual = !!envioActual;
   const bloqueoEnvioCola = !!modeloAgotadoChat || (!colaActiva && (agenteOcupado || cola.length > 0));
   const puedeEnviar =
-    !!selectedId && !enviandoActual && !bloqueoEnvioCola && (draft.trim() !== "" || adjuntosListos.length > 0);
+    !!selectedId && !enviandoActual && !subiendoAdjuntos && !bloqueoEnvioCola && (draft.trim() !== "" || adjuntosListos.length > 0 || imagenesPendientes.length > 0);
 
-  const submit = () => {
+  const submit = async () => {
     if (planPendiente) {
       const feedback = draft.trim();
       if (feedback) {
@@ -605,8 +608,29 @@ export function ChatPage() {
       }
       return;
     }
-    if (!puedeEnviar || !selectedId) return;
-    const content = componerMensaje(draft, adjuntosListos);
+    if (!puedeEnviar || !selectedId || subiendoAdjuntosRef.current) return;
+    if (imagenesPendientes.length > 4) {
+      setErroresEnvio((prev) => ({ ...prev, [selectedId]: "Adjunta hasta 4 imágenes por mensaje." }));
+      return;
+    }
+    let imagenesSubidas: { id: string; nombre: string }[] = [];
+    if (imagenesPendientes.length > 0) {
+      subiendoAdjuntosRef.current = true;
+      setSubiendoAdjuntos(true);
+      try {
+        imagenesSubidas = await Promise.all(imagenesPendientes.map(async (imagen) => {
+          const subida = await api.uploadChatImage(selectedId, imagen.archivo);
+          return { id: subida.id, nombre: subida.nombre };
+        }));
+      } catch (err) {
+        setErroresEnvio((prev) => ({ ...prev, [selectedId]: errorText(err) }));
+        return;
+      } finally {
+        subiendoAdjuntosRef.current = false;
+        setSubiendoAdjuntos(false);
+      }
+    }
+    const content = componerMensaje(draft, adjuntosListos, imagenesSubidas);
     if (!content) return;
     if (agenteOcupado || cola.length > 0) {
       if (!colaActiva) return;
@@ -1420,6 +1444,7 @@ export function ChatPage() {
                   ) : m.role === "user" ? (
                     <>
                       <MensajeUsuario
+                        conversationId={selectedId ?? undefined}
                         id={`mensaje-${m.id}`}
                         texto={m.content}
                         cuando={m.created_at}
@@ -1462,7 +1487,7 @@ export function ChatPage() {
                 </div>
               ))}
               {enviandoActual && !yaGuardado && (
-                <div className="tl-hilo-evento"><MensajeUsuario texto={envioActual?.content ?? ""} cuando={null} /></div>
+                <div className="tl-hilo-evento"><MensajeUsuario conversationId={selectedId ?? undefined} texto={envioActual?.content ?? ""} cuando={null} /></div>
               )}
               {pensando && (
                 <IndicadorPensando
@@ -1767,14 +1792,20 @@ export function ChatPage() {
                   {pendientes.map((p) => {
                     const { lectura } = p;
                     const nombre = lectura.tipo === "texto" ? lectura.adjunto.nombre : lectura.nombre;
-                    const motivo = lectura.tipo === "texto" ? "Se envía con el mensaje" : lectura.motivo;
+                    const motivo = lectura.tipo === "texto"
+                      ? "Se envía con el mensaje"
+                      : lectura.tipo === "imagen"
+                        ? "Se envía al agente como entrada visual; el modelo debe admitir imágenes"
+                        : lectura.motivo;
                     const estado =
                       lectura.tipo === "texto"
                         ? `${etiquetaBytes(lectura.tamano)}${lectura.recortado ? " · recortado" : ""}`
+                        : lectura.tipo === "imagen"
+                          ? `${etiquetaBytes(lectura.tamano)} · se envía al agente`
                         : lectura.tipo === "solo_vista"
                           ? `${etiquetaBytes(lectura.tamano)} · no se envía · solo texto`
                           : "No se añadió";
-                    const imagen = lectura.tipo === "solo_vista" && lectura.imagen;
+                    const imagen = lectura.tipo === "imagen" || (lectura.tipo === "solo_vista" && lectura.imagen);
                     return (
                       <li key={p.key} className={`tl-adjunto-chip is-${lectura.tipo}`} title={motivo}>
                         <span className="tl-adjunto-icono" aria-hidden="true">

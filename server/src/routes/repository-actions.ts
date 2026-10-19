@@ -75,13 +75,23 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
         >("SELECT id,status,conversation_id FROM tasks WHERE id=? AND project_id=?")
         .get(b.taskId, projectId)
     : null;
-  if (b.action !== "init" && !tarea) return c.json({ error: "task_without_repo" }, 409);
+  if (b.action !== "init" && b.action !== "merge" && !tarea) return c.json({ error: "task_without_repo" }, 409);
+  if (b.action === "merge" && !tarea && !b.conversationId)
+    return c.json({ error: "task_without_repo" }, 409);
+  if (b.action === "merge" && b.taskId && !tarea)
+    return c.json({ error: "task_without_repo" }, 409);
   if (tarea && b.conversationId && tarea.conversation_id !== b.conversationId)
     return c.json({ error: "invalid_accion" }, 400);
   if (
     (b.message !== undefined && (typeof b.message !== "string" || b.message.length > 200)) ||
-    (b.title !== undefined && (typeof b.title !== "string" || b.title.length > 200))
+    (b.title !== undefined && (typeof b.title !== "string" || b.title.length > 200)) ||
+    (b.pr_number !== undefined && (!Number.isSafeInteger(b.pr_number) || b.pr_number < 1)) ||
+    (b.pr_url !== undefined && (typeof b.pr_url !== "string" || b.pr_url.length > 500))
   )
+    return c.json({ error: "invalid_body" }, 400);
+  const numeroPrUrl = b.pr_url ? /\/pull\/(\d+)(?:[/?#]|$)/i.exec(b.pr_url)?.[1] : null;
+  const numeroPrUrlNumerico = numeroPrUrl ? Number(numeroPrUrl) : null;
+  if (b.action === "merge" && !b.pr_number && (!numeroPrUrlNumerico || !Number.isSafeInteger(numeroPrUrlNumerico)))
     return c.json({ error: "invalid_body" }, 400);
   try {
     const messageId = b.messageId ?? (b.conversationId
@@ -123,7 +133,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
     const remotoDePr = b.pr_url ? urlGithubPermitida(b.pr_url.replace(/\/pull\/\d+.*$/, "")) : null;
     const remotoDestino = diff?.remoto_url ?? remotoDePr ?? cfg.remote ?? null;
     const autenticacion = b.action === "push" || b.action === "pr" || b.action === "merge"
-      ? fuenteAutenticacionGithub(projectId, b.action === "merge" ? "pr" : b.action, remotoDestino)
+      ? fuenteAutenticacionGithub(projectId, b.action, remotoDestino)
       : {
           tipo: "ninguna" as const,
           origen: "ninguna" as const,
@@ -150,16 +160,52 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
       remote: remotoDestino,
       base: cfg.base_branch,
       message: redactar(b.message || (b.action === "merge" ? "Fusionar Pull Request" : "Cambios revisados en Telo")),
-      title: redactar(b.title || (b.action === "merge" ? `Fusionar Pull Request #${b.pr_number ?? ""} en ${cfg.base_branch}` : "Cambios revisados en Telo")),
-      pr_number: b.pr_number ?? null,
+      title: redactar(b.title || (b.action === "merge" ? `Fusionar Pull Request #${b.pr_number ?? numeroPrUrlNumerico ?? ""} en ${cfg.base_branch}` : "Cambios revisados en Telo")),
+      pr_number: b.pr_number ?? numeroPrUrlNumerico,
       pr_url: b.pr_url ?? null,
       descripcion:
         b.action === "init"
           ? "Inicializar Git y crear un primer commit vacío para habilitar los espacios de trabajo. No añade tus archivos."
           : b.action === "merge"
-            ? `Fusionar el Pull Request #${b.pr_number ?? ""} en la rama base (${cfg.base_branch}) directamente desde Telo.`
+            ? `Fusionar el Pull Request #${b.pr_number ?? numeroPrUrlNumerico ?? ""} en la rama base (${cfg.base_branch}) directamente desde Telo.`
             : null,
     };
+    if (b.action === "pr" || b.action === "merge") {
+      const previas = db
+        .query<{ id: string; action: string; payload: string; state: string; result: string | null; task_id: string | null }, [string]>(
+          b.action === "pr"
+            ? "SELECT id,action,payload,state,result,task_id FROM repository_actions WHERE task_id=? AND action='pr' AND state IN ('pending','executing','approved') ORDER BY created_at DESC,rowid DESC"
+            : "SELECT id,action,payload,state,result,task_id FROM repository_actions WHERE conversation_id=? AND action='merge' AND state IN ('pending','executing','approved') ORDER BY created_at DESC,rowid DESC",
+        )
+        .all(b.action === "pr" ? tarea!.id : b.conversationId!);
+      const existente = previas.find((anterior) => {
+        const previo = JSON.parse(anterior.payload) as typeof payload;
+        return b.action === "pr"
+          ? previo.commit === payload.commit && previo.rama === payload.rama && previo.base === payload.base && previo.remote === payload.remote
+          : previo.pr_number === payload.pr_number && previo.remote === payload.remote;
+      });
+      if (existente) {
+        const payloadExistente = JSON.parse(existente.payload) as typeof payload;
+        if (payloadExistente.messageId !== payload.messageId) {
+          payloadExistente.messageId = payload.messageId;
+          existente.payload = JSON.stringify(payloadExistente);
+          db.query("UPDATE repository_actions SET payload=? WHERE id=?").run(existente.payload, existente.id);
+        }
+        return c.json(
+          {
+            id: existente.id,
+            action: existente.action,
+            payload: existente.payload,
+            state: existente.state,
+            result: existente.result ? JSON.parse(existente.result) : null,
+            task_id: existente.task_id,
+            message_id: payloadExistente.messageId,
+          },
+          200,
+        );
+      }
+    }
+
     const id = crypto.randomUUID();
     const existente = db
       .query<
@@ -350,18 +396,21 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
       if (!remoto) throw new Error("Falta un remoto permitido.");
       if (p.remote && p.remote !== remoto)
         throw new Error("La configuración del repositorio cambió. Solicita otra aprobación.");
-      await validarAutenticacionYAcceso(row.project_id, p, "pr");
-      const pullNumber = p.pr_number || (p.pr_url ? p.pr_url.split("/").pop() : null);
-      if (!pullNumber) throw new Error("No se encontró el número del Pull Request para hacer merge.");
+      await validarAutenticacionYAcceso(row.project_id, p, "merge");
+      const pullNumber = p.pr_number ?? (p.pr_url ? /\/pull\/(\d+)(?:[/?#]|$)/i.exec(p.pr_url)?.[1] : null);
+      const numeroPull = Number(pullNumber);
+      if (!Number.isSafeInteger(numeroPull) || numeroPull < 1)
+        throw new Error("No se encontró un número válido del Pull Request para hacer merge.");
       result = await githubApiPr(
         row.project_id,
-        "/repos/" + remoto.replace("https://github.com/", "") + `/pulls/${pullNumber}/merge`,
+        "/repos/" + remoto.replace("https://github.com/", "") + `/pulls/${numeroPull}/merge`,
         p.autenticacion,
         {
-          commit_title: p.title || `Merge pull request #${pullNumber} desde Telo`,
+          commit_title: p.title || `Merge pull request #${numeroPull} desde Telo`,
           merge_method: "squash",
         },
         "PUT",
+        "merge",
       );
     } else {
       // Una acción antigua pendiente de antes no se ejecuta.
@@ -434,7 +483,7 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
 async function validarAutenticacionYAcceso(
   projectId: string,
   payload: { autenticacion?: ReturnType<typeof fuenteAutenticacionGithub>; remote?: string },
-  accion: "push" | "pr",
+  accion: "push" | "pr" | "merge",
 ): Promise<void> {
   const esperada = payload.autenticacion;
   if (!esperada || esperada.tipo === "ninguna") {

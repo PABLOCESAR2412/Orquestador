@@ -17,6 +17,7 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 
 const { db } = await import("../src/db");
 const { chat, avisarTurnosInterrumpidos } = await import("../src/routes/chat");
+const { guardarImagenAdjunta, imagenesDelPrompt } = await import("../src/chat-adjuntos");
 
 const app = new Hono();
 app.route("/api", chat);
@@ -39,6 +40,7 @@ for a in "$@"; do
   if [ "$anterior" = "-m" ]; then modelo="$a"; fi
   if [ "$anterior" = "-s" ]; then sesion="$a"; fi
   if [ "$anterior" = "--variant" ]; then variante="$a"; fi
+  if [ "$anterior" = "--file" ]; then imagen="$a"; fi
   case "$a" in *HISTORIA-ANTERIOR*) historial="si" ;; esac
   anterior="$a"
   ultimo="$a"
@@ -46,6 +48,7 @@ done
 case "$ultimo" in *LENTO*) sleep 1.5 ;; esac
 case "$ultimo" in *FALLO*) echo "error interno del agente" >&2; exit 1 ;; esac
 case "$ultimo" in *CAMBIO-MODELO*) printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"modelo=%s;sesion=%s;variante=%s;historial=%s"}}\\n' "$modelo" "\${sesion:-nueva}" "\${variante:-auto}" "\${historial:-no}"; exit 0 ;; esac
+case "$ultimo" in *ANALIZA-ADJUNTO*) if [ -n "$imagen" ] && [ -s "$imagen" ]; then echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"La imagen llegó al agente como archivo."}}'; else echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"No llegó ningún archivo de imagen."}}'; fi; exit 0 ;; esac
 case "$ultimo" in *CONCURRENTE*) id=$(printf '%s' "$ultimo" | sed -n 's/.*CONCURRENTE-\\([0-9][0-9]*\\) LENTO.*/\\1/p'); printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"%s: %s"}}\\n' "$modelo" "$id"; exit 0 ;; esac
 case "$ultimo" in *"Termina la respuesta que quedó a medias"*) if [ -z "$sesion" ]; then sesion="ses_turno01"; fi; printf '{"type":"text","sessionID":"%s","part":{"type":"text","text":"continuacion;sesion=%s"}}\\n' "$sesion" "$sesion"; exit 0 ;; esac
 echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"Respuesta lista."}}'
@@ -208,6 +211,21 @@ describe("archivos PDF de una conversación", () => {
 
 // Estas pruebas lanzan grupos de procesos con `setsid`, igual que el servidor Linux.
 describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
+  test("el runner recibe el archivo de imagen adjuntado al mensaje", async () => {
+    const id = conversacion();
+    const bytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/0ioAAAAASUVORK5CYII=", "base64");
+    const form = new FormData();
+    form.append("archivo", new File([bytes], "captura.png", { type: "image/png" }));
+    const subida = await app.request(`/api/conversations/${id}/adjuntos`, { method: "POST", body: form });
+    expect(subida.status).toBe(201);
+    const adjunto = await subida.json() as { id: string };
+
+    const respuesta = await enviar(id, `ANALIZA-ADJUNTO <<telo-imagen id="${adjunto.id}" nombre="captura.png">>`);
+    expect(respuesta.status).toBe(202);
+    await esperar(() => mensajes(id).some((mensaje) => mensaje.role === "assistant"));
+    expect(mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content).toBe("La imagen llegó al agente como archivo.");
+  });
+
   test("diez conversaciones responden en paralelo y cada una conserva su modelo y su mensaje", async () => {
     const lote = Array.from({ length: 10 }, (_, i) => ({
       id: conversacion(`opencode/modelo-${i % 3}`),
@@ -320,6 +338,46 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
 });
 
 describe("imágenes de una conversación", () => {
+  test("adjunta las cuatro imágenes más recientes del historial", () => {
+    const id = conversacion();
+    const bytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/0ioAAAAASUVORK5CYII=", "base64");
+    const ids = Array.from({ length: 5 }, (_, indice) => guardarImagenAdjunta(id, `captura-${indice}.png`, bytes).id);
+    const prompt = ids.map((adjuntoId, indice) => `<<telo-imagen id="${adjuntoId}" nombre="captura-${indice}.png">>`).join("\n");
+
+    const preparado = imagenesDelPrompt(id, prompt);
+    expect(preparado.imagenes).toHaveLength(4);
+    expect(preparado.imagenes.map((imagen) => imagen.ruta).join(" ")).not.toContain(ids[0]!);
+    for (const reciente of ids.slice(1)) {
+      expect(preparado.imagenes.some((imagen) => imagen.ruta.includes(reciente))).toBe(true);
+    }
+    expect(preparado.prompt).toContain("Imagen anterior no adjunta al turno actual");
+  });
+
+  test("sube la imagen del compositor y la muestra desde el chat", async () => {
+    const id = conversacion();
+    const bytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/0ioAAAAASUVORK5CYII=", "base64");
+    const form = new FormData();
+    form.append("archivo", new File([bytes], "captura.png", { type: "image/png" }));
+    const subida = await app.request(`/api/conversations/${id}/adjuntos`, { method: "POST", body: form });
+    expect(subida.status).toBe(201);
+    const adjunto = await subida.json() as { id: string; mime: string; bytes: number };
+    expect(adjunto).toMatchObject({ mime: "image/png", bytes: bytes.byteLength });
+
+    const vista = await app.request(`/api/conversations/${id}/adjuntos/${adjunto.id}`);
+    expect(vista.status).toBe(200);
+    expect(vista.headers.get("content-type")).toBe("image/png");
+    expect(Buffer.from(await vista.arrayBuffer())).toEqual(bytes);
+  });
+
+  test("rechaza un archivo que no contiene una imagen raster válida", async () => {
+    const id = conversacion();
+    const form = new FormData();
+    form.append("archivo", new File(["no es una imagen"], "captura.png", { type: "image/png" }));
+    const respuesta = await app.request(`/api/conversations/${id}/adjuntos`, { method: "POST", body: form });
+    expect(respuesta.status).toBe(415);
+    expect(await respuesta.json()).toEqual({ error: "image_type_unsupported" });
+  });
+
   test("abre y descarga imágenes del chat libre con su nombre original", async () => {
     const id = conversacion();
     const nombre = "infografía de prueba.png";

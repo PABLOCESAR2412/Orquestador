@@ -12,6 +12,7 @@ import { promptConHistorial, sesionCompatible } from "./conversacion-contexto";
 import { conMemoria, extraerMemoria, guardarMemoria, guardarPropuestaMemoria, memoriaDelProyecto, quitarBloqueMemoria } from "./memoria";
 import { conservarMemoriaSegunJev, puntuarMemoriaJev } from "./jev";
 import { inyectarSkillsEnPrompt } from "./resolucion-skills";
+import { imagenesDelPrompt } from "./chat-adjuntos";
 
 // Longitud mínima de un valor de secreto para ocultarlo en la salida. Más corto, aparecería en texto normal.
 const MINIMO_OCULTAR = 4;
@@ -429,11 +430,12 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       : opts.conversationId
         ? promptConHistorial(opts.conversationId, opts.prompt)
         : opts.prompt;
+    const visuales = imagenesDelPrompt(opts.conversationId, prompt);
     return {
       ...comunes,
       prompt: conEstilo(
         conMemoria(
-          conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(prompt, opts.projectId).promptFinal, opts.conversationId),
+          conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(visuales.prompt, opts.projectId).promptFinal, opts.conversationId),
           memoria,
           opts.aprender === true,
         ),
@@ -442,6 +444,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       ),
       model: modelo,
       variant: variante,
+      imagenes: visuales.imagenes,
       sessionId: sesion,
       onSesion: (id: string) => alSesion(id, modelo),
       onUso: (uso: Usage) => registrarUsoAgente(modelo, uso, opts),

@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 // Skills: ámbito global (HOME/.config/opencode/skills) y por proyecto (carpeta/.opencode/skills).
 // Pruebas de rutas acotadas, enlaces, escritura atómica y secretos. HOME y DATA_DIR son temporales.
-const RAIZ = mkdtempSync(join(tmpdir(), "telo-skills-"));
+const RAIZ = mkdtempSync(join(import.meta.dir, `.test-data-skills-${randomUUID()}-`));
 const HOME_PRUEBA = join(RAIZ, "home");
 const FUERA = join(RAIZ, "fuera");
 mkdirSync(HOME_PRUEBA, { recursive: true });
@@ -16,7 +16,7 @@ process.env.TELO_PROYECTOS_DIR = join(RAIZ, "proyectos");
 
 const { db } = await import("../src/db");
 const { skillsRoute } = await import("../src/routes/skills");
-const { guardarSkill, listarSkills, leerFrontmatter } = await import("../src/skills");
+const { guardarSkill, listarSkills, leerFrontmatter, prepararCarpetaGlobal, SKILL_GAUNTLET_CONTENIDO } = await import("../src/skills");
 
 const GLOBAL = join(HOME_PRUEBA, ".config", "opencode", "skills");
 const PROYECTO = join(RAIZ, "proyecto-a");
@@ -55,6 +55,20 @@ describe("frontmatter", () => {
 });
 
 describe("skills globales", () => {
+  test("instala las skills comunes sin reemplazar Gauntlet personalizado", () => {
+    guardarSkill({ ambito: "global" }, "gauntlet", SKILL_GAUNTLET_CONTENIDO + "\nPersonalización conservada.\n");
+    const frontend = join(GLOBAL, "frontend-design");
+    mkdirSync(frontend, { recursive: true });
+    writeFileSync(join(frontend, "SKILL.md"), "Skill existente con formato pendiente de corregir.\n");
+    prepararCarpetaGlobal();
+
+    expect(readFileSync(join(GLOBAL, "gauntlet", "SKILL.md"), "utf8")).toContain("Personalización conservada.");
+    expect(readFileSync(join(frontend, "SKILL.md"), "utf8")).toBe("Skill existente con formato pendiente de corregir.\n");
+    for (const nombre of ["playwright", "ponytail"]) {
+      expect(readFileSync(join(GLOBAL, nombre, "SKILL.md"), "utf8")).toContain(`name: ${nombre}`);
+    }
+  });
+
   test("guarda una skill válida y la lista con su descripción", async () => {
     const res = await put("/skills/informe-semanal", skillTexto("informe-semanal"));
     expect(res.status).toBe(200);
@@ -104,7 +118,7 @@ describe("skills globales", () => {
     expect(existsSync(join(GLOBAL, "con-token"))).toBe(false);
   });
 
-  test("no sigue enlaces: un SKILL.md que apunta fuera no se lee", async () => {
+  test.skipIf(process.platform === "win32")("no sigue enlaces: un SKILL.md que apunta fuera no se lee", async () => {
     writeFileSync(join(FUERA, "secreto.md"), skillTexto("enlazada"));
     mkdirSync(join(GLOBAL, "enlazada"), { recursive: true });
     symlinkSync(join(FUERA, "secreto.md"), join(GLOBAL, "enlazada", "SKILL.md"));
@@ -115,7 +129,7 @@ describe("skills globales", () => {
     expect(lista.skills.some((s) => s.nombre === "enlazada")).toBe(false);
   });
 
-  test("no escribe a través de una carpeta enlazada", async () => {
+  test.skipIf(process.platform === "win32")("no escribe a través de una carpeta enlazada", async () => {
     symlinkSync(FUERA, join(GLOBAL, "salida"));
     const res = await put("/skills/salida", skillTexto("salida"));
     expect(res.status).toBe(400);
@@ -127,7 +141,7 @@ describe("skills globales", () => {
     writeFileSync(join(GLOBAL, "bloqueada", "SKILL.md", "aguja.txt"), "x");
     const res = await put("/skills/bloqueada", skillTexto("bloqueada"));
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { error: string }).error).toBe("skill_no_guardada");
+    expect(((await res.json()) as { error: string }).error).toBe("skill_ruta_no_permitida");
     const contenido = readdirSync(join(GLOBAL, "bloqueada"));
     expect(contenido.some((n) => n.endsWith(".tmp"))).toBe(false);
   });
@@ -158,6 +172,7 @@ describe("skills por proyecto", () => {
     const res = await put("/projects/p-skills/skills/guia-proyecto", skillTexto("guia-proyecto"));
     expect(res.status).toBe(200);
     expect(existsSync(join(PROYECTO, ".opencode", "skills", "guia-proyecto", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(PROYECTO, ".agents", "skills", "guia-proyecto", "SKILL.md"))).toBe(false);
     const lista = (await (await skillsRoute.request("/projects/p-skills/skills")).json()) as { skills: { nombre: string }[] };
     expect(lista.skills.map((s) => s.nombre)).toContain("guia-proyecto");
   });
@@ -167,7 +182,7 @@ describe("skills por proyecto", () => {
     expect(res.status).toBe(404);
   });
 
-  test("si .opencode es un enlace fuera del proyecto, no escribe fuera", async () => {
+  test.skipIf(process.platform === "win32")("si .opencode es un enlace fuera del proyecto, no escribe fuera", async () => {
     const proyectoB = join(RAIZ, "proyecto-b");
     mkdirSync(proyectoB, { recursive: true });
     symlinkSync(FUERA, join(proyectoB, ".opencode"));

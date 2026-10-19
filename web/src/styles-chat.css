@@ -1463,6 +1463,9 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.tl-adjuntos-imagenes { display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.tl-adjuntos-imagenes a { display: block; max-width: min(280px, 100%); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.tl-adjunto-imagen-enviada { display: block; max-width: 100%; max-height: 220px; object-fit: contain; background: var(--surface-2); }
 
 /* Menú de formatos de un mensaje */
 .tl-menu-wrap { position: relative; display: inline-flex; }
