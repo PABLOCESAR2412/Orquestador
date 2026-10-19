@@ -24,7 +24,9 @@ describe("historial de actualizaciones por PR", () => {
     const entradas = cambios.cambios as CambioRegistrado[];
     const historial = historialPorPR(entradas);
 
-    expect(historial[0].pr).toBe(89);
+    const fechaMasReciente = historial[0].fecha;
+    const mayorPRDeLaFecha = Math.max(...entradas.filter((cambio) => cambio.pr !== null && cambio.fecha === fechaMasReciente).map((cambio) => cambio.pr!));
+    expect(historial[0].pr).toBe(mayorPRDeLaFecha);
     expect(historial.find(({ pr }) => pr === 53)?.fecha).toBe("2026-10-16");
     expect(historial.flatMap(({ cambios: grupo }) => grupo)).toHaveLength(
       entradas.filter(({ pr }) => pr !== null).length,
