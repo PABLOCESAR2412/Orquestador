@@ -3,6 +3,11 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Chat y GitHub: recupera archivos históricos, estabiliza el canal en vivo y explica merges bloqueados", "pr": 86 },
+    { "fecha": "2026-10-19", "tipo": "grande", "titulo": "Servidor: protege tareas frente a carreras, cifra credenciales de GitHub y alinea despliegues y capacidad", "pr": 86 },
+    { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Chat: inspecciona contexto reciente, consumo por modelo, sesión y mensajes guardados", "pr": 86 },
+    { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Chat: muestra narración y acciones observables en vivo, sin scroll interno", "pr": 86 },
+    { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Agentes: aplica un contrato de ejecución verificable a chats y tareas en todos los modelos", "pr": 86 },
     { "fecha": "2026-10-19", "tipo": "grande", "titulo": "Chat y analíticas: corrige respaldos de modelo, previsualiza archivos, estima tokens faltantes y lista tareas programadas", "pr": 84 },
     { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Chat: reintenta respuestas detenidas por tiempo desde la sesión guardada", "pr": 84 },
     { "fecha": "2026-10-18", "tipo": "grande", "titulo": "Skills globales para todos los runners, envío de imágenes al agente y permiso correcto para fusionar PR", "pr": null },

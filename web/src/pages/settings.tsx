@@ -229,9 +229,9 @@ export function SettingsPage() {
                 <Kpi
                   etiqueta="Workers activos"
                   icono={<IconoRed />}
-                  valor={datos ? `${datos.tareas.en_curso} / 1` : "—"}
+                  valor={datos ? `${datos.tareas.en_curso} / ${datos.tareas.max_simultaneas}` : "—"}
                   pie={datos ? `${datos.tareas.en_cola} en cola` : "Sin datos"}
-                  barra={datos ? Math.min(1, datos.tareas.en_curso) : undefined}
+                  barra={datos ? Math.min(1, datos.tareas.en_curso / datos.tareas.max_simultaneas) : undefined}
                 />
                 <Kpi
                   etiqueta="Latencia API"

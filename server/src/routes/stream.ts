@@ -12,7 +12,7 @@ const MAX_EVENTOS_PENDIENTES = 100;
 const MAX_BYTES_PENDIENTES = 256 * 1024;
 const MAX_CARACTERES_SALIDA = 8_000;
 const MAX_CARACTERES_DETALLE = 4_000;
-const MAX_ESPERA_POLL_MS = 15_000;
+const MAX_ESPERA_POLL_MS = 10_000;
 
 export const stream = new Hono();
 

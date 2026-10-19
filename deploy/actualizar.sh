@@ -17,9 +17,8 @@ FALLIDA="$GIT_DIR_REPO/telo-fallida"  # última versión que no arrancó; no se 
 
 log() { echo "[actualizar $(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
-# Hay agentes corriendo (tareas o chats). El runner lanza "opencode run".
-# Cuando se agreguen Codex o agy, añadir aquí su patrón.
-hay_ejecuciones() { pgrep -f '(^|/)opencode run( |$)' >/dev/null 2>&1; }
+# Hay agentes corriendo (tareas o chats). No reiniciar mientras un runner siga activo.
+hay_ejecuciones() { pgrep -f '(^|/)opencode run( |$)|(^|/)codex exec( |$)' >/dev/null 2>&1; }
 
 compilar() { (cd web && bun install --frozen-lockfile && bun run build); }
 

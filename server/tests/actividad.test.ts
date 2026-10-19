@@ -81,6 +81,29 @@ describe("líneas del agente", () => {
     expect(itemDeLinea(linea)).toMatchObject({ tipo: "accion", herramienta: "bash", estado: "en_curso" });
   });
 
+  test("los eventos de Codex convierten comandos y cambios de archivo en actividad", () => {
+    const comandoInicio = itemDeLinea(JSON.stringify({
+      type: "item.started",
+      item: { id: "cmd-1", type: "command_execution", command: "bun test server/tests/actividad.test.ts" },
+    }));
+    const comandoFin = itemDeLinea(JSON.stringify({
+      type: "item.completed",
+      item: { id: "cmd-1", type: "command_execution", command: "bun test server/tests/actividad.test.ts", aggregated_output: "12 pass", exit_code: 0 },
+    }));
+    expect(comandoInicio).toMatchObject({ tipo: "accion", estado: "en_curso", callId: "cmd-1" });
+    expect(comandoFin).toMatchObject({ tipo: "accion", estado: "hecha", callId: "cmd-1", detalle: expect.stringContaining("12 pass") });
+
+    const cambio = itemDeLinea(JSON.stringify({
+      type: "item.completed",
+      item: { id: "edit-1", type: "file_change", changes: [{ kind: "update", path: "web/src/chat.tsx" }] },
+    }));
+    expect(cambio).toMatchObject({ tipo: "accion", herramienta: "edit", titulo: "Modificó web/src/chat.tsx", estado: "hecha" });
+  });
+
+  test("omite eventos de razonamiento de Codex", () => {
+    expect(itemDeLinea(JSON.stringify({ type: "item.completed", item: { id: "reason-1", type: "reasoning", text: "razonamiento privado" } }))).toBeNull();
+  });
+
   test("líneas que no son JSON, sin tipo o sin contenido se descartan", () => {
     expect(itemDeLinea("no es json")).toBeNull();
     expect(itemDeLinea('{"sin":"tipo"}')).toBeNull();

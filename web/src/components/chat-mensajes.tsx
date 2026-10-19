@@ -449,19 +449,16 @@ export function IndicadorPensando({ modelo, vivo = [], desde = null }: { modelo:
         </span>
       </div>
       {vivo.length > 0 && (
-        <details className="tl-actividad-live" open>
-          <summary className="tl-actividad-live-cabecera">
+        <section className="tl-actividad-live" aria-label="Actividad del agente">
+          <div className="tl-actividad-live-cabecera">
             <span className="tl-actividad-live-icono" aria-hidden="true">{ICONO_AGENTE}</span>
             <span>Actividad del agente</span>
             <span className="tl-actividad-live-contador">{vivo.filter((paso) => paso.tipo === "accion").length} acciones</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </summary>
-          <div className="tl-actividad-live-scroll" role="region" aria-label="Actividad reciente del agente">
+          </div>
+          <div className="tl-actividad-live-cuerpo">
             <ProcesoAgente pasos={vivo} enCurso />
           </div>
-        </details>
+        </section>
       )}
     </article>
   );

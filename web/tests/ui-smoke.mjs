@@ -113,7 +113,22 @@ try {
       else if (path === "/api/conversations/c5/messages") data = [
         { id: "c2a", role: "assistant", content: "Informe adjunto: `libre.md`", model: "nvidia/nemotron-test", created_at: now },
       ];
+      else if (path === "/api/conversations/c1/contexto") data = {
+        conversation: { id: "c1", title: "Prueba de flujo", provider: "google", model: "google/prueba", effort: "high", sessionId: "sesion-prueba", sessionModel: "google/prueba", createdAt: now, lastActivity: now },
+        messages: { total: 4, user: 2, assistant: 2, system: 0 }, actions: 3,
+        usage: { calls: 2, chatCalls: 2, taskCalls: 0, inputTokens: 500, outputTokens: 120, reasoningTokens: 40, cacheReadTokens: 80, costUsd: 0.01, measured: 2, estimated: 0, unavailable: 0, unknown: 0 },
+        byModel: [{ provider: "google", model: "google/prueba", calls: 2, inputTokens: 500, outputTokens: 120, costUsd: 0.01 }],
+        lastInput: { provider: "google", model: "google/prueba", inputTokens: 250, tokensPrecision: "medida", createdAt: now },
+      };
       else if (path === "/api/conversations/c5/archivo") data = { ruta: "libre.md", tamano: 24, texto: "# Chat libre\nVista previa disponible", truncado: false };
+      else if (path === "/api/conversations/c1/archivo") {
+        const ruta = new URL(route.request().url()).searchParams.get("ruta");
+        if (ruta === "Chat.tsx") {
+          return route.fulfill({ status: 409, json: { error: "project_path_ambiguous", matches: ["src/components/Chat.tsx", "src/pages/Chat.tsx"] } });
+        }
+        if (ruta === "Gone.tsx") return route.fulfill({ status: 404, json: { error: "archivo_chat_no_encontrado" } });
+        data = { ruta, tamano: 42, texto: "export function responder() {\n  return 'ok';\n}\n", truncado: false };
+      }
       else if (path === "/api/conversations/c1/messages") {
         if (route.request().method() === "POST") {
           const body = route.request().postDataJSON();
@@ -543,6 +558,17 @@ try {
     await vistaChatLibre.getByRole("button", { name: "Cerrar vista de archivo", exact: true }).click();
     if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
     await page.getByText("Prueba de flujo", { exact: true }).click();
+    await page.getByRole("button", { name: "Contexto del chat", exact: true }).click();
+    const contextoChat = page.getByRole("dialog", { name: "Contexto del chat" });
+    await contextoChat.getByText("250 tokens de entrada (medida)", { exact: true }).waitFor();
+    assert.equal(await contextoChat.locator(".tl-chat-contexto-porcentaje").textContent(), "25%");
+    assert.equal(await contextoChat.getByText("Tokens de entrada", { exact: true }).count(), 1);
+    assert.equal(await contextoChat.getByText("Sesión persistente", { exact: true }).count(), 1);
+    await page.screenshot({ path: `scratch/capturas-ci/contexto-chat-${width}.png` });
+    const [descargaContexto] = await Promise.all([page.waitForEvent("download"), contextoChat.getByRole("button", { name: "Exportar sesión" }).click()]);
+    assert.equal(descargaContexto.suggestedFilename(), "Prueba-de-flujo-contexto.json");
+    await page.keyboard.press("Escape");
+    await contextoChat.waitFor({ state: "detached" });
     await colaVisible.getByRole("button", { name: "Arrastrar mensaje 2 para reordenar", exact: true }).dragTo(colaVisible.locator(".tl-cola-item").nth(0));
     assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("telo:cola:c1") ?? "[]").map(({ id }) => id)), ["q2", "q1", "q3"]);
     await colaVisible.getByRole("button", { name: "Más opciones para mensaje 2", exact: true }).click();

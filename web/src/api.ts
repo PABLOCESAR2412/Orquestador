@@ -227,7 +227,7 @@ export type ServidorEstado = {
   carpetas: { nombre: string; bytes: number; archivos: number }[];
   herramientas: { nombre: string; version: string | null; disponible: boolean }[];
   costos: { mesUsd: number; ultimos30dUsd: number; llamadas30d: number; tokens30d: number };
-  tareas: { ultimos30d: number; en_cola: number; en_curso: number };
+  tareas: { ultimos30d: number; en_cola: number; en_curso: number; max_simultaneas: number };
 };
 
 export type ProviderStatus = {
@@ -253,6 +253,51 @@ export type Message = {
   created_at: string;
   model: string | null;
   effort: string | null;
+};
+
+export type ContextoConversacion = {
+  conversation: {
+    id: string;
+    title: string;
+    provider: string | null;
+    model: string | null;
+    effort: string | null;
+    sessionId: string | null;
+    sessionModel: string | null;
+    createdAt: string;
+    lastActivity: string | null;
+  };
+  messages: { total: number; user: number; assistant: number; system: number };
+  actions: number;
+  usage: {
+    calls: number;
+    chatCalls: number;
+    taskCalls: number;
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens: number;
+    cacheReadTokens: number;
+    costUsd: number;
+    measured: number;
+    estimated: number;
+    unavailable: number;
+    unknown: number;
+  };
+  byModel: {
+    provider: string;
+    model: string;
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number;
+  }[];
+  lastInput: {
+    provider: string;
+    model: string;
+    inputTokens: number;
+    tokensPrecision: string;
+    createdAt: string;
+  } | null;
 };
 
 export type CostTier = "gratis" | "economico" | "medio" | "alto" | "premium";
@@ -651,6 +696,7 @@ export const api = {
       body: JSON.stringify({ projectId: projectId ?? null, title }),
     }),
   listMessages: (id: string) => request<Message[]>(`/api/conversations/${id}/messages`),
+  conversationContext: (id: string) => request<ContextoConversacion>(`/api/conversations/${id}/contexto`),
   uploadChatImage: (id: string, archivo: File) => {
     const body = new FormData();
     body.append("archivo", archivo, archivo.name);

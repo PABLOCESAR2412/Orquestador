@@ -167,6 +167,13 @@ describe("prompts", () => {
     expect(prompt).toContain("no requieren aprobación previa por sí solos");
   });
 
+  test("el analizador expone pasos y preguntas bloqueantes, no razonamiento interno", () => {
+    const prompt = promptAnalizador("Corrige el error y compruébalo");
+    expect(prompt).toContain("identifica la intención, las restricciones, las precondiciones");
+    expect(prompt).toContain("preguntas que bloqueen el trabajo");
+    expect(prompt).toContain("no incluyas razonamiento interno detallado");
+  });
+
   test("el obrero recibe el plan y las notas del usuario", () => {
     const plan = { ...(validarPlan(planValido) as { valor: Plan }).valor, notas: "Usa la rama principal" };
     const texto = promptObrero(plan);

@@ -7,6 +7,7 @@ import { capturarAlcance, comprobarAlcance } from "./alcance-plan";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "./config";
+import { MAX_TAREAS_SIMULTANEAS } from "./limites";
 import { db } from "./db";
 import { prepararSubagentes } from "./subagentes";
 import { publicar } from "./bus";
@@ -59,7 +60,6 @@ const controllers = new Map<string, AbortController>();
 const cancelRequested = new Set<string>();
 const tareasEnEjecucion = new Set<string>();
 const proyectosEnEjecucion = new Set<string>();
-const MAX_TAREAS_SIMULTANEAS = 10;
 let wake: (() => void) | null = null;
 
 // Error del analizador u obrero con texto pensado para el usuario.
@@ -125,10 +125,10 @@ function finish(
   id: string,
   status: "done" | "failed" | "cancelled",
   fields: { result?: string; error?: string; reporte?: Reporte },
-) {
-  db.transaction(() => {
-    db.query(
-      "UPDATE tasks SET status = ?, result = ?, error = ?, reporte = COALESCE(?, reporte), finished_at = datetime('now') WHERE id = ?",
+): boolean {
+  const terminado = db.transaction(() => {
+    const cambio = db.query(
+      "UPDATE tasks SET status = ?, result = ?, error = ?, reporte = COALESCE(?, reporte), finished_at = datetime('now') WHERE id = ? AND status NOT IN ('done', 'failed', 'cancelled')",
     ).run(
       status,
       fields.result ?? null,
@@ -136,13 +136,17 @@ function finish(
       fields.reporte ? JSON.stringify(fields.reporte) : null,
       id,
     );
+    if (cambio.changes !== 1) return false;
     registrarEvento(id, "terminada", fields.error ? `${status}: ${fields.error}` : status);
+    return true;
   })();
+  if (!terminado) return false;
   publicarEstado(id);
   // Una tarea cancelada sin cambios libera su copia; con cambios, queda para revisión.
   if (status === "cancelled") {
     limpiarCopiaCancelada(id).catch((err) => console.error("Limpieza de la copia cancelada:", mensajeSeguro(err)));
   }
+  return true;
 }
 
 function formatearRespuestaTarea(reporte: Reporte, texto: string): string {
@@ -413,12 +417,14 @@ async function runTask(task: QueuedTask) {
 }
 
 async function ejecutarTarea(task: QueuedTask) {
+  if (estadoActual(task.id) !== "queued") return;
   const errores = comprobarHerramientas(Boolean(task.project_id));
   if (errores.length) {
     const mensaje = errores.join("\n");
     registrarEvento(task.id, "comprobacion_fallida", mensaje);
-    finish(task.id, "failed", { error: mensaje });
-    avisarChat(task.id, mensaje, { model: task.model, effort: task.effort });
+    if (finish(task.id, "failed", { error: mensaje })) {
+      avisarChat(task.id, mensaje, { model: task.model, effort: task.effort });
+    }
     return;
   }
   // Con proyecto de Git, la tarea trabaja en su clon; con proyecto sin Git, en la carpeta del proyecto;
@@ -517,13 +523,14 @@ async function ejecutarTarea(task: QueuedTask) {
 
     const { reporte, texto } = resultado;
     if (reporte.estado === "fallo") {
-      finish(task.id, "failed", { result: texto, reporte, error: reporte.resumen });
-      avisarChat(task.id, reporte.resumen || "La tarea no se pudo completar.", { model: task.model, effort: task.effort });
+      if (finish(task.id, "failed", { result: texto, reporte, error: reporte.resumen })) {
+        avisarChat(task.id, reporte.resumen || "La tarea no se pudo completar.", { model: task.model, effort: task.effort });
+      }
     } else {
       const messageId = task.conversation_id
         ? db.query<{ id: string }, [string]>("SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(task.conversation_id)?.id
         : undefined;
-      finish(task.id, "done", { result: texto, reporte });
+      if (!finish(task.id, "done", { result: texto, reporte })) return;
       if (task.conversation_id) db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(task.conversation_id);
       avisarChat(task.id, formatearRespuestaTarea(reporte, texto), { model: task.model, effort: task.effort });
       if (task.conversation_id && task.project_id) {
@@ -544,16 +551,19 @@ async function ejecutarTarea(task: QueuedTask) {
     }
   } catch (err) {
     if (cancelRequested.has(task.id)) {
-      finish(task.id, "cancelled", { error: "Cancelada por el usuario." });
-      avisarChat(task.id, "La tarea fue cancelada.", { model: task.model, effort: task.effort });
+      if (finish(task.id, "cancelled", { error: "Cancelada por el usuario." })) {
+        avisarChat(task.id, "La tarea fue cancelada.", { model: task.model, effort: task.effort });
+      }
     } else if (err instanceof ErrorCuota) {
       pausarPorCuota(task.id, err, task.provider_session_id !== null, task.conversation_id);
     } else if (err instanceof TiempoAgotado || err instanceof ErrorFase) {
-      finish(task.id, "failed", { error: err.message });
-      avisarChat(task.id, err.message, { model: task.model, effort: task.effort });
+      if (finish(task.id, "failed", { error: err.message })) {
+        avisarChat(task.id, err.message, { model: task.model, effort: task.effort });
+      }
     } else {
-      finish(task.id, "failed", { error: mensajeSeguro(err) });
-      avisarChat(task.id, `Error en la tarea: ${mensajeSeguro(err)}`, { model: task.model, effort: task.effort });
+      if (finish(task.id, "failed", { error: mensajeSeguro(err) })) {
+        avisarChat(task.id, `Error en la tarea: ${mensajeSeguro(err)}`, { model: task.model, effort: task.effort });
+      }
     }
   } finally {
     salida.cerrar();
@@ -654,8 +664,8 @@ export function cancelTask(id: string): CancelOutcome {
 
   // Sin proceso en marcha (en cola, interrumpida o con el plan esperando al usuario): se cierra directamente.
   if (row.status === "queued" || row.status === "interrupted" || row.status === "waiting_approval" || row.status === "sin_cuota") {
-    finish(id, "cancelled", { error: "Cancelada por el usuario." });
-    return "cancelled";
+    if (finish(id, "cancelled", { error: "Cancelada por el usuario." })) return "cancelled";
+    return estadoActual(id) === "cancelled" ? "cancelled" : "not_cancellable";
   }
   if (row.status === "running" || row.status === "analyzing") {
     cancelRequested.add(id);

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { ErrorClonado, verificarRepositorio } from "../clonado";
 import { sinLimiteDeInactividad } from "../conexion";
 import { leerCuerpoJson } from "./projects";
+import { secretosDisponibles } from "../secretos";
 
 export const github = new Hono();
 
@@ -47,6 +48,7 @@ github.post("/github/cuenta", async (c) => {
   }
 
   const token = body.token.trim();
+  if (!secretosDisponibles()) return c.json({ error: "clave_sin_cifrado" }, 503);
   sinLimiteDeInactividad(c);
 
   try {

@@ -54,7 +54,6 @@ type ConversationRow = {
   runner_session_model: string | null;
   project_id: string | null;
   repo_path: string | null;
-  workspace: string | null;
   // Modelo que se quedó sin cuota en el último turno; null si el chat puede seguir.
   cuota_modelo: string | null;
 };
@@ -174,6 +173,106 @@ chat.get("/conversations/:id/messages", (c) => {
   return c.json(messages);
 });
 
+// Métricas verificables del contexto de un chat; los tokens acumulados no equivalen a la ventana activa.
+chat.get("/conversations/:id/contexto", (c) => {
+  const id = c.req.param("id");
+  const conversation = db.query<{
+    id: string;
+    title: string;
+    provider: string | null;
+    model: string | null;
+    effort: string | null;
+    sessionId: string | null;
+    sessionModel: string | null;
+    createdAt: string;
+    lastActivity: string | null;
+  }, [string]>(`
+    SELECT c.id, c.title, c.provider, c.model, c.effort,
+           c.runner_session_id AS sessionId, c.runner_session_model AS sessionModel,
+           c.created_at AS createdAt,
+           MAX(c.created_at,
+               COALESCE((SELECT MAX(created_at) FROM messages WHERE conversation_id=c.id), c.created_at),
+               COALESCE((SELECT MAX(created_at) FROM usage WHERE conversation_id=c.id), c.created_at),
+               COALESCE((SELECT MAX(created_at) FROM chat_actividad WHERE conversation_id=c.id), c.created_at)) AS lastActivity
+      FROM conversations c WHERE c.id=?
+  `).get(id);
+  if (!conversation) return c.json({ error: "conversation_not_found" }, 404);
+
+  const messages = db.query<{ total: number; user: number; assistant: number; system: number }, [string]>(`
+    SELECT COUNT(*) AS total,
+           COALESCE(SUM(role='user'), 0) AS user,
+           COALESCE(SUM(role='assistant'), 0) AS assistant,
+           COALESCE(SUM(role='system'), 0) AS system
+      FROM messages WHERE conversation_id=?
+  `).get(id)!;
+  const usage = db.query<{
+    calls: number;
+    chatCalls: number;
+    taskCalls: number;
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens: number;
+    cacheReadTokens: number;
+    costUsd: number;
+    measured: number;
+    estimated: number;
+    unavailable: number;
+    unknown: number;
+  }, [string]>(`
+    SELECT COUNT(*) AS calls,
+           COALESCE(SUM(task_id IS NULL), 0) AS chatCalls,
+           COALESCE(SUM(task_id IS NOT NULL), 0) AS taskCalls,
+           COALESCE(SUM(input_tokens), 0) AS inputTokens,
+           COALESCE(SUM(output_tokens), 0) AS outputTokens,
+           COALESCE(SUM(reasoning_tokens), 0) AS reasoningTokens,
+           COALESCE(SUM(cache_read_tokens), 0) AS cacheReadTokens,
+           COALESCE(SUM(cost), 0) AS costUsd,
+           COALESCE(SUM(tokens_precision='medida'), 0) AS measured,
+           COALESCE(SUM(tokens_precision='estimado'), 0) AS estimated,
+           COALESCE(SUM(tokens_precision='no_disponible'), 0) AS unavailable,
+           COALESCE(SUM(tokens_precision='desconocida'), 0) AS unknown
+      FROM usage WHERE conversation_id=?
+  `).get(id)!;
+  const byModel = db.query<{
+    provider: string;
+    model: string;
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number;
+  }, [string]>(`
+    SELECT provider, model, COUNT(*) AS calls,
+           COALESCE(SUM(input_tokens), 0) AS inputTokens,
+           COALESCE(SUM(output_tokens), 0) AS outputTokens,
+           COALESCE(SUM(cost), 0) AS costUsd
+      FROM usage WHERE conversation_id=?
+     GROUP BY provider, model ORDER BY SUM(input_tokens + output_tokens) DESC, model
+  `).all(id);
+  const lastInput = db.query<{
+    provider: string;
+    model: string;
+    inputTokens: number;
+    tokensPrecision: string;
+    createdAt: string;
+  }, [string]>(`
+    SELECT provider, model, input_tokens AS inputTokens,
+           tokens_precision AS tokensPrecision, created_at AS createdAt
+      FROM usage WHERE conversation_id=? AND task_id IS NULL ORDER BY created_at DESC, rowid DESC LIMIT 1
+  `).get(id);
+  const actions = db.query<{ total: number }, [string]>(
+    "SELECT COUNT(*) AS total FROM chat_actividad WHERE conversation_id=? AND tipo='accion'",
+  ).get(id)!.total;
+
+  return c.json({
+    conversation,
+    messages,
+    actions,
+    usage,
+    byModel,
+    lastInput: lastInput ?? null,
+  });
+});
+
 // Las imágenes se suben por separado del JSON del mensaje para conservar el límite pequeño de la API.
 chat.post("/conversations/:id/adjuntos", async (c) => {
   const id = c.req.param("id");
@@ -214,10 +313,11 @@ chat.get("/conversations/:id/adjuntos/:adjunto", (c) => {
 chat.get("/conversations/:id/archivo", (c) => {
   const conversacion = leerConversacion(c.req.param("id"));
   if (!conversacion) return c.json({ error: "conversation_not_found" }, 404);
-  const raiz = raizArchivosConversacion(conversacion);
-  if (!raiz) return c.json({ error: "project_path_not_found" }, 404);
+  const raices = raicesArchivosConversacion(conversacion);
+  if (!raices.length) return c.json({ error: "project_path_not_found" }, 404);
   try {
-    return c.json(leerArchivo(raiz, normalizarRuta(c.req.query("ruta"))));
+    const ruta = normalizarRuta(c.req.query("ruta"));
+    return c.json(leerEnRaices(raices, (raiz) => leerArchivo(raiz, ruta)));
   } catch (err) {
     if (err instanceof ArchivoError) {
       const code = err.code === "project_path_not_found" ? "archivo_chat_no_encontrado" : err.code;
@@ -231,11 +331,12 @@ chat.get("/conversations/:id/archivo-pdf", (c) => {
   const id = c.req.param("id");
   const conversacion = leerConversacion(id);
   if (!conversacion) return c.json({ error: "conversation_not_found" }, 404);
-  const raiz = raizArchivosConversacion(conversacion);
-  if (!raiz) return c.json({ error: "project_path_not_found" }, 404);
+  const raices = raicesArchivosConversacion(conversacion);
+  if (!raices.length) return c.json({ error: "project_path_not_found" }, 404);
 
   try {
-    const archivo = leerPdf(raiz, normalizarRuta(c.req.query("ruta")));
+    const ruta = normalizarRuta(c.req.query("ruta"));
+    const archivo = leerEnRaices(raices, (raiz) => leerPdf(raiz, ruta));
     const nombre = archivo.ruta.split("/").at(-1)!.replace(/[\r\n"\\]/g, "_");
     const nombreAscii = nombre.normalize("NFKD").replace(/\p{Diacritic}/gu, "").replace(/[^\x20-\x7E]/g, "_").replace(/["\\;]/g, "_");
     const nombreUtf8 = encodeURIComponent(nombre).replace(/[!'()*]/g, (caracter) => `%${caracter.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -302,11 +403,12 @@ chat.get("/conversations/:id/archivo-imagen", (c) => {
   const id = c.req.param("id");
   const conversacion = leerConversacion(id);
   if (!conversacion) return c.json({ error: "conversation_not_found" }, 404);
-  const raiz = raizArchivosConversacion(conversacion);
-  if (!raiz) return c.json({ error: "project_path_not_found" }, 404);
+  const raices = raicesArchivosConversacion(conversacion);
+  if (!raices.length) return c.json({ error: "project_path_not_found" }, 404);
 
   try {
-    const archivo = leerImagen(raiz, normalizarRuta(c.req.query("ruta")));
+    const ruta = normalizarRuta(c.req.query("ruta"));
+    const archivo = leerEnRaices(raices, (raiz) => leerImagen(raiz, ruta));
     const nombreSeguro = archivo.nombre.replace(/[\r\n"\\]/g, "_");
     const nombreAscii = nombreSeguro.normalize("NFKD").replace(/\p{Diacritic}/gu, "").replace(/[^\x20-\x7E]/g, "_").replace(/["\\;]/g, "_");
     const nombreUtf8 = encodeURIComponent(nombreSeguro).replace(/[!'()*]/g, (caracter) => `%${caracter.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -356,14 +458,31 @@ function leerConversacion(id: string): ConversationRow | null {
   return (
     db
       .query<ConversationRow, [string]>(
-        "SELECT c.id, c.model, c.effort, c.runner_session_id, c.runner_session_model, c.project_id, c.cuota_modelo, p.repo_path AS repo_path, (SELECT t.workspace FROM tasks t WHERE t.conversation_id=c.id AND t.workspace IS NOT NULL ORDER BY t.created_at DESC,t.rowid DESC LIMIT 1) AS workspace FROM conversations c LEFT JOIN projects p ON p.id = c.project_id WHERE c.id = ?",
+        "SELECT c.id, c.model, c.effort, c.runner_session_id, c.runner_session_model, c.project_id, c.cuota_modelo, p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id = c.project_id WHERE c.id = ?",
       )
       .get(id) ?? null
   );
 }
 
-function raizArchivosConversacion(conversacion: ConversationRow): string | null {
-  return conversacion.workspace ?? (conversacion.project_id ? conversacion.repo_path : join(chatWorkspace, conversacion.id));
+function raicesArchivosConversacion(conversacion: ConversationRow): string[] {
+  const workspaces = db.query<{ workspace: string }, [string]>(
+    "SELECT workspace FROM tasks WHERE conversation_id=? AND workspace IS NOT NULL ORDER BY created_at DESC,rowid DESC",
+  ).all(conversacion.id).map((tarea) => tarea.workspace);
+  const raizOriginal = conversacion.project_id ? conversacion.repo_path : join(chatWorkspace, conversacion.id);
+  return [...new Set([...workspaces, ...(raizOriginal ? [raizOriginal] : [])])];
+}
+
+function leerEnRaices<T>(raices: string[], leer: (raiz: string) => T): T {
+  let noEncontrado: ArchivoError | null = null;
+  for (const raiz of raices) {
+    try {
+      return leer(raiz);
+    } catch (err) {
+      if (!(err instanceof ArchivoError) || err.code !== "project_path_not_found") throw err;
+      noEncontrado = err;
+    }
+  }
+  throw noEncontrado ?? new ArchivoError("project_path_not_found", 404);
 }
 
 // Un mensaje en curso o un proyecto que se está revisando impiden responder: el chat espera.

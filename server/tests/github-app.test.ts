@@ -9,6 +9,8 @@ const rutaClave = join(tmpdir(), `telo-github-app-key-${randomUUID()}.pem`);
 const dataDirOriginal = process.env.DATA_DIR;
 if (!process.env.DATA_DIR) process.env.DATA_DIR = join(raiz, "data");
 mkdirSync(process.env.DATA_DIR, { recursive: true });
+const claveCifradoOriginal = process.env.TELO_CLAVE_CIFRADO;
+if (!process.env.TELO_CLAVE_CIFRADO) process.env.TELO_CLAVE_CIFRADO = Buffer.alloc(32, 1).toString("base64");
 
 const appIdOriginal = process.env.TELO_GITHUB_APP_ID;
 const rutaClaveOriginal = process.env.TELO_GITHUB_APP_PRIVATE_KEY_PATH;
@@ -36,6 +38,8 @@ afterAll(() => {
   else process.env.TELO_GITHUB_APP_ID = appIdOriginal;
   if (rutaClaveOriginal === undefined) delete process.env.TELO_GITHUB_APP_PRIVATE_KEY_PATH;
   else process.env.TELO_GITHUB_APP_PRIVATE_KEY_PATH = rutaClaveOriginal;
+  if (claveCifradoOriginal === undefined) delete process.env.TELO_CLAVE_CIFRADO;
+  else process.env.TELO_CLAVE_CIFRADO = claveCifradoOriginal;
   rmSync(rutaClave, { force: true });
   if (dataDirOriginal === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = dataDirOriginal;
@@ -184,6 +188,25 @@ test("hacer merge solicita a la GitHub App el permiso Contents de escritura", as
 
   expect(resultado).toEqual({ merged: true, sha: "abc123" });
   expect(llamada).toBe(3);
+});
+
+test("un 405 al fusionar indica que el Pull Request no está listo para fusionarse", async () => {
+  globalThis.fetch = (async (url: any) => {
+    if (String(url).endsWith("/app/installations?per_page=100")) {
+      return Response.json([{ id: 456, account: { login: "Pablo" }, repository_selection: "selected" }]);
+    }
+    if (String(url).endsWith("/app/installations/456/access_tokens")) {
+      return Response.json({ token: "ghs-merge-temporal" });
+    }
+    return Response.json({ message: "Pull Request is not mergeable" }, { status: 405 });
+  }) as unknown as typeof fetch;
+  await seleccionarInstalacionGithubApp(456);
+
+  await expect(githubApiPr("sin-proyecto", "/repos/Pablo/Orquestador/pulls/8/merge", {
+    tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "Pablo", instalacion_id: 456,
+  }, { commit_title: "Merge #8", merge_method: "squash" }, "PUT", "merge")).rejects.toThrow(
+    "GitHub indica que este Pull Request no se puede fusionar ahora; puede tener conflictos o requisitos de rama pendientes. Corrígelos en GitHub y solicita una nueva autorización de merge.",
+  );
 });
 
 test("al crear un PR, GitHub expone el detalle de una respuesta 422", async () => {

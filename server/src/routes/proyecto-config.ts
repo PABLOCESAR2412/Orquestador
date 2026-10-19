@@ -375,6 +375,11 @@ async function githubLlamar(
       }
       throw new Error(`GitHub no pudo completar la acción (422)${detalle ? `: ${detalle}` : "."}`);
     }
+    if (res.status === 405 && method === "PUT" && /\/pulls\/\d+\/merge$/.test(path)) {
+      throw new Error(
+        "GitHub indica que este Pull Request no se puede fusionar ahora; puede tener conflictos o requisitos de rama pendientes. Corrígelos en GitHub y solicita una nueva autorización de merge.",
+      );
+    }
     if (res.status === 401) {
       throw new Error(tipoAutenticacion === "github_app"
         ? "GitHub rechazó la credencial temporal de la App. Revisa la instalación y vuelve a vincularla en Ajustes."

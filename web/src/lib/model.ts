@@ -496,7 +496,7 @@ export function errorText(err: unknown): string {
       case "clave_existente":
         return "Este proyecto ya tiene una clave de GitHub. Bórrala antes de crear otra.";
       case "clave_sin_cifrado":
-        return "Falta la clave de cifrado en el servidor, así que no se puede crear la clave de GitHub. Revisa su archivo de entorno.";
+        return "Falta la clave de cifrado del servidor; configúrala antes de guardar credenciales de GitHub.";
       case "clave_no_generada":
         return "No se pudo crear la clave de GitHub en el servidor. Intenta de nuevo.";
       case "clave_no_encontrada":

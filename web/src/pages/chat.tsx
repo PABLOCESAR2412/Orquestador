@@ -5,6 +5,7 @@ import { api, ApiError, type Conversation, type Documento, type FormatoDocumento
 import { useEventosVivos } from "../lib/eventos-vivos";
 import { ModelPicker } from "../components/model-picker";
 import { UsoPanel } from "../components/uso-panel";
+import { ChatContexto } from "../components/chat-contexto";
 import { CapacidadesMedios } from "../components/capacidades-medios";
 import { IndicadorPensando, MensajeAgente, MensajeUsuario } from "../components/chat-mensajes";
 import { ProcesoAgente } from "../components/chat-proceso";
@@ -140,6 +141,7 @@ export function ChatPage() {
   };
   const [pickerOpen, setPickerOpen] = useState(false);
   const [usoAbierto, setUsoAbierto] = useState(false);
+  const [contextoAbierto, setContextoAbierto] = useState(false);
   const [mediosAbierto, setMediosAbierto] = useState(false);
   const [pendientes, setPendientes] = useState<Pendiente[]>([]);
   const [subiendoAdjuntos, setSubiendoAdjuntos] = useState(false);
@@ -203,6 +205,7 @@ export function ChatPage() {
   // Botones que abren el selector y el panel de uso: reciben el foco al cerrar.
   const chipRef = useRef<HTMLButtonElement>(null);
   const usoRef = useRef<HTMLButtonElement>(null);
+  const contextoRef = useRef<HTMLButtonElement>(null);
   const mediosRef = useRef<HTMLButtonElement>(null);
   const abrirArchivo = useCallback((referencia: ReferenciaArchivo, triggerId: string) => {
     archivoDisparadorRef.current = triggerId;
@@ -267,6 +270,7 @@ export function ChatPage() {
   useEffect(() => {
     setPendientes([]);
     setArchivoAbierto(null);
+    setContextoAbierto(false);
   }, [selectedId]);
 
   // Al salir del chat se corta el dictado.
@@ -1379,6 +1383,22 @@ export function ChatPage() {
                 </svg>
                 <span className="tl-boton-texto">Exportar</span>
               </button>
+              <button
+                type="button"
+                className="tl-boton"
+                aria-label="Contexto del chat"
+                aria-haspopup="dialog"
+                aria-expanded={contextoAbierto}
+                title="Ver uso, sesión y mensajes guardados de este chat"
+                ref={contextoRef}
+                onClick={() => setContextoAbierto(true)}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 11v5M12 8h.01" />
+                </svg>
+                <span className="tl-boton-texto">Contexto</span>
+              </button>
               <div className="tl-historial-wrap">
                 <button
                   type="button"
@@ -2121,7 +2141,6 @@ export function ChatPage() {
           {mostrarPanelArchivo && archivoAbierto && current && (
             <ChatArchivoPreview
               conversationId={current.id}
-              projectId={current.project_id}
               referencia={archivoAbierto}
               onClose={cerrarArchivo}
               onSelectPath={(ruta) => setArchivoAbierto({ ruta, linea: archivoAbierto.linea })}
@@ -2139,6 +2158,16 @@ export function ChatPage() {
                 setVistaDoc(doc);
               }}
               error={settingsError}
+            />
+          )}
+
+          {contextoAbierto && current && (
+            <ChatContexto
+              conversationId={current.id}
+              messages={messages.data ?? []}
+              models={modelList}
+              onClose={() => setContextoAbierto(false)}
+              disparador={contextoRef}
             />
           )}
 

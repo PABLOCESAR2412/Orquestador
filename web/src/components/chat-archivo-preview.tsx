@@ -5,15 +5,17 @@ import { errorText } from "../lib/model";
 import { PdfPreview } from "./pdf-preview";
 import { describirTipoArchivo, type ReferenciaArchivo } from "./chat-contenido";
 
+function reintentarArchivo(failureCount: number, error: unknown): boolean {
+  return failureCount < 1 && (!(error instanceof ApiError) || error.status >= 500);
+}
+
 export function ChatArchivoPreview({
   conversationId,
-  projectId,
   referencia,
   onClose,
   onSelectPath,
 }: {
   conversationId: string;
-  projectId?: string | null;
   referencia: ReferenciaArchivo;
   onClose: () => void;
   onSelectPath: (ruta: string) => void;
@@ -21,26 +23,28 @@ export function ChatArchivoPreview({
   const esPdf = /\.pdf$/i.test(referencia.ruta);
   const esImagen = /\.(?:png|jpe?g|webp|gif)$/i.test(referencia.ruta);
   const archivo = useQuery({
-    queryKey: ["conversation-file", conversationId, projectId, referencia.ruta],
-    queryFn: () => projectId
-      ? api.readProjectFile(projectId, referencia.ruta)
-      : api.chatFile(conversationId, referencia.ruta),
+    queryKey: ["conversation-file", conversationId, referencia.ruta],
+    queryFn: () => api.chatFile(conversationId, referencia.ruta),
     enabled: !esPdf && !esImagen,
+    retry: reintentarArchivo,
   });
   const pdf = useQuery({
     queryKey: ["conversation-pdf", conversationId, referencia.ruta],
     queryFn: () => api.chatPdfInfo(conversationId, referencia.ruta),
     enabled: esPdf,
+    retry: reintentarArchivo,
   });
   const pdfContenido = useQuery({
     queryKey: ["conversation-pdf-content", conversationId, referencia.ruta],
     queryFn: () => api.chatPdf(conversationId, referencia.ruta),
     enabled: esPdf && Boolean(pdf.data),
+    retry: reintentarArchivo,
   });
   const imagen = useQuery({
-    queryKey: ["conversation-image", conversationId, projectId, referencia.ruta],
+    queryKey: ["conversation-image", conversationId, referencia.ruta],
     queryFn: () => api.chatImageInfo(conversationId, referencia.ruta),
     enabled: esImagen,
+    retry: reintentarArchivo,
   });
   const cuerpoRef = useRef<HTMLDivElement>(null);
 
