@@ -320,7 +320,7 @@ chat.get("/conversations/:id/archivo", (c) => {
     return c.json(leerEnRaices(raices, (raiz) => leerArchivo(raiz, ruta)));
   } catch (err) {
     if (err instanceof ArchivoError) {
-      const code = err.code === "project_path_not_found" ? "archivo_chat_no_encontrado" : err.code;
+      const code = err.code === "project_path_not_found" && !conversacion.project_id ? "archivo_chat_no_encontrado" : err.code;
       return c.json({ error: code }, err.status);
     }
     throw err;
@@ -391,7 +391,7 @@ chat.get("/conversations/:id/archivo-pdf", (c) => {
     });
   } catch (err) {
     if (err instanceof ArchivoError) {
-      const code = err.code === "project_path_not_found" ? "archivo_chat_no_encontrado" : err.code;
+      const code = err.code === "project_path_not_found" && !conversacion.project_id ? "archivo_chat_no_encontrado" : err.code;
       return c.json({ error: code }, err.status);
     }
     throw err;
@@ -431,7 +431,7 @@ chat.get("/conversations/:id/archivo-imagen", (c) => {
     });
   } catch (err) {
     if (err instanceof ArchivoError) {
-      const code = err.code === "project_path_not_found" ? "archivo_chat_no_encontrado" : err.code;
+      const code = err.code === "project_path_not_found" && !conversacion.project_id ? "archivo_chat_no_encontrado" : err.code;
       return c.json({ error: code }, err.status);
     }
     throw err;

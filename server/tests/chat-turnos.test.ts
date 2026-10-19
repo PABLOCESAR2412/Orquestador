@@ -490,6 +490,10 @@ describe("imágenes de una conversación", () => {
     const base = await app.request(`/api/conversations/${conversacionId}/archivo?ruta=README.md`);
     expect(base.status).toBe(200);
     expect(await base.json()).toMatchObject({ ruta: "README.md", texto: "Archivo del repositorio base" });
+
+    const ausente = await app.request(`/api/conversations/${conversacionId}/archivo?ruta=Gone.tsx`);
+    expect(ausente.status).toBe(404);
+    expect(await ausente.json()).toEqual({ error: "project_path_not_found" });
   });
 });
 
