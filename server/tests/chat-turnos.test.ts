@@ -209,6 +209,23 @@ describe("archivos PDF de una conversación", () => {
   });
 });
 
+describe("archivos de texto de chats sin proyecto", () => {
+  test("sirve la vista previa desde el workspace aislado y conserva los límites de ruta", async () => {
+    const id = conversacion();
+    const carpetaChat = join(process.env.DATA_DIR!, "chat-workspace", id);
+    mkdirSync(carpetaChat, { recursive: true });
+    writeFileSync(join(carpetaChat, "informe.md"), "# Informe\nContenido del chat.", "utf8");
+
+    const vista = await app.request(`/api/conversations/${id}/archivo?ruta=informe.md`);
+    expect(vista.status).toBe(200);
+    expect(await vista.json()).toEqual({ ruta: "informe.md", tamano: 29, texto: "# Informe\nContenido del chat.", truncado: false });
+
+    const traversal = await app.request(`/api/conversations/${id}/archivo?ruta=${encodeURIComponent("../secreto.txt")}`);
+    expect(traversal.status).toBe(400);
+    expect(await traversal.json()).toEqual({ error: "invalid_project_path" });
+  });
+});
+
 // Estas pruebas lanzan grupos de procesos con `setsid`, igual que el servidor Linux.
 describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
   test("el runner recibe el archivo de imagen adjuntado al mensaje", async () => {

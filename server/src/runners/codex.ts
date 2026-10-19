@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
 import { hallarEjecutable } from "../ejecutable";
 import { carpetaHome } from "../hogar";
-import { entornoDelAgente, type RunResult, type Usage } from "./opencode";
+import { entornoDelAgente, estimarUso, type RunResult, type Usage } from "./opencode";
 import type { ImagenAgente } from "../chat-adjuntos";
 
 // Termina el grupo de procesos para que herramientas e hijos no queden como zombies huérfanos.
@@ -133,7 +133,7 @@ export async function runCodex(opts: {
                 tokensMedidos: true,
                 costeDisponible: false,
               };
-              opts.onUso?.(usage);
+              if (usage.input > 0 || usage.output > 0) opts.onUso?.(usage);
             } else if (ev.type === "error" || ev.type === "turn.failed") {
               const msg = ev.message ?? ev.error?.message;
               if (typeof msg === "string") {
@@ -184,10 +184,16 @@ export async function runCodex(opts: {
     throw new Error(`Codex falló: ${detalle}`);
   }
 
+  let usoFinal = usage as Usage | null;
+  if (!usoFinal || (usoFinal.input === 0 && usoFinal.output === 0)) {
+    usoFinal = estimarUso(opts.prompt, text.trim());
+    opts.onUso?.(usoFinal);
+  }
+
   return {
     text: text.trim(),
     textoFinal: text.trim(),
     sessionId,
-    usage,
+    usage: usoFinal,
   };
 }

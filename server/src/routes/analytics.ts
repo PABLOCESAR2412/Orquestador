@@ -3,10 +3,11 @@ import { db } from "../db";
 import { getPreferences } from "../preferences";
 
 type Totals = { calls: number; input: number; output: number; cost: number };
-type DayRow = { day: string; cost: number; tokens: number; calls: number };
+type DiaModeloRow = { model: string; provider: string; calls: number; tokens: number; estimados: number };
+type DayRow = { day: string; cost: number; tokens: number; calls: number; tokensEstimados: number; modelos: DiaModeloRow[] };
 type StatusRow = { status: string; n: number };
 type UsoModeloRow = { model: string; cost: number; tokens: number; calls: number };
-type UsoTipoRow = { tipo: "chat" | "tarea" | "otro"; calls: number; tokens: number; cost: number; sinTokens: number; sinCoste: number };
+type UsoTipoRow = { tipo: "chat" | "tarea" | "otro"; calls: number; tokens: number; cost: number; tokensEstimados: number; sinTokens: number; sinCoste: number };
 type TareaModeloRow = { model: string; tareas: number; duracion: number | null };
 
 const TASK_STATUSES = ["queued", "analyzing", "waiting_approval", "running", "interrupted", "sin_cuota", "done", "failed", "cancelled"] as const;
@@ -45,19 +46,21 @@ analytics.get("/analytics", (c) => {
   }
   const usoWhere = `WHERE ${usoCond.join(" AND ")}`;
   const calidad = db.query<{
-    tokensMedidos: number; costesEstimados: number; sinTokens: number; sinCoste: number; historicos: number;
+    tokensMedidos: number; tokensEstimados: number; costesEstimados: number; sinTokens: number; sinCoste: number; historicos: number;
   }, string[]>(`SELECT
     COALESCE(SUM(tokens_precision='medida'),0) AS tokensMedidos,
+    COALESCE(SUM(tokens_precision='estimado'),0) AS tokensEstimados,
     COALESCE(SUM(cost_precision='estimado'),0) AS costesEstimados,
     COALESCE(SUM(tokens_precision='no_disponible'),0) AS sinTokens,
     COALESCE(SUM(cost_precision='no_disponible'),0) AS sinCoste,
     COALESCE(SUM(tokens_precision='desconocida' OR cost_precision='desconocida'),0) AS historicos
     FROM usage u ${usoWhere}`).get(...usoParams)!;
   const byTask = db.query<{
-    taskId: string; calls: number; tokens: number; cost: number; tokensMedidos: number; costesEstimados: number; sinTokens: number; sinCoste: number; historicos: number;
+    taskId: string; calls: number; tokens: number; cost: number; tokensMedidos: number; tokensEstimados: number; costesEstimados: number; sinTokens: number; sinCoste: number; historicos: number;
   }, string[]>(`SELECT task_id AS taskId, COUNT(*) AS calls,
     SUM(input_tokens + output_tokens + COALESCE(reasoning_tokens, 0)) AS tokens, SUM(cost) AS cost,
-    SUM(tokens_precision='medida') AS tokensMedidos, SUM(cost_precision='estimado') AS costesEstimados,
+    SUM(tokens_precision='medida') AS tokensMedidos, SUM(tokens_precision='estimado') AS tokensEstimados,
+    SUM(cost_precision='estimado') AS costesEstimados,
     SUM(tokens_precision='no_disponible') AS sinTokens, SUM(cost_precision='no_disponible') AS sinCoste,
     SUM(tokens_precision='desconocida' OR cost_precision='desconocida') AS historicos
     FROM usage u ${usoWhere} AND task_id IS NOT NULL
@@ -97,6 +100,7 @@ analytics.get("/analytics", (c) => {
               COUNT(*) AS calls,
               COALESCE(SUM(u.input_tokens + u.output_tokens + COALESCE(u.reasoning_tokens, 0)), 0) AS tokens,
               COALESCE(SUM(u.cost), 0) AS cost,
+              COALESCE(SUM(u.tokens_precision='estimado'),0) AS tokensEstimados,
               COALESCE(SUM(u.tokens_precision='no_disponible'),0) AS sinTokens,
               COALESCE(SUM(u.cost_precision='no_disponible'),0) AS sinCoste
          FROM usage u ${usoWhere}
@@ -106,7 +110,7 @@ analytics.get("/analytics", (c) => {
   const usoPorTipoMap = new Map(usosPorTipo.map((row) => [row.tipo, row]));
   const byType = (["chat", "tarea", "otro"] as const).map((tipo) => {
     const row = usoPorTipoMap.get(tipo);
-    return { tipo, calls: row?.calls ?? 0, tokens: row?.tokens ?? 0, cost: row?.cost ?? 0, sinTokens: row?.sinTokens ?? 0, sinCoste: row?.sinCoste ?? 0 };
+    return { tipo, calls: row?.calls ?? 0, tokens: row?.tokens ?? 0, cost: row?.cost ?? 0, tokensEstimados: row?.tokensEstimados ?? 0, sinTokens: row?.sinTokens ?? 0, sinCoste: row?.sinCoste ?? 0 };
   });
 
   // Jev es una capa auxiliar con cuota propia. Sus tokens se muestran aparte y no entran en el coste del agente.
@@ -136,16 +140,33 @@ analytics.get("/analytics", (c) => {
       `SELECT date(u.created_at) AS day,
               COALESCE(SUM(u.cost), 0) AS cost,
               COALESCE(SUM(u.input_tokens + u.output_tokens + COALESCE(u.reasoning_tokens, 0)), 0) AS tokens,
-              COUNT(*) AS calls
+              COUNT(*) AS calls,
+              COALESCE(SUM(u.tokens_precision='estimado'), 0) AS tokensEstimados
          FROM usage u ${usoWhere}
         GROUP BY day`,
     )
     .all(...usoParams);
+  const modelosPorDia = db.query<{
+    day: string; model: string; provider: string; calls: number; tokens: number; estimados: number;
+  }, string[]>(`SELECT date(u.created_at) AS day, u.model, u.provider, COUNT(*) AS calls,
+      COALESCE(SUM(u.input_tokens + u.output_tokens + COALESCE(u.reasoning_tokens, 0)), 0) AS tokens,
+      COALESCE(SUM(u.tokens_precision='estimado'), 0) AS estimados
+    FROM usage u ${usoWhere} GROUP BY day, u.model, u.provider`,
+  ).all(...usoParams);
   const byDayMap = new Map(dayRows.map((r) => [r.day, r]));
+  const modelosDiaMap = new Map<string, DiaModeloRow[]>();
+  for (const row of modelosPorDia) {
+    const modelos = modelosDiaMap.get(row.day) ?? [];
+    modelos.push({ model: row.model, provider: row.provider, calls: row.calls, tokens: row.tokens, estimados: row.estimados });
+    modelosDiaMap.set(row.day, modelos);
+  }
   const byDay: DayRow[] = [];
   for (let i = days - 1; i >= 0; i--) {
     const day = isoDay(i * 86_400_000);
-    byDay.push(byDayMap.get(day) ?? { day, cost: 0, tokens: 0, calls: 0 });
+    byDay.push({
+      ...(byDayMap.get(day) ?? { day, cost: 0, tokens: 0, calls: 0, tokensEstimados: 0 }),
+      modelos: modelosDiaMap.get(day) ?? [],
+    });
   }
 
   // Por modelo: costo y tokens de usage, y tareas, duración y costo por tarea de tasks.

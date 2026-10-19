@@ -103,6 +103,10 @@ export function urlPdfConversacion(conversationId: string, ruta: string, descarg
   return `/api/conversations/${encodeURIComponent(conversationId)}/archivo-pdf?${query}`;
 }
 
+export function urlArchivoConversacion(conversationId: string, ruta: string): string {
+  return `/api/conversations/${encodeURIComponent(conversationId)}/archivo?${new URLSearchParams({ ruta })}`;
+}
+
 export function urlImagenConversacion(conversationId: string, ruta: string, descargar = false, meta = false): string {
   const query = new URLSearchParams({ ruta });
   if (descargar) query.set("descargar", "1");
@@ -657,6 +661,7 @@ export const api = {
   },
   chatPdfInfo: (id: string, ruta: string) => request<ChatPdfInfo>(urlPdfConversacion(id, ruta, false, true)),
   chatPdf: (id: string, ruta: string) => requestPdf(urlPdfConversacion(id, ruta)),
+  chatFile: (id: string, ruta: string) => request<{ ruta: string; tamano: number; texto: string; truncado: boolean }>(urlArchivoConversacion(id, ruta)),
   chatImageInfo: (id: string, ruta: string) => request<ChatImageInfo>(urlImagenConversacion(id, ruta, false, true)),
   // Pasos del agente de un turno (el id es el del mensaje del usuario).
   listTurnoActividad: (conversacionId: string, turnoId: string) =>
@@ -935,7 +940,7 @@ export type Preferences = {
   compartirContextoChats?: boolean;
 };
 
-export type CalidadUso = { tokensMedidos: number; costesEstimados: number; sinTokens: number; sinCoste: number; historicos: number };
+export type CalidadUso = { tokensMedidos: number; tokensEstimados: number; costesEstimados: number; sinTokens: number; sinCoste: number; historicos: number };
 export type Analytics = {
   calidad?: CalidadUso;
   byTask?: (CalidadUso & { taskId: string; calls: number; tokens: number; cost: number })[];
@@ -946,7 +951,7 @@ export type Analytics = {
   totals: { calls: number; inputTokens: number; outputTokens: number; cost: number };
   byType: { tipo: "chat" | "tarea" | "otro"; calls: number; tokens: number; cost: number; sinTokens?: number; sinCoste?: number }[];
   usoJev?: { tipo: "recomendaciones_chat" | "memoria_proyecto" | "clasificacion_tarea" | "prueba_conexion"; calls: number; inputTokens: number; outputTokens: number; tokens: number }[];
-  byDay: { day: string; cost: number; tokens: number; calls: number }[];
+  byDay: { day: string; cost: number; tokens: number; calls: number; tokensEstimados?: number; modelos?: { model: string; provider: string; calls: number; tokens: number; estimados: number }[] }[];
   byModel: {
     model: string;
     cost: number;

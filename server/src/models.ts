@@ -137,7 +137,9 @@ function entornoDelCli(): Record<string, string> {
 export async function getModels(force = false): Promise<ModelInfo[]> {
   if (!force && cache && Date.now() - cache.at < TTL_MS) return cache.models;
 
-  const proc = Bun.spawn(["opencode", "models", "--verbose"], {
+  const args = ["opencode", "models", "--verbose"];
+  if (force) args.push("--refresh");
+  const proc = Bun.spawn(args, {
     stdout: "pipe",
     stderr: "pipe",
     env: entornoDelCli(),
@@ -190,7 +192,10 @@ export async function validateSelection(
   model: string,
   effort: string | null,
 ): Promise<{ ok: true; info: ModelInfo } | { ok: false; error: string }> {
-  const info = (await getModels()).find((m) => m.id === model);
+  let info = (await getModels()).find((m) => m.id === model);
+  // Chats y preferencias antiguas pueden conservar un ID que OpenCode ya retiró.
+  // Actualiza el catálogo una vez antes de rechazarlo.
+  if (!info) info = (await getModels(true)).find((m) => m.id === model);
   if (!info) return { ok: false, error: "model_not_found" };
   if (effort && !info.variants.includes(effort)) {
     return { ok: false, error: "effort_not_supported" };

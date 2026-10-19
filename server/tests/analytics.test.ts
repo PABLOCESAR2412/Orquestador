@@ -31,7 +31,7 @@ test("separa precisión de datos nuevos y históricos sin inventar consumo cero"
            ('ausente','test','test','precision-tarea',0,0,0,'no_disponible','no_disponible')`).run();
   db.query("INSERT INTO usage(id,provider,model,cost) VALUES ('historico','test','test',0.2)").run();
   const datos = await (await app.request('/analytics?days=30')).json() as any;
-  expect(datos.calidad).toEqual({ tokensMedidos: 1, costesEstimados: 1, sinTokens: 1, sinCoste: 1, historicos: 1 });
+  expect(datos.calidad).toEqual({ tokensMedidos: 1, tokensEstimados: 0, costesEstimados: 1, sinTokens: 1, sinCoste: 1, historicos: 1 });
   expect(datos.byTask[0]).toMatchObject({ taskId: 'precision-tarea', calls: 2, tokens: 15, cost: 0, sinTokens: 1, sinCoste: 1 });
   expect(datos.byType.find((fila: any) => fila.tipo === 'tarea')).toMatchObject({ sinTokens: 1, sinCoste: 1 });
   expect(datos.totals.cost).toBe(0.2);
