@@ -161,6 +161,12 @@ describe("prompts", () => {
     expect(reparacion).toContain("segmento .git");
   });
 
+  test("el analizador no convierte una tarea normal en una aprobación de plan", () => {
+    const prompt = promptAnalizador("Investiga el error y agrega una prueba");
+    expect(prompt).toContain("La revisión del plan no es un paso obligatorio");
+    expect(prompt).toContain("no requieren aprobación previa por sí solos");
+  });
+
   test("el obrero recibe el plan y las notas del usuario", () => {
     const plan = { ...(validarPlan(planValido) as { valor: Plan }).valor, notas: "Usa la rama principal" };
     const texto = promptObrero(plan);

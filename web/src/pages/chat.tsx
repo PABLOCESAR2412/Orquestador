@@ -54,7 +54,6 @@ type Restaurar = { texto: string; pendientes: Pendiente[] };
 
 // Quita tildes y pasa a minúsculas para buscar comandos: "analiticas" encuentra "Analíticas".
 const sinTildes = (texto: string) => texto.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-const ES_IMAGEN_RASTER = (ruta: string) => /\.(?:png|jpe?g|webp|gif)$/i.test(ruta);
 
 function etiquetaPrompt(texto: string): string {
   const limpio = texto.replace(/\s+/g, " ").trim() || "Mensaje con adjuntos";
@@ -1282,7 +1281,7 @@ export function ChatPage() {
     c.ejecutar();
   };
   const mostrarPanelArchivo = Boolean(
-    archivoAbierto && current && (current.project_id || /\.pdf$/i.test(archivoAbierto.ruta) || ES_IMAGEN_RASTER(archivoAbierto.ruta)),
+    archivoAbierto && current,
   );
 
   return (
@@ -1462,7 +1461,7 @@ export function ChatPage() {
                         modelo={m.model ? modelList.find((modelo) => modelo.id === m.model)?.name ?? m.model : null}
                         esfuerzo={m.effort}
                         onAbrirArchivo={current ? abrirArchivo : undefined}
-                        permitirAbrirArchivo={(referencia) => Boolean(current?.project_id || /\.pdf$/i.test(referencia.ruta) || ES_IMAGEN_RASTER(referencia.ruta))}
+                        permitirAbrirArchivo={() => Boolean(current)}
                         duracion={duracionDeRespuesta(i)}
                         proceso={
                           selectedId && turnoDeRespuesta(i)

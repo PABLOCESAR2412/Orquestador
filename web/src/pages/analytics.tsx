@@ -306,7 +306,7 @@ export function AnalyticsPage() {
             {data.calidad && (
               <section className="an-panel" aria-label="Precisión de las métricas">
                 <h2 className="an-panel-titulo">Precisión de las métricas</h2>
-                <p className="an-panel-sub">{data.calidad.tokensMedidos} registros con tokens medidos · {data.calidad.costesEstimados} con coste estimado (Google/OpenCode).</p>
+                <p className="an-panel-sub">{data.calidad.tokensMedidos} registros con tokens medidos · {data.calidad.tokensEstimados} con tokens estimados · {data.calidad.costesEstimados} con coste estimado.</p>
                 <p className="an-panel-sub">{data.calidad.sinTokens} sin tokens disponibles · {data.calidad.sinCoste} sin coste disponible · {data.calidad.historicos} históricos sin precisión identificada.</p>
                 <p className="an-panel-sub">Los totales pueden ser parciales según la respuesta de cada proveedor. No son facturas; un dato ausente se muestra como «—».</p>
               </section>
@@ -694,8 +694,8 @@ export function AnalyticsPage() {
                 <span className="an-chip">Consumo de sistema</span>
               </div>
 
-              <div className="an-tabla-caja">
-                <table className="an-tabla an-uso-tabla" aria-labelledby="an-consumo-telo-titulo">
+              <div className="an-tabla-caja an-consumo-tabla-wrap">
+                <table className="an-tabla an-uso-tabla an-consumo-tabla" aria-labelledby="an-consumo-telo-titulo">
                   <thead>
                     <tr>
                       <th scope="col">Función interna</th>

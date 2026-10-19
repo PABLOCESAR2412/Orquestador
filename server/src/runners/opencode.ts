@@ -10,7 +10,20 @@ export function sesionValida(id: unknown): id is string {
   return typeof id === "string" && PATRON_SESION.test(id);
 }
 
-export type Usage = { input: number; output: number; reasoning: number; cacheRead: number; cost: number; tokensMedidos?: boolean; costeDisponible?: boolean };
+export type Usage = { input: number; output: number; reasoning: number; cacheRead: number; cost: number; tokensMedidos?: boolean; tokensEstimados?: boolean; costeDisponible?: boolean };
+
+export function estimarUso(prompt: string, respuesta: string): Usage {
+  return {
+    input: Math.max(1, Math.ceil(prompt.length / 4)),
+    output: Math.max(0, Math.ceil(respuesta.length / 4)),
+    reasoning: 0,
+    cacheRead: 0,
+    cost: 0,
+    tokensMedidos: false,
+    tokensEstimados: true,
+    costeDisponible: false,
+  };
+}
 // `text` une todo lo que el agente escribió. `textoFinal` es lo que dijo después de su última
 // herramienta: la respuesta, sin la narración de los pasos (que el chat muestra aparte).
 export type RunResult = { text: string; textoFinal: string; sessionId: string | null; usage: Usage | null };
@@ -326,7 +339,7 @@ export async function runOpenCode(opts: {
     }
     const uso = ev && usoDelEvento(ev);
     // No ocultar un fallo de persistencia como si fuera una línea JSON inválida.
-    if (uso) opts.onUso?.(uso);
+    if (uso && (uso.input > 0 || uso.output > 0 || uso.cost > 0)) opts.onUso?.(uso);
     // Un fallo del llamador (p. ej. al escribir el registro) no debe cortar al agente.
     if (opts.onLinea) {
       try {
@@ -397,17 +410,7 @@ export async function runOpenCode(opts: {
   // estimamos el uso a partir del prompt y texto generado para garantizar registro contable
   const textoFinal = textoTrasHerramientas.trim() || text.trim();
   if (!usage || (usage.input === 0 && usage.output === 0)) {
-    const inputEst = Math.max(1, Math.ceil(opts.prompt.length / 3.8));
-    const outputEst = Math.max(1, Math.ceil(textoFinal.length / 3.5));
-    usage = {
-      input: inputEst,
-      output: outputEst,
-      reasoning: 0,
-      cacheRead: 0,
-      cost: 0,
-      tokensMedidos: true,
-      costeDisponible: false,
-    };
+    usage = estimarUso(opts.prompt, textoFinal);
     opts.onUso?.(usage);
   }
 

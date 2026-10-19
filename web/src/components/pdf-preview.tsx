@@ -13,11 +13,14 @@ export function PdfPreview({ archivo, nombre }: Props) {
 
   useEffect(() => {
     const contenedor = contenedorRef.current;
-    if (!contenedor) return;
+    if (!contenedor) {
+      setAncho(0);
+      return;
+    }
     const observer = new ResizeObserver(([entrada]) => setAncho(entrada?.contentRect.width ?? 0));
     observer.observe(contenedor);
     return () => observer.disconnect();
-  }, []);
+  }, [documento]);
 
   useEffect(() => {
     let cancelado = false;

@@ -21,9 +21,11 @@ export function ChatArchivoPreview({
   const esPdf = /\.pdf$/i.test(referencia.ruta);
   const esImagen = /\.(?:png|jpe?g|webp|gif)$/i.test(referencia.ruta);
   const archivo = useQuery({
-    queryKey: ["project-file", projectId, referencia.ruta],
-    queryFn: () => api.readProjectFile(projectId!, referencia.ruta),
-    enabled: !esPdf && !esImagen && Boolean(projectId),
+    queryKey: ["conversation-file", conversationId, projectId, referencia.ruta],
+    queryFn: () => projectId
+      ? api.readProjectFile(projectId, referencia.ruta)
+      : api.chatFile(conversationId, referencia.ruta),
+    enabled: !esPdf && !esImagen,
   });
   const pdf = useQuery({
     queryKey: ["conversation-pdf", conversationId, referencia.ruta],
@@ -144,8 +146,6 @@ export function ChatArchivoPreview({
             </div>
           )}
         </>
-      ) : !projectId ? (
-        <p className="tl-chat-archivo-estado" role="status">Este archivo solo se puede abrir desde un chat de proyecto.</p>
       ) : (
         <>
       {archivo.isPending && <p className="tl-chat-archivo-estado" role="status">Cargando archivo…</p>}

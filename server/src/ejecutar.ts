@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { registrarEvento } from "./eventos";
-import { validateSelection } from "./models";
+import { getModels, validateSelection } from "./models";
 import { getPreferences } from "./preferences";
 import { entornoDeProyecto } from "./secretos";
 import { entornoProveedores } from "./claves-proveedor";
@@ -140,7 +140,7 @@ export function registrarUsoAgente(
   let costo = uso.cost;
   let costPrecision = uso.costeDisponible === undefined ? "desconocida" : uso.costeDisponible ? "estimado" : "no_disponible";
 
-  if (costo === 0 && (uso.input > 0 || uso.output > 0) && provider === "google") {
+  if (costo === 0 && uso.tokensEstimados !== true && (uso.input > 0 || uso.output > 0) && provider === "google") {
     costo = estimarCosteGemini(modeloCanonico, uso.input, uso.output);
     costPrecision = "estimado";
   }
@@ -153,7 +153,7 @@ export function registrarUsoAgente(
     crypto.randomUUID(), contexto.conversationId ?? null, provider, modeloCanonico,
     uso.input, uso.output, uso.reasoning, uso.cacheRead, costo,
     contexto.projectId ?? null, contexto.taskId ?? null,
-    uso.tokensMedidos === undefined ? "desconocida" : uso.tokensMedidos ? "medida" : "no_disponible",
+    uso.tokensEstimados ? "estimado" : uso.tokensMedidos === undefined ? "desconocida" : uso.tokensMedidos ? "medida" : "no_disponible",
     costPrecision,
   );
 }
@@ -162,6 +162,7 @@ export function registrarUsoAgente(
 const PATRON_PROVEEDOR = /\b(429|5\d\d)\b|rate limit|too many requests|overloaded|quota|server error|internal error|service unavailable|bad gateway|gateway timeout|temporarily unavailable/i;
 // Saldo insuficiente: otro modelo no lo arregla, así que nunca se reintenta.
 const PATRON_SALDO = /insufficient|saldo|funds|balance/i;
+const PATRON_MODELO_NO_ENCONTRADO = /model[_ ]not found|unknown model|no such model/i;
 // Solo límites definitivos (no cualquier 429): la tarea o el chat se detienen para que el usuario elija otro modelo.
 const PATRON_CUOTA = /(?:\b(?:quota|cuota)\b.*\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|reach(?:ed)?|agotad[ao]|consumid[ao])\b|\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|agotad[ao]|consumid[ao])\b.*\b(?:quota|cuota)\b|\busage limit\b.*\b(?:reach(?:ed)?|exceed(?:ed)?|exhaust(?:ed)?)\b|\bfree usage\b.*\b(?:exhaust(?:ed)?|reach(?:ed)?|exceed(?:ed)?)\b|\bresource[_ ]exhausted\b|\binsufficient[_ ]quota\b|\binsufficient\s+(?:account\s+)?(?:funds|balance|credits?)\b|\b(?:sin|no hay)\s+(?:saldo|cr[eé]ditos)\b)/i;
 
@@ -270,6 +271,10 @@ export function esErrorTransitorioDelProveedor(err: unknown, signal?: AbortSigna
   return codigo !== null && codigo >= 500 && codigo <= 599;
 }
 
+function esErrorModeloNoEncontrado(err: unknown): boolean {
+  return err instanceof ErrorAgente && PATRON_MODELO_NO_ENCONTRADO.test(textoDelProveedor(err));
+}
+
 // Solo el código HTTP, nunca el texto del error: el detalle llega a la interfaz.
 function etiquetaDelError(err: unknown): string {
   const texto = textoDelProveedor(err);
@@ -331,6 +336,8 @@ export function conInstrucciones(projectId: string | null | undefined, prompt: s
 // Va delante del prompt en cada envío; la sesión de OpenCode no lo guarda por sí sola.
 export const ESTILO_CHAT = [
   "Estilo de respuesta, presentación y razonamiento nativo de Telo (no lo menciones en la respuesta):",
+  "- Conversación natural: habla como un agente que responde al usuario, no como un generador de planes. No repitas planes, listas de pasos ni frases de arranque en cada turno; anuncia brevemente una acción solo si ayuda a entender una espera y entrega el resultado cuando termines.",
+  "- Pregunta solo si falta una decisión o un dato que impide avanzar. Cuando puedas inferirlo del pedido y el contexto, avanza con un supuesto razonable y menciónalo al entregar el resultado.",
   "- Investiga antes de actuar: inspecciona los archivos, dependencias, documentación o skills relevantes del proyecto antes de proponer cambios.",
   "- Si necesitas documentarte sobre librerías o frameworks modernos, usa skills del proyecto (como context7) o inspecciona el código existente.",
   "- Si una tarea requiere investigación profunda o pasos complejos, organízate paso a paso y puedes coordinar o apoyarte en subagentes especializados.",
@@ -382,17 +389,6 @@ export function promptContinuacion(prompt: string, tieneSesion = true): string {
     "---",
     prompt,
   ].join("\n");
-}
-
-// Un modelo de respaldo puede no tener el esfuerzo pedido; en ese caso se ejecuta sin él.
-async function varianteSoportada(modelo: string, variante: string | null | undefined): Promise<string | undefined> {
-  if (!variante) return undefined;
-  try {
-    const check = await validateSelection(modelo, variante);
-    return check.ok ? variante : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoAgente> {
@@ -567,20 +563,46 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       }
     }
 
-    if (!esErrorTransitorioDelProveedor(err, opts.signal)) throw comoCuota(err, opts.model);
+    const modeloNoEncontrado = esErrorModeloNoEncontrado(err);
+    if (!esErrorTransitorioDelProveedor(err, opts.signal) && !modeloNoEncontrado) throw comoCuota(err, opts.model);
+
+    if (modeloNoEncontrado) {
+      // El modelo puede haber desaparecido después de cargar el selector. Actualiza el catálogo
+      // antes de validar el respaldo para no encadenar dos IDs obsoletos de OpenCode.
+      try { await getModels(true); } catch { /* el respaldo aún se valida con la última lista buena */ }
+    }
 
     const respaldo = getPreferences().fallbackModel;
     if (!respaldo || respaldo === opts.model) throw comoCuota(err, opts.model);
+
+    let validacionRespaldo: Awaited<ReturnType<typeof validateSelection>>;
+    try {
+      validacionRespaldo = await validateSelection(respaldo, null);
+    } catch {
+      throw limpiarError(new Error(
+        `El modelo ${opts.model} falló y el respaldo ${respaldo} no se pudo comprobar en el catálogo actual. Revisa la conexión de OpenCode y el modelo de respaldo en Ajustes.`,
+      ));
+    }
+    if (!validacionRespaldo.ok) {
+      throw limpiarError(new Error(
+        `El modelo ${opts.model} falló y el respaldo ${respaldo} ya no está disponible en OpenCode. Elige un modelo que aparezca en el selector de Ajustes y vuelve a intentarlo.`,
+      ));
+    }
 
     if (opts.taskId) {
       registrarEvento(opts.taskId, "modelo_respaldo", `${etiquetaDelError(err)} en ${opts.model}; usando ${respaldo}`);
     }
     try {
-      const varianteRespaldo = await varianteSoportada(respaldo, opts.variant);
+      const varianteRespaldo = opts.variant && validacionRespaldo.info.variants.includes(opts.variant)
+        ? opts.variant
+        : undefined;
       const r = await ejecutarConRunner(respaldo, baseParaModelo(respaldo, varianteRespaldo));
       return terminar(r, respaldo, varianteRespaldo ?? null);
     } catch (errRespaldo) {
-      throw comoCuota(errRespaldo, respaldo);
+      if (esErrorDeCuota(errRespaldo)) throw new ErrorCuota(respaldo, sesion);
+      throw limpiarError(new Error(
+        `Falló el modelo principal ${opts.model} y también el respaldo ${respaldo}: ${mensajeDe(errRespaldo)}`,
+      ));
     }
   }
 }

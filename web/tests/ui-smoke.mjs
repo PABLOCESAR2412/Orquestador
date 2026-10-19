@@ -79,6 +79,7 @@ try {
     let reintentos = [];
     let skillInstallRequests = 0;
     let diffRequests = 0;
+    let taskListRequests = 0;
     let medioEstado = "pendiente";
     let sinDatos = false;
     let anunciarEnvioA;
@@ -107,7 +108,12 @@ try {
         { id: "c2", title: "Chat paralelo", model: "nvidia/nemotron-test", project_id: null, project_name: null, created_at: now },
         { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, pendiente_aprobacion: true, estado_tarea: "pendiente_aprobacion", estado_tarea_id: "review-c3", estado_tarea_version: "hash-c3", created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
         { id: "c4", title: "Chat anterior", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() },
+        { id: "c5", title: "Chat libre", model: "google/prueba", project_id: null, project_name: null, created_at: now },
       ];
+      else if (path === "/api/conversations/c5/messages") data = [
+        { id: "c2a", role: "assistant", content: "Informe adjunto: `libre.md`", model: "nvidia/nemotron-test", created_at: now },
+      ];
+      else if (path === "/api/conversations/c5/archivo") data = { ruta: "libre.md", tamano: 24, texto: "# Chat libre\nVista previa disponible", truncado: false };
       else if (path === "/api/conversations/c1/messages") {
         if (route.request().method() === "POST") {
           const body = route.request().postDataJSON();
@@ -218,6 +224,9 @@ try {
       else if (path.includes("/projects/") && path.includes("/git/comprobar")) data = { ok: true, repo: "ejemplo/pruebas", push: true, verificacion: "confirmada", autenticacion: { tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "PABLOCESAR2412", instalacion_id: 1 } };
       else if (path.includes("/projects/") && path.endsWith("/git")) data = { remote: "https://github.com/ejemplo/pruebas", repository: "ejemplo/pruebas", author_name: "Telo", base_branch: "main", inicializado: true, ocupado: false, token: false, tokenProyecto: false, tokenGlobal: false, prToken: false, ssh: false, github: { conectado: true, metodo: "app", login: "PABLOCESAR2412" } };
       else if (path === "/api/runner") data = { opencode: true, bwrap: true, aislamiento: true };
+      else if (path === "/api/health") data = { ok: true, time: now };
+      else if (path === "/api/tasks") { taskListRequests++; data = [{ id: "regular-1", title: "Prompt ordinario del chat", model: "google/prueba", status: "done", created_at: now }]; }
+      else if (path === "/api/programadas") data = [{ id: "schedule-1", titulo: "Resumen diario", prompt: "Preparar resumen", model: "google/prueba", effort: null, project_id: null, project_name: null, frecuencia: "diaria", cada_horas: null, hora: "08:00", activa: true, proxima_en: now, ultima_ejecucion: null, ultima_tarea_id: null, created_at: now }];
       else if (path === "/api/projects") data = [{ id: "p1", name: "Pruebas", en_proceso: true }];
       else if (path === "/api/documentos" && route.request().method() === "POST") data = { id: "doc1", conversation_id: "c1", titulo: "Documento de prueba", formato: "md", bytes: 123, created_at: now };
       else if (path === "/api/documentos/doc1/vista") {
@@ -240,9 +249,9 @@ try {
       }] };
       else if (path === "/api/analytics") data = {
         days: 30, filtros: { proyecto: null, modelo: null }, proyectos: [], modelos: [], budget: null, usoJev: [],
-        totals: { calls: 1, inputTokens: sinDatos ? 0 : 8, outputTokens: sinDatos ? 0 : 2, cost: 0 }, byDay: [], byModel: [],
-        byType: ["chat", "tarea", "otro"].map(tipo => ({ tipo, calls: tipo === "tarea" ? 1 : 0, tokens: tipo === "tarea" && !sinDatos ? 10 : 0, cost: 0, sinTokens: tipo === "tarea" && sinDatos ? 1 : 0, sinCoste: tipo === "tarea" && sinDatos ? 1 : 0 })),
-        tasks: { done: 1 }, calidad: { tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 },
+        totals: { calls: 1, inputTokens: sinDatos ? 0 : 8, outputTokens: sinDatos ? 0 : 2, cost: 0 }, byDay: [{ day: now.slice(0, 10), calls: 1, cost: 0, tokens: sinDatos ? 0 : 10, tokensEstimados: 0, modelos: [{ model: "google/prueba", provider: "google", calls: 1, tokens: sinDatos ? 0 : 10, estimados: 0 }] }], byModel: [],
+        byType: ["chat", "tarea", "otro"].map(tipo => ({ tipo, calls: tipo === "tarea" ? 1 : 0, tokens: tipo === "tarea" && !sinDatos ? 10 : 0, cost: 0, tokensEstimados: 0, sinTokens: tipo === "tarea" && sinDatos ? 1 : 0, sinCoste: tipo === "tarea" && sinDatos ? 1 : 0 })),
+        tasks: { done: 1 }, calidad: { tokensMedidos: sinDatos ? 0 : 1, tokensEstimados: 0, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 },
         byTask: [{ taskId: "t1", calls: 1, tokens: sinDatos ? 0 : 10, cost: 0, tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 }],
       };
       else if (path.includes("eventos-vivos/poll")) data = { cursor: 0, eventos: [] };
@@ -514,7 +523,8 @@ try {
     await vistaPdf.waitFor();
     const paginaPdf = vistaPdf.getByRole("img", { name: "Página 1 de 1 del PDF", exact: true });
     await paginaPdf.waitFor();
-    assert.ok(await paginaPdf.evaluate(canvas => canvas.width > 0 && canvas.height > 0), "PDF.js dibuja la primera página en un canvas real");
+    assert.ok(await paginaPdf.evaluate(canvas => canvas.width > 0 && canvas.height > 0 && Number.parseFloat(canvas.style.width) > 300), "PDF.js redimensiona el canvas al área de vista previa");
+    assert.equal(await page.locator(".tl-archivo-chip-copiar").count(), 0, "las referencias abren el archivo y no muestran un botón de copiar inútil");
     assert.equal(await vistaPdf.locator(".tl-chat-archivo-tipo").textContent(), "PDF");
     const enlacePdf = vistaPdf.getByRole("link", { name: "Descargar PDF", exact: true });
     assert.match(await enlacePdf.getAttribute("href"), /archivo-pdf.*descargar=1/);
@@ -524,6 +534,15 @@ try {
     await page.screenshot({ path: `scratch/capturas-ci/archivo-pdf-chat-${width}.png` });
     await vistaPdf.getByRole("button", { name: "Cerrar vista de archivo", exact: true }).click();
     await vistaPdf.waitFor({ state: "detached" });
+    if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
+    await page.getByText("Chat libre", { exact: true }).click();
+    const referenciaChatLibre = page.locator(".tl-archivo-chip-abrir").filter({ hasText: "libre.md" }).first();
+    await referenciaChatLibre.click();
+    const vistaChatLibre = page.getByRole("complementary", { name: "Vista del archivo libre.md" });
+    await vistaChatLibre.getByText("Vista previa disponible", { exact: true }).waitFor();
+    await vistaChatLibre.getByRole("button", { name: "Cerrar vista de archivo", exact: true }).click();
+    if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
+    await page.getByText("Prueba de flujo", { exact: true }).click();
     await colaVisible.getByRole("button", { name: "Arrastrar mensaje 2 para reordenar", exact: true }).dragTo(colaVisible.locator(".tl-cola-item").nth(0));
     assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("telo:cola:c1") ?? "[]").map(({ id }) => id)), ["q2", "q1", "q3"]);
     await colaVisible.getByRole("button", { name: "Más opciones para mensaje 2", exact: true }).click();
@@ -827,9 +846,24 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/modelos-${width}.png` });
     console.log(`${width}px: código de acceso comprobado`);
+    await page.goto(`${base}/tareas`);
+    await page.getByRole("heading", { name: "Tareas programadas", exact: true }).waitFor();
+    await page.getByText("Resumen diario", { exact: true }).waitFor();
+    assert.equal(await page.getByText("Prompt ordinario del chat", { exact: true }).count(), 0);
+    assert.equal(taskListRequests, 0, "la vista de tareas no consulta ni lista ejecuciones normales");
     await page.goto(`${base}/analiticas`);
     await page.getByRole("heading", { name: "Precisión de las métricas", exact: true }).waitFor();
+    const barraDia = page.locator(".an-barra-grupo[tabindex='0']").first();
+    await barraDia.focus();
+    const detalleDia = page.getByRole("tooltip");
+    await detalleDia.getByText("Tokens procesados", { exact: true }).waitFor();
+    await detalleDia.getByText(/google · google\/prueba/).waitFor();
     await page.getByText(/registros con tokens medidos/).waitFor();
+    await page.getByRole("tab", { name: /Consumo interno de Telo/ }).click();
+    const tablaInterna = page.locator(".an-consumo-tabla");
+    await tablaInterna.waitFor();
+    assert.equal(await tablaInterna.evaluate(el => el.scrollWidth > el.parentElement.clientWidth), false, "la tabla de consumo cabe en el ancho del panel");
+    await page.screenshot({ path: `scratch/capturas-ci/analiticas-${width}.png` });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/analiticas-${width}.png` });
     sinDatos = true;

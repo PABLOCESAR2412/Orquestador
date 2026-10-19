@@ -93,4 +93,16 @@ describe("registro inmediato del uso del agente", () => {
       .get(projectId);
     expect(fila).toEqual({ task_id: null, conversation_id: conversationId });
   });
+
+  test("guarda el conteo de respaldo como estimado y deja el coste sin confirmar", () => {
+    registrarUsoAgente(
+      "google/gemini-4-argon",
+      { input: 40, output: 10, reasoning: 0, cacheRead: 0, cost: 0, tokensMedidos: false, tokensEstimados: true, costeDisponible: false },
+      { conversationId, projectId },
+    );
+    const fila = db.query<any, [string]>(
+      "SELECT input_tokens, output_tokens, cost, tokens_precision, cost_precision FROM usage WHERE model='google/gemini-4-argon' AND project_id=? ORDER BY rowid DESC LIMIT 1",
+    ).get(projectId);
+    expect(fila).toEqual({ input_tokens: 40, output_tokens: 10, cost: 0, tokens_precision: "estimado", cost_precision: "no_disponible" });
+  });
 });

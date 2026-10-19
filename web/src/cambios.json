@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-19", "tipo": "grande", "titulo": "Chat y analíticas: corrige respaldos de modelo, previsualiza archivos, estima tokens faltantes y lista tareas programadas", "pr": 84 },
     { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Chat: reintenta respuestas detenidas por tiempo desde la sesión guardada", "pr": 84 },
     { "fecha": "2026-10-18", "tipo": "grande", "titulo": "Skills globales para todos los runners, envío de imágenes al agente y permiso correcto para fusionar PR", "pr": null },
     { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: reduce errores HTTP/2 del canal vivo, conserva sesiones al superar el límite y extiende turnos largos", "pr": 84 },

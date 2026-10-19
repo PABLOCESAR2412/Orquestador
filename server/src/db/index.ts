@@ -627,6 +627,66 @@ const migrations: Migration[] = [
       CREATE INDEX media_jobs_estado ON media_jobs(estado, created_at);
     `,
   },
+  {
+    // Recupera métricas aproximadas de turnos históricos cuando nunca se guardaron tokens.
+    // Se identifican explícitamente como estimados y el coste permanece no disponible.
+    name: "035_recuperar_tokens_historicos",
+    sql: `
+      UPDATE usage AS u
+         SET input_tokens = MAX(1, (LENGTH(t.prompt) + 3) / 4),
+             output_tokens = MAX(0, (LENGTH(COALESCE(t.result, '')) + 3) / 4),
+             tokens_precision = 'estimado'
+        FROM tasks t
+       WHERE u.task_id = t.id
+         AND t.status = 'done'
+         AND u.input_tokens = 0 AND u.output_tokens = 0
+         AND u.tokens_precision IN ('no_disponible', 'desconocida')
+         AND (SELECT COUNT(*) FROM usage u2 WHERE u2.task_id = t.id) = 1;
+
+      INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens, cost,
+                         project_id, task_id, tokens_precision, cost_precision, created_at)
+      SELECT 'hist-task-' || t.id, t.conversation_id,
+             CASE WHEN t.model LIKE 'opencode/gemini-%' THEN 'google'
+                  WHEN INSTR(t.model, '/') > 0 THEN SUBSTR(t.model, 1, INSTR(t.model, '/') - 1)
+                  ELSE 'unknown' END,
+             t.model,
+             MAX(1, (LENGTH(t.prompt) + 3) / 4),
+             MAX(0, (LENGTH(COALESCE(t.result, '')) + 3) / 4), 0,
+             t.project_id, t.id, 'estimado', 'no_disponible', COALESCE(t.finished_at, t.created_at)
+        FROM tasks t
+       WHERE t.status = 'done'
+         AND NOT EXISTS (SELECT 1 FROM usage u WHERE u.task_id = t.id);
+
+      INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens, cost,
+                         project_id, tokens_precision, cost_precision, created_at)
+      SELECT 'hist-chat-' || assistant.id, c.id,
+             CASE WHEN assistant.model LIKE 'opencode/gemini-%' THEN 'google'
+                  WHEN INSTR(assistant.model, '/') > 0 THEN SUBSTR(assistant.model, 1, INSTR(assistant.model, '/') - 1)
+                  ELSE 'unknown' END,
+             assistant.model,
+             MAX(1, (LENGTH(user.content) + 3) / 4),
+             MAX(0, (LENGTH(assistant.content) + 3) / 4), 0,
+             c.project_id, 'estimado', 'no_disponible', assistant.created_at
+        FROM messages assistant
+        JOIN conversations c ON c.id = assistant.conversation_id
+        JOIN messages user ON user.rowid = (
+          SELECT MAX(u.rowid) FROM messages u
+           WHERE u.conversation_id = assistant.conversation_id
+             AND u.role = 'user' AND u.rowid < assistant.rowid
+        )
+       WHERE assistant.role = 'assistant' AND assistant.model IS NOT NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM usage u
+            WHERE u.conversation_id = c.id
+              AND u.created_at >= user.created_at AND u.created_at <= assistant.created_at
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM tasks t
+            WHERE t.conversation_id = c.id
+              AND t.created_at >= user.created_at AND t.created_at <= assistant.created_at
+         );
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

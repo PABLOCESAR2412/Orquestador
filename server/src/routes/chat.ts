@@ -24,7 +24,7 @@ import {
 import { prepararSubagentes } from "../subagentes";
 import { detectarSolicitudMedio } from "../generacion-medios";
 import { crearSolicitudMedio } from "./media";
-import { ArchivoError, leerImagen, leerPdf, normalizarRuta } from "../archivos-proyecto";
+import { ArchivoError, leerArchivo, leerImagen, leerPdf, normalizarRuta } from "../archivos-proyecto";
 import { contarImagenesMarcadas, eliminarImagenesConversacion, guardarImagenAdjunta, idsImagenesMarcadas, leerImagenAdjunta, MAX_IMAGENES_MENSAJE } from "../chat-adjuntos";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
@@ -210,7 +210,23 @@ chat.get("/conversations/:id/adjuntos/:adjunto", (c) => {
   });
 });
 
-// Vista previa y descarga de un PDF creado dentro del workspace aislado de esta conversación.
+// Vista previa de archivos de texto creados dentro del workspace aislado de esta conversación.
+chat.get("/conversations/:id/archivo", (c) => {
+  const conversacion = leerConversacion(c.req.param("id"));
+  if (!conversacion) return c.json({ error: "conversation_not_found" }, 404);
+  const raiz = raizArchivosConversacion(conversacion);
+  if (!raiz) return c.json({ error: "project_path_not_found" }, 404);
+  try {
+    return c.json(leerArchivo(raiz, normalizarRuta(c.req.query("ruta"))));
+  } catch (err) {
+    if (err instanceof ArchivoError) {
+      const code = err.code === "project_path_not_found" ? "archivo_chat_no_encontrado" : err.code;
+      return c.json({ error: code }, err.status);
+    }
+    throw err;
+  }
+});
+
 chat.get("/conversations/:id/archivo-pdf", (c) => {
   const id = c.req.param("id");
   const conversacion = leerConversacion(id);

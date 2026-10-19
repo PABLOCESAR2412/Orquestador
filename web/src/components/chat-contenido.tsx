@@ -307,7 +307,6 @@ export function PastillaArchivo({
   onAbrir?: (referencia: ReferenciaArchivo, triggerId: string) => void;
   permitirAbrir?: (referencia: ReferenciaArchivo) => boolean;
 }) {
-  const [copiado, setCopiado] = useState(false);
   const tooltipId = useId();
   const etiquetaReferencia = referencia ?? ruta;
   const referenciaAbierta = separarReferenciaArchivo(etiquetaReferencia);
@@ -320,30 +319,21 @@ export function PastillaArchivo({
   const tipoArchivo = describirTipoArchivo(referenciaAbierta.ruta);
   const puntoIdx = nombreArchivo.lastIndexOf(".");
   const ext = puntoIdx > 0 ? nombreArchivo.slice(puntoIdx + 1).toLowerCase() : "";
-  const imagenRaster = EXTENSIONES_IMAGEN_RASTER.has(ext);
-
-  const copiar = async () => {
-    const ok = await copiarTexto(etiquetaReferencia);
-    if (ok) {
-      setCopiado(true);
-      window.setTimeout(() => setCopiado(false), 1500);
-    }
-  };
-
   return (
-    <span className={`tl-archivo-chip${copiado ? " is-copiado" : ""}`}>
+    <span className="tl-archivo-chip">
       <button
         type="button"
         className="tl-archivo-chip-abrir"
+        disabled={!puedeAbrir}
         data-archivo-trigger-key={triggerKey}
         title={puedeAbrir
           ? `${nombreArchivo} · ${tipoArchivo.tipo}\n${referenciaAbierta.ruta}${referenciaAbierta.linea ? ` · línea ${referenciaAbierta.linea}` : ""}`
-          : `Copiar ruta ${etiquetaReferencia}`}
+          : `No se puede abrir ${etiquetaReferencia} desde este chat`}
         aria-describedby={puedeAbrir ? tooltipId : undefined}
         aria-label={puedeAbrir
           ? `Abrir ${nombreArchivo}, ${tipoArchivo.tipo}, ${referenciaAbierta.ruta}${referenciaAbierta.linea ? `, línea ${referenciaAbierta.linea}` : ""}`
-          : `Copiar ruta ${etiquetaReferencia}`}
-        onClick={() => puedeAbrir ? onAbrir?.(referenciaAbierta, triggerKey) : void copiar()}
+          : `${nombreArchivo}, no se puede abrir desde este chat`}
+        onClick={() => onAbrir?.(referenciaAbierta, triggerKey)}
       >
         <span className="tl-archivo-chip-icono" aria-hidden="true">
           <IconoArchivo extension={ext} />
@@ -359,17 +349,6 @@ export function PastillaArchivo({
           <code>{carpetaArchivo}</code>
           {referenciaAbierta.linea && <span>Línea {referenciaAbierta.linea}</span>}
         </span>
-      )}
-      {!imagenRaster && (
-        <button
-          type="button"
-          className="tl-archivo-chip-copiar"
-          title={copiado ? "Ruta copiada" : "Copiar ruta"}
-          aria-label={copiado ? "Ruta copiada" : `Copiar ruta ${etiquetaReferencia}`}
-          onClick={() => void copiar()}
-        >
-          <span aria-hidden="true">{copiado ? "✓" : "Copiar"}</span>
-        </button>
       )}
     </span>
   );
