@@ -792,8 +792,12 @@ chat.post("/conversations/:id/messages", async (c) => {
         publicarChat(conversationId, "terminado");
         return c.json({ messages: [turno, aviso] }, 202);
       }
-      if (!reintento) db.query("DELETE FROM messages WHERE id=?").run(turno.id);
-      return response;
+      limpiarAvisosReintentados(conversationId, reintento?.rowid);
+      const textoAviso = `No se pudo completar la acción de GitHub (HTTP ${response.status}). Tu mensaje quedó guardado; puedes revisar la acción y volver a intentarlo.`;
+      const aviso = { id: crypto.randomUUID(), role: "assistant" as const, content: textoAviso };
+      db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES (?,?,'assistant',?)").run(aviso.id, conversationId, textoAviso);
+      publicarChat(conversationId, "terminado");
+      return c.json({ messages: [turno, aviso], actionError: error.error ?? "github_action_failed" }, 202);
     }
     limpiarAvisosReintentados(conversationId, reintento?.rowid);
     publicarChat(conversationId, "terminado");

@@ -22,14 +22,14 @@ Es de uso personal, con un solo usuario y sin cuentas. Tiene login con `TELO_CLA
 - `server/src/index.ts`: entrada. Monta las rutas bajo `/api`, sirve `web/dist` y arranca el worker.
 - `server/src/worker.ts`: procesa hasta diez tareas en paralelo y serializa las del mismo proyecto. Analiza con workspace de solo lectura, guarda versiones del plan y espera su aprobación por hash antes de ejecutar. Cancela con AbortController y al arrancar marca como interrumpidas las ejecuciones anteriores. Registra transiciones y sesiones para reanudar. `planificacion.ts` valida el JSON; `alcance-plan.ts` compara los cambios Git con los archivos del plan y detiene los desvíos para revisión, sin borrarlos.
 - `server/src/runners/opencode.ts`: ejecuta `opencode run --format json` en su propio grupo de procesos (`setsid`), dentro del aislamiento de `runners/aislamiento.ts`, y solo con las variables de una lista permitida (no hereda `TELO_*` ni otras claves del servidor). Al cancelar o agotar el tiempo, termina el grupo completo (agente, herramientas y nietos).
-- `server/src/runners/aislamiento.ts`: envuelve al agente en bubblewrap (`bwrap`). Solo ve su carpeta de trabajo (proyecto, o carpeta temporal de chat o tarea) y el estado de OpenCode. No ve el repo, `DATA_DIR`, otros proyectos, el resto del HOME ni los procesos del servidor.
+- `server/src/runners/aislamiento.ts`: envuelve al agente en bubblewrap (`bwrap`). Ve su carpeta de trabajo, herramientas y skills globales de solo lectura, y el estado de ejecución de OpenCode, que aún es compartido y escribible. `.config/opencode` y `.codex` se montan de solo lectura. No ve el repo de Telo, `DATA_DIR`, otros proyectos, el resto del HOME ni los procesos del servidor. La red sigue habilitada para que los agentes consulten servicios externos.
 - `server/src/routes/`: `chat`, `tasks`, `preferences`, `analytics`, `models`, `settings` (también el `PATCH` de conversaciones: modelo, esfuerzo, título y anclar), `projects`, `github`, `cuotas`, `runner` (estado del agente: CLI y bubblewrap).
 - `server/scripts/respaldo.ts`: copia de la base (`VACUUM INTO`) y del espacio de trabajo. Ver la sección "Respaldos".
 - `server/src/workspace.ts`: cada tarea de un proyecto Git trabaja en un clon propio (`DATA_DIR/tasks/<id>/repo`, rama `telo/<id8>`). Calcula el diff contra `base_commit` y aplica las aprobaciones de commit y push ligadas al hash del diff. La limpieza de clones antiguos conserva cambios, archivos ignorados y commits sin subida aprobada; los clones ligados a chats se conservan. Las aprobaciones están en `task_approvals`. Un proyecto sin Git debe inicializarse desde su configuración antes de ejecutar tareas.
 - `server/src/routes/proyecto-config.ts`: configuración de remoto, autor y rama destino; comprobación de acceso a GitHub; contexto compartido y skills del proyecto. `skills-proyecto.ts` importa solo el documento `SKILL.md` de GitHub o guarda instrucciones pegadas; no descarga ni ejecuta scripts. La búsqueda usa los catálogos oficiales de Anthropic y OpenAI.
 - `server/src/routes/repository-actions.ts`: solicitudes persistentes de init, commit, push y PR. Se muestran en el chat y solo se ejecutan al autorizar. La GitHub App vinculada en Ajustes emite tokens breves limitados a un repositorio y al permiso de la operación; las credenciales anteriores se conservan como compatibilidad. Inicializar crea un primer commit vacío sin añadir archivos. Crear PR necesita permiso de Pull requests y una subida aprobada del mismo commit.
 - `server/src/ejecutar.ts`: punto único para correr un agente (chats y tareas). Aplica el modelo de respaldo ante 429 o 5xx, inyecta los secretos del proyecto, añade las instrucciones del proyecto y redacta la salida.
-- `server/src/bus.ts`: canal interno de cambios (tareas, eventos y líneas de salida) que alimenta `GET /api/eventos-vivos` (SSE).
+- `server/src/bus.ts`: canal interno de cambios (tareas, eventos y líneas de salida), disponible por SSE y por sondeo corto. La interfaz usa `GET /api/eventos-vivos/poll` para evitar cortes de proxies HTTP/2.
 - `server/src/redaccion.ts`: quita de cualquier texto que sale del servidor (salida, errores, diffs, chats) los valores de los secretos, `TELO_CLAVE`, `TELO_CLAVE_CIFRADO` y patrones de credenciales.
 - `server/src/git.ts`: única puerta a Git. Usa `gitSeguro` en cualquier repo que el agente pudo escribir (quita de `.git/config` filtros, `url.*`, `fsmonitor` y credenciales antes de operar).
 - `server/src/github-app.ts`: firma el JWT de la App con una clave privada del servidor, valida instalaciones y emite tokens de instalación limitados al repo y al permiso necesario.
@@ -47,7 +47,7 @@ Es de uso personal, con un solo usuario y sin cuentas. Tiene login con `TELO_CLA
 - Una carpeta de trabajo que no sea un proyecto registrado ni la carpeta temporal de un chat o tarea se rechaza antes de correr el agente.
 - `server/src/preferences.ts`: preferencias guardadas en `app_settings` (clave `preferences`).
 - `web/src/api.ts`: cliente HTTP y tipos. Todo fetch pasa por ahí.
-- `web/src/pages/`: `chat`, `tasks`, `analytics`, `settings`. Rutas en `web/src/router.tsx`.
+- `web/src/pages/`: `chat`, `tasks`, `analytics`, `settings`, `proyectos`, `proyecto`, `servidor` y `login`. `/estado` redirige a `/servidor`; las rutas están en `web/src/router.tsx`.
 - `web/src/components/`: `nav.tsx` (AppNav), `charts.tsx`, `controls.tsx`, `model-picker.tsx`.
 - `web/src/lib/model.ts`: `errorText()`, etiquetas de estado y formato de fechas.
 - `web/src/styles.css`: tokens y estilos. Los colores salen de aquí.
@@ -103,13 +103,13 @@ Variables del VM que se agregan con esta fase (en `/etc/orquestador/orquestador.
 
 ## Seguridad
 
-- El agente corre en bubblewrap y puede escribir en su carpeta de trabajo, incluido `.git`. Todo lo que el servidor haga con Git sobre esos repos pasa por `gitSeguro`. Un repo con `.git` que no sea carpeta real se rechaza.
+- El agente corre en bubblewrap y escribe en su carpeta de trabajo; `.git` se monta de solo lectura y las operaciones Git del servidor pasan por `gitSeguro`. Un repo con `.git` que no sea carpeta real se rechaza.
 - Nada sensible sale del servidor: los valores de secretos, claves, tokens y URLs con credenciales se redactan antes de guardar o de enviar (salida, eventos, errores, diffs, chats). Los errores 500 no muestran rutas ni trazas.
 - Antes de un commit se escanea el diff: si tiene un secreto conocido o un archivo sensible (`.env`, llaves), la aprobación se rechaza con `secreto_detectado` o `archivo_sensible`, sin mostrar el valor.
 - El push solo va a `github.com` por HTTPS. El token sale solo por variable de entorno al helper de credenciales, nunca por argumentos ni por la URL.
 - Variables que el agente no puede sobrescribir: `PATH`, `HOME`, `LD_*`, `GIT_*`, `TELO_*`, `NODE_*`, `PYTHON*`, `BASH_ENV`, `ENV`, `IFS`, `TERM`, `LANG`, `SSL_CERT_FILE`, proxies y `OPENCODE_*`.
 - Un secreto inyectado sí lo ve el agente de ese proyecto (lo necesita para trabajar). Guarda solo lo que el agente necesita.
-- El servidor escucha en `127.0.0.1` (`TELO_ESCUCHAR` lo cambia). La IP de conexión viene del socket; `CF-Connecting-IP`, `X-Forwarded-For` y `X-Real-IP` solo se aceptan si el peer figura en `TELO_PROXIES_CONFIABLES` (IPs exactas, separadas por coma) y el proxy sobrescribe esas cabeceras. Cabeceras: CSP estricta sin scripts en línea, `X-Frame-Options: DENY`, `nosniff`. Cuerpos de petición de máximo 64 KB. El SSE tiene límite de conexiones y memoria por cliente.
+- El servidor escucha en `127.0.0.1` (`TELO_ESCUCHAR` lo cambia). La IP de conexión viene del socket; `CF-Connecting-IP`, `X-Forwarded-For` y `X-Real-IP` solo se aceptan si el peer figura en `TELO_PROXIES_CONFIABLES` (IPs exactas, separadas por coma) y el proxy sobrescribe esas cabeceras. Cabeceras: CSP estricta sin scripts en línea, `X-Frame-Options: DENY`, `nosniff`. Cuerpos de petición de máximo 64 KB. El SSE tiene límite de conexiones y memoria por cliente; la interfaz usa el endpoint de sondeo corto.
 - Pruebas de seguridad: `server/tests/seguridad.test.ts`. Ver también la sección de comandos.
 
 ## Respaldos

@@ -570,7 +570,11 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       await Bun.sleep(esRateLimitTransitorio ? 2500 : 1200);
       if (!opts.signal?.aborted) {
         try {
-          const r = await ejecutarConRunner(opts.model, baseParaModelo(opts.model, varianteInicial));
+          const parametros = baseParaModelo(opts.model, varianteInicial);
+          // El primer intento puede haber completado acciones antes del 429/5xx. Si el runner ya
+          // abrió una sesión, retómala y pide continuar desde el estado actual en vez de repetir.
+          parametros.prompt = promptContinuacion(parametros.prompt, sesion !== null);
+          const r = await ejecutarConRunner(opts.model, parametros);
           return terminar(r, opts.model, opts.variant ?? null);
         } catch (reintentoErr) {
           err = reintentoErr;

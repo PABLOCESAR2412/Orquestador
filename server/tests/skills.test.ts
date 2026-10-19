@@ -40,9 +40,8 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  try {
-    rmSync(RAIZ, { recursive: true, force: true });
-  } catch {}
+  db.close();
+  rmSync(RAIZ, { recursive: true, force: true });
 });
 
 describe("frontmatter", () => {

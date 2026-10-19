@@ -50,6 +50,11 @@ describe("redacción de salida", () => {
     expect(redactar("sk-ant-api03-" + "e".repeat(40))).toBe("***");
   });
 
+  test("no redacta nombres de clases CSS que contienen sk-", () => {
+    const texto = ".ask-user-question-panel-header .task-manager-running-state-value";
+    expect(redactar(texto)).toBe(texto);
+  });
+
   test("oculta bloques de clave privada completos", () => {
     const pem = "-----BEGIN " + "OPENSSH PRIVATE KEY-----\nMIIabc\n-----END " + "OPENSSH PRIVATE KEY-----";
     expect(redactar(pem)).toBe("[clave privada oculta]");
@@ -80,6 +85,15 @@ describe("escaneo antes de commit", () => {
       "diff --git a/a.txt b/a.txt",
       "-ghp_" + "f".repeat(36),
       " contexto ghp_" + "g".repeat(36),
+    ].join("\n");
+    expect(archivosConSecretos(diff, [])).toEqual([]);
+  });
+
+  test("no bloquea archivos por nombres de clases CSS que contienen sk-", () => {
+    const diff = [
+      "diff --git a/src/app.css b/src/app.css",
+      "+.ask-user-question-panel-header { color: inherit; }",
+      "+.task-manager-running-state-value { display: block; }",
     ].join("\n");
     expect(archivosConSecretos(diff, [])).toEqual([]);
   });

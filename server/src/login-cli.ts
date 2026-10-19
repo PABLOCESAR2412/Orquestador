@@ -6,8 +6,8 @@ import { hallarEjecutable, lanzarEnGrupo, matarGrupo } from "./ejecutable";
 
 // Inicio de sesión de Codex con la cuenta de ChatGPT, por código de dispositivo, ejecutado en el servidor.
 // La app muestra la URL y el código que imprime el CLI. El token nunca sale del servidor ni llega a la base:
-// la app consulta `codex login status` sin leer ni devolver credenciales. Los agentes no lo ven
-// (~/.codex no está en la lista de bubblewrap).
+// la app consulta `codex login status` sin leer ni devolver credenciales. El sandbox monta ~/.codex
+// como herramienta de solo lectura para que Codex pueda autenticarse sin modificar el estado global.
 //
 // Comando: `codex login --device-auth`. Confirmar en el VM con `codex login --help` antes de dar por bueno.
 

@@ -74,17 +74,15 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - **Criterio:** cada proveedor muestra la fecha de su última consulta. Si no hay API de saldo, se marca como manual.
 
 ### 11. Proyectos: memoria, skills y AGENTS.md
-- Estado: instrucciones por proyecto (se añaden al prompt de sus agentes) y sección única de Proyectos con archivos de solo lectura. Pendiente: skills `SKILL.md` y memoria que el sistema actualiza.
+- Estado: completada. Instrucciones, skills `SKILL.md`, memoria y `AGENTS.md` por proyecto se incorporan al contexto del agente; las skills globales se resuelven para todos los runners.
 - Cada proyecto tiene su configuración: skills en formato `SKILL.md`, memoria que el sistema actualiza sola y su propio `AGENTS.md`.
 - **Criterio:** una tarea del proyecto X usa sus skills y su memoria. Cambiar de proyecto no mezcla contexto.
 
 ### 12. Runners por proyecto
-- Estado: pendiente. Sigue sin empezar, como estaba previsto (después de las fases 5, 6 y 11).
-- Agy y Codex en contenedores por proyecto, con la misma interfaz de runner. Agy debe poder editar y subir archivos como lo hace Antigravity. La integración de Codex queda lista aunque no se use.
-- Se empieza solo cuando las fases 5, 6 y 11 estén cerradas.
+- Estado: parcial. OpenCode y Codex comparten la interfaz de ejecución y trabajan dentro del aislamiento del agente. Agy no está integrado y los runners aún no se aíslan en contenedores independientes por proyecto.
 
 ### 13. Panel del VM
-- Estado: la vista `/servidor` muestra estado del proceso, carpetas y tamaños, herramientas instaladas, costos, uso y latencia medida en el navegador. Pendiente: terminal web (no se decide aún si reemplaza a Cockpit).
+- Estado: parcial. La pestaña Servidor en Ajustes muestra estado del proceso, carpetas y tamaños, herramientas instaladas, costos, uso y latencia medida en el navegador. Pendiente: terminal web (no se decide aún si reemplaza a Cockpit).
 - Configuraciones del servidor desde la app y terminal web integrada. Evaluar si reemplaza a Cockpit (puerto 9090) o solo lo enlaza.
 
 ## Decisiones tomadas

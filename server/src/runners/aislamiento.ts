@@ -27,13 +27,11 @@ const RAIZ_REPO = resolve(import.meta.dir, "../../..");
 // Estado de OpenCode y herramientas de agente dentro del HOME: lectura y escritura.
 const ESTADO_OPENCODE = [
   ".local/share/opencode",
-  ".config/opencode",
   ".local/state/opencode",
   ".cache/opencode",
-  ".codex",
 ];
 // Herramientas instaladas en el HOME: solo lectura.
-const HERRAMIENTAS = [".local/bin", ".opencode", ".bun", ".gitconfig", ".config/git", ".codex"];
+const HERRAMIENTAS = [".local/bin", ".opencode", ".bun", ".gitconfig", ".config/git", ".config/opencode", ".codex"];
 
 export function aislamientoActivo(): boolean {
   return process.env.TELO_AISLAMIENTO !== "desactivado";

@@ -16,6 +16,7 @@ process.env.TELO_PROYECTOS_DIR = join(RAIZ_PRUEBAS, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 
 const { db } = await import("../src/db");
+const { config } = await import("../src/config");
 const { chat, avisarTurnosInterrumpidos } = await import("../src/routes/chat");
 const { guardarImagenAdjunta, imagenesDelPrompt } = await import("../src/chat-adjuntos");
 
@@ -147,6 +148,33 @@ describe("reintentos de mensajes fallidos", () => {
     expect(await response.json()).toEqual({ error: "message_not_retryable" });
     expect(mensajes(conversationId).filter((mensaje) => mensaje.role === "user")).toHaveLength(2);
     expect(mensajes(conversationId).some((mensaje) => mensaje.role === "system" && mensaje.content === "Fallo antiguo")).toBe(true);
+  });
+});
+
+describe("errores de acciones Git en el chat", () => {
+  test("conserva el mensaje y explica errores de GitHub no clasificados", async () => {
+    const projectId = crypto.randomUUID();
+    const conversationId = crypto.randomUUID();
+    const cwd = join(config.projectsDir!, `accion-chat-${projectId}`);
+    mkdirSync(cwd, { recursive: true });
+    db.query("INSERT INTO projects (id, name, repo_path) VALUES (?, 'Proyecto sin credencial GitHub', ?)")
+      .run(projectId, cwd);
+    db.query("INSERT INTO conversations (id, title, model, project_id) VALUES (?, 'Chat Git', 'opencode/prueba', ?)")
+      .run(conversationId, projectId);
+
+    try {
+      const response = await enviar(conversationId, "Fusiona el PR #4");
+      expect(response.status).toBe(202);
+      const body = await response.json() as { messages: Mensaje[]; actionError: string };
+      expect(body.actionError).toBe("credenciales_git_faltantes");
+      expect(body.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+      expect(body.messages[1]?.content).toContain("Tu mensaje quedó guardado");
+      expect(mensajes(conversationId).filter((message) => message.role === "user")).toHaveLength(1);
+    } finally {
+      db.query("DELETE FROM conversations WHERE id=?").run(conversationId);
+      db.query("DELETE FROM projects WHERE id=?").run(projectId);
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 });
 

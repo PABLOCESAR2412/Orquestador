@@ -1,9 +1,9 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, afterEach, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { Hono } from "hono";
 
-const raiz = join(import.meta.dir, ".test-data-skills");
+const raiz = join(import.meta.dir, ".test-data-skills-proyecto");
 rmSync(raiz, { recursive: true, force: true });
 process.env.DATA_DIR = join(raiz, "data");
 process.env.TELO_PROYECTOS_DIR = join(raiz, "proyectos");
@@ -20,6 +20,10 @@ afterEach(() => {
   globalThis.fetch = fetchOriginal;
   db.query("DELETE FROM projects WHERE id = ?").run("skills-test");
   rmSync(carpetaProyecto, { recursive: true, force: true });
+});
+afterAll(() => {
+  db.close();
+  rmSync(raiz, { recursive: true, force: true });
 });
 function proyecto() {
   mkdirSync(carpetaProyecto, { recursive: true });
