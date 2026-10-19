@@ -15,11 +15,12 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 const { db } = await import("../src/db");
 const { config } = await import("../src/config");
 const { gitOk } = await import("../src/git");
-const { aprobarTarea, diffDeTarea, prepararCopia } = await import("../src/workspace");
+const { aprobarTarea, diffDeTarea, prepararCopia, reintegrarSobrePunta } = await import("../src/workspace");
 const { repositoryActions } = await import("../src/routes/repository-actions");
 const { guardarSecreto, entornoDeProyecto } = await import("../src/secretos");
 const { fuenteAutenticacionGithub, githubApiPr } = await import("../src/routes/proyecto-config");
 const { borrarCuentaGithubGlobal, guardarCuentaGithubGlobal, tokenGithubGlobal } = await import("../src/github-auth");
+const { opcionesDeCredenciales } = await import("../src/git-credenciales");
 const originalFetch = globalThis.fetch;
 const claveOriginal = process.env.TELO_CLAVE_CIFRADO;
 process.env.TELO_CLAVE_CIFRADO = Buffer.alloc(32, 7).toString("base64");
@@ -480,6 +481,10 @@ test("push con destino base sube directo a la rama base y no prepara PR", { time
   const original = Bun.spawn;
   let subidas = 0;
   const espia = spyOn(Bun, "spawn").mockImplementation(((cmd: any, opts: any) => {
+    if (Array.isArray(cmd) && cmd.includes("ls-remote")) {
+      // Remoto sin punta legible en pruebas: el reintegro no actúa y la subida sigue igual.
+      return original([process.execPath, "-e", "process.exit(0)"], { stdout: "pipe", stderr: "pipe" });
+    }
     if (Array.isArray(cmd) && cmd.includes("push")) {
       subidas++;
       const commit = db.query<{ commit_sha: string }, [string]>("SELECT commit_sha FROM task_approvals WHERE task_id=? AND accion='commit' ORDER BY rowid DESC LIMIT 1").get(p.taskId)!;
@@ -621,6 +626,178 @@ test("prepararCopia sincroniza carpetas .opencode/skills y skills hacia el clon"
   expect(readFileSync(join(copia.cwd, ".opencode", "skills", "test-skill", "SKILL.md"), "utf8")).toContain("Contenido");
   expect(existsSync(join(copia.cwd, "skills", "otra-skill", "SKILL.md"))).toBe(true);
   expect(readFileSync(join(copia.cwd, "skills", "otra-skill", "SKILL.md"), "utf8")).toContain("Contenido raiz");
+});
+
+// Remoto local (bare) + copia local del proyecto apuntando a él, con un commit base ya empujado.
+async function proyectoLocalConOrigen(prefijo: string) {
+  const p = proyecto();
+  const origen = join(config.projectsDir!, `origen-${prefijo}.git`);
+  await gitOk(["init", "--bare", "-b", "main", origen], { cwd: config.projectsDir! });
+  await gitOk(["init", "-b", "main"], { cwd: p.cwd });
+  writeFileSync(join(p.cwd, "archivo.txt"), "base\n");
+  await gitOk(["add", "archivo.txt"], { cwd: p.cwd });
+  await gitOk(["-c", "user.name=Prueba", "-c", "user.email=prueba@example.test", "commit", "-m", "Base"], { cwd: p.cwd });
+  await gitOk(["remote", "add", "origin", origen], { cwd: p.cwd });
+  await gitOk(["push", "origin", "main"], { cwd: p.cwd });
+  const base = (await gitOk(["rev-parse", "HEAD"], { cwd: p.cwd })).trim();
+  return { p, origen, base };
+}
+
+async function avanzarOrigen(origen: string, texto: string) {
+  const aux = join(config.projectsDir!, `avance-${randomUUID()}`);
+  try {
+    await gitOk(["-c", "user.name=Avance", "-c", "user.email=avance@example.test", "clone", origen, aux], { cwd: config.projectsDir! });
+    writeFileSync(join(aux, "archivo.txt"), texto);
+    await gitOk(["add", "archivo.txt"], { cwd: aux });
+    await gitOk(["-c", "user.name=Avance", "-c", "user.email=avance@example.test", "commit", "-m", "Avance del remoto"], { cwd: aux });
+    await gitOk(["push", "origin", "HEAD:main"], { cwd: aux });
+    return (await gitOk(["rev-parse", "HEAD"], { cwd: aux })).trim();
+  } finally {
+    rmSync(aux, { recursive: true, force: true });
+  }
+}
+
+test("prepararCopia trae la copia local al día con el avance del origin", { timeout: 20000 }, async () => {
+  const { p, origen, base } = await proyectoLocalConOrigen(randomUUID().slice(0, 8));
+  try {
+    const punta = await avanzarOrigen(origen, "avanzado\n");
+    expect(punta).not.toBe(base);
+    const taskId = randomUUID();
+    p.taskId = taskId;
+    db.query("INSERT INTO tasks(id,title,prompt,model,status,project_id) VALUES (?,'Traer origen','Prueba','prueba','queued',?)").run(taskId, p.id);
+    const copia = await prepararCopia(taskId, p.cwd, p.id);
+    expect(copia.base_commit).toBe(punta);
+    expect(readFileSync(join(copia.cwd, "archivo.txt"), "utf8")).toContain("avanzado");
+  } finally {
+    rmSync(origen, { recursive: true, force: true });
+  }
+});
+
+test("prepararCopia no avanza la copia local del usuario con cambios pendientes", { timeout: 20000 }, async () => {
+  const { p, origen, base } = await proyectoLocalConOrigen(randomUUID().slice(0, 8));
+  try {
+    await avanzarOrigen(origen, "avanzado\n");
+    writeFileSync(join(p.cwd, "archivo.txt"), "pendiente del usuario\n");
+    const taskId = randomUUID();
+    p.taskId = taskId;
+    db.query("INSERT INTO tasks(id,title,prompt,model,status,project_id) VALUES (?,'Repetida','Prueba','prueba','queued',?)").run(taskId, p.id);
+    const copia = await prepararCopia(taskId, p.cwd, p.id);
+    expect(copia.base_commit).toBe(base);
+    expect(readFileSync(join(config.dataDir, "tasks", taskId, "repo", "archivo.txt"), "utf8")).toContain("base");
+    expect(readFileSync(join(p.cwd, "archivo.txt"), "utf8")).toContain("pendiente");
+  } finally {
+    rmSync(origen, { recursive: true, force: true });
+  }
+});
+
+test("reintegrarSobrePunta reubica el trabajo sobre la punta avanzada del remoto", { timeout: 20000 }, async () => {
+  const { p, origen, base } = await proyectoLocalConOrigen(randomUUID().slice(0, 8));
+  const punta = await avanzarOrigen(origen, "avanzado\n");
+  const taskId = randomUUID();
+  p.taskId = taskId;
+  db.query("INSERT INTO tasks(id,title,prompt,model,status,project_id) VALUES (?,'Reintegro','Prueba','prueba','done',?)").run(taskId, p.id);
+  const clon = join(config.projectsDir!, `clon-${taskId}`);
+  try {
+    await gitOk(["clone", p.cwd, clon], { cwd: config.projectsDir! });
+    await gitOk(["remote", "remove", "origin"], { cwd: clon });
+    await gitOk(["checkout", "-B", "telo/prueba", base], { cwd: clon });
+    writeFileSync(join(clon, "hecho.txt"), "cambio de la tarea\n");
+    await gitOk(["add", "hecho.txt"], { cwd: clon });
+    await gitOk(["-c", "user.name=Prueba", "-c", "user.email=prueba@example.test", "commit", "-m", "Cambio de tarea"], { cwd: clon });
+    const head = (await gitOk(["rev-parse", "HEAD"], { cwd: clon })).trim();
+
+    const nuevo = await reintegrarSobrePunta(
+      taskId,
+      { clon, projectId: null, rama: "telo/prueba", base },
+      opcionesDeCredenciales(null),
+      origen,
+      "main",
+      head,
+    );
+    const puntaNueva = nuevo ?? "";
+    expect(puntaNueva).toBeTruthy();
+    expect(puntaNueva).not.toBe(head);
+    expect((await gitOk(["rev-parse", "HEAD"], { cwd: clon })).trim()).toBe(puntaNueva);
+    expect((await gitOk(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: clon })).trim()).toBe("telo/prueba");
+    expect(readFileSync(join(clon, "archivo.txt"), "utf8")).toContain("avanzado");
+    expect(readFileSync(join(clon, "hecho.txt"), "utf8")).toContain("cambio de la tarea");
+    const evento = db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM task_events WHERE task_id=? AND kind='push_reintegrado'").get(taskId);
+    expect(evento?.n).toBe(1);
+    const pendientes = await gitOk(["status", "--porcelain", "--untracked-files=all"], { cwd: clon });
+    expect(pendientes.trim()).toBe("");
+  } finally {
+    rmSync(origen, { recursive: true, force: true });
+    rmSync(clon, { recursive: true, force: true });
+  }
+});
+
+test("reintegrarSobrePunta aborta, restaura la rama y explica cómo continuar al chocar", { timeout: 20000 }, async () => {
+  const { p, origen, base } = await proyectoLocalConOrigen(randomUUID().slice(0, 8));
+  await avanzarOrigen(origen, "conflictivo\n");
+  const taskId = randomUUID();
+  p.taskId = taskId;
+  db.query("INSERT INTO tasks(id,title,prompt,model,status,project_id) VALUES (?,'Conflicto','Prueba','prueba','done',?)").run(taskId, p.id);
+  const clon = join(config.projectsDir!, `clon-${taskId}`);
+  try {
+    await gitOk(["clone", p.cwd, clon], { cwd: config.projectsDir! });
+    await gitOk(["remote", "remove", "origin"], { cwd: clon });
+    await gitOk(["checkout", "-B", "telo/prueba", base], { cwd: clon });
+    writeFileSync(join(clon, "archivo.txt"), "reescrito por la tarea\n");
+    await gitOk(["add", "archivo.txt"], { cwd: clon });
+    await gitOk(["-c", "user.name=Prueba", "-c", "user.email=prueba@example.test", "commit", "-m", "Cambio conflictivo"], { cwd: clon });
+    const head = (await gitOk(["rev-parse", "HEAD"], { cwd: clon })).trim();
+
+    expect.assertions(4);
+    try {
+      await reintegrarSobrePunta(
+        taskId,
+        { clon, projectId: null, rama: "telo/prueba", base },
+        opcionesDeCredenciales(null),
+        origen,
+        "main",
+        head,
+      );
+      throw new Error("Debía fallar por conflicto");
+    } catch (err: any) {
+      expect(err.code).toBe("push_fallido");
+      expect(String(err.detail)).toContain("Pull Request");
+      expect((await gitOk(["rev-parse", "HEAD"], { cwd: clon })).trim()).toBe(head);
+      expect((await gitOk(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: clon })).trim()).toBe("telo/prueba");
+    }
+  } finally {
+    rmSync(origen, { recursive: true, force: true });
+    rmSync(clon, { recursive: true, force: true });
+  }
+});
+
+test("un push fallido guarda el detalle claro para la tarjeta", { timeout: 20000 }, async () => {
+  const p = await tareaConCommit();
+  const accion = await (await pedir(`/projects/${p.id}/acciones`, { action: "push", taskId: p.taskId })).json() as any;
+  globalThis.fetch = (async (url: any) => {
+    expect(String(url)).toBe("https://api.github.com/repos/dueno/prueba");
+    return Response.json({ full_name: "dueno/prueba", permissions: { push: true } });
+  }) as unknown as typeof fetch;
+  const original = Bun.spawn;
+  const espia = spyOn(Bun, "spawn").mockImplementation(((cmd: any, opts: any) => {
+    if (Array.isArray(cmd) && cmd.includes("ls-remote")) {
+      return original([process.execPath, "-e", "process.exit(0)"], { stdout: "pipe", stderr: "pipe" });
+    }
+    if (Array.isArray(cmd) && cmd.includes("push")) {
+      return original([process.execPath, "-e", 'process.stderr.write("la punta del remoto no reconoce este commit"); process.exit(1)'], { stdout: "pipe", stderr: "pipe" });
+    }
+    return original(cmd, opts);
+  }) as typeof Bun.spawn);
+  try {
+    const respuesta = await pedir(`/acciones/${accion.id}/decidir`, { approve: true, destino: "base" });
+    expect(respuesta.status).toBe(502);
+    const fila = db.query<{ result: string | null }, [string]>("SELECT result FROM repository_actions WHERE id=?").get(accion.id)!;
+    expect(fila.result).toBeTruthy();
+    const leido = JSON.parse(fila.result!) as { codigo: string; mensaje: string };
+    expect(leido.codigo).toBe("push_fallido");
+    expect(leido.mensaje).toContain("no reconoce");
+  } finally {
+    espia.mockRestore();
+  }
 });
 
 test("el token global de GitHub se cifra en SQLite y las filas antiguas se migran al leerlas", () => {
