@@ -783,7 +783,7 @@ test("un push fallido guarda el detalle claro para la tarjeta", { timeout: 20000
       return original([process.execPath, "-e", "process.exit(0)"], { stdout: "pipe", stderr: "pipe" });
     }
     if (Array.isArray(cmd) && cmd.includes("push")) {
-      return original([process.execPath, "-e", 'process.stderr.write("la punta del remoto no reconoce este commit"); process.exit(1)'], { stdout: "pipe", stderr: "pipe" });
+      return original([process.execPath, "-e", 'process.stderr.write("remote: error: GH013: Repository rule violations found for refs/heads/main.\nremote: Updates must be made through a pull request.\n"); process.exit(1)'], { stdout: "pipe", stderr: "pipe" });
     }
     return original(cmd, opts);
   }) as typeof Bun.spawn);
@@ -794,7 +794,8 @@ test("un push fallido guarda el detalle claro para la tarjeta", { timeout: 20000
     expect(fila.result).toBeTruthy();
     const leido = JSON.parse(fila.result!) as { codigo: string; mensaje: string };
     expect(leido.codigo).toBe("push_fallido");
-    expect(leido.mensaje).toContain("no reconoce");
+    expect(leido.mensaje).toContain("regla de protección");
+    expect(leido.mensaje).toContain("abre un Pull Request");
   } finally {
     espia.mockRestore();
   }

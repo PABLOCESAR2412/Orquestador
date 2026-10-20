@@ -551,7 +551,7 @@ export function errorText(err: unknown): string {
         return textoErrorConAyuda(
           "No se pudo subir la rama al remoto.",
           err.detail,
-          "revisa el remoto y los permisos de GitHub en Ajustes; después vuelve a revisar los cambios de la tarea.",
+          "comprueba que el remoto sea el repositorio correcto, que la credencial tenga permiso de escritura y que la rama destino permita subidas directas. Si GitHub exige Pull Request, sube la rama de la tarea y ábrelo desde ahí.",
         );
       case "git_failed":
         return textoErrorConAyuda(

@@ -1,3 +1,5 @@
+import { redactar } from "./redaccion";
+
 export type TipoMedio = "imagen" | "video";
 export type ResolucionImagen = "1K" | "2K" | "4K";
 export type ResolucionVideo = "720p" | "1080p" | "4k";
@@ -75,7 +77,7 @@ function promptVisual(solicitud: SolicitudMedio): string {
   const direccion = solicitud.tipo === "video"
     ? "Dirección visual: conserva la continuidad del sujeto, la escena y el estilo durante todo el clip; usa movimiento de cámara deliberado y evita parpadeos, deformaciones o cambios de identidad. Respeta la duración, orientación y estilo solicitados."
     : /infograf[ií]a|l[ií]nea del tiempo|cronolog[ií]a|gr[aá]fico|diagrama|mapa mental|estad[ií]stica/i.test(solicitud.prompt)
-      ? "Dirección visual para infografía: organiza la información en una retícula clara con zonas separadas, jerarquía tipográfica y márgenes generosos. Mantén títulos, líneas de tiempo, gráficos, etiquetas y cifras en áreas distintas; alinea los elementos y deja espacio suficiente para que no se solapen ni se recorten. Conserva nombres, fechas y cifras exactamente como se solicitaron, no inventes datos y prioriza legibilidad sobre decoración."
+      ? "Dirección visual para infografía: antes de dibujar, distribuye el contenido en una retícula editorial con márgenes amplios, jerarquía tipográfica sencilla y zonas claramente separadas. Conserva exactamente la ortografía, nombres, fechas, etiquetas y cifras solicitados; no agregues datos, textos ni leyendas. Deja espacio real entre título, subtítulo, rótulos, gráficos y tarjetas. Si hay muchos elementos, usa filas o columnas adicionales y cambia la composición; no comprimas, encimes ni recortes el texto para que quepa. Mantén valores, escalas y etiquetas coherentes. Prioriza tipografía plana, grande y de alto contraste frente a adornos; si se pide 3D, limita la profundidad al fondo y a los elementos decorativos, sin deformar letras ni datos."
       : "Dirección visual: respeta la estética indicada y crea una composición intencional con un foco claro, equilibrio, espacio negativo y contraste legible. Evita texto accidental, elementos duplicados, solapamientos o recortes; incluye texto solo si se pidió. Respeta la orientación y resolución solicitadas.";
   return `${solicitud.prompt}\n\n${direccion}`;
 }
@@ -85,7 +87,25 @@ function registro(valor: unknown): Record<string, any> | null {
 }
 
 async function respuestaJson(respuesta: Response): Promise<Record<string, any>> {
-  if (!respuesta.ok) throw new Error(`google_http_${respuesta.status}`);
+  if (!respuesta.ok) {
+    const longitudError = Number(respuesta.headers.get("content-length") ?? 0);
+    let codigoProveedor = "";
+    let mensajeProveedor = "";
+    // Google suele incluir en el cuerpo el motivo exacto de los HTTP 400. Guardamos solo
+    // status y mensaje, nunca el cuerpo entero, para distinguir parámetros inválidos de
+    // modelos o permisos no disponibles sin exponer datos de la petición.
+    if (!longitudError || longitudError <= 8192) {
+      const cuerpo = await respuesta.text().catch(() => "");
+      try {
+        const error = registro(JSON.parse(cuerpo).error);
+        if (typeof error?.status === "string") codigoProveedor = error.status.slice(0, 64);
+        if (typeof error?.message === "string") mensajeProveedor = redactar(error.message).replace(/[\r\n\t]+/g, " ").slice(0, 400);
+      } catch {
+        // Una respuesta no JSON conserva el código HTTP, que basta para el mensaje genérico.
+      }
+    }
+    throw new Error(`google_http_${respuesta.status}${codigoProveedor ? `|${codigoProveedor}` : ""}${mensajeProveedor ? `|${mensajeProveedor}` : ""}`);
+  }
   const longitud = Number(respuesta.headers.get("content-length") ?? 0);
   if (longitud > 32 * 1024 * 1024) throw new Error("google_respuesta_grande");
   const texto = await respuesta.text();
@@ -234,7 +254,17 @@ export function errorSeguroDeMedio(err: unknown): string {
   if (codigo === "google_tiempo_agotado") return "Google no terminó el video a tiempo. El trabajo quedó detenido; revisa el uso de la API antes de solicitar otro para evitar una generación duplicada.";
   if (codigo === "google_archivo_grande") return "El archivo generado supera el límite de almacenamiento de Telo.";
   if (codigo === "google_archivo_invalido" || codigo === "google_sin_video" || codigo === "google_respuesta_grande") return "Google no devolvió un medio compatible para guardar en este chat.";
-  const http = /^google_http_(\d{3})$/.exec(codigo)?.[1];
-  if (http) return `Google rechazó la generación (HTTP ${http}). Revisa la configuración de la API o intenta más tarde.`;
+  const http = /^google_http_(\d{3})(?:\|([^|]{1,64}))?(?:\|(.{1,400}))?$/.exec(codigo);
+  if (http) {
+    const [, estado, estadoProveedor, mensajeProveedor] = http;
+    const detalle = mensajeProveedor ? ` Detalle de Google: ${mensajeProveedor}.` : "";
+    if (estado === "400" && /model.*(?:not found|not available|not supported)|(?:not found|not available|not supported).*model/i.test(mensajeProveedor ?? "")) {
+      return `Google no permite usar el modelo de imagen configurado (HTTP 400).${detalle} Revisa que la API key tenga acceso al modelo Nano Banana 2.1.`;
+    }
+    if (estado === "400" && /api.?key|credential|authentication/i.test(`${estadoProveedor} ${mensajeProveedor}`)) {
+      return `Google rechazó la credencial de la API (HTTP 400).${detalle} Revisa la clave de Gemini en Ajustes.`;
+    }
+    return `Google rechazó la generación (HTTP ${estado}${estadoProveedor ? ` · ${estadoProveedor}` : ""}).${detalle} Revisa los parámetros y el acceso a la API de Gemini.`;
+  }
   return "No se pudo completar la generación de medios. La respuesta de Google no se guardó; revisa el estado y el uso de la API antes de reintentar.";
 }

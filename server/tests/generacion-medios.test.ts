@@ -58,6 +58,29 @@ describe("Google API multimedia", () => {
     expect(new TextDecoder().decode(salida.contenido)).toBe("png-data");
   });
 
+  test("explica el motivo HTTP 400 de Google y redacta cualquier clave que repita", async () => {
+    const solicitud = detectarSolicitudMedio("Genera una imagen 1:1")!;
+    const clave = "AIzaSyA123456789012345678901234567890123";
+    const fetcher = (async (_input: string | URL, _init?: RequestInit) => Response.json({
+      error: {
+        code: 400,
+        status: "INVALID_ARGUMENT",
+        message: `Invalid image_size. ${clave}`,
+      },
+    }, { status: 400 })) as unknown as typeof fetch;
+
+    try {
+      await generarImagen(solicitud, clave, fetcher);
+      throw new Error("Google debía rechazar los parámetros de la solicitud");
+    } catch (err) {
+      const visible = errorSeguroDeMedio(err);
+      expect(visible).toContain("HTTP 400");
+      expect(visible).toContain("INVALID_ARGUMENT");
+      expect(visible).toContain("Invalid image_size");
+      expect(visible).not.toContain(clave);
+    }
+  });
+
   test("añade una composición legible sin alterar los datos pedidos para una infografía", async () => {
     const solicitud = detectarSolicitudMedio("Crea una infografía con cronología 1939-1945 y 70-85 millones de víctimas")!;
     let promptEnviado = "";
@@ -67,8 +90,9 @@ describe("Google API multimedia", () => {
     }) as typeof fetch;
     await generarImagen(solicitud, "test-api-key", fetcher);
     expect(promptEnviado).toContain("cronología 1939-1945 y 70-85 millones de víctimas");
-    expect(promptEnviado).toContain("no se solapen ni se recorten");
-    expect(promptEnviado).toContain("no inventes datos");
+    expect(promptEnviado).toContain("no agregues datos, textos ni leyendas");
+    expect(promptEnviado).toContain("no comprimas, encimes ni recortes el texto");
+    expect(promptEnviado).toContain("sin deformar letras ni datos");
   });
 
   test("inicia video con opciones soportadas y guarda su operación", async () => {

@@ -847,8 +847,8 @@ async function subirAprobado(
     let detalle = mensajeSeguro(err, token).slice(0, 600);
     if (/denied to deploy key|deploy key does not have write access|key does not have write access/i.test(raw)) {
       detalle = "La clave Deploy Key de GitHub no tiene permisos de escritura. Ve a Settings > Deploy keys en el repositorio de GitHub y marca la casilla 'Allow write access'.";
-    } else if (/protected branch|GH006|pre-receive hook declined/i.test(raw)) {
-      detalle = `La rama remota '${ramaDestino}' está protegida en GitHub contra subidas directas. Prepara la subida en una rama propia o abre un Pull Request.`;
+    } else if (/protected branch|GH006|GH013|repository rule violation|pre-receive hook declined|push declined due to repository rule/i.test(raw)) {
+      detalle = `GitHub rechazó la subida a '${ramaDestino}' por una regla de protección del repositorio. Sube la rama de la tarea (${ctx.rama}) y abre un Pull Request, o revisa en GitHub las reglas que permiten actualizar '${ramaDestino}'.`;
     } else if (/fetch first|non-fast-forward|not a fast-forward/i.test(raw)) {
       detalle = `La rama '${ramaDestino}' en GitHub tiene commits que tu commit no incluye. En vez de subirla directo, prepara la subida en la rama de la tarea y abre un Pull Request.`;
     }
