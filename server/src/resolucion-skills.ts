@@ -66,7 +66,8 @@ function skillsAutomaticas(texto: string): string[] {
   return resultado;
 }
 
-// Resuelve las skills invocadas priorizando el proyecto activo y cayendo al ámbito global
+// Las skills globales de Telo definen el comportamiento común. Las del proyecto solo
+// completan una skill que no exista globalmente, para que un repo no sustituya la guía del sistema.
 export function resolverSkillsInvocadas(
   nombres: string[],
   projectId?: string | null,
@@ -76,23 +77,22 @@ export function resolverSkillsInvocadas(
 
   for (const nombre of nombres) {
     let encontrada = false;
-    // 1. Intentar en el proyecto si existe
-    if (ambitoProy) {
+    // 1. Intentar en global: las instrucciones compartidas de Telo tienen prioridad.
+    try {
+      const detalle = leerSkill({ ambito: "global" }, nombre);
+      resueltas.push({ nombre, contenido: detalle.contenido, ambito: "global" });
+      encontrada = true;
+    } catch {
+      // No está instalada globalmente; se buscará en el proyecto.
+    }
+    // 2. Usar la del proyecto solo como complemento cuando falta la global.
+    if (!encontrada && ambitoProy) {
       try {
         const detalle = leerSkill(ambitoProy, nombre);
         resueltas.push({ nombre, contenido: detalle.contenido, ambito: "proyecto" });
         encontrada = true;
       } catch {
-        // No está en el proyecto; se buscará en global
-      }
-    }
-    // 2. Intentar en global
-    if (!encontrada) {
-      try {
-        const detalle = leerSkill({ ambito: "global" }, nombre);
-        resueltas.push({ nombre, contenido: detalle.contenido, ambito: "global" });
-      } catch {
-        // Skill no instalada o no encontrada
+        // No está en el proyecto.
       }
     }
   }

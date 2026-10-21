@@ -13,8 +13,16 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 
 const { db } = await import("../src/db");
 const { detectarMencionesSkills, inyectarSkillsEnPrompt, resolverSkillsInvocadas } = await import("../src/resolucion-skills");
-const { guardarSkill } = await import("../src/skills");
 const carpetaProyecto = join(raiz, "proyectos", "resolucion-test");
+
+function escribirSkill(ambito: "global" | "proyecto", nombre: string, contenido: string) {
+  const base = ambito === "global"
+    ? join(homePrueba, ".config", "opencode", "skills")
+    : join(carpetaProyecto, ".opencode", "skills");
+  const carpeta = join(base, nombre);
+  mkdirSync(carpeta, { recursive: true });
+  writeFileSync(join(carpeta, "SKILL.md"), contenido);
+}
 
 afterAll(() => {
   db.close();
@@ -53,8 +61,8 @@ test("detectarMencionesSkills ignora símbolos monetarios o rutas normales", () 
 test("resolver e inyectar skills en el prompt", () => {
   const id = setupProyecto();
   // Guardar una skill en el proyecto
-  guardarSkill(
-    { ambito: "proyecto", carpeta: carpetaProyecto },
+  escribirSkill(
+    "proyecto",
     "playwright",
     "---\nname: playwright\ndescription: Pruebas end-to-end\n---\n\nUsa page.goto y espera selectores.",
   );
@@ -66,10 +74,39 @@ test("resolver e inyectar skills en el prompt", () => {
   expect(res.promptFinal).toContain("Ejecuta $playwright en este proyecto");
 });
 
+test("prioriza la skill global de Telo y conserva las skills únicas del proyecto", () => {
+  const id = setupProyecto();
+  escribirSkill(
+    "global",
+    "playwright",
+    "---\nname: playwright\ndescription: Guía global de Telo\n---\n\nUsa el navegador compartido de Telo.",
+  );
+  escribirSkill(
+    "proyecto",
+    "playwright",
+    "---\nname: playwright\ndescription: Guía del repo\n---\n\nSobrescribe la guía global.",
+  );
+  escribirSkill(
+    "proyecto",
+    "validar-datos",
+    "---\nname: validar-datos\ndescription: Guía específica\n---\n\nValida el formato de datos del repo.",
+  );
+
+  const global = resolverSkillsInvocadas(["playwright"], id);
+  expect(global).toHaveLength(1);
+  expect(global[0]).toMatchObject({ nombre: "playwright", ambito: "global" });
+  expect(global[0]?.contenido).toContain("Usa el navegador compartido de Telo.");
+  expect(global[0]?.contenido).not.toContain("Sobrescribe la guía global.");
+
+  const especifica = resolverSkillsInvocadas(["validar-datos"], id);
+  expect(especifica).toHaveLength(1);
+  expect(especifica[0]).toMatchObject({ nombre: "validar-datos", ambito: "proyecto" });
+});
+
 test("activa skills globales por tipo de tarea en el prompt compartido por todos los runners", () => {
   for (const nombre of ["frontend-design", "playwright", "ponytail"]) {
-    guardarSkill(
-      { ambito: "global" },
+    escribirSkill(
+      "global",
       nombre,
       `---\nname: ${nombre}\ndescription: Instrucciones globales de prueba.\n---\n\nInstrucciones ${nombre}.`,
     );

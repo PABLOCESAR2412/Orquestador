@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-21", "tipo": "minimo", "titulo": "Skills: prioriza las guías globales de Telo y conserva las del proyecto como complemento", "pr": 96 },
     { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Conexiones: administra servidores MCP remotos para OpenCode y Codex con credenciales cifradas", "pr": 96 },
     { "fecha": "2026-10-21", "tipo": "grande", "titulo": "Agentes: conserva subagentes como subchats con actividad, resultados y contexto independiente", "pr": 96 },
     { "fecha": "2026-10-21", "tipo": "minimo", "titulo": "Chat y Git: anima la marca Telo al iniciar y muestra enlaces de PR solo cuando GitHub confirma su creación", "pr": 96 },
