@@ -41,13 +41,14 @@ describe("registro inmediato del uso del agente", () => {
   test("el contrato común respeta el formato del llamador y exige evidencia comprobable", () => {
     const prompt = conContratoEjecucion('{ "estado": "completado" }');
     expect(prompt).toContain("cualquier modelo y proveedor");
-    expect(prompt).toContain("JSON validable para análisis o reportes de tareas");
-    expect(prompt).toContain("conversación natural y directa para chats");
+    expect(prompt).toContain("JSON para análisis/reportes");
+    expect(prompt).toContain("conversación natural para chats");
     expect(prompt).toContain("nunca inventes resultados");
     expect(prompt).toContain("enlaces directos en Markdown");
     expect(prompt).toContain("libros, videos, informes, datasets");
     expect(prompt).toContain("nunca inventes enlaces ni fuentes");
     expect(prompt).toContain("no reveles razonamiento interno privado");
+    expect(prompt).toContain("Redacta en español la actividad visible y los avisos de progreso");
     expect(prompt).toEndWith('{ "estado": "completado" }');
     expect(CONTRATO_EJECUCION.length).toBeLessThan(2_000);
   });
