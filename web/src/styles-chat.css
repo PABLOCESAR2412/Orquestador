@@ -1117,13 +1117,27 @@
 
 /* Sin conversación activa */
 .tl-vacio {
+  position: relative;
+  isolation: isolate;
   flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px 16px;
+  overflow: hidden;
+}
+.tl-vacio-reticula {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: var(--line-strong);
+  opacity: 0.42;
+  pointer-events: none;
 }
 .tl-vacio-caja {
+  position: relative;
   width: min(100%, 420px);
   display: flex;
   flex-direction: column;
@@ -1131,9 +1145,35 @@
   gap: 10px;
   text-align: center;
 }
+.tl-vacio-emblema {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 104px;
+  height: 104px;
+  margin-bottom: 8px;
+  color: var(--ink-2);
+}
+.tl-vacio-emblema > svg { position: relative; z-index: 1; width: 72px; height: 72px; }
+.tl-vacio-pulso {
+  position: absolute;
+  inset: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 24px;
+  animation: tl-vacio-pulso 2.8s ease-out infinite;
+}
+@keyframes tl-vacio-pulso {
+  0% { transform: scale(0.88); opacity: 0.7; }
+  75%, 100% { transform: scale(1.16); opacity: 0; }
+}
 .tl-vacio-caja h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
 .tl-vacio-caja p { margin: 0; max-width: 340px; color: var(--ink-2); font-size: 14px; }
 .tl-vacio-caja .tl-boton { min-height: 40px; padding: 0 16px; font-size: 14px; }
+.tl-carga-mensajes { padding: 12px 0; }
+.tl-carga-archivo { max-width: 680px; margin: 20px auto; }
+@media (prefers-reduced-motion: reduce) {
+  .tl-vacio-pulso { animation: none; opacity: 0.25; }
+}
 
 /* Móvil: cabecera y compositor compactos, sin perder controles */
 @media (max-width: 760px) {

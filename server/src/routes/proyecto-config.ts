@@ -277,7 +277,7 @@ export async function githubApiPr(
   const remoto = remotoDeRutaGithub(path);
   if (!remoto) throw new Error("La ruta de GitHub no identifica un repositorio válido.");
   const token = await tokenParaFuenteGithub(projectId, remoto, accion, autenticacion);
-  const permiso = accion === "merge" ? "Contents" : "Pull requests";
+  const permiso = accion === "merge" && metodo === "PUT" ? "Contents" : "Pull requests";
   return githubLlamar(token, path, body, autenticacion.tipo === "github_app" ? "github_app" : "credencial_anterior", permiso, metodo);
 }
 
@@ -301,7 +301,11 @@ async function tokenParaFuenteGithub(
   if (autenticacion.tipo === "github_app") {
     token = await tokenGithubAppParaRepo(
       remoto,
-      accion === "pr" ? { pull_requests: "write" } : { contents: "write" },
+      accion === "pr"
+        ? { pull_requests: "write" }
+        : accion === "merge"
+          ? { contents: "write", pull_requests: "write" }
+          : { contents: "write" },
     );
   } else if (autenticacion.origen === "sesion_anterior") {
     token = tokenGithubGlobal();

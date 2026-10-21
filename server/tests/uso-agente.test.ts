@@ -44,6 +44,9 @@ describe("registro inmediato del uso del agente", () => {
     expect(prompt).toContain("JSON validable para análisis o reportes de tareas");
     expect(prompt).toContain("conversación natural y directa para chats");
     expect(prompt).toContain("nunca inventes resultados");
+    expect(prompt).toContain("enlaces directos en Markdown");
+    expect(prompt).toContain("libros, videos, informes, datasets");
+    expect(prompt).toContain("nunca inventes enlaces ni fuentes");
     expect(prompt).toContain("no reveles razonamiento interno privado");
     expect(prompt).toEndWith('{ "estado": "completado" }');
     expect(CONTRATO_EJECUCION.length).toBeLessThan(2_000);

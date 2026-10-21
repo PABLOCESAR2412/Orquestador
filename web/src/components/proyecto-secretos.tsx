@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { LoadingSkeleton } from "./loading-skeleton";
 import { errorText } from "../lib/model";
 
 const NOMBRE_VALIDO = /^[A-Z_][A-Z0-9_]{1,63}$/;
@@ -108,7 +109,7 @@ export function ProyectoSecretos({ id }: { id: string }) {
         Variables de entorno inyectadas en las tareas del proyecto. Los valores guardados nunca se muestran.
       </p>
 
-      {secretos.isPending && <p className="help-note">Cargando los secretos…</p>}
+      {secretos.isPending && !secretos.data && <LoadingSkeleton tipo="lineas" cantidad={3} />}
       {secretos.isError && (
         <div className="error-box" role="alert">
           <span className="error-text">{errorText(secretos.error)}</span>

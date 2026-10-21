@@ -1,6 +1,7 @@
 import { useRef, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Documento, type FormatoDocumento } from "../api";
+import { LoadingSkeleton } from "./loading-skeleton";
 import { errorText } from "../lib/model";
 import { useDialogo } from "./controls";
 
@@ -116,7 +117,7 @@ export function ListaDocumentos({
       <h3 id="docs-chat-titulo" className="tl-campo-etiqueta">
         Documentos de este chat{lista.data ? ` (${n})` : ""}
       </h3>
-      {lista.isPending && <p className="tl-nota">Cargando documentos…</p>}
+      {lista.isPending && !lista.data && <LoadingSkeleton tipo="lineas" cantidad={3} />}
       {lista.isError && (
         <p className="tl-alerta" role="alert">
           {errorText(lista.error)}

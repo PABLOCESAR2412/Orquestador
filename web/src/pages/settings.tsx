@@ -14,6 +14,7 @@ import { LoginCodexPanel } from "../components/login-codex";
 import { SkillsEditor } from "../components/skills-editor";
 import { TemaPanel } from "../components/settings/panel-tema";
 import { NotificacionesPanel } from "../components/settings/panel-notificaciones";
+import { LoadingSkeleton } from "../components/loading-skeleton";
 import { SesionPanel } from "../components/settings/panel-sesion";
 
 const ALERT_OPTIONS = [50, 60, 70, 80, 90, 100];
@@ -275,7 +276,7 @@ export function SettingsPage() {
                 {proveedores.isError && (
                   <ErrorConReintento error={proveedores.error} onReintentar={() => void proveedores.refetch()} />
                 )}
-                {proveedores.isPending && <p className="aj-nota">Consultando proveedores…</p>}
+                {proveedores.isPending && !proveedores.data && <LoadingSkeleton tipo="tarjetas" cantidad={3} />}
                 {proveedores.data?.map((p) => (
                   <TarjetaProveedor
                     key={p.id}

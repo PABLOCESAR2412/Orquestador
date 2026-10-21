@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type GitConfig, type RepositoryAction } from "../api";
+import { LoadingSkeleton } from "./loading-skeleton";
 import { errorText } from "../lib/model";
 import { RepositoryApproval } from "./repository-approval";
 import "../styles-flujo.css";
@@ -59,7 +60,7 @@ function ProyectoGit({ id }: { id: string }) {
       ) : (
         <p>Sin sesión de GitHub. Puedes conectar una cuenta en Ajustes.</p>
       )}
-      {cfg.isPending && <p>Cargando configuración…</p>}
+      {cfg.isPending && !cfg.data && <LoadingSkeleton tipo="lineas" cantidad={3} />}
       {cfg.isError && <p className="error">{errorText(cfg.error)}</p>}
       {data && (
         <form

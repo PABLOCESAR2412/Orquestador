@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type PasoActividad } from "../api";
 import { errorText } from "../lib/model";
+import { LoadingSkeleton } from "./loading-skeleton";
 
 // Proceso del agente en un chat: lo que dijo mientras trabajaba y cada acción con su vista previa.
 // Se ve en vivo mientras el agente corre, y después desde "Ver proceso" debajo de la respuesta.
@@ -239,7 +240,7 @@ export function ProcesoGuardado({
       </button>
       {abierto && (
         <div className="tl-proceso-cuerpo">
-          {pasos.isPending && <p className="tl-nota">Cargando el proceso…</p>}
+          {pasos.isPending && !pasos.data && <LoadingSkeleton tipo="lineas" cantidad={3} />}
           {pasos.isError && (
             <div className="error-box" role="alert">
               <span className="error-text">{errorText(pasos.error)}</span>

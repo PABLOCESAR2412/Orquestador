@@ -11,6 +11,7 @@ import { AppNav } from "./nav";
 import { ConvItem } from "./conv-item";
 import { NuevoProyectoDialog } from "./proyecto-nuevo";
 import { HistorialCambios } from "./historial-cambios";
+import { LoadingSkeleton } from "./loading-skeleton";
 import { PaletaComandos } from "./paleta-comandos";
 import { useShell } from "./shell-context";
 import { ShellTopbar } from "./shell-topbar";
@@ -420,7 +421,9 @@ export function Shell({ children }: { children: ReactNode }) {
           <AppNav variant="sidebar" onItemClick={closeDrawer} />
 
           <div className="tl-rail-lista">
-            {(conversations.isLoading || projects.isLoading) && <span className="tl-rail-aviso">Cargando…</span>}
+            {(conversations.isLoading || projects.isLoading) && !conversations.data && !projects.data && (
+              <LoadingSkeleton tipo="lineas" cantidad={5} className="tl-rail-carga" />
+            )}
             {(conversations.isError || projects.isError) && (
               <div className="tl-rail-aviso tl-rail-aviso-error">
                 <span>Error al cargar</span>

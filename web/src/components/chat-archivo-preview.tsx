@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, urlImagenConversacion, urlPdfConversacion } from "../api";
+import { LoadingSkeleton } from "./loading-skeleton";
 import { errorText } from "../lib/model";
 import { PdfPreview } from "./pdf-preview";
 import { describirTipoArchivo, type ReferenciaArchivo } from "./chat-contenido";
@@ -152,7 +153,7 @@ export function ChatArchivoPreview({
         </>
       ) : (
         <>
-      {archivo.isPending && <p className="tl-chat-archivo-estado" role="status">Cargando archivo…</p>}
+      {archivo.isPending && !archivo.data && <LoadingSkeleton tipo="contenido" cantidad={4} className="tl-carga-archivo" />}
       {archivo.isError && (
         <div className="tl-chat-archivo-estado" role="alert">
           <p>No se pudo leer este archivo. {errorText(archivo.error)}</p>

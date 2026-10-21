@@ -281,7 +281,7 @@ export function HistorialCambios({
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const cerrarRef = useRef<HTMLButtonElement>(null);
-  const [vista, setVista] = useState<"destacadas" | "detalladas">("destacadas");
+  const [vista, setVista] = useState<"destacadas" | "detalladas" | "prs">("destacadas");
   const [filtro, setFiltro] = useState("");
 
   const cerrar = () => {
@@ -385,31 +385,45 @@ export function HistorialCambios({
             </ul>
           </div>
 
-          {/* Pestañas para alternar entre versiones destacadas y registro completo */}
+          {/* Separa las versiones editoriales, el registro cronológico y los PRs. */}
           <div className="tl-cambios-pestanas" role="tablist" aria-label="Modo de vista">
             <button
               type="button"
               role="tab"
+              id="tab-versiones-destacadas"
+              aria-controls="panel-versiones-destacadas"
               aria-selected={vista === "destacadas"}
               className={`tl-cambios-tab${vista === "destacadas" ? " is-activa" : ""}`}
               onClick={() => setVista("destacadas")}
             >
-              Versiones destacadas y PRs
+              Versiones destacadas
             </button>
             <button
               type="button"
               role="tab"
+              id="tab-registro-detallado"
+              aria-controls="panel-registro-detallado"
               aria-selected={vista === "detalladas"}
               className={`tl-cambios-tab${vista === "detalladas" ? " is-activa" : ""}`}
               onClick={() => setVista("detalladas")}
             >
-              Registro detallado ({cambios.cambios.length})
+              Registro detallado
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="tab-pull-requests"
+              aria-controls="panel-pull-requests"
+              aria-selected={vista === "prs"}
+              className={`tl-cambios-tab${vista === "prs" ? " is-activa" : ""}`}
+              onClick={() => setVista("prs")}
+            >
+              PRs
             </button>
           </div>
 
-          {vista === "destacadas" ? (
-            /* Lista de tarjetas de versión estilo Cubo */
-            <>
+          {vista === "destacadas" && (
+            <div id="panel-versiones-destacadas" role="tabpanel" aria-labelledby="tab-versiones-destacadas">
               {RELEASES_DESTACADAS.map((rel) => (
                 <article
                   key={rel.version}
@@ -444,7 +458,11 @@ export function HistorialCambios({
                   </ul>
                 </article>
               ))}
+            </div>
+          )}
 
+          {vista === "prs" && (
+            <div id="panel-pull-requests" role="tabpanel" aria-labelledby="tab-pull-requests">
               <section className="tl-cambios-prs" aria-label="Actualizaciones agrupadas por pull request">
                 <h3 className="tl-cambios-prs-titulo">Cambios por PR ({ACTUALIZACIONES_POR_PR.length})</h3>
                 {ACTUALIZACIONES_POR_PR.map((actualizacion) => {
@@ -485,10 +503,13 @@ export function HistorialCambios({
                   );
                 })}
               </section>
-            </>
-          ) : (
-            /* Vista de registro completo cronológico */
-            <div className="tl-cambios-detallados-wrap">
+            </div>
+          )}
+
+          {vista === "detalladas" && (
+            <div id="panel-registro-detallado" role="tabpanel" aria-labelledby="tab-registro-detallado">
+              <div className="tl-cambios-detallados-wrap">
+              <h3 className="tl-cambios-prs-titulo">Registro detallado ({cambios.cambios.length})</h3>
               <div className="tl-cambios-filtro-caja">
                 <input
                   type="search"
@@ -532,6 +553,7 @@ export function HistorialCambios({
                   </section>
                 ))
               )}
+              </div>
             </div>
           )}
         </div>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
+import { LoadingSkeleton } from "./loading-skeleton";
 import { errorText } from "../lib/model";
 import { formatBytes } from "./tarea-formato";
 
@@ -63,7 +64,7 @@ export function ProyectoArchivos({ id }: { id: string }) {
             })}
           </div>
 
-          {listado.isPending && <p className="help-note">Cargando la carpeta…</p>}
+          {listado.isPending && !listado.data && <LoadingSkeleton tipo="lineas" cantidad={4} />}
           {listado.isError && (
             <div className="error-box" role="alert">
               <span className="error-text">{errorText(listado.error)}</span>
@@ -134,7 +135,7 @@ export function ProyectoArchivos({ id }: { id: string }) {
             </span>
           </div>
 
-          {contenido.isPending && <p className="help-note">Cargando el archivo…</p>}
+          {contenido.isPending && !contenido.data && <LoadingSkeleton tipo="contenido" cantidad={3} />}
           {contenido.isError && (
             <div className="error-box" role="alert">
               <span className="error-text">{errorText(contenido.error)}</span>

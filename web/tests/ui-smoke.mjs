@@ -40,7 +40,7 @@ const browser = await chromium.launch({
 mkdirSync("scratch/capturas-ci", { recursive: true });
 try {
   for (const width of [390, 1440]) {
-    const context = await browser.newContext({ viewport: { width, height: 1000 }, hasTouch: width === 390, reducedMotion: "reduce", serviceWorkers: "block", permissions: ["clipboard-read", "clipboard-write"] });
+    const context = await browser.newContext({ viewport: { width, height: 1000 }, hasTouch: width === 390, reducedMotion: "reduce", serviceWorkers: "block", permissions: ["clipboard-read", "clipboard-write", "notifications"] });
     const page = await context.newPage();
     await page.addInitScript(() => {
       if (window.top !== window) return;
@@ -71,6 +71,7 @@ try {
       { id: "git1", action: "push", task_id: "t1", message_id: "u2", state: "pending", result: null, payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2", autenticacion: { tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "PABLOCESAR2412", instalacion_id: 1 } }) },
     ];
     let authenticated = false;
+    let conversacionesDisponibles = false;
     let modeloC1 = "google/prueba";
     let esfuerzoC1 = null;
     let codexSesionEnPicker = false;
@@ -104,13 +105,13 @@ try {
         id: "00000000-0000-4000-8000-000000000001", conversation_id: "c1", message_id: "a-media", tipo: "imagen", prompt: "Ilustración de un colibrí", modelo: "Google · Nano Banana 2.1", resolucion: "1K", relacion: "1:1", duracion_segundos: null, costo_estimado_usd: 0.0336, estado: medioEstado, mime: medioEstado === "completada" ? "image/svg+xml" : null, bytes: medioEstado === "completada" ? 140 : null, nombre_archivo: "colibri.svg", error: null, api_google_configurada: true, created_at: now, updated_at: now,
       };
       else if (path === "/api/media/00000000-0000-4000-8000-000000000001/archivo") return route.fulfill({ status: 200, contentType: "image/svg+xml", headers: { "Content-Disposition": 'attachment; filename="colibri.svg"' }, body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240"><rect width="320" height="240" fill="#d9a441"/><path d="M90 150q50-100 100 0q40-50 80 0" fill="#181c22"/><circle cx="170" cy="95" r="18" fill="#e7e9ec"/></svg>' });
-      else if (path === "/api/conversations") data = [
+      else if (path === "/api/conversations") data = conversacionesDisponibles ? [
         { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, created_at: now },
         { id: "c2", title: "Chat paralelo", model: "nvidia/nemotron-test", project_id: null, project_name: null, created_at: now },
         { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, pendiente_aprobacion: true, estado_tarea: "pendiente_aprobacion", estado_tarea_id: "review-c3", estado_tarea_version: "hash-c3", created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
         { id: "c4", title: "Chat anterior", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() },
         { id: "c5", title: "Chat libre", model: "google/prueba", project_id: null, project_name: null, created_at: now },
-      ];
+      ] : [];
       else if (path === "/api/conversations/c5/messages") data = [
         { id: "c2a", role: "assistant", content: "Informe adjunto: `libre.md`", model: "nvidia/nemotron-test", created_at: now },
       ];
@@ -283,6 +284,13 @@ try {
     await page.getByRole("button", { name: "Entrar", exact: true }).click();
     await page.waitForURL("**/chat");
     console.log(`${width}px: sesión local de prueba iniciada`);
+    await page.getByText("Conversaciones", { exact: true }).waitFor();
+    await page.getByRole("heading", { name: "¿Qué vamos a resolver?", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Nuevo chat", exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "la pantalla de chat nuevo cabe en móvil y escritorio");
+    await page.screenshot({ path: `scratch/capturas-ci/chat-vacio-${width}.png` });
+    conversacionesDisponibles = true;
+    await page.reload();
     await page.getByText("Conversaciones", { exact: true }).waitFor();
     assert.equal(esperaPollUsada, 8000, "el sondeo vivo deja margen al límite del proxy HTTP/2");
     if (width === 390) {
@@ -674,6 +682,17 @@ try {
     await historialCambios.waitFor();
     assert.ok(await historialCambios.locator(".tl-cambio").count() > 0);
     assert.equal(await historialCambios.getAttribute("aria-modal"), "true");
+    const tabVersiones = historialCambios.getByRole("tab", { name: "Versiones destacadas", exact: true });
+    const tabRegistro = historialCambios.getByRole("tab", { name: /Registro detallado/ });
+    const tabPrs = historialCambios.getByRole("tab", { name: /PRs/ });
+    assert.equal(await tabVersiones.getAttribute("aria-selected"), "true");
+    assert.equal(await historialCambios.locator(".tl-cambios-prs").count(), 0, "los PR tienen pestaña propia");
+    await tabPrs.click();
+    await historialCambios.locator("#panel-pull-requests .tl-cambios-prs").waitFor();
+    assert.equal(await tabPrs.getAttribute("aria-selected"), "true");
+    await page.screenshot({ path: `scratch/capturas-ci/cambios-pr-${width}.png` });
+    await tabRegistro.click();
+    await historialCambios.locator("#panel-registro-detallado .tl-cambios-detallados-wrap").waitFor();
     await page.screenshot({ path: `scratch/capturas-ci/cambios-${width}.png` });
     await page.keyboard.press("Escape");
     await historialCambios.waitFor({ state: "detached" });
@@ -683,12 +702,12 @@ try {
     const contrasteChat = await page.locator(".sidebar-conv-title").first().evaluate(el => getComputedStyle(el).color);
     assert.notEqual(contrasteGrupo, contrasteChat);
     await page.getByText("Faltan dependencias", { exact: true }).waitFor();
-    assert.equal(await page.getByRole("article", { name: "Acción de Git" }).count(), 1);
-    await page.getByText("Ver 1 intento anterior", { exact: true }).waitFor();
+    assert.equal(await page.getByRole("region", { name: "Acción actual del repositorio" }).count(), 1);
+    await page.getByText("Historial de acciones Git · 1", { exact: true }).waitFor();
     await page.locator(".tl-resumen-cambios").waitFor();
     const accionTrasSuRespuesta = await page.locator(".tl-hilo-columna").evaluate(root => {
       const respuesta = [...root.querySelectorAll(".tl-msg-agente")].find(mensaje => mensaje.textContent?.includes("El segundo intento está listo para revisar."));
-      const accion = root.querySelector('article[aria-label="Acción de Git"]');
+      const accion = root.querySelector('section.tl-accion-git-actual');
       return Boolean(respuesta && accion && (respuesta.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING));
     });
     assert.equal(accionTrasSuRespuesta, true, "la tarjeta Git aparece después de la respuesta que la originó");
@@ -696,9 +715,9 @@ try {
     assert.equal((await page.locator("body").textContent()).includes("MEMORIA_INTERNA"), false);
     await page.getByRole("button", { name: "Subir a telo/prueba y abrir PR", exact: true }).click();
     await page.getByText("Completada", { exact: true }).waitFor();
-    assert.equal(await page.locator('article[aria-label="Acción de Git"]').count(), 1, "la decisión actualiza la misma tarjeta dentro de su turno");
+    assert.equal(await page.locator('section.tl-accion-git-actual').count(), 1, "la decisión actualiza la misma tarjeta dentro de su turno");
     assert.equal(approvals, 1);
-    assert.equal(await page.locator('article[aria-label="Acción de Git"] [role="alert"]').count(), 0);
+    assert.equal(await page.locator('section.tl-accion-git-actual [role="alert"]').count(), 0);
     await hiloChat.evaluate(el => { el.scrollTop = 0; el.dispatchEvent(new Event("scroll")); });
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Envío del chat A");
     const requestChatA = page.waitForRequest(request => request.url().endsWith("/api/conversations/c1/messages") && request.method() === "POST" && request.postDataJSON().content === "Envío del chat A");
@@ -720,10 +739,10 @@ try {
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Prueba de mensaje");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByText("Mensaje recibido", { exact: true }).waitFor();
-    assert.equal(await page.locator('article[aria-label="Acción de Git"]').evaluate(accion => {
+    assert.equal(await page.locator('section.tl-accion-git-actual').evaluate(accion => {
       const respuestaPosterior = [...document.querySelectorAll(".tl-msg-agente")].find(mensaje => mensaje.textContent?.includes("Mensaje recibido"));
-      return Boolean(respuestaPosterior && (accion.compareDocumentPosition(respuestaPosterior) & Node.DOCUMENT_POSITION_FOLLOWING));
-    }), true, "la tarjeta Git permanece junto a su turno y no salta al final de los mensajes nuevos");
+      return Boolean(respuestaPosterior && (respuestaPosterior.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING));
+    }), true, "la tarjeta Git única muestra el estado más reciente después de los mensajes nuevos");
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Haz una imagen de un colibrí");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByRole("button", { name: "Uso", exact: true }).click();
@@ -860,6 +879,14 @@ try {
     await page.goto(`${base}/ajustes`);
     await page.getByRole("heading", { name: "Ajustes y Servidor", exact: true }).waitFor();
     assert.equal(await page.getByRole("heading", { name: "Cuenta de Google", exact: true }).count(), 0);
+    const tarjetaNotificaciones = page.locator('article[aria-labelledby="ajustes-notificaciones"]');
+    await tarjetaNotificaciones.scrollIntoViewIfNeeded();
+    const interruptorNotificaciones = tarjetaNotificaciones.getByRole("switch", { name: "Notificaciones de escritorio" });
+    await interruptorNotificaciones.click();
+    assert.equal(await interruptorNotificaciones.getAttribute("aria-checked"), "true");
+    await tarjetaNotificaciones.getByRole("button", { name: "Probar sonido", exact: true }).click();
+    await tarjetaNotificaciones.getByRole("status").filter({ hasText: "Sonido activado." }).waitFor();
+    await interruptorNotificaciones.click();
     const tarjetaGithub = page.locator('.aj-tarjeta[aria-labelledby="ajustes-github"]');
     await tarjetaGithub.scrollIntoViewIfNeeded();
     await tarjetaGithub.getByText("Conectada", { exact: true }).waitFor();

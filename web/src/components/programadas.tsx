@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ModelInfo, type Programada, type ProgramadaInput } from "../api";
+import { LoadingSkeleton } from "./loading-skeleton";
 import { EffortControl } from "./controls";
 import { errorText } from "../lib/model";
 import { cuando } from "./tarea-formato";
@@ -72,6 +73,8 @@ export function ProgramadasPanel() {
           <span className="error-text">{errorText(programadas.error)}</span>
         </div>
       )}
+
+      {programadas.isPending && !programadas.data && <LoadingSkeleton tipo="lineas" cantidad={3} />}
 
       {programadas.data?.length === 0 && !formAbierto && (
         <p className="help-note">Todavía no hay tareas programadas.</p>

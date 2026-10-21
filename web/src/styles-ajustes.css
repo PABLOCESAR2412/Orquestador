@@ -556,7 +556,22 @@
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-pill);
   background: var(--surface-2);
+  cursor: pointer;
 }
+.aj-notificaciones-sonido {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.aj-notificaciones-sonido-acciones {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.aj-notificaciones-sonido-acciones .aj-nota { margin: 0; }
 .aj-switch::after {
   content: "";
   position: absolute;

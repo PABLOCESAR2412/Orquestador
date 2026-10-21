@@ -3,10 +3,13 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-20", "tipo": "mediano", "titulo": "Chat: nuevo estado de inicio con marca animada, cargas skeleton, pestañas independientes de PR y avisos de escritorio con sonido", "pr": null },
+    { "fecha": "2026-10-20", "tipo": "mediano", "titulo": "Git: genera mensajes convencionales, consolida el flujo en una tarjeta y prepara tareas para resolver conflictos de PR", "pr": null },
     { "fecha": "2026-10-20", "tipo": "mediano", "titulo": "Medios y Git: muestra el motivo HTTP de Google, redacta credenciales y explica rechazos de reglas de rama", "pr": 93 },
     { "fecha": "2026-10-20", "tipo": "minimo", "titulo": "Git: registra en el historial de la tarea el fallo del reintegro con conflicto, igual que el resto de fallos de subida", "pr": 93 },
     { "fecha": "2026-10-20", "tipo": "minimo", "titulo": "Chat: evita reiniciar diagramas al actualizar mensajes, acorta el sondeo vivo y muestra rechazos de push como resultado de la acción", "pr": 94 },
     { "fecha": "2026-10-20", "tipo": "minimo", "titulo": "Chat: sigue el texto progresivo hasta el final y respeta el scroll manual hacia mensajes anteriores", "pr": 94 },
+    { "fecha": "2026-10-20", "tipo": "mediano", "titulo": "Agentes: cita fuentes web verificables con enlaces a libros, videos y otros materiales en todos los runners", "pr": 94 },
     { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Git: al crear una tarea lleva la copia local del proyecto al día; antes de subir a la base reintegra su punta y la tarjeta muestra el detalle real del fallo", "pr": 92 },
     { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Agentes: mejora la composición, legibilidad y revisión de imágenes e infografías en todos los modelos", "pr": null },
     { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Chat: al autorizar una subida elige destino (rama base directo o rama y PR) y Telo respeta la elección en la cadena", "pr": 90 },

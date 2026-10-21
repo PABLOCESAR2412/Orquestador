@@ -687,6 +687,15 @@ const migrations: Migration[] = [
          );
     `,
   },
+  {
+    // Permite que una tarea de resolución de conflictos continúe sobre la rama fuente de un PR.
+    name: "036_rama_fuente_tarea",
+    sql: `
+      ALTER TABLE tasks ADD COLUMN source_branch TEXT;
+      ALTER TABLE tasks ADD COLUMN source_base_branch TEXT;
+      ALTER TABLE tasks ADD COLUMN source_pr_number INTEGER;
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

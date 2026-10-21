@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { LoadingSkeleton } from "../components/loading-skeleton";
 import { useShell } from "../components/shell-context";
 import { chatDelProyecto, nuevoChatDelProyecto, chatsDelProyecto } from "../lib/chat-proyecto";
 import { errorText } from "../lib/model";
@@ -137,7 +138,7 @@ export function ProjectDetailPage() {
           <ProyectoSiguientePaso proyectoId={proyecto.id} onCerrar={() => setSiguienteAbierto(false)} />
         )}
 
-        {detalle.isPending && <p className="help-note">Cargando el proyecto…</p>}
+        {detalle.isPending && !detalle.data && <LoadingSkeleton tipo="contenido" cantidad={4} />}
 
         {detalle.isError && (
           <div className="error-box" role="alert">
@@ -175,7 +176,7 @@ export function ProjectDetailPage() {
                 </button>
               </div>
 
-              {listaChats.isLoading && <p className="help-note">Cargando chats del proyecto…</p>}
+              {listaChats.isLoading && !listaChats.data && <LoadingSkeleton tipo="lineas" cantidad={3} />}
 
               {listaChats.data && listaChats.data.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

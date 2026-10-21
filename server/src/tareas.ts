@@ -16,6 +16,9 @@ export type NuevaTarea = {
   conversationId?: string | null;
   providerSessionId?: string | null;
   providerSessionModel?: string | null;
+  sourceBranch?: string | null;
+  sourceBaseBranch?: string | null;
+  sourcePrNumber?: number | null;
 };
 
 // Crea la tarea en cola, la publica y despierta al worker. Devuelve su id.
@@ -33,7 +36,7 @@ export function crearTarea(opts: NuevaTarea): string {
 
   db.transaction(() => {
     db.query(
-      "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id, retry_of, conversation_id, provider_session_id, provider_session_model) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)",
+      "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id, retry_of, conversation_id, provider_session_id, provider_session_model, source_branch, source_base_branch, source_pr_number) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?)",
     ).run(
       id,
       titulo,
@@ -45,6 +48,9 @@ export function crearTarea(opts: NuevaTarea): string {
       opts.conversationId ?? null,
       opts.providerSessionId ?? null,
       opts.providerSessionModel ?? null,
+      opts.sourceBranch ?? null,
+      opts.sourceBaseBranch ?? null,
+      opts.sourcePrNumber ?? null,
     );
     registrarEvento(id, "creada", detalle);
     if (retryOf) registrarEvento(retryOf, "reintento_creado", `Nueva tarea ${id.slice(0, 8)}`);

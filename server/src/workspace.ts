@@ -111,6 +111,9 @@ type FilaTarea = {
   rama: string | null;
   base_commit: string | null;
   project_id: string | null;
+  source_branch: string | null;
+  source_base_branch: string | null;
+  source_pr_number: number | null;
 };
 
 type FilaAprobacion = {
@@ -321,7 +324,7 @@ function filaTarea(taskId: string): FilaTarea {
     .query<
       FilaTarea,
       [string]
-    >("SELECT id, status, rama, base_commit, project_id FROM tasks WHERE id = ?")
+    >("SELECT id, status, rama, base_commit, project_id, source_branch, source_base_branch, source_pr_number FROM tasks WHERE id = ?")
     .get(taskId);
   if (!fila) throw new ErrorTarea("task_not_found", 404);
   return fila;
@@ -404,8 +407,10 @@ export function prepararCopia(
 
     const carpeta = carpetaTarea(taskId);
     const clon = join(carpeta, "repo");
-    const rama = ramaDeTarea(taskId);
     const fila = filaTarea(taskId);
+    const rama = fila.source_branch ?? ramaDeTarea(taskId);
+    if (fila.source_branch && (await gitSeguro(["check-ref-format", "--branch", rama], { cwd: repoPath })).code !== 0)
+      throw new ErrorTarea("rama_fuente_invalida", 409);
     mkdirSync(carpeta, { recursive: true });
 
     const nuevo = !existsSync(clon);
@@ -442,7 +447,37 @@ export function prepararCopia(
     }
 
     let base: string;
-    if (nuevo) {
+    if (nuevo && fila.source_branch) {
+        const remoto = leerRemoto(taskId);
+        const baseBranch = fila.source_base_branch ?? (fila.project_id
+          ? db.query<{ base_branch: string }, [string]>("SELECT base_branch FROM project_git WHERE project_id=?").get(fila.project_id)?.base_branch ?? "main"
+          : "main");
+        if (!remoto || !urlGithubPermitida(remoto)) throw new ErrorTarea("sin_remoto", 409);
+        if ((await gitSeguro(["check-ref-format", "--branch", baseBranch], { cwd: clon })).code !== 0)
+          throw new ErrorTarea("rama_base_invalida", 409);
+        const env = await tokenDeLectura({ projectId: fila.project_id, remoto });
+        await gitOkSeguro([
+          "fetch", "--no-tags", remoto,
+          `+refs/heads/${rama}:refs/telo/source`,
+          `+refs/heads/${baseBranch}:refs/telo/base`,
+        ], { cwd: clon, timeoutMs: TIEMPO_CLON_MS, env });
+        const head = (await gitOkSeguro(["rev-parse", "refs/telo/source"], { cwd: clon })).trim();
+        base = (await gitOkSeguro(["rev-parse", "refs/telo/base"], { cwd: clon })).trim();
+        await gitOkSeguro(["checkout", "-B", rama, head], { cwd: clon });
+        const autor = fila.project_id
+          ? db.query<{ author_name: string; author_email: string }, [string]>("SELECT author_name,author_email FROM project_git WHERE project_id=?").get(fila.project_id)
+          : null;
+        const merge = await gitSeguro([
+          "-c", `user.name=${autor?.author_name ?? "Telo"}`,
+          "-c", `user.email=${autor?.author_email ?? "telo@localhost"}`,
+          "merge", "--no-edit", "refs/telo/base",
+        ], { cwd: clon, timeoutMs: TIEMPO_CLON_MS });
+        if (merge.code !== 0) {
+          const sinResolver = (await gitOkSeguro(["diff", "--name-only", "--diff-filter=U"], { cwd: clon })).trim();
+          if (!sinResolver) throw new ErrorTarea("rama_fuente_no_preparable", 409, mensajeSeguro(new Error(merge.stderr || merge.stdout)));
+          registrarEvento(taskId, "conflictos_pr_preparados", sinResolver.split("\n").slice(0, 20).join(", "));
+        }
+    } else if (nuevo) {
       const head = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: clon })).trim();
       base =
         fila.base_commit && (await existeCommit(clon, fila.base_commit)) ? fila.base_commit : head;
@@ -469,6 +504,41 @@ export function prepararCopia(
     db.query("UPDATE tasks SET rama = ?, base_commit = ? WHERE id = ?").run(rama, base, taskId);
     return { cwd: clon, rama, base_commit: base, copia: true };
   });
+}
+
+/** Inspecciona conflictos entre las ramas remotas de un PR sin modificar el árbol de trabajo. */
+export async function detectarConflictosPullRequest(
+  taskId: string,
+  remotoEntrada: string,
+  ramaBase: string,
+  ramaFuente: string,
+): Promise<string[]> {
+  const remoto = urlGithubPermitida(remotoEntrada);
+  if (!remoto) return [];
+  const ctx = await contextoGit(taskId);
+  if (
+    (await gitSeguro(["check-ref-format", "--branch", ramaBase], { cwd: ctx.clon })).code !== 0 ||
+    (await gitSeguro(["check-ref-format", "--branch", ramaFuente], { cwd: ctx.clon })).code !== 0
+  ) return [];
+  const env = await tokenDeLectura({ projectId: ctx.projectId, remoto });
+  await gitOkSeguro([
+    "fetch", "--no-tags", remoto,
+    `+refs/heads/${ramaBase}:refs/telo/diagnostico/base`,
+    `+refs/heads/${ramaFuente}:refs/telo/diagnostico/head`,
+  ], { cwd: ctx.clon, timeoutMs: TIEMPO_CLON_MS, env });
+  const base = (await gitOkSeguro(["rev-parse", "refs/telo/diagnostico/base"], { cwd: ctx.clon })).trim();
+  const head = (await gitOkSeguro(["rev-parse", "refs/telo/diagnostico/head"], { cwd: ctx.clon })).trim();
+  const resultado = await gitSeguro(["merge-tree", "--write-tree", base, head], {
+    cwd: ctx.clon,
+    timeoutMs: TIEMPO_CLON_MS,
+  });
+  const salida = `${resultado.stdout}\n${resultado.stderr}`;
+  const rutas = new Set<string>();
+  for (const coincidencia of salida.matchAll(/CONFLICT\s+\([^)]+\):\s+Merge conflict in (.+)$/gm)) {
+    const ruta = coincidencia[1]?.trim();
+    if (ruta && ruta.length <= 500) rutas.add(ruta);
+  }
+  return [...rutas].slice(0, 30);
 }
 
 // Revisa la copia y calcula el estado contra base_commit. Deja los cambios en el índice.

@@ -1,11 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Task, TaskStatus } from "../api";
 import { useEventosVivos } from "./eventos-vivos";
 
-// Notificaciones del sistema. Vienen activadas por defecto en cada navegador; el usuario las apaga en Ajustes.
-// Llegan por el canal en vivo, así que solo avisan mientras Telo está abierta (en la PWA, aunque esté en segundo plano).
+// El permiso se solicita solo desde Ajustes, tras una acción explícita del usuario.
 const CLAVE = "telo:notificaciones";
+const CLAVE_SONIDO = "telo:sonido-notificaciones";
+let contextoAudio: AudioContext | null = null;
 
 // Avisos por estado terminal o de espera. Los demás estados no molestan.
 const AVISOS: Partial<Record<TaskStatus, { titulo: string; cuerpo: string }>> = {
@@ -18,15 +19,31 @@ const AVISOS: Partial<Record<TaskStatus, { titulo: string; cuerpo: string }>> = 
 
 export function notificacionesActivas(): boolean {
   try {
-    return localStorage.getItem(CLAVE) !== "no";
+    return localStorage.getItem(CLAVE) === "si";
   } catch {
-    return true;
+    return false;
   }
 }
 
 export function guardarNotificacionesActivas(activas: boolean): void {
   try {
     localStorage.setItem(CLAVE, activas ? "si" : "no");
+  } catch {
+    // Sin almacenamiento disponible, la preferencia dura lo que la pestaña.
+  }
+}
+
+export function sonidoNotificacionesActivo(): boolean {
+  try {
+    return localStorage.getItem(CLAVE_SONIDO) !== "no";
+  } catch {
+    return true;
+  }
+}
+
+export function guardarSonidoNotificacionesActivo(activo: boolean): void {
+  try {
+    localStorage.setItem(CLAVE_SONIDO, activo ? "si" : "no");
   } catch {
     // Sin almacenamiento disponible, la preferencia dura lo que la pestaña.
   }
@@ -47,10 +64,53 @@ export async function pedirPermisoNotificaciones(): Promise<NotificationPermissi
   }
 }
 
-// Muestra el aviso si el usuario lo quiere, el navegador lo permite y Telo no está a la vista.
+function obtenerAudio(): AudioContext | null {
+  if (typeof window === "undefined" || !("AudioContext" in window)) return null;
+  try {
+    contextoAudio ??= new AudioContext();
+  } catch {
+    return null;
+  }
+  return contextoAudio;
+}
+
+/** Desbloquea el audio en respuesta al clic explícito de Ajustes, sin reproducir sonido. */
+export async function prepararSonidoNotificaciones(): Promise<boolean> {
+  const audio = obtenerAudio();
+  if (!audio) return false;
+  try {
+    if (audio.state !== "running") await audio.resume();
+    return audio.state === "running";
+  } catch {
+    return false;
+  }
+}
+
+/** Timbre corto sintetizado, sin descargar audio ni depender de archivos externos. */
+export async function probarSonidoNotificaciones(): Promise<boolean> {
+  const audio = obtenerAudio();
+  if (!audio || !(await prepararSonidoNotificaciones())) return false;
+  const ahora = audio.currentTime;
+  for (const [frecuencia, demora] of [[660, 0], [880, 0.14]] as const) {
+    const oscilador = audio.createOscillator();
+    const volumen = audio.createGain();
+    const inicio = ahora + demora;
+    oscilador.type = "sine";
+    oscilador.frequency.setValueAtTime(frecuencia, inicio);
+    volumen.gain.setValueAtTime(0.0001, inicio);
+    volumen.gain.exponentialRampToValueAtTime(0.12, inicio + 0.025);
+    volumen.gain.exponentialRampToValueAtTime(0.0001, inicio + 0.24);
+    oscilador.connect(volumen);
+    volumen.connect(audio.destination);
+    oscilador.start(inicio);
+    oscilador.stop(inicio + 0.25);
+  }
+  return true;
+}
+
+// La API Notification entrega el aviso al sistema operativo incluso con Telo en primer plano.
 async function mostrar(titulo: string, cuerpo: string, etiqueta: string): Promise<void> {
   if (!notificacionesActivas() || !notificacionesSoportadas() || Notification.permission !== "granted") return;
-  if (document.visibilityState === "visible" && document.hasFocus()) return;
   const opciones: NotificationOptions = { body: cuerpo, tag: etiqueta, icon: "/icon.svg" };
   // En el teléfono, las notificaciones salen por el service worker de la PWA.
   try {
@@ -74,19 +134,6 @@ export function useNotificacionesDeTareas(): void {
   const qc = useQueryClient();
   const avisadas = useRef(new Set<string>());
 
-  // Primer gesto del usuario: pide el permiso del navegador si todavía no se decidió.
-  useEffect(() => {
-    const pedir = () => {
-      if (notificacionesActivas()) void pedirPermisoNotificaciones();
-    };
-    window.addEventListener("pointerdown", pedir);
-    window.addEventListener("keydown", pedir);
-    return () => {
-      window.removeEventListener("pointerdown", pedir);
-      window.removeEventListener("keydown", pedir);
-    };
-  }, []);
-
   useEventosVivos({}, (evento) => {
     if (evento.tipo !== "tarea") return;
     const aviso = AVISOS[evento.status];
@@ -97,5 +144,6 @@ export function useNotificacionesDeTareas(): void {
     avisadas.current.add(clave);
     const tarea = qc.getQueryData<Task[]>(["tasks"])?.find((t) => t.id === evento.id);
     void mostrar(aviso.titulo, `${tarea?.title ?? "Tarea"}. ${aviso.cuerpo}`, `tarea-${evento.id}`);
+    if (sonidoNotificacionesActivo()) void probarSonidoNotificaciones();
   });
 }

@@ -681,6 +681,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ approve, ...(destino ? { destino } : {}) }),
     }),
+  resolveRepositoryConflicts: (id: string) =>
+    request<{ task_id: string; reutilizada: boolean }>(`/api/acciones/${id}/resolver-conflictos`, {
+      method: "POST",
+      body: "{}",
+    }),
 
   health: () => request<{ ok: boolean; time: string }>("/api/health"),
   runnerStatus: () =>

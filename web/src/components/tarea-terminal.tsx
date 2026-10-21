@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
+import { LoadingSkeleton } from "./loading-skeleton";
 import { errorText } from "../lib/model";
 import { quitarAnsi } from "./tarea-formato";
 
@@ -45,7 +46,7 @@ export function TerminalCrudo({ id, vivas, enCurso, onCargada }: Props) {
     <details className="tarea-terminal" onToggle={(e) => setAbierto(e.currentTarget.open)}>
       <summary>Terminal del agente</summary>
 
-      {abierto && salida.isPending && <p className="muted-note">Cargando la salida…</p>}
+      {abierto && salida.isPending && !salida.data && <LoadingSkeleton tipo="contenido" cantidad={3} />}
       {abierto && salida.isError && (
         <p className="error" role="alert">
           {errorText(salida.error)}

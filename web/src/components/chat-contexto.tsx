@@ -1,6 +1,7 @@
 import { useRef, useState, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type ContextoConversacion, type Message, type ModelInfo } from "../api";
+import { LoadingSkeleton } from "./loading-skeleton";
 import { errorText, formatUsd, nombreProveedor } from "../lib/model";
 import { compact } from "./charts";
 import { useDialogo } from "./controls";
@@ -64,7 +65,7 @@ export function ChatContexto({ conversationId, messages, models, onClose, dispar
         </header>
 
         <div className="tl-chat-contexto-cuerpo">
-          {contexto.isPending && <p className="tl-nota">Cargando uso de esta conversación…</p>}
+          {contexto.isPending && !contexto.data && <LoadingSkeleton tipo="tarjetas" cantidad={3} />}
           {contexto.isError && (
             <div className="tl-chat-contexto-error" role="alert">
               <p>No se pudo cargar el contexto: {errorText(contexto.error)}</p>

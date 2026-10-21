@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type ServicioEstado, type ServidorEstado } from "../api";
 import { duracion, formatBytes, porcentaje } from "../components/tarea-formato";
 import { errorText, formatUsd } from "../lib/model";
+import { LoadingSkeleton } from "../components/loading-skeleton";
 import { medirLatencia } from "../lib/latencia";
 
 // Contenido de las pestañas "Estado del servidor" y "Almacenamiento" de Ajustes y Servidor.
@@ -138,7 +139,7 @@ function RegistrosServicio() {
           {registros.isFetching ? "Actualizando…" : "Actualizar"}
         </button>
       </div>
-      {registros.isPending && <p className="aj-nota">Leyendo registros…</p>}
+      {registros.isPending && !registros.data && <LoadingSkeleton tipo="contenido" cantidad={3} />}
       {registros.isError && (
         <p className="aj-error" role="alert">
           {errorText(registros.error)}
@@ -419,7 +420,7 @@ export function AlmacenamientoServidor() {
         <h3 id="aj-carpetas-titulo" className="aj-tarjeta-titulo-simple">
           Carpetas
         </h3>
-        {servidor.isPending && <p className="aj-nota">Consultando…</p>}
+        {servidor.isPending && !servidor.data && <LoadingSkeleton tipo="lineas" cantidad={3} />}
         {datos && carpetas.length === 0 && <p className="aj-nota">Sin carpetas.</p>}
         {carpetas.length > 0 && (
           <ul className="aj-carpetas">
