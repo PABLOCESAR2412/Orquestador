@@ -74,6 +74,8 @@ Variables del VM que se agregan con esta fase (en `/etc/orquestador/orquestador.
 - `TELO_AGENTE_VARIABLES`: solo las claves que un proveedor necesita como variable de entorno (sin cambios).
 - `TELO_GITHUB_APP_ID` y `TELO_GITHUB_APP_PRIVATE_KEY_PATH`: para GitHub App. La clave privada debe vivir fuera del repo, ser legible solo por `orquestador` y tener permisos `Contents` y `Pull requests` de escritura. Instala la App solo en los repositorios que Telo debe usar. Cada acción recibe un token de instalación limitado a un repo y al permiso requerido; no se guarda.
 
+El servicio diario de respaldos puede leer credenciales separadas desde `/etc/orquestador/r2-backups.env`. Usa un bucket privado y limita el token S3 de R2 a lectura y escritura en ese bucket. No guardes estas claves en el repo ni en el archivo de entorno del servidor web.
+
 ## Reglas de trabajo
 
 1. **Extender, no duplicar.** Antes de crear un componente, función o endpoint, busca uno existente: `AppNav`, `DailyBars`, `ModelBars`, `errorText`, `api.*`, `getPreferences`. Los cambios son aditivos. No reescribas lo que ya funciona si no te lo pidieron.
@@ -114,7 +116,7 @@ Variables del VM que se agregan con esta fase (en `/etc/orquestador/orquestador.
 
 ## Respaldos
 
-- En el VM, `deploy/orquestador-respaldo.timer` corre cada día a las 03:30 UTC `server/scripts/respaldo.ts`, con el servicio encendido. Guarda en `/home/orquestador/respaldos`: `orquestador-<sello>.db` (copia con `VACUUM INTO`, revisada con `integrity_check`) y `espacio-<sello>.tar.gz` (`chat-workspace` y `tasks`). Conserva las últimas `TELO_RESPALDOS_CONSERVAR` (14) de cada tipo.
+- En el VM, `deploy/orquestador-respaldo.timer` corre cada día a las 03:30 UTC `server/scripts/respaldo.ts`, con el servicio encendido. Guarda en `/home/orquestador/respaldos`: `orquestador-<sello>.db` (copia con `VACUUM INTO`, revisada con `integrity_check`) y `espacio-<sello>.tar.gz` (`chat-workspace` y `tasks`). Sin R2 conserva las últimas `TELO_RESPALDOS_CONSERVAR` (14) de cada tipo. Con R2, sube y verifica los últimos `TELO_R2_RESPALDOS_CONSERVAR` conjuntos (2 por defecto), elimina conjuntos remotos antiguos y reduce las copias del VPS a `TELO_R2_RESPALDOS_LOCALES` (1 por defecto); un error de subida o validación conserva los archivos locales.
 - Antes de aplicar migraciones a una base con datos, el servidor guarda una copia en `DATA_DIR/respaldos-migracion` (`antes-<migración>-<sello>.db`). Esa carpeta no la copia el timer: revísala antes de borrarla.
 - La PC copia esa carpeta por Tailscale con `deploy/copiar-respaldo-pc.ps1`. Los respaldos nunca van al repo. La PC no poda sus copias.
 - Instalar en el VM (una vez):
@@ -125,6 +127,7 @@ Variables del VM que se agregan con esta fase (en `/etc/orquestador/orquestador.
   sudo systemctl enable --now orquestador-respaldo.timer
   ```
   Probar: `sudo systemctl start orquestador-respaldo.service` y `journalctl -u orquestador-respaldo.service -n 20`.
+- Para usar R2, crea un bucket privado y un token S3 con lectura y escritura limitado a ese bucket. Guarda `TELO_R2_ACCOUNT_ID`, `TELO_R2_BUCKET`, `TELO_R2_ACCESS_KEY_ID`, `TELO_R2_SECRET_ACCESS_KEY`, `TELO_R2_PREFIX=respaldos`, `TELO_R2_RESPALDOS_CONSERVAR=2` y `TELO_R2_RESPALDOS_LOCALES=1` en `/etc/orquestador/r2-backups.env`, con dueño `root:root` y permisos `0600`. La primera ejecución verifica dos conjuntos antes de depurar el resto de copias locales; la PC seguirá pudiendo copiar la última por Tailscale. Si necesitas guardar todo solo en R2, usa `TELO_R2_RESPALDOS_LOCALES=0` y desactiva la copia programada por Tailscale. Después de crear o cambiar el archivo, ejecuta `sudo systemctl daemon-reload` y prueba el servicio; consulta el diario para confirmar la cantidad de conjuntos conservados.
 - Programar la copia en la PC (una vez, en PowerShell). La hora debe ser local y posterior a las 03:30 UTC:
   ```
   $accion = New-ScheduledTaskAction -Execute "powershell.exe" -Argument '-NoProfile -ExecutionPolicy Bypass -File "C:\ruta\copiar-respaldo-pc.ps1" -Servidor orquestador@NOMBRE-DEL-VM -Clave "C:\ruta\TU_CLAVE"'

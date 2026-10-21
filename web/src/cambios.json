@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-21", "tipo": "grande", "titulo": "Respaldos: guarda los dos últimos conjuntos verificados en un bucket privado de Cloudflare R2 y depura copias locales antiguas", "pr": 96 },
     { "fecha": "2026-10-21", "tipo": "minimo", "titulo": "Tareas: elimina el corte automático de 30 minutos y conserva la cancelación manual", "pr": 96 },
     { "fecha": "2026-10-21", "tipo": "minimo", "titulo": "Skills: prioriza las guías globales de Telo y conserva las del proyecto como complemento", "pr": 96 },
     { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Conexiones: administra servidores MCP remotos para OpenCode y Codex con credenciales cifradas", "pr": 96 },
