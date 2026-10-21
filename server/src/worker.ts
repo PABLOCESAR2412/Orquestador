@@ -50,8 +50,6 @@ import {
 // Una tarea pasa por dos fases: el analizador produce un plan y el obrero ejecuta el plan aprobado.
 // Entre ambas, si el plan necesita aprobación, la tarea espera en `waiting_approval` sin ocupar el worker.
 
-// Tiempo máximo de cada llamada al agente (el analizador y el obrero tienen la suya).
-const TASK_TIMEOUT_MS = 30 * 60_000;
 const MENSAJE_INTERRUMPIDA = "El servidor se reinició mientras la tarea corría. Puedes reanudarla o reintentarla.";
 // Tamaño máximo de cada línea de salida que viaja por el canal en vivo.
 const MAX_LINEA_EN_VIVO = 4096;
@@ -65,8 +63,6 @@ let wake: (() => void) | null = null;
 
 // Error del analizador u obrero con texto pensado para el usuario.
 class ErrorFase extends Error {}
-// Una llamada al agente superó su tiempo.
-class TiempoAgotado extends Error {}
 
 type QueuedTask = {
   id: string;
@@ -220,17 +216,12 @@ function leerPlan(respuesta: { text: string; textoFinal: string }): Validacion<P
   return { ok: false, motivo };
 }
 
-// Una llamada al agente dentro de la tarea: usa su sesión, tiene su propio tiempo y registra su uso.
+// Una llamada del analizador u obrero: puede durar lo necesario y registra su uso.
 async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise<ResultadoAgente> {
   const { task, controller, salida } = ctx;
   // Una cancelación entre dos llamadas evita lanzar la siguiente: el runner no la vería abortada.
   if (controller.signal.aborted) throw new Error("Tarea cancelada.");
 
-  let agotado = false;
-  const temporizador = setTimeout(() => {
-    agotado = true;
-    controller.abort();
-  }, TASK_TIMEOUT_MS);
   const modeloSolicitado = task.model;
   const esfuerzoSolicitado = task.effort;
   let perfilesSubagente: Awaited<ReturnType<typeof prepararSubagentes>> = null;
@@ -260,7 +251,8 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
       sessionId: task.provider_session_id,
       sessionModel: task.provider_session_model,
       cwd: ctx.cwd,
-      timeoutMs: TASK_TIMEOUT_MS,
+      // Las tareas se cancelan desde la interfaz; no se interrumpen por duración.
+      timeoutMs: null,
       signal: controller.signal,
       taskId: task.id,
       conversationId: task.conversation_id,
@@ -317,11 +309,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
     }
     turnoTerminado = true;
     return result;
-  } catch (err) {
-    if (agotado) throw new TiempoAgotado("El agente superó los 30 minutos sin terminar.");
-    throw err;
   } finally {
-    clearTimeout(temporizador);
     if (perfilesSubagente) {
       if (huboSubagentes) perfilesSubagente.finalizarCaptura();
       else perfilesSubagente.limpiar();
@@ -584,7 +572,7 @@ async function ejecutarTarea(task: QueuedTask) {
       }
     } else if (err instanceof ErrorCuota) {
       pausarPorCuota(task.id, err, task.provider_session_id !== null, task.conversation_id);
-    } else if (err instanceof TiempoAgotado || err instanceof ErrorFase) {
+    } else if (err instanceof ErrorFase) {
       if (finish(task.id, "failed", { error: err.message })) {
         avisarChat(task.id, err.message, { model: task.model, effort: task.effort });
       }

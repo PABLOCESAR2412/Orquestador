@@ -28,7 +28,7 @@ export type OpcionesAgente = {
   sessionId?: string | null;
   sessionModel?: string | null;
   cwd: string;
-  timeoutMs?: number;
+  timeoutMs?: number | null;
   signal?: AbortSignal;
   onSesion?: (sessionId: string | null, model: string | null) => void;
   onLinea?: (linea: string) => void;
@@ -569,7 +569,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     return terminar(r, opts.model, opts.variant ?? null);
   } catch (err) {
     // Si el tiempo se agotó o se canceló, no se reintenta ni se trata como cuota.
-    const agotado = opts.timeoutMs !== undefined && Date.now() - inicio >= opts.timeoutMs;
+    const agotado = opts.timeoutMs !== undefined && opts.timeoutMs !== null && Date.now() - inicio >= opts.timeoutMs;
     if (agotado || opts.signal?.aborted) throw limpiarError(err);
     // Un modelo sin cuota se marca como tal (ver ErrorCuota); cualquier otro error sigue como antes.
     const comoCuota = (e: unknown, modelo: string): unknown =>

@@ -38,7 +38,7 @@ export async function runCodex(opts: {
   variant?: string;
   sessionId?: string | null;
   cwd: string;
-  timeoutMs?: number;
+  timeoutMs?: number | null;
   signal?: AbortSignal;
   onSesion?: (sessionId: string) => void;
   onLinea?: (linea: string) => void;
@@ -80,7 +80,7 @@ export async function runCodex(opts: {
     stderr: "pipe",
   });
 
-  const timer = setTimeout(() => {
+  const timer = opts.timeoutMs === null ? null : setTimeout(() => {
     terminarGrupo(proc);
   }, opts.timeoutMs ?? 180_000);
 
@@ -176,7 +176,7 @@ export async function runCodex(opts: {
     stderr = res[1];
     code = res[2];
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
     if (onAbort) opts.signal?.removeEventListener("abort", onAbort);
   }
 

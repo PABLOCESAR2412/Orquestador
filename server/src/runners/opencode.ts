@@ -330,7 +330,7 @@ export async function runOpenCode(opts: {
   variant?: string;
   sessionId?: string | null;
   cwd: string;
-  timeoutMs?: number;
+  timeoutMs?: number | null;
   signal?: AbortSignal;
   onSesion?: (sessionId: string) => void;
   onLinea?: (linea: string) => void;
@@ -366,7 +366,7 @@ async function ejecutarOpenCode(opts: {
   variant?: string;
   sessionId?: string | null;
   cwd: string;
-  timeoutMs?: number;
+  timeoutMs?: number | null;
   signal?: AbortSignal;
   // Se llama en cuanto el agente informa su sesión, aunque la ejecución siga en curso.
   onSesion?: (sessionId: string) => void;
@@ -433,7 +433,7 @@ async function ejecutarOpenCode(opts: {
     stderr: "pipe",
   });
   const monitorSubagentes = vigilarSubagentes(opts.subagentesTracePath, opts.onSubagente);
-  const timer = setTimeout(() => terminarGrupo(proc.pid), opts.timeoutMs ?? 120_000);
+  const timer = opts.timeoutMs === null ? null : setTimeout(() => terminarGrupo(proc.pid), opts.timeoutMs ?? 120_000);
   // Al terminar el agente, se cierra lo que quedó de su grupo (procesos en segundo plano). Así nada
   // sigue escribiendo en la carpeta de trabajo después de la ejecución, y las tuberías se cierran.
   void proc.exited.then(() => terminarGrupo(proc.pid));
@@ -493,7 +493,7 @@ async function ejecutarOpenCode(opts: {
       aborted,
     ]);
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
     if (onAbort) opts.signal?.removeEventListener("abort", onAbort);
     monitorSubagentes.cerrar();
   }

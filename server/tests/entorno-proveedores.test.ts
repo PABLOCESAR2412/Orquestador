@@ -59,6 +59,9 @@ if [ "$1" = "models" ]; then
   exit 0
 fi
 env > '${volcadoAgente}'
+for arg in "$@"; do
+  if [ "$arg" = "ESPERA-LARGA" ]; then sleep 0.2; fi
+done
 echo '{"type":"text","sessionID":"ses_entorno01","part":{"type":"text","text":"Clave usada: '"$GROQ_API_KEY"'"}}'
 `,
   );
@@ -92,6 +95,25 @@ function variables(ruta: string): Map<string, string> {
 }
 
 describe.skipIf(!Bun.which("setsid"))("entorno de los proveedores en el agente y en el CLI", () => {
+  test("una ejecución sin timeout automático termina y el límite explícito sigue activo", async () => {
+    const inicio = Date.now();
+    const resultado = await ejecutarAgente({
+      prompt: "ESPERA-LARGA",
+      model: "opencode/big-pickle",
+      cwd: carpeta,
+      timeoutMs: null,
+    });
+
+    expect(resultado.text).toContain("Clave usada:");
+    expect(Date.now() - inicio).toBeGreaterThanOrEqual(150);
+    await expect(ejecutarAgente({
+      prompt: "ESPERA-LARGA",
+      model: "opencode/big-pickle",
+      cwd: carpeta,
+      timeoutMs: 10,
+    })).rejects.toThrow();
+  });
+
   test("el agente recibe GROQ_API_KEY y nunca una variable TELO_*", async () => {
     const resultado = await ejecutarAgente({
       prompt: "Hola",
