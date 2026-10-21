@@ -304,7 +304,7 @@ async function tokenParaFuenteGithub(
       accion === "pr"
         ? { pull_requests: "write" }
         : accion === "merge"
-          ? { contents: "write", pull_requests: "write" }
+          ? { contents: "write" }
           : { contents: "write" },
     );
   } else if (autenticacion.origen === "sesion_anterior") {
