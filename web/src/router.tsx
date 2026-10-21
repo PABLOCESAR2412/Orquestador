@@ -75,10 +75,10 @@ const settingsRoute = createRoute({
   path: "/ajustes",
   component: SettingsPage,
   // Opcional: sin pestaña, se abre "Proveedores IA" (así siguen válidos los enlaces sin parámetros).
-  validateSearch: (busqueda: Record<string, unknown>): { pestana?: "personalizacion" | "proveedores" | "servidor" | "almacenamiento" } => ({
+  validateSearch: (busqueda: Record<string, unknown>): { pestana?: "personalizacion" | "proveedores" | "conexiones" | "servidor" | "almacenamiento" } => ({
     pestana:
       busqueda.pestana === "personalizacion" || busqueda.pestana === "proveedores"
-        || busqueda.pestana === "servidor" || busqueda.pestana === "almacenamiento"
+        || busqueda.pestana === "conexiones" || busqueda.pestana === "servidor" || busqueda.pestana === "almacenamiento"
         ? busqueda.pestana
         : undefined,
   }),

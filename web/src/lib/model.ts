@@ -238,6 +238,20 @@ function explicacionHttp(status: number): { causa: string; siguientePaso: string
 export function errorText(err: unknown): string {
   if (err instanceof ApiError) {
     switch (err.code) {
+      case "conexion_nombre_invalido":
+        return "Escribe un nombre de hasta 64 caracteres para la conexión.";
+      case "conexion_url_invalida":
+        return "Usa una URL HTTPS sin credenciales ni parámetros en la dirección.";
+      case "conexion_token_invalido":
+        return "La credencial no es válida o supera el límite permitido.";
+      case "conexion_nombre_duplicado":
+        return "Ya existe una conexión con ese nombre. Elige otro.";
+      case "conexion_estado_invalido":
+        return "No se pudo cambiar el estado de la conexión. Vuelve a intentarlo.";
+      case "conexion_not_found":
+        return "La conexión ya no existe. Actualiza la lista e inténtalo de nuevo.";
+      case "secretos_no_disponibles":
+        return "El servidor no puede cifrar credenciales. Revisa TELO_CLAVE_CIFRADO en su configuración.";
       case "credenciales_git_faltantes":
         return "Inicia sesión con GitHub en Ajustes o configura una clave SSH antes de subir cambios.";
       case "invalid_git_config":

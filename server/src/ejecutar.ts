@@ -13,6 +13,7 @@ import { conMemoria, extraerMemoria, guardarMemoria, guardarPropuestaMemoria, me
 import { conservarMemoriaSegunJev, puntuarMemoriaJev } from "./jev";
 import { inyectarSkillsEnPrompt } from "./resolucion-skills";
 import { imagenesDelPrompt } from "./chat-adjuntos";
+import { configuracionMcpParaAgente } from "./conexiones-mcp";
 
 // Longitud mínima de un valor de secreto para ocultarlo en la salida. Más corto, aparecería en texto normal.
 const MINIMO_OCULTAR = 4;
@@ -398,10 +399,12 @@ export function promptContinuacion(prompt: string, tieneSesion = true): string {
 }
 
 async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoAgente> {
+  const mcp = configuracionMcpParaAgente();
   // Claves de proveedor (Ajustes) y secretos del proyecto. Si un nombre se repite, gana el del proyecto.
   const propias: Record<string, string> = {
     ...entornoProveedores(),
     ...(opts.projectId ? entornoDeProyecto(opts.projectId) : {}),
+    ...mcp.variables,
   };
   const ocultos = valoresAOcultar(propias);
   const idPerfil = opts.conversationId
@@ -436,6 +439,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     onLinea: opts.onLinea ? (linea: string) => opts.onLinea?.(ocultarValores(linea, ocultos)) : undefined,
     onSubagente: opts.onSubagente ? (linea: string) => opts.onSubagente?.(ocultarValores(linea, ocultos)) : undefined,
     extraEnv: propias,
+    servidoresMcp: mcp.servidores,
     opencodeConfigDir: opts.opencodeConfigDir,
     subagentesTracePath: opts.opencodeSubagentesTracePath,
     perfilOpenCodeDir,

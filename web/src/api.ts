@@ -259,6 +259,24 @@ export type ProviderStatus = {
   sesion: boolean;
 };
 
+export type ConexionMcp = {
+  id: string;
+  nombre: string;
+  url: string;
+  habilitada: boolean;
+  autenticacion_configurada: boolean;
+  creada_en: string;
+  actualizada_en: string;
+};
+
+export type ConexionMcpInput = {
+  nombre?: string;
+  url?: string;
+  token?: string;
+  habilitada?: boolean;
+  quitar_token?: boolean;
+};
+
 export type Message = {
   id: string;
   conversation_id: string;
@@ -854,6 +872,13 @@ export const api = {
   confirmarCodexLogin: () => request<LoginCodex>("/api/providers/codex/confirmar", { method: "POST" }),
   // Cuenta global de GitHub (en Ajustes) para operar sin claves SSH por proyecto.
   githubCuenta: () => request<GithubCuenta>("/api/github/cuenta"),
+  listMcpConnections: () => request<{ conexiones: ConexionMcp[] }>("/api/conexiones"),
+  createMcpConnection: (body: ConexionMcpInput) =>
+    request<ConexionMcp>("/api/conexiones", { method: "POST", body: JSON.stringify(body) }),
+  updateMcpConnection: (id: string, body: ConexionMcpInput) =>
+    request<ConexionMcp>(`/api/conexiones/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteMcpConnection: (id: string) =>
+    request<{ ok: boolean }>(`/api/conexiones/${encodeURIComponent(id)}`, { method: "DELETE" }),
   githubAppInstalaciones: () => request<GithubAppEstado>("/api/github/app/instalaciones"),
   vincularGithubApp: (id: number) =>
     request<{ ok: boolean; instalacion: GithubAppInstalacion; cuenta: GithubCuenta }>("/api/github/app/instalacion", {

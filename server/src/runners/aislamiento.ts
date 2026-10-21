@@ -146,6 +146,7 @@ export function prefijoAislamiento(
   perfilOpenCodeDir?: string,
   opencodeConfigDir?: string,
   opencodeSubagentesTracePath?: string,
+  opencodeMcpConfigPath?: string,
 ): string[] {
   if (!aislamientoActivo()) return [];
 
@@ -251,6 +252,17 @@ export function prefijoAislamiento(
       // en este archivo NDJSON temporal para que el plugin reporte actividad en vivo.
       args.push("--bind", captura, "/tmp/telo-opencode-config/subagentes.ndjson");
     }
+  }
+
+  if (opencodeMcpConfigPath) {
+    const raizPerfiles = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-mcp");
+    const configuracionReal = rutaReal(opencodeMcpConfigPath);
+    const stat = lstatSync(opencodeMcpConfigPath);
+    if (!configuracionReal || !dentro(configuracionReal, raizPerfiles) || !stat.isFile() || stat.isSymbolicLink()) {
+      throw new AislamientoError("carpeta_no_permitida", "La configuración temporal de conexiones no es segura.");
+    }
+    args.push("--dir", "/tmp/telo-mcp-config");
+    args.push("--ro-bind", configuracionReal, "/tmp/telo-mcp-config/opencode.json");
   }
 
   // Rutas extra en solo lectura (TELO_LECTURA_EXTRA, separadas por ":"), por ejemplo la carpeta de opencode

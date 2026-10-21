@@ -1,7 +1,12 @@
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
 import { esVariableReservada, SECRETOS_SOLO_SERVIDOR } from "../secretos";
 import type { ImagenAgente } from "../chat-adjuntos";
+import { config } from "../config";
+import type { ServidorMcpAgente } from "../conexiones-mcp";
+import { configuracionOpenCodeMcp } from "../conexiones-mcp";
 
 // Id de sesión de OpenCode. Empieza por letra o cifra: así nunca se lee como una opción de la CLI.
 const PATRON_SESION = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
@@ -319,6 +324,43 @@ function vigilarSubagentes(ruta: string | undefined, alLeer: ((linea: string) =>
 }
 
 export async function runOpenCode(opts: {
+  servidoresMcp?: ServidorMcpAgente[];
+  prompt: string;
+  model: string;
+  variant?: string;
+  sessionId?: string | null;
+  cwd: string;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  onSesion?: (sessionId: string) => void;
+  onLinea?: (linea: string) => void;
+  onSubagente?: (linea: string) => void;
+  extraEnv?: Record<string, string>;
+  opencodeConfigDir?: string;
+  subagentesTracePath?: string;
+  perfilOpenCodeDir?: string;
+  soloLectura?: boolean;
+  imagenes?: ImagenAgente[];
+  onUso?: (uso: Usage) => void;
+}): Promise<RunResult> {
+  const servidores = opts.servidoresMcp ?? [];
+  if (servidores.length === 0) return ejecutarOpenCode(opts);
+
+  const raiz = join(config.dataDir, "perfiles-mcp");
+  mkdirSync(raiz, { recursive: true, mode: 0o700 });
+  const temporal = mkdtempSync(join(raiz, "run-"));
+  const archivo = join(temporal, "opencode.json");
+  try {
+    writeFileSync(archivo, JSON.stringify(configuracionOpenCodeMcp(servidores)), { encoding: "utf8", flag: "wx", mode: 0o600 });
+    return await ejecutarOpenCode({ ...opts, opencodeMcpConfigPath: archivo });
+  } finally {
+    rmSync(temporal, { recursive: true, force: true });
+  }
+}
+
+async function ejecutarOpenCode(opts: {
+  servidoresMcp?: ServidorMcpAgente[];
+  opencodeMcpConfigPath?: string;
   prompt: string;
   model: string;
   variant?: string;
@@ -353,6 +395,7 @@ export async function runOpenCode(opts: {
     opts.perfilOpenCodeDir,
     opts.opencodeConfigDir,
     opts.subagentesTracePath,
+    opts.opencodeMcpConfigPath,
   );
 
   // Un id de sesión que no cumple el patrón se ignora: ni se pasa a -s ni se reutiliza.
@@ -377,6 +420,11 @@ export async function runOpenCode(opts: {
   // internamente Telo y apunta a perfiles efímeros aislados para esta ejecución.
   if (opts.opencodeConfigDir) {
     env.OPENCODE_CONFIG_DIR = aislamientoActivo() ? "/tmp/telo-opencode-config" : opts.opencodeConfigDir;
+  }
+  if (opts.opencodeMcpConfigPath) {
+    env.OPENCODE_CONFIG = aislamientoActivo()
+      ? "/tmp/telo-mcp-config/opencode.json"
+      : opts.opencodeMcpConfigPath;
   }
   const proc = Bun.spawn(["setsid", ...aislamiento, ...args], {
     cwd: opts.cwd,
