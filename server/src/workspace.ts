@@ -925,11 +925,9 @@ export async function reintegrarSobrePunta(
   } catch (err) {
     await gitSeguro(["rebase", "--abort"], { cwd: ctx.clon });
     const razon = err instanceof GitError ? mensajeSeguro(err) : "";
-    throw new ErrorTarea(
-      "push_fallido",
-      502,
-      `La rama '${ramaDestino}' en GitHub avanzó desde tu clon y el commit no se pudo reubicar automáticamente${razon ? ` (${razon})` : ""}. Pide la subida otra vez eligiendo la rama de la tarea (${ctx.rama}) para abrir un Pull Request, o crea una tarea nueva sobre la rama actualizada.`,
-    );
+    const detalle = `La rama '${ramaDestino}' en GitHub avanzó desde tu clon y el commit no se pudo reubicar automáticamente${razon ? ` (${razon})` : ""}. Pide la subida otra vez eligiendo la rama de la tarea (${ctx.rama}) para abrir un Pull Request, o crea una tarea nueva sobre la rama actualizada.`;
+    registrarEvento(taskId, "push_fallido", detalle);
+    throw new ErrorTarea("push_fallido", 502, detalle);
   }
 }
 

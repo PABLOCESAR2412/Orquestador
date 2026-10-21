@@ -747,7 +747,7 @@ test("reintegrarSobrePunta aborta, restaura la rama y explica cómo continuar al
     await gitOk(["-c", "user.name=Prueba", "-c", "user.email=prueba@example.test", "commit", "-m", "Cambio conflictivo"], { cwd: clon });
     const head = (await gitOk(["rev-parse", "HEAD"], { cwd: clon })).trim();
 
-    expect.assertions(4);
+    expect.assertions(5);
     try {
       await reintegrarSobrePunta(
         taskId,
@@ -763,6 +763,8 @@ test("reintegrarSobrePunta aborta, restaura la rama y explica cómo continuar al
       expect(String(err.detail)).toContain("Pull Request");
       expect((await gitOk(["rev-parse", "HEAD"], { cwd: clon })).trim()).toBe(head);
       expect((await gitOk(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: clon })).trim()).toBe("telo/prueba");
+      const evento = db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM task_events WHERE task_id=? AND kind='push_fallido'").get(taskId);
+      expect(evento?.n).toBe(1);
     }
   } finally {
     rmSync(origen, { recursive: true, force: true });
