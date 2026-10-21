@@ -291,6 +291,16 @@ try {
     await page.getByText("Conversaciones", { exact: true }).waitFor();
     await page.getByRole("heading", { name: "¿Qué vamos a resolver?", exact: true }).waitFor();
     await page.getByRole("button", { name: "Nuevo chat", exact: true }).waitFor();
+    const marcaChatNuevo = page.locator(".tl-vacio-emblema");
+    assert.equal(await marcaChatNuevo.locator("svg").count(), 1, "el chat nuevo reutiliza el símbolo de Telo");
+    assert.equal(await marcaChatNuevo.locator(".tl-vacio-orbita").count(), 2, "el símbolo tiene dos líneas orbitales");
+    assert.equal(await page.locator(".tl-vacio-reticula").count(), 0, "el fondo usa la marca y no una cuadrícula genérica");
+    assert.equal(await marcaChatNuevo.locator(".tl-vacio-orbita").first().evaluate(el => getComputedStyle(el).animationName), "none", "la animación se detiene con movimiento reducido");
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    assert.equal(await marcaChatNuevo.locator(".tl-vacio-orbita").first().evaluate(el => getComputedStyle(el).animationName), "tl-vacio-orbita", "las líneas orbitan cuando el usuario permite movimiento");
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `scratch/capturas-ci/chat-vacio-animado-${width}.png` });
+    await page.emulateMedia({ reducedMotion: "reduce" });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "la pantalla de chat nuevo cabe en móvil y escritorio");
     await page.screenshot({ path: `scratch/capturas-ci/chat-vacio-${width}.png` });
     conversacionesDisponibles = true;
@@ -728,6 +738,32 @@ try {
     assert.equal(await page.locator('section.tl-accion-git-actual').count(), 1, "la decisión actualiza la misma tarjeta dentro de su turno");
     assert.equal(approvals, 1);
     assert.equal(await page.locator('section.tl-accion-git-actual [role="alert"]').count(), 0);
+    actions.push({
+      id: "git-pr-fallido",
+      action: "pr",
+      task_id: "t1",
+      message_id: "u2",
+      state: "failed",
+      result: JSON.stringify({ codigo: "git_action", mensaje: "Validation Failed: A pull request already exists for PABLOCESAR2412:telo/prueba" }),
+      payload: JSON.stringify({
+        remote: "https://github.com/ejemplo/pruebas",
+        rama: "telo/prueba",
+        base: "main",
+        title: "Cambios revisados en Telo",
+        pr_url: "https://github.com/ejemplo/pruebas/pull/",
+        pr_number: null,
+        messageId: "u2",
+        autenticacion: { tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "PABLOCESAR2412", instalacion_id: 1 },
+      }),
+    });
+    await page.waitForFunction(() => document.querySelector(".tl-accion-git-actual .approval-panel h2")?.textContent === "Crear pull request");
+    const tarjetaPrFallido = page.locator(".tl-accion-git-actual .approval-panel");
+    assert.equal(await tarjetaPrFallido.locator(".approval-state-ticket.is-failed").textContent(), "No se completó");
+    assert.equal(await tarjetaPrFallido.locator(".approval-pr-link").count(), 0, "un PR rechazado no ofrece un enlace de creación engañoso");
+    assert.match(await tarjetaPrFallido.locator(".approval-result.is-failed").textContent(), /A pull request already exists/);
+    await page.screenshot({ path: `scratch/capturas-ci/git-pr-fallido-${width}.png` });
+    actions.pop();
+    await page.waitForFunction(() => document.querySelector(".tl-accion-git-actual .approval-panel h2")?.textContent === "Commit y push");
     await hiloChat.evaluate(el => { el.scrollTop = 0; el.dispatchEvent(new Event("scroll")); });
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Envío del chat A");
     const requestChatA = page.waitForRequest(request => request.url().endsWith("/api/conversations/c1/messages") && request.method() === "POST" && request.postDataJSON().content === "Envío del chat A");

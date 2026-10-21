@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type FuenteAutenticacionGithub, type RepositoryAction } from "../api";
 import { errorText } from "../lib/model";
+import { pullRequestLink } from "../lib/pull-request-link";
 
 // merge y push_main ya no se crean; quedan aquí solo para mostrar el historial de acciones antiguas.
 const labels: Record<string, string> = {
@@ -64,6 +65,7 @@ function resultadoLegible(valor: string): string {
       sha?: string;
       url?: string;
       merged?: boolean;
+      number?: number;
       codigo?: string;
     };
     if (r.codigo === "merge_conflicts" && typeof r.mensaje === "string") {
@@ -72,6 +74,7 @@ function resultadoLegible(valor: string): string {
       } catch { /* Compatibilidad con resultados sin diagnóstico estructurado. */ }
     }
     if (r.merged) return "✓ Pull Request fusionado exitosamente en GitHub";
+    if (r.url && r.number) return `Pull Request #${r.number} creado en GitHub.`;
     return (
       r.mensaje ?? r.message ?? r.url ?? (r.sha ? `Commit ${r.sha.slice(0, 8)}` : valor)
     );
@@ -185,12 +188,13 @@ export function RepositoryApproval({
     ? diagnosticoConflictos(accion.result)
     : null;
   const estado = estados[accion.state] ?? accion.state;
+  const enlacePr = pullRequestLink(accion);
   const cuerpo = (
     <>
       {!compacta && (
         <header className="approval-heading">
           <h2>{titulo}</h2>
-          <span className="approval-files" role="status">
+          <span className={`approval-state-ticket is-${accion.state}`} role="status">
             {estado}
           </span>
         </header>
@@ -206,10 +210,10 @@ export function RepositoryApproval({
           )}
         </p>
       )}
-      {p.pr_url && (
+      {enlacePr && (
         <p className="approval-meta">
-          <a href={p.pr_url} target="_blank" rel="noreferrer" style={{ fontSize: "0.85rem", textDecoration: "underline" }}>
-            Ver PR #{p.pr_number ?? ""} en GitHub ↗
+          <a className="approval-pr-link" href={enlacePr.url} target="_blank" rel="noreferrer">
+            Ver PR #{enlacePr.number} en GitHub ↗
           </a>
         </p>
       )}
@@ -365,7 +369,9 @@ export function RepositoryApproval({
         </div>
       )}
       {accion.result && (
-        <p className="approval-files">{resultadoLegible(accion.result)}</p>
+        <p className={`approval-result${accion.state === "failed" ? " is-failed" : ""}`} role={accion.state === "failed" ? "alert" : "status"}>
+          {resultadoLegible(accion.result)}
+        </p>
       )}
       {decide.isError && accion.state === "pending" && !(decide.error instanceof ApiError && decide.error.code === "action_already_decided") && (
         <p className="error" role="alert">
@@ -384,7 +390,7 @@ export function RepositoryApproval({
       <div className="approval-history-body">{cuerpo}</div>
     </details>
   ) : (
-    <section className="panel approval-panel" aria-label={titulo}>
+    <section className={`panel approval-panel${accion.state === "failed" ? " is-failed" : ""}`} aria-label={titulo}>
       {cuerpo}
     </section>
   );

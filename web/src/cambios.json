@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-21", "tipo": "minimo", "titulo": "Chat y Git: anima la marca Telo al iniciar y muestra enlaces de PR solo cuando GitHub confirma su creación", "pr": null },
     { "fecha": "2026-10-20", "tipo": "minimo", "titulo": "Git: solicita solo Contents al fusionar un pull request con la GitHub App", "pr": 95 },
     { "fecha": "2026-10-20", "tipo": "minimo", "titulo": "Agentes: redacta en español la actividad visible durante el trabajo", "pr": 95 },
     { "fecha": "2026-10-20", "tipo": "minimo", "titulo": "Imágenes: solicita JPEG a Google y alinea el nombre descargado con el MIME recibido", "pr": 95 },

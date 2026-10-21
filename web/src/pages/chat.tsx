@@ -1304,15 +1304,10 @@ export function ChatPage() {
     >
       {!selectedId ? (
         <div className="tl-vacio" aria-busy={conversations.isPending}>
-          <svg className="tl-vacio-reticula" viewBox="0 0 1200 720" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-            <g fill="none" stroke="currentColor" strokeWidth="1">
-              <path d="M80 120H1120M80 240H1120M80 360H1120M80 480H1120M80 600H1120M200 40V680M400 40V680M600 40V680M800 40V680M1000 40V680" />
-              <path d="M160 620L600 180L1040 620M160 100L600 540L1040 100" strokeDasharray="4 10" />
-            </g>
-          </svg>
           <div className="tl-vacio-caja">
             <div className="tl-vacio-emblema" aria-hidden="true">
-              <span className="tl-vacio-pulso" />
+              <span className="tl-vacio-orbita tl-vacio-orbita-a" />
+              <span className="tl-vacio-orbita tl-vacio-orbita-b" />
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="3" />
                 <circle cx="19" cy="5" r="2" />
