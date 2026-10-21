@@ -28,12 +28,13 @@ describe("rutas de generaciones multimedia", () => {
     const estado = await media.request(`/media/${creada.id}`);
     expect(await estado.json()).toMatchObject({ estado: "cancelada" });
 
-    db.query("UPDATE media_jobs SET estado='completada',mime='image/png',bytes=3,contenido=? WHERE id=?")
+    db.query("UPDATE media_jobs SET estado='completada',mime='image/jpeg',nombre_archivo='Haz una imagen de un colibrí.jpg',bytes=3,contenido=? WHERE id=?")
       .run(new Uint8Array([1, 2, 3]), creada.id);
     const archivo = await media.request(`/media/${creada.id}/archivo?descargar=1`);
     expect(archivo.status).toBe(200);
-    expect(archivo.headers.get("content-disposition")).toContain('attachment; filename="Haz una imagen de un colibri.png"');
-    expect(archivo.headers.get("content-disposition")).toContain("filename*=UTF-8''Haz%20una%20imagen%20de%20un%20colibr%C3%AD.png");
+    expect(archivo.headers.get("content-type")).toBe("image/jpeg");
+    expect(archivo.headers.get("content-disposition")).toContain('attachment; filename="Haz una imagen de un colibri.jpg"');
+    expect(archivo.headers.get("content-disposition")).toContain("filename*=UTF-8''Haz%20una%20imagen%20de%20un%20colibr%C3%AD.jpg");
     expect([...new Uint8Array(await archivo.arrayBuffer())]).toEqual([1, 2, 3]);
     const rango = await media.request(`/media/${creada.id}/archivo`, { headers: { range: "bytes=1-2" } });
     expect(rango.status).toBe(206);

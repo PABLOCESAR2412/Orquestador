@@ -5,6 +5,7 @@ import {
   esperarVideo,
   generarImagen,
   iniciarVideo,
+  nombreDeMedio,
 } from "../src/generacion-medios";
 
 describe("detección de pedidos multimedia", () => {
@@ -40,22 +41,25 @@ describe("detección de pedidos multimedia", () => {
 });
 
 describe("Google API multimedia", () => {
-  test("envía el formato de imagen y valida el resultado", async () => {
+  test("solicita JPEG y conserva el MIME real del resultado", async () => {
     const solicitud = detectarSolicitudMedio("Haz una imagen 2K 16:9")!;
     let payload: Record<string, unknown> | null = null;
     const keys: string[] = [];
     const fetcher = (async (_input: string | URL, init?: RequestInit) => {
       payload = JSON.parse(String(init?.body));
       keys.push(new Headers(init?.headers).get("x-goog-api-key") ?? "");
-      return new Response(JSON.stringify({ output_image: { data: Buffer.from("png-data").toString("base64"), mime_type: "image/png" } }), { status: 200 });
+      return new Response(JSON.stringify({ output_image: { data: Buffer.from("jpeg-data").toString("base64"), mime_type: "image/jpeg" } }), { status: 200 });
     }) as typeof fetch;
     const salida = await generarImagen(solicitud, "test-api-key", fetcher);
     expect(keys[0]).toBe("test-api-key");
     expect(payload).toMatchObject({
       model: "gemini-nano-banana-2.1",
-      response_format: { type: "image", mime_type: "image/png", image_size: "2K", aspect_ratio: "16:9" },
+      response_format: { type: "image", mime_type: "image/jpeg", image_size: "2K", aspect_ratio: "16:9" },
     });
-    expect(new TextDecoder().decode(salida.contenido)).toBe("png-data");
+    expect(new TextDecoder().decode(salida.contenido)).toBe("jpeg-data");
+    expect(salida.mime).toBe("image/jpeg");
+    expect(nombreDeMedio("Haz una imagen 2K", "imagen", salida.mime)).toBe("Haz una imagen 2K.jpg");
+    expect(nombreDeMedio("Haz una imagen 2K", "imagen")).toBe("Haz una imagen 2K.jpg");
   });
 
   test("explica el motivo HTTP 400 de Google y redacta cualquier clave que repita", async () => {

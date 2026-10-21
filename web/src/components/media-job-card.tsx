@@ -79,7 +79,7 @@ export function MediaJobCard({ id }: { id: string }) {
           <a
             className="tl-boton tl-media-descargar"
             href={archivoUrl(id, true)}
-            download={medio.nombre_archivo ?? (medio.tipo === "imagen" ? "imagen.png" : "video.mp4")}
+            download={medio.nombre_archivo ?? (medio.tipo === "imagen" ? "imagen.jpg" : "video.mp4")}
           >
             Descargar {medio.tipo}
           </a>

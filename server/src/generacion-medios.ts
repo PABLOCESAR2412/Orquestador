@@ -63,14 +63,15 @@ export function detectarSolicitudMedio(texto: string): SolicitudMedio | null {
   return { tipo, prompt, modelo, resolucion, relacion, duracionSegundos, costoEstimadoUsd: Number((costoPorSegundo * duracionSegundos).toFixed(3)) };
 }
 
-export function nombreDeMedio(prompt: string, tipo: TipoMedio): string {
+export function nombreDeMedio(prompt: string, tipo: TipoMedio, mimeImagen = "image/jpeg"): string {
   const base = prompt
     .replace(/^\/(?:imagen|video|v[ií]deo)\s*/i, "")
     .replace(/[\\/:*?"<>|\r\n\t]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 70);
-  return `${base || (tipo === "imagen" ? "imagen-generada" : "video-generado")}.${tipo === "imagen" ? "png" : "mp4"}`;
+  const extension = tipo === "video" ? "mp4" : mimeImagen === "image/png" ? "png" : mimeImagen === "image/webp" ? "webp" : "jpg";
+  return `${base || (tipo === "imagen" ? "imagen-generada" : "video-generado")}.${extension}`;
 }
 
 function promptVisual(solicitud: SolicitudMedio): string {
@@ -137,7 +138,7 @@ export async function generarImagen(
       input: promptVisual(solicitud),
       response_format: {
         type: "image",
-        mime_type: "image/png",
+        mime_type: "image/jpeg",
         aspect_ratio: solicitud.relacion,
         image_size: solicitud.resolucion,
       },
