@@ -248,6 +248,15 @@
 .approval-conflicts ul { max-height: 180px; overflow: auto; margin-block: 6px 10px; padding-left: 20px; }
 .approval-conflicts code { overflow-wrap: anywhere; }
 .approval-conflicts-plan { color: var(--ink-2); font-size: 13px; }
+.approval-conflicts-progress { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.approval-conflicts-progress-heading { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
+.approval-conflicts-progress > p { margin-block: 8px; }
+.approval-conflicts-progress .tl-proceso { max-height: 300px; overflow: auto; padding-right: 4px; }
+.approval-conflicts-report { margin-top: 8px; font-size: 13px; }
+.approval-conflicts-report > summary { min-height: 40px; padding-block: 10px; cursor: pointer; }
+.approval-conflicts-report ul { max-height: 180px; overflow: auto; }
+.approval-conflicts-verification { padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink-2); }
+.approval-conflicts-verification.is-ready { border-color: var(--signal); color: var(--ink); }
 .approval-history { margin-block: 8px; font-size: 13px; }
 .approval-history > summary, .approval-history-row > summary { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; cursor: pointer; min-height: 40px; padding-block: 10px; }
 .approval-history > summary::before { content: "+"; }

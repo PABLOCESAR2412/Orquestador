@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, type FuenteAutenticacionGithub, type RepositoryAction } from "../api";
+import { api, ApiError, type FuenteAutenticacionGithub, type PasoActividad, type RepositoryAction, type Task, type VerificacionConflictos } from "../api";
 import { errorText } from "../lib/model";
 import { pullRequestLink } from "../lib/pull-request-link";
+import { ProcesoAgente } from "./chat-proceso";
 
 // merge y push_main ya no se crean; quedan aquí solo para mostrar el historial de acciones antiguas.
 const labels: Record<string, string> = {
@@ -42,15 +43,20 @@ function diagnosticoConflictos(valor: string | null): DiagnosticoConflictos | nu
 function estadoTareaGit(valor?: string): string | null {
   const nombres: Record<string, string> = {
     queued: "en cola",
-    analyzing: "analizando",
-    waiting_approval: "espera aprobación del plan",
-    running: "resolviendo conflictos",
-    done: "terminada; revisa el diff",
+    analyzing: "analizando cambios",
+    waiting_approval: "esperando aprobación del plan",
+    running: "corrigiendo conflictos",
+    done: "resuelta; revisión pendiente",
     failed: "falló",
     cancelled: "cancelada",
     interrupted: "interrumpida",
+    sin_cuota: "en espera de cuota",
   };
   return valor ? nombres[valor] ?? valor : null;
+}
+
+function resultadoPrueba(valor: string): string {
+  return ({ ok: "Correcta", fallo: "Falló", no_aplica: "No aplica" } as Record<string, string>)[valor] ?? valor;
 }
 
 function resultadoLegible(valor: string): string {
@@ -100,6 +106,10 @@ function autenticacionDe(accion: RepositoryAction): FuenteAutenticacionGithub | 
     return null;
   }
 }
+function payloadDe(accion: RepositoryAction): Record<string, unknown> {
+  try { return JSON.parse(accion.payload) as Record<string, unknown>; }
+  catch { return {}; }
+}
 function etiquetaAutenticacion(accion: RepositoryAction): string | null {
   if (accion.action !== "push" && accion.action !== "pr" && accion.action !== "merge") return null;
   const autenticacion = autenticacionDe(accion);
@@ -113,7 +123,13 @@ export function RepositoryApproval({
   projectId,
   onResolverConflictos,
   resolviendoConflictos = false,
-  estadoTareaResolucion,
+  tareaResolucion,
+  actividadResolucion = [],
+  cargandoDiffResolucion = false,
+  puedeVerificarConflictos = false,
+  verificandoConflictos = false,
+  verificacionConflictos,
+  onVerificarConflictos,
 }: {
   accion: RepositoryAction;
   onChange: (resultado?: unknown, aprobada?: boolean, error?: string) => void;
@@ -121,7 +137,13 @@ export function RepositoryApproval({
   projectId?: string;
   onResolverConflictos?: () => void;
   resolviendoConflictos?: boolean;
-  estadoTareaResolucion?: string;
+  tareaResolucion?: Task;
+  actividadResolucion?: PasoActividad[];
+  cargandoDiffResolucion?: boolean;
+  puedeVerificarConflictos?: boolean;
+  verificandoConflictos?: boolean;
+  verificacionConflictos?: VerificacionConflictos | null;
+  onVerificarConflictos?: () => void;
 }) {
   const p = JSON.parse(accion.payload) as {
     diff?: string;
@@ -139,6 +161,8 @@ export function RepositoryApproval({
     pr_url?: string;
     source_pr_number?: number | null;
     repair_task_id?: string;
+    repair_message_id?: string | null;
+    repair_activity_from_seq?: number;
   };
   const necesitaGitHub = accion.action === "push" || accion.action === "pr" || accion.action === "merge";
   const credencialObsoleta = necesitaGitHub && !p.autenticacion;
@@ -188,6 +212,10 @@ export function RepositoryApproval({
     ? diagnosticoConflictos(accion.result)
     : null;
   const estado = estados[accion.state] ?? accion.state;
+  const estadoResolucion = tareaResolucion?.status;
+  const reparacionTerminada = estadoResolucion === "done";
+  const reparacionFallida = estadoResolucion === "failed" || estadoResolucion === "cancelled";
+  const reparacionDetenida = reparacionFallida || estadoResolucion === "interrupted";
   const enlacePr = pullRequestLink(accion);
   const cuerpo = (
     <>
@@ -245,16 +273,71 @@ export function RepositoryApproval({
           <p className="approval-conflicts-plan">
             Telo preparará una tarea sobre <code>{conflictos.rama_fuente}</code>, integrará <code>{conflictos.rama_base}</code>, resolverá los conflictos sin descartar cambios y ejecutará las pruebas. Luego podrás revisar y aprobar el commit y la subida al mismo PR.
           </p>
-          {p.repair_task_id && !["failed", "cancelled"].includes(estadoTareaResolucion ?? "") ? (
-            <p className="approval-files" role="status">
-              Tarea de resolución · {estadoTareaGit(estadoTareaResolucion) ?? "creada"}. Sus cambios aparecerán en la revisión de Git.
-            </p>
-          ) : p.repair_task_id && onResolverConflictos ? (
-            <div>
-              <p className="approval-auth approval-auth-warning" role="status">La tarea anterior {estadoTareaGit(estadoTareaResolucion) ?? "no pudo continuar"}.</p>
-              <button type="button" className="primary" disabled={resolviendoConflictos} onClick={onResolverConflictos}>
-                {resolviendoConflictos ? "Preparando tarea…" : "Reintentar resolución"}
-              </button>
+          {p.repair_task_id ? (
+            <div className="approval-conflicts-progress">
+              <div className="approval-conflicts-progress-heading">
+                <strong>Seguimiento de la reparación</strong>
+                <span className={`approval-state-ticket is-${reparacionDetenida ? "failed" : reparacionTerminada ? "approved" : "executing"}`}>
+                  {estadoTareaGit(estadoResolucion) ?? "preparando"}
+                </span>
+              </div>
+              {tareaResolucion?.status === "failed" ? (
+                <p className="approval-auth approval-auth-warning" role="alert">{tareaResolucion.error ?? "La tarea de resolución falló."}</p>
+              ) : tareaResolucion?.status === "cancelled" ? (
+                <p className="approval-auth approval-auth-warning" role="status">La tarea de resolución se canceló.</p>
+              ) : tareaResolucion?.status === "interrupted" ? (
+                <p className="approval-auth approval-auth-warning" role="status">La tarea se interrumpió. Reanúdala desde Tareas para continuar.</p>
+              ) : tareaResolucion?.status === "sin_cuota" ? (
+                <p className="approval-auth approval-auth-warning" role="status">La tarea espera cuota del modelo. Continúa con otro modelo desde Tareas.</p>
+              ) : tareaResolucion ? (
+                <p role="status">
+                  {reparacionTerminada
+                    ? "El agente terminó. Revisa el resultado y luego autoriza el commit y la subida al mismo PR."
+                    : `La tarea está ${estadoTareaGit(tareaResolucion.status) ?? "en curso"}. Aquí aparecen sus pasos reales mientras trabaja.`}
+                </p>
+              ) : <p role="status">Cargando el estado de la tarea de resolución…</p>}
+              {actividadResolucion.length > 0 && (
+                <ProcesoAgente
+                  pasos={actividadResolucion}
+                  enCurso={!reparacionTerminada && !reparacionDetenida && estadoResolucion !== "sin_cuota"}
+                  textoFinal={tareaResolucion?.reporte?.resumen ?? ""}
+                />
+              )}
+              {tareaResolucion?.reporte && (
+                <details className="approval-conflicts-report">
+                  <summary>Resultado y pruebas</summary>
+                  <p>{tareaResolucion.reporte.resumen}</p>
+                  {tareaResolucion.reporte.pruebas.length > 0 && (
+                    <ul>
+                      {tareaResolucion.reporte.pruebas.map((prueba, index) => (
+                        <li key={`${prueba.comando}-${index}`}><code>{prueba.comando}</code> · {resultadoPrueba(prueba.resultado)}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {tareaResolucion.reporte.pendientes.length > 0 && (
+                    <p>Pendiente: {tareaResolucion.reporte.pendientes.join("; ")}</p>
+                  )}
+                </details>
+              )}
+              {reparacionFallida && onResolverConflictos && (
+                <button type="button" className="primary" disabled={resolviendoConflictos} onClick={onResolverConflictos}>
+                  {resolviendoConflictos ? "Preparando tarea…" : "Reintentar resolución"}
+                </button>
+              )}
+              {reparacionTerminada && puedeVerificarConflictos && onVerificarConflictos && (
+                <button type="button" className="primary" disabled={verificandoConflictos} onClick={onVerificarConflictos}>
+                  {verificandoConflictos ? "Verificando en GitHub…" : "Verificar GitHub y preparar merge"}
+                </button>
+              )}
+              {reparacionTerminada && !puedeVerificarConflictos && tareaResolucion && !cargandoDiffResolucion && (
+                <p className="approval-files" role="status">La verificación se habilitará cuando el commit y la subida al PR estén aprobados.</p>
+              )}
+              {reparacionTerminada && cargandoDiffResolucion && <p role="status">Revisando los cambios y aprobaciones de la tarea…</p>}
+              {verificacionConflictos && (
+                <p className={`approval-conflicts-verification${verificacionConflictos.verificado ? " is-ready" : ""}`} role="status">
+                  {verificacionConflictos.mensaje}
+                </p>
+              )}
             </div>
           ) : conflictos.resoluble && onResolverConflictos ? (
             <button type="button" className="primary" disabled={resolviendoConflictos} onClick={onResolverConflictos}>
@@ -420,13 +503,11 @@ export function AccionesRepositorioChat({
   projectId,
   taskId,
   terminada,
-  taskStatus,
 }: {
   conversationId: string;
   projectId: string | null;
   taskId?: string;
   terminada: boolean;
-  taskStatus?: string;
 }) {
   const qc = useQueryClient();
   const [mostrarTodos, setMostrarTodos] = useState(false);
@@ -461,17 +542,86 @@ export function AccionesRepositorioChat({
     onSuccess: refrescar,
   });
   const lista = acciones.data ?? [];
-  const accionActual = [...lista].reverse().find((a) => a.state === "pending" || a.state === "executing")
-    ?? [...lista].reverse().find((a) => a.state !== "superseded")
+  const accionConflicto = [...lista].reverse().find((a) =>
+    a.action === "merge" && a.state === "failed" && diagnosticoConflictos(a.result),
+  ) ?? null;
+  const payloadConflicto = accionConflicto ? payloadDe(accionConflicto) : {};
+  const diagnosticoActual = accionConflicto ? diagnosticoConflictos(accionConflicto.result) : null;
+  const tareaResolucionId = typeof payloadConflicto.repair_task_id === "string" ? payloadConflicto.repair_task_id : null;
+  const mensajeResolucionId = typeof payloadConflicto.repair_message_id === "string"
+    ? payloadConflicto.repair_message_id
+    : accionConflicto?.message_id ?? null;
+  const actividadDesde = typeof payloadConflicto.repair_activity_from_seq === "number" ? payloadConflicto.repair_activity_from_seq : 0;
+  const tareaResolucionQuery = useQuery({
+    queryKey: ["task", tareaResolucionId],
+    queryFn: () => api.getTask(tareaResolucionId!),
+    enabled: Boolean(tareaResolucionId),
+    refetchInterval: (consulta) => ["done", "failed", "cancelled", "interrupted", "sin_cuota"].includes(consulta.state.data?.status ?? "") ? false : 1500,
+  });
+  const estadoReparacion = tareaResolucionQuery.data?.status;
+  const terminalReparacion = ["done", "failed", "cancelled", "interrupted", "sin_cuota"].includes(estadoReparacion ?? "");
+  const actividadResolucionQuery = useQuery({
+    queryKey: ["actividad-reparacion", conversationId, mensajeResolucionId, tareaResolucionId],
+    queryFn: () => api.listTurnoActividad(conversationId, mensajeResolucionId!),
+    enabled: Boolean(tareaResolucionId && mensajeResolucionId),
+    refetchInterval: terminalReparacion ? false : 1500,
+  });
+  const diffResolucionQuery = useQuery({
+    queryKey: ["task-diff", tareaResolucionId],
+    queryFn: () => api.taskDiff(tareaResolucionId!),
+    enabled: Boolean(tareaResolucionId && estadoReparacion === "done"),
+    refetchInterval: estadoReparacion === "done" ? 3000 : false,
+    retry: false,
+  });
+  const actividadResolucion = (actividadResolucionQuery.data ?? []).filter((paso) => paso.seq > actividadDesde);
+  const diffResolucion = diffResolucionQuery.data?.estado === "en_curso" ? undefined : diffResolucionQuery.data;
+  const pushResolucion = lista.find((a) => a.task_id === tareaResolucionId && a.action === "push" && a.state === "approved");
+  const datosPushResolucion = pushResolucion ? payloadDe(pushResolucion) : {};
+  const aprobacionCommitResolucion = diffResolucion?.estado === "con_cambios" ? diffResolucion.aprobaciones.commit : null;
+  const aprobacionPushResolucion = diffResolucion?.estado === "con_cambios" ? diffResolucion.aprobaciones.push : null;
+  const puedeVerificarConflictos = Boolean(
+    tareaResolucionId && estadoReparacion === "done" && diagnosticoActual && diffResolucion?.estado === "con_cambios" &&
+    aprobacionCommitResolucion?.estado === "aprobada" && aprobacionCommitResolucion.sha === diffResolucion.commit &&
+    aprobacionCommitResolucion.hash === diffResolucion.hash && aprobacionPushResolucion?.sha === diffResolucion.commit &&
+    aprobacionPushResolucion.rama === diagnosticoActual.rama_fuente && aprobacionPushResolucion.remoto === diffResolucion.remoto_url &&
+    pushResolucion && datosPushResolucion.source_pr_number === diagnosticoActual.pr_number &&
+    datosPushResolucion.rama === diagnosticoActual.rama_fuente && datosPushResolucion.remote === diffResolucion.remoto_url,
+  );
+  const [verificacionVisible, setVerificacionVisible] = useState<{ id: string; resultado: VerificacionConflictos } | null>(null);
+  const accionActual = [...lista].reverse().find((a) => a.id !== accionConflicto?.id && (a.state === "pending" || a.state === "executing"))
+    ?? [...lista].reverse().find((a) => a.id !== accionConflicto?.id && a.state !== "superseded")
     ?? null;
-  const anteriores = lista.filter((a) => a.id !== accionActual?.id);
+  const anteriores = lista.filter((a) => a.id !== accionActual?.id && a.id !== accionConflicto?.id);
   const resolverConflictos = useMutation({
-    mutationFn: () => api.resolveRepositoryConflicts(accionActual!.id),
+    mutationFn: (id: string) => api.resolveRepositoryConflicts(id),
+    onMutate: () => setVerificacionVisible(null),
     onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["repository-actions", conversationId] }),
         qc.invalidateQueries({ queryKey: ["conversation-tasks", conversationId] }),
       ]);
+    },
+  });
+  const verificarConflictos = useMutation({
+    mutationFn: async () => {
+      if (!projectId || !accionConflicto || !diagnosticoActual || !tareaResolucionId)
+        throw new Error("No se encontró la tarea de reparación para verificar este PR.");
+      const resultado = await api.verifyRepositoryConflicts(accionConflicto.id);
+      if (resultado.verificado) {
+        await api.requestRepositoryAction(projectId, {
+          action: "merge",
+          conversationId,
+          taskId: tareaResolucionId,
+          pr_number: diagnosticoActual.pr_number,
+          pr_url: resultado.pr_url ?? diagnosticoActual.pr_url,
+          title: `Fusionar Pull Request #${diagnosticoActual.pr_number} en ${diagnosticoActual.rama_base}`,
+        });
+      }
+      return resultado;
+    },
+    onSuccess: async (resultado) => {
+      if (accionConflicto) setVerificacionVisible({ id: accionConflicto.id, resultado });
+      await qc.invalidateQueries({ queryKey: ["repository-actions", conversationId] });
     },
   });
   const pendiente = lista.find(
@@ -520,6 +670,10 @@ export function AccionesRepositorioChat({
     }
   });
   const puedeCrearPr = pushVigente && ramaSubida === diff?.rama && !prCreado && !prSinCommits;
+  const conflictoDeTareaActual = Boolean(
+    accionConflicto && taskId && diagnosticoActual &&
+    (taskId === diagnosticoActual.task_id || taskId === tareaResolucionId),
+  );
   const tieneCambios = Boolean(diff?.archivos.length);
   const ocupado = Boolean(pendiente) || pedir.isPending || diffQuery.isPending;
   return (
@@ -584,21 +738,40 @@ export function AccionesRepositorioChat({
           )}
         </section>
       )}
+      {accionConflicto && projectId && (
+        <section className="tl-accion-git-actual" aria-label={`Resolución del PR #${diagnosticoActual?.pr_number ?? ""}`}>
+          <RepositoryApproval
+            accion={accionConflicto}
+            projectId={projectId}
+            onChange={refrescar}
+            onResolverConflictos={() => resolverConflictos.mutate(accionConflicto.id)}
+            resolviendoConflictos={resolverConflictos.isPending}
+            tareaResolucion={tareaResolucionQuery.data}
+            actividadResolucion={actividadResolucion}
+            cargandoDiffResolucion={diffResolucionQuery.isPending}
+            puedeVerificarConflictos={puedeVerificarConflictos}
+            verificandoConflictos={verificarConflictos.isPending}
+            verificacionConflictos={verificacionVisible?.id === accionConflicto.id ? verificacionVisible.resultado : null}
+            onVerificarConflictos={() => verificarConflictos.mutate()}
+          />
+          {resolverConflictos.isError && <p role="alert" className="error">{errorText(resolverConflictos.error)}</p>}
+          {tareaResolucionQuery.isError && <p role="alert" className="error">No se pudo cargar el estado de la reparación: {errorText(tareaResolucionQuery.error)}</p>}
+          {verificarConflictos.isError && <p role="alert" className="error">{errorText(verificarConflictos.error)}</p>}
+          {actividadResolucionQuery.isError && <p role="alert" className="error">No se pudo cargar la actividad de la reparación: {errorText(actividadResolucionQuery.error)}</p>}
+          {diffResolucionQuery.isError && <p role="alert" className="error">No se pudo revisar el diff de la reparación: {errorText(diffResolucionQuery.error)}</p>}
+        </section>
+      )}
       {accionActual && projectId && (
         <section className="tl-accion-git-actual" aria-label="Acción actual del repositorio">
           <RepositoryApproval
             accion={accionActual}
             projectId={projectId}
             onChange={refrescar}
-            onResolverConflictos={() => resolverConflictos.mutate()}
-            resolviendoConflictos={resolverConflictos.isPending}
-            estadoTareaResolucion={taskStatus}
           />
-          {resolverConflictos.isError && <p role="alert" className="error">{errorText(resolverConflictos.error)}</p>}
           {anteriores.length > 0 && <AccionesAnteriores acciones={anteriores} />}
         </section>
       )}
-      {projectId && terminada && taskId && diff && !pendiente && (
+      {projectId && terminada && taskId && diff && !pendiente && !conflictoDeTareaActual && (
         <div className="approval-buttons" aria-label="Acciones del repositorio">
           {tieneCambios && !pushVigente && (
             <button

@@ -480,6 +480,9 @@ test("un merge con conflictos lista archivos y crea tarea sobre la rama del PR",
   const conversationId = randomUUID();
   db.query("INSERT INTO conversations(id,title,project_id) VALUES (?,'Resolver PR',?)").run(conversationId, p.id);
   db.query("UPDATE tasks SET conversation_id=? WHERE id=?").run(conversationId, p.taskId);
+  const messageId = randomUUID();
+  db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES (?,?,'user','resuelve los conflictos')").run(messageId, conversationId);
+  db.query("INSERT INTO chat_actividad(conversation_id,turno_id,seq,tipo,titulo,estado) VALUES (?, ?, 1, 'texto', 'Diagnóstico previo', 'texto')").run(conversationId, messageId);
   guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
   const preparada = await pedir(`/projects/${p.id}/acciones`, {
     action: "merge", taskId: p.taskId, conversationId, pr_number: 9,
@@ -532,11 +535,74 @@ test("un merge con conflictos lista archivos y crea tarea sobre la rama del PR",
     ).get(nueva.task_id)!;
     expect(tarea).toMatchObject({ status: "queued", source_branch: p.diff.rama, source_base_branch: "main", source_pr_number: 9 });
     expect(tarea.prompt).toContain("src/widget.ts");
+    const payloadReparacion = JSON.parse(db.query<{ payload: string }, [string]>("SELECT payload FROM repository_actions WHERE id=?").get(accion.id)!.payload) as Record<string, unknown>;
+    expect(payloadReparacion.repair_message_id).toBe(messageId);
+    expect(payloadReparacion.repair_activity_from_seq).toBe(1);
+    const enCurso = await pedir(`/acciones/${accion.id}/verificar-conflictos`, {});
+    expect(await enCurso.json()).toMatchObject({ verificado: false, estado: "queued" });
+    db.query("UPDATE tasks SET status='done' WHERE id=?").run(nueva.task_id);
+    const faltaPush = await pedir(`/acciones/${accion.id}/verificar-conflictos`, {});
+    expect(await faltaPush.json()).toMatchObject({ verificado: false, estado: "push_pendiente" });
     expect((await pedir(`/acciones/${accion.id}/resolver-conflictos`, {})).status).toBe(200);
   } finally {
     spy.mockRestore();
     db.query("DELETE FROM conversations WHERE id=?").run(conversationId);
     if (taskResolutionId) db.query("DELETE FROM tasks WHERE id=?").run(taskResolutionId);
+  }
+});
+
+test("solo verifica la reparación cuando GitHub confirma el SHA subido como limpio", { timeout: 20000 }, async () => {
+  const p = await tareaConCommit();
+  const conversationId = randomUUID();
+  db.query("INSERT INTO conversations(id,title,project_id) VALUES (?,'Verificar PR',?)").run(conversationId, p.id);
+  db.query("UPDATE tasks SET conversation_id=?,source_branch=?,source_base_branch='main',source_pr_number=9 WHERE id=?")
+    .run(conversationId, p.diff.rama, p.taskId);
+  guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
+  const respuesta = await pedir(`/projects/${p.id}/acciones`, {
+    action: "merge", taskId: p.taskId, conversationId, pr_number: 9,
+    pr_url: "https://github.com/dueno/prueba/pull/9",
+  });
+  expect(respuesta.status).toBe(201);
+  const accion = await respuesta.json() as { id: string; payload: string };
+  const payload = JSON.parse(accion.payload) as Record<string, unknown>;
+  payload.repair_task_id = p.taskId;
+  const diagnostico = {
+    codigo: "merge_conflicts",
+    mensaje: "Conflictos de prueba",
+    pr_number: 9,
+    pr_url: "https://github.com/dueno/prueba/pull/9",
+    rama_fuente: p.diff.rama,
+    rama_base: "main",
+    repo_fuente: "dueno/prueba",
+    repo_base: "dueno/prueba",
+    archivos: ["archivo.txt"],
+    archivos_exactos: true,
+    task_id: p.taskId,
+    resoluble: true,
+  };
+  db.query("UPDATE repository_actions SET state='failed',result=?,payload=? WHERE id=?")
+    .run(JSON.stringify({ codigo: "merge_conflicts", mensaje: JSON.stringify(diagnostico) }), JSON.stringify(payload), accion.id);
+  db.query("INSERT INTO repository_actions(id,project_id,conversation_id,task_id,action,payload,state) VALUES (?,?,?,?,'push',?,'approved')")
+    .run(randomUUID(), p.id, conversationId, p.taskId, JSON.stringify({ source_pr_number: 9, rama: p.diff.rama, remote: REMOTO }));
+
+  globalThis.fetch = (async (url: any) => {
+    if (String(url) === "https://api.github.com/repos/dueno/prueba")
+      return Response.json({ full_name: "dueno/prueba", permissions: { push: true } });
+    if (String(url).endsWith("/pulls/9"))
+      return Response.json({
+        state: "open", draft: false, html_url: "https://github.com/dueno/prueba/pull/9",
+        mergeable: true, mergeable_state: "clean",
+        head: { ref: p.diff.rama, sha: p.diff.commit, repo: { full_name: "dueno/prueba" } },
+        base: { ref: "main", repo: { full_name: "dueno/prueba" } },
+      });
+    throw new Error(`Solicitud inesperada en la prueba: ${String(url)}`);
+  }) as typeof fetch;
+  try {
+    const verificacion = await pedir(`/acciones/${accion.id}/verificar-conflictos`, {});
+    expect(verificacion.status).toBe(200);
+    expect(await verificacion.json()).toMatchObject({ verificado: true, estado: "listo", pr_number: 9 });
+  } finally {
+    db.query("DELETE FROM conversations WHERE id=?").run(conversationId);
   }
 });
 

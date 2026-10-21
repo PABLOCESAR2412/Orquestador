@@ -1564,7 +1564,6 @@ export function ChatPage() {
                   projectId={current.project_id}
                   taskId={tareaChat?.id}
                   terminada={!!tareaChat && ["done", "failed", "cancelled", "interrupted"].includes(tareaChat.status)}
-                  taskStatus={tareaChat?.status}
                 />
               )}
               {tareasChat.isError && current?.project_id && <p className="tl-alerta" role="alert">{errorText(tareasChat.error)}</p>}

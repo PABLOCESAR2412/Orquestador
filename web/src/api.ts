@@ -686,6 +686,11 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
+  verifyRepositoryConflicts: (id: string) =>
+    request<VerificacionConflictos>(`/api/acciones/${id}/verificar-conflictos`, {
+      method: "POST",
+      body: "{}",
+    }),
 
   health: () => request<{ ok: boolean; time: string }>("/api/health"),
   runnerStatus: () =>
@@ -1045,4 +1050,12 @@ export type RepositoryAction = {
   state: string;
   result: string | null;
   task_id: string | null;
+};
+
+export type VerificacionConflictos = {
+  verificado: boolean;
+  estado: string;
+  mensaje: string;
+  pr_url?: string;
+  pr_number?: number;
 };
