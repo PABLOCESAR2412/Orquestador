@@ -538,7 +538,27 @@ try {
       await respuestaPosterior;
       await page.getByText(textoPosterior, { exact: false }).waitFor();
       assert.ok(Math.abs(await hiloChat.evaluate(el => el.scrollTop) - scrollManual) <= 2, "el crecimiento del mensaje no debe devolver al usuario al final si ya se desplazó hacia arriba");
-      console.log("390px: seguimiento progresivo y scroll manual comprobados");
+
+      await hiloChat.evaluate(el => { el.scrollTop = 0; el.dispatchEvent(new Event("scroll")); });
+      await page.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      const textoAlReanudar = "ACTUALIZACIÓN MIENTRAS TELO ESTABA MINIMIZADO";
+      const respuestaAlReanudar = page.waitForResponse(response => response.url().includes("/api/conversations/c1/messages") && response.request().method() === "GET");
+      ultimo.content += `\n\n${textoAlReanudar} ${"actividad nueva en segundo plano. ".repeat(80)}`;
+      await page.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+        document.dispatchEvent(new Event("visibilitychange"));
+        delete document.visibilityState;
+      });
+      await respuestaAlReanudar;
+      await page.getByText(textoAlReanudar, { exact: false }).waitFor();
+      await page.waitForFunction(() => {
+        const hilo = document.querySelector(".tl-hilo");
+        return hilo && hilo.scrollHeight - hilo.scrollTop - hilo.clientHeight <= 48;
+      });
+      console.log("390px: seguimiento progresivo, scroll manual y regreso desde segundo plano comprobados");
     }
     const primerPrompt = page.getByRole("button", { name: "Ir al prompt 1: git commit y push", exact: true });
     await primerPrompt.click();

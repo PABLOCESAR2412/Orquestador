@@ -169,6 +169,7 @@ export function ChatPage() {
   const chatHiloIdRef = useRef<string | null>(null);
   const seguirHiloAlFinalRef = useRef(true);
   const pausarSeguimientoManualRef = useRef(false);
+  const ventanaEnSegundoPlanoRef = useRef(false);
   const hiloToqueYRef = useRef<number | null>(null);
   const [mostrarIrAlInicio, setMostrarIrAlInicio] = useState(false);
   const [mostrarIrAlFinal, setMostrarIrAlFinal] = useState(false);
@@ -208,6 +209,42 @@ export function ChatPage() {
     setMostrarIrAlInicio(hilo.scrollTop > 48);
     setMostrarIrAlFinal(!cercaDelFinal);
   }, []);
+  useEffect(() => {
+    let frame: number | null = null;
+    let segundoFrame: number | null = null;
+    const alVolverAlPrimerPlano = () => {
+      if (document.visibilityState !== "visible" || !ventanaEnSegundoPlanoRef.current) return;
+      ventanaEnSegundoPlanoRef.current = false;
+      seguirHiloAlFinalRef.current = true;
+      pausarSeguimientoManualRef.current = false;
+      frame = window.requestAnimationFrame(() => {
+        segundoFrame = window.requestAnimationFrame(() => {
+          const hilo = hiloRef.current;
+          if (!hilo) return;
+          hilo.scrollTo({ top: hilo.scrollHeight, left: 0, behavior: "auto" });
+          actualizarSeguimientoHilo();
+        });
+      });
+    };
+    const alCambiarVisibilidad = () => {
+      if (document.visibilityState !== "visible") {
+        ventanaEnSegundoPlanoRef.current = true;
+        return;
+      }
+      alVolverAlPrimerPlano();
+    };
+    const alPerderFoco = () => { ventanaEnSegundoPlanoRef.current = true; };
+    document.addEventListener("visibilitychange", alCambiarVisibilidad);
+    window.addEventListener("blur", alPerderFoco);
+    window.addEventListener("focus", alVolverAlPrimerPlano);
+    return () => {
+      document.removeEventListener("visibilitychange", alCambiarVisibilidad);
+      window.removeEventListener("blur", alPerderFoco);
+      window.removeEventListener("focus", alVolverAlPrimerPlano);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      if (segundoFrame !== null) window.cancelAnimationFrame(segundoFrame);
+    };
+  }, [actualizarSeguimientoHilo]);
   const detenerScrollAutomatico = useCallback(() => {
     const hilo = hiloRef.current;
     if (hilo) hilo.scrollTo({ top: hilo.scrollTop, left: 0, behavior: "auto" });
