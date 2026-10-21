@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad, type RepositoryAction } from "../api";
@@ -166,6 +166,8 @@ export function ChatPage() {
   const hiloRef = useRef<HTMLDivElement>(null);
   const chatHiloIdRef = useRef<string | null>(null);
   const seguirHiloAlFinalRef = useRef(true);
+  const pausarSeguimientoManualRef = useRef(false);
+  const hiloToqueYRef = useRef<number | null>(null);
   const [mostrarIrAlInicio, setMostrarIrAlInicio] = useState(false);
   const [mostrarIrAlFinal, setMostrarIrAlFinal] = useState(false);
   useEffect(() => {
@@ -179,11 +181,13 @@ export function ChatPage() {
     const hilo = hiloRef.current;
     if (!hilo) return;
     seguirHiloAlFinalRef.current = false;
+    pausarSeguimientoManualRef.current = true;
     hilo.scrollTo({ top: 0, left: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }, []);
   const irAlFinal = useCallback(() => {
     const hilo = hiloRef.current;
     if (!hilo) return;
+    pausarSeguimientoManualRef.current = false;
     seguirHiloAlFinalRef.current = true;
     setMostrarIrAlFinal(false);
     hilo.scrollTo({
@@ -195,10 +199,44 @@ export function ChatPage() {
   const actualizarSeguimientoHilo = useCallback(() => {
     const hilo = hiloRef.current;
     if (!hilo) return;
-    const cercaDelFinal = hilo.scrollHeight - hilo.scrollTop - hilo.clientHeight <= 48;
-    seguirHiloAlFinalRef.current = cercaDelFinal;
+    const distanciaAlFinal = hilo.scrollHeight - hilo.scrollTop - hilo.clientHeight;
+    const cercaDelFinal = distanciaAlFinal <= 48;
+    if (!cercaDelFinal) pausarSeguimientoManualRef.current = false;
+    if (!pausarSeguimientoManualRef.current) seguirHiloAlFinalRef.current = cercaDelFinal;
     setMostrarIrAlInicio(hilo.scrollTop > 48);
     setMostrarIrAlFinal(!cercaDelFinal);
+  }, []);
+  const detenerScrollAutomatico = useCallback(() => {
+    const hilo = hiloRef.current;
+    if (hilo) hilo.scrollTo({ top: hilo.scrollTop, left: 0, behavior: "auto" });
+  }, []);
+  const alUsarRuedaEnHilo = useCallback((deltaY: number) => {
+    if (deltaY < 0) {
+      seguirHiloAlFinalRef.current = false;
+      pausarSeguimientoManualRef.current = true;
+      detenerScrollAutomatico();
+    } else if (deltaY > 0) {
+      pausarSeguimientoManualRef.current = false;
+    }
+  }, [detenerScrollAutomatico]);
+  const alIniciarToqueEnHilo = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
+    hiloToqueYRef.current = event.touches[0]?.clientY ?? null;
+  }, []);
+  const alMoverToqueEnHilo = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
+    const y = event.touches[0]?.clientY;
+    const anterior = hiloToqueYRef.current;
+    if (y === undefined) return;
+    if (anterior !== null && y > anterior) {
+      seguirHiloAlFinalRef.current = false;
+      pausarSeguimientoManualRef.current = true;
+      detenerScrollAutomatico();
+    } else if (anterior !== null && y < anterior) {
+      pausarSeguimientoManualRef.current = false;
+    }
+    hiloToqueYRef.current = y;
+  }, [detenerScrollAutomatico]);
+  const alTerminarToqueEnHilo = useCallback(() => {
+    hiloToqueYRef.current = null;
   }, []);
   const fileRef = useRef<HTMLInputElement>(null);
   const recRef = useRef<ReconocimientoVoz | null>(null);
@@ -305,6 +343,7 @@ export function ChatPage() {
 
   const current: Conversation | null =
     conversations.data?.find((c) => c.id === selectedId) ?? null;
+  const permitirAbrirArchivoEnChat = useCallback(() => Boolean(current?.id), [current?.id]);
 
   useEffect(() => {
     setActiveProjectId(current?.project_id ?? null);
@@ -861,11 +900,15 @@ export function ChatPage() {
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
   }, [draft]);
 
-  // Sigue la respuesta nueva solo mientras el usuario permanezca al final del hilo.
+  const ultimoMensaje = lista.at(-1);
+  const ultimoPasoVivo = selectedId ? vivos[selectedId]?.pasos.at(-1) : undefined;
+
+  // Sigue el contenido que crece solo mientras el usuario permanezca al final del hilo.
   useEffect(() => {
     const hilo = hiloRef.current;
     if (chatHiloIdRef.current !== selectedId) {
       chatHiloIdRef.current = selectedId;
+      pausarSeguimientoManualRef.current = false;
       seguirHiloAlFinalRef.current = true;
       setMostrarIrAlInicio(false);
       setMostrarIrAlFinal(false);
@@ -874,7 +917,7 @@ export function ChatPage() {
     hilo.scrollTo({ top: hilo.scrollHeight, left: 0, behavior: "auto" });
     setMostrarIrAlInicio(hilo.scrollTop > 48);
     setMostrarIrAlFinal(false);
-  }, [messages.data?.length, enviandoActual, selectedId, tareaChat?.status, tareaChat?.plan_hash, current?.ocupada, selectedId ? vivos[selectedId]?.pasos.length : 0]);
+  }, [messages.data?.length, ultimoMensaje?.content, enviandoActual, selectedId, tareaChat?.status, tareaChat?.plan_hash, current?.ocupada, selectedId ? vivos[selectedId]?.pasos.length : 0, ultimoPasoVivo?.titulo, ultimoPasoVivo?.detalle, ultimoPasoVivo?.estado, ultimoPasoVivo?.herramienta]);
 
   // Solo llega aquí un fallo que no se guardó (409 si el chat ya responde, 4xx o 5xx del servidor).
   const sendError = selectedId ? erroresEnvio[selectedId] ?? null : null;
@@ -886,7 +929,6 @@ export function ChatPage() {
   const error = sendError ?? settingsError ?? docError ?? anclarError ?? planError ?? cancelarPlanError;
 
   // El mensaje que se envió desde este dispositivo ya puede estar en la lista (el sondeo lo trae antes de terminar).
-  const ultimoMensaje = lista.at(-1);
   const yaGuardado = enviandoActual && (
     (envioActual?.retryOf ? lista.some((mensaje) => mensaje.id === envioActual.retryOf) : false)
     || (ultimoMensaje?.role === "user" && ultimoMensaje.content === envioActual?.content)
@@ -1052,6 +1094,7 @@ export function ChatPage() {
       const cajaMensaje = mensaje.getBoundingClientRect();
       const destino = Math.max(0, hilo.scrollTop + cajaMensaje.top - cajaHilo.top - (hilo.clientHeight - cajaMensaje.height) / 2);
       const cercaDelFinal = hilo.scrollHeight - destino - hilo.clientHeight <= 48;
+      pausarSeguimientoManualRef.current = !cercaDelFinal;
       seguirHiloAlFinalRef.current = cercaDelFinal;
       setMostrarIrAlFinal(!cercaDelFinal);
       hilo.scrollTo({ top: destino, left: 0, behavior: suave ? "smooth" : "auto" });
@@ -1422,7 +1465,16 @@ export function ChatPage() {
             </div>
           </header>
 
-          <div className="tl-hilo" ref={hiloRef} onScroll={actualizarSeguimientoHilo}>
+          <div
+            className="tl-hilo"
+            ref={hiloRef}
+            onScroll={actualizarSeguimientoHilo}
+            onWheelCapture={(event) => alUsarRuedaEnHilo(event.deltaY)}
+            onTouchStartCapture={alIniciarToqueEnHilo}
+            onTouchMoveCapture={alMoverToqueEnHilo}
+            onTouchEndCapture={alTerminarToqueEnHilo}
+            onTouchCancelCapture={alTerminarToqueEnHilo}
+          >
             <div className="tl-hilo-columna">
               {messages.isPending && <p className="tl-nota">Cargando mensajes…</p>}
               {messages.isError && (
@@ -1481,7 +1533,7 @@ export function ChatPage() {
                         modelo={m.model ? modelList.find((modelo) => modelo.id === m.model)?.name ?? m.model : null}
                         esfuerzo={m.effort}
                         onAbrirArchivo={current ? abrirArchivo : undefined}
-                        permitirAbrirArchivo={() => Boolean(current)}
+                        permitirAbrirArchivo={permitirAbrirArchivoEnChat}
                         duracion={duracionDeRespuesta(i)}
                         proceso={
                           selectedId && turnoDeRespuesta(i)

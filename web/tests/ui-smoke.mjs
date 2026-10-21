@@ -80,6 +80,7 @@ try {
     let skillInstallRequests = 0;
     let diffRequests = 0;
     let taskListRequests = 0;
+    let esperaPollUsada = null;
     let medioEstado = "pendiente";
     let sinDatos = false;
     let anunciarEnvioA;
@@ -269,7 +270,10 @@ try {
         tasks: { done: 1 }, calidad: { tokensMedidos: sinDatos ? 0 : 1, tokensEstimados: 0, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 },
         byTask: [{ taskId: "t1", calls: 1, tokens: sinDatos ? 0 : 10, cost: 0, tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 }],
       };
-      else if (path.includes("eventos-vivos/poll")) data = { cursor: 0, eventos: [] };
+      else if (path.includes("eventos-vivos/poll")) {
+        esperaPollUsada = Number(new URL(route.request().url()).searchParams.get("espera"));
+        data = { cursor: 0, eventos: [] };
+      }
       else if (path.includes("eventos-vivos")) return route.fulfill({ contentType: "text/event-stream", body: ": alive\n\n" });
       return route.fulfill({ json: data });
     });
@@ -280,6 +284,7 @@ try {
     await page.waitForURL("**/chat");
     console.log(`${width}px: sesión local de prueba iniciada`);
     await page.getByText("Conversaciones", { exact: true }).waitFor();
+    assert.equal(esperaPollUsada, 8000, "el sondeo vivo deja margen al límite del proxy HTTP/2");
     if (width === 390) {
       await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
       const filaChatAnterior = page.locator('.sidebar-conv[aria-label="Chat anterior"]').locator("..");
@@ -316,6 +321,18 @@ try {
     await comprobarTemaDiagrama("claro");
     await comprobarTemaDiagrama("oscuro");
     assert.equal(await page.locator(".tl-diagrama-visual svg .node").count(), 3);
+    if (width === 1440) {
+      await page.locator(".tl-diagrama-visual svg").waitFor();
+      const diagramaInicial = await page.locator(".tl-diagrama").first().elementHandle();
+      assert.ok(diagramaInicial);
+      await Promise.all([
+        page.waitForResponse(response => response.url().endsWith("/api/conversations") && response.request().method() === "GET"),
+        page.waitForResponse(response => response.url().endsWith("/api/conversations/c1/messages") && response.request().method() === "GET"),
+      ]);
+      assert.equal(await diagramaInicial.evaluate(elemento => elemento.isConnected), true,
+        "actualizar el chat por sondeo no debe desmontar y volver a generar el diagrama");
+      await diagramaInicial.dispose();
+    }
     assert.equal(await page.locator(".tl-diagrama-fuente summary").textContent(), "Ver código Mermaid");
     assert.equal(await page.locator(".tl-grafico-chat").count(), 6);
     assert.equal(await page.locator(".tl-grafico-chat").nth(0).locator(".tl-grafico-barras li").count(), 2);
@@ -435,6 +452,31 @@ try {
     await irAlUltimoMensaje.click();
     await page.waitForFunction(() => { const hilo = document.querySelector(".tl-hilo"); return hilo && hilo.scrollHeight - hilo.scrollTop - hilo.clientHeight <= 2; });
     console.log(`${width}px: navegación al inicio y al final comprobada`);
+    if (width === 390) {
+      const ultimo = messages.at(-1);
+      assert.ok(ultimo);
+      const textoInicial = "CRECIMIENTO PROGRESIVO DEL ÚLTIMO MENSAJE";
+      const respuestaInicial = page.waitForResponse(response => response.url().includes("/api/conversations/c1/messages") && response.request().method() === "GET");
+      ultimo.content += `\n\n${textoInicial} ${"contenido nuevo. ".repeat(100)}`;
+      await respuestaInicial;
+      await page.getByText(textoInicial, { exact: false }).waitFor();
+      await page.waitForFunction(() => { const hilo = document.querySelector(".tl-hilo"); return hilo && hilo.scrollHeight - hilo.scrollTop - hilo.clientHeight <= 48; });
+
+      const cajaHilo = await hiloChat.boundingBox();
+      assert.ok(cajaHilo);
+      await page.mouse.move(cajaHilo.x + cajaHilo.width / 2, cajaHilo.y + cajaHilo.height / 2);
+      await page.mouse.wheel(0, -260);
+      await page.waitForFunction(() => { const hilo = document.querySelector(".tl-hilo"); return hilo && hilo.scrollHeight - hilo.scrollTop - hilo.clientHeight > 48; });
+      const scrollManual = await hiloChat.evaluate(el => el.scrollTop);
+
+      const textoPosterior = "ACTUALIZACIÓN TRAS EL SCROLL MANUAL";
+      const respuestaPosterior = page.waitForResponse(response => response.url().includes("/api/conversations/c1/messages") && response.request().method() === "GET");
+      ultimo.content += `\n\n${textoPosterior} ${"más contenido. ".repeat(80)}`;
+      await respuestaPosterior;
+      await page.getByText(textoPosterior, { exact: false }).waitFor();
+      assert.ok(Math.abs(await hiloChat.evaluate(el => el.scrollTop) - scrollManual) <= 2, "el crecimiento del mensaje no debe devolver al usuario al final si ya se desplazó hacia arriba");
+      console.log("390px: seguimiento progresivo y scroll manual comprobados");
+    }
     const primerPrompt = page.getByRole("button", { name: "Ir al prompt 1: git commit y push", exact: true });
     await primerPrompt.click();
     await page.waitForFunction(() => document.querySelector(".tl-hilo-hito[aria-current='location']")?.getAttribute("aria-label")?.startsWith("Ir al prompt 1:"));

@@ -496,8 +496,12 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
       detalle,
       row.id,
     );
+    // Un rechazo remoto del push ya quedó guardado como acción fallida. Es un
+    // resultado de negocio, no un fallo del endpoint ni un Bad Gateway.
     return e instanceof ErrorTarea
-      ? c.json({ error: e.code, detail: e.detail }, e.status)
+      ? e.code === "push_fallido"
+        ? c.json({ ok: false, state: "failed", error: e.code, detail: e.detail })
+        : c.json({ error: e.code, detail: e.detail }, e.status)
       : c.json({ error: "git_action", detail: detalle }, 409);
   }
 });
