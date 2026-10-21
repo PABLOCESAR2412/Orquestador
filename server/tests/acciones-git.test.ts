@@ -791,7 +791,10 @@ test("un push fallido guarda el detalle claro para la tarjeta", { timeout: 20000
   }) as typeof Bun.spawn);
   try {
     const respuesta = await pedir(`/acciones/${accion.id}/decidir`, { approve: true, destino: "base" });
-    expect(respuesta.status).toBe(502);
+    expect(respuesta.status).toBe(200);
+    const respuestaFallida = await respuesta.json() as { ok: boolean; state: string; error: string; detail: string };
+    expect(respuestaFallida).toMatchObject({ ok: false, state: "failed", error: "push_fallido" });
+    expect(respuestaFallida.detail).toContain("regla de protección");
     const fila = db.query<{ result: string | null }, [string]>("SELECT result FROM repository_actions WHERE id=?").get(accion.id)!;
     expect(fila.result).toBeTruthy();
     const leido = JSON.parse(fila.result!) as { codigo: string; mensaje: string };
