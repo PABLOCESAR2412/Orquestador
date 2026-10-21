@@ -169,6 +169,7 @@ export function ChatPage() {
   const chatHiloIdRef = useRef<string | null>(null);
   const seguirHiloAlFinalRef = useRef(true);
   const pausarSeguimientoManualRef = useRef(false);
+  const ventanaEnSegundoPlanoRef = useRef(false);
   const hiloToqueYRef = useRef<number | null>(null);
   const [mostrarIrAlInicio, setMostrarIrAlInicio] = useState(false);
   const [mostrarIrAlFinal, setMostrarIrAlFinal] = useState(false);
@@ -208,6 +209,42 @@ export function ChatPage() {
     setMostrarIrAlInicio(hilo.scrollTop > 48);
     setMostrarIrAlFinal(!cercaDelFinal);
   }, []);
+  useEffect(() => {
+    let frame: number | null = null;
+    let segundoFrame: number | null = null;
+    const alVolverAlPrimerPlano = () => {
+      if (document.visibilityState !== "visible" || !ventanaEnSegundoPlanoRef.current) return;
+      ventanaEnSegundoPlanoRef.current = false;
+      seguirHiloAlFinalRef.current = true;
+      pausarSeguimientoManualRef.current = false;
+      frame = window.requestAnimationFrame(() => {
+        segundoFrame = window.requestAnimationFrame(() => {
+          const hilo = hiloRef.current;
+          if (!hilo) return;
+          hilo.scrollTo({ top: hilo.scrollHeight, left: 0, behavior: "auto" });
+          actualizarSeguimientoHilo();
+        });
+      });
+    };
+    const alCambiarVisibilidad = () => {
+      if (document.visibilityState !== "visible") {
+        ventanaEnSegundoPlanoRef.current = true;
+        return;
+      }
+      alVolverAlPrimerPlano();
+    };
+    const alPerderFoco = () => { ventanaEnSegundoPlanoRef.current = true; };
+    document.addEventListener("visibilitychange", alCambiarVisibilidad);
+    window.addEventListener("blur", alPerderFoco);
+    window.addEventListener("focus", alVolverAlPrimerPlano);
+    return () => {
+      document.removeEventListener("visibilitychange", alCambiarVisibilidad);
+      window.removeEventListener("blur", alPerderFoco);
+      window.removeEventListener("focus", alVolverAlPrimerPlano);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      if (segundoFrame !== null) window.cancelAnimationFrame(segundoFrame);
+    };
+  }, [actualizarSeguimientoHilo]);
   const detenerScrollAutomatico = useCallback(() => {
     const hilo = hiloRef.current;
     if (hilo) hilo.scrollTo({ top: hilo.scrollTop, left: 0, behavior: "auto" });
@@ -321,6 +358,10 @@ export function ChatPage() {
     queryFn: api.listConversations,
     refetchInterval: 4_000,
   });
+  const conversacionesDisponibles = useMemo(
+    () => conversations.data?.flatMap((conv) => [conv, ...(conv.subchats ?? [])]) ?? [],
+    [conversations.data],
+  );
 
   // Abre el chat más reciente al cargar si no hay uno seleccionado
   useEffect(() => {
@@ -344,7 +385,10 @@ export function ChatPage() {
   });
 
   const current: Conversation | null =
-    conversations.data?.find((c) => c.id === selectedId) ?? null;
+    conversacionesDisponibles.find((c) => c.id === selectedId) ?? null;
+  const conversacionPadre = current?.parent_conversation_id
+    ? conversations.data?.find((c) => c.id === current.parent_conversation_id) ?? null
+    : null;
   const permitirAbrirArchivoEnChat = useCallback(() => Boolean(current?.id), [current?.id]);
 
   useEffect(() => {
@@ -1304,15 +1348,10 @@ export function ChatPage() {
     >
       {!selectedId ? (
         <div className="tl-vacio" aria-busy={conversations.isPending}>
-          <svg className="tl-vacio-reticula" viewBox="0 0 1200 720" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-            <g fill="none" stroke="currentColor" strokeWidth="1">
-              <path d="M80 120H1120M80 240H1120M80 360H1120M80 480H1120M80 600H1120M200 40V680M400 40V680M600 40V680M800 40V680M1000 40V680" />
-              <path d="M160 620L600 180L1040 620M160 100L600 540L1040 100" strokeDasharray="4 10" />
-            </g>
-          </svg>
           <div className="tl-vacio-caja">
             <div className="tl-vacio-emblema" aria-hidden="true">
-              <span className="tl-vacio-pulso" />
+              <span className="tl-vacio-orbita tl-vacio-orbita-a" />
+              <span className="tl-vacio-orbita tl-vacio-orbita-b" />
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="3" />
                 <circle cx="19" cy="5" r="2" />
@@ -1360,6 +1399,20 @@ export function ChatPage() {
                 {contexto && <span className="tl-chip-dato">{contexto}</span>}
               </span>
               <h1 className="tl-chat-titulo">{current?.title ?? "Chat"}</h1>
+              {conversacionPadre && (
+                <button
+                  type="button"
+                  className="tl-chip tl-subchat-padre"
+                  onClick={() => setSelectedId(conversacionPadre.id)}
+                  aria-label={`Volver al chat principal: ${conversacionPadre.title}`}
+                  title={`Volver al chat principal: ${conversacionPadre.title}`}
+                >
+                  <span aria-hidden="true">↖</span>
+                  {current?.subagent_status === "running"
+                    ? `Subagente activo · ${conversacionPadre.title}`
+                    : `Subchat de ${conversacionPadre.title}`}
+                </button>
+              )}
               {current?.project_name && current?.project_id && (
                 <Link
                   to="/proyectos/$id"
@@ -1521,6 +1574,7 @@ export function ChatPage() {
                             ? { conversacionId: selectedId, turnoId: turnoDeRespuesta(i)! }
                             : undefined
                         }
+                        onAbrirSubchat={setSelectedId}
                         onReintentar={
                           lista.slice(0, i).some((p) => p.role === "user") && !enviandoActual
                             ? () => reintentar(m.id)
@@ -1545,6 +1599,10 @@ export function ChatPage() {
                   modelo={nombreAgente}
                   desde={inicioPensando}
                   vivo={(selectedId && vivos[selectedId]?.pasos) || []}
+                  conversacionId={selectedId ?? undefined}
+                  turnoId={selectedId ? vivos[selectedId]?.turnoId ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.id : undefined}
+                    mostrarSubagentes={!current?.model?.startsWith("codex/") && /\b(subagentes?|agentes?\s+(?:en\s+)?paralelo|deleg(?:a|ar|ando)|llama\s+a\s+(?:varios|m[aá]s\s+de\s+uno|un\s+subagente))\b/i.test(envioActual?.content ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.content ?? "")}
+                  onAbrirSubchat={setSelectedId}
                 />
               )}
               {tareaChat && (
@@ -1569,7 +1627,6 @@ export function ChatPage() {
                   projectId={current.project_id}
                   taskId={tareaChat?.id}
                   terminada={!!tareaChat && ["done", "failed", "cancelled", "interrupted"].includes(tareaChat.status)}
-                  taskStatus={tareaChat?.status}
                 />
               )}
               {tareasChat.isError && current?.project_id && <p className="tl-alerta" role="alert">{errorText(tareasChat.error)}</p>}

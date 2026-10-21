@@ -18,7 +18,21 @@ export type Conversation = {
   // Modelo que se quedó sin cuota en el último turno: el chat espera a que se cambie de modelo y se siga.
   cuota_modelo?: string | null;
   created_at: string;
+  parent_conversation_id?: string | null;
+  parent_turn_id?: string | null;
+  subagent_turn_id?: string | null;
+  subagent_agent?: string | null;
+  subagent_prompt?: string | null;
+  subagent_status?: "running" | "done" | "failed" | "cancelled" | "interrupted" | null;
+  subagent_result?: string | null;
+  subchats?: Conversation[];
 };
+
+export type SubagentChat = Pick<Conversation,
+  "id" | "title" | "model" | "effort" | "project_id" | "parent_conversation_id" | "parent_turn_id" |
+  "project_name" | "ocupada" | "en_proceso" | "subagent_turn_id" | "subagent_agent" | "subagent_prompt" |
+  "subagent_status" | "subagent_result" | "created_at" | "last_message_at"
+>;
 
 export type FormatoDocumento = "docx" | "xlsx" | "html" | "txt" | "md";
 
@@ -243,6 +257,24 @@ export type ProviderStatus = {
   guardable: boolean;
   guardada: boolean;
   sesion: boolean;
+};
+
+export type ConexionMcp = {
+  id: string;
+  nombre: string;
+  url: string;
+  habilitada: boolean;
+  autenticacion_configurada: boolean;
+  creada_en: string;
+  actualizada_en: string;
+};
+
+export type ConexionMcpInput = {
+  nombre?: string;
+  url?: string;
+  token?: string;
+  habilitada?: boolean;
+  quitar_token?: boolean;
 };
 
 export type Message = {
@@ -686,6 +718,11 @@ export const api = {
       method: "POST",
       body: "{}",
     }),
+  verifyRepositoryConflicts: (id: string) =>
+    request<VerificacionConflictos>(`/api/acciones/${id}/verificar-conflictos`, {
+      method: "POST",
+      body: "{}",
+    }),
 
   health: () => request<{ ok: boolean; time: string }>("/api/health"),
   runnerStatus: () =>
@@ -717,6 +754,8 @@ export const api = {
   // Pasos del agente de un turno (el id es el del mensaje del usuario).
   listTurnoActividad: (conversacionId: string, turnoId: string) =>
     request<PasoActividad[]>(`/api/conversations/${conversacionId}/turnos/${turnoId}/actividad`),
+  listSubagentes: (conversacionId: string, turnoId: string) =>
+    request<SubagentChat[]>(`/api/conversations/${conversacionId}/turnos/${turnoId}/subagentes`),
   capacidadesMedios: () => request<CapacidadesMediosApi>("/api/media/capacidades"),
   medio: (id: string) => request<MedioJob>(`/api/media/${encodeURIComponent(id)}`),
   confirmarMedio: (id: string) => request<MedioJob>(`/api/media/${encodeURIComponent(id)}/confirmar`, { method: "POST", body: "{}" }),
@@ -833,6 +872,13 @@ export const api = {
   confirmarCodexLogin: () => request<LoginCodex>("/api/providers/codex/confirmar", { method: "POST" }),
   // Cuenta global de GitHub (en Ajustes) para operar sin claves SSH por proyecto.
   githubCuenta: () => request<GithubCuenta>("/api/github/cuenta"),
+  listMcpConnections: () => request<{ conexiones: ConexionMcp[] }>("/api/conexiones"),
+  createMcpConnection: (body: ConexionMcpInput) =>
+    request<ConexionMcp>("/api/conexiones", { method: "POST", body: JSON.stringify(body) }),
+  updateMcpConnection: (id: string, body: ConexionMcpInput) =>
+    request<ConexionMcp>(`/api/conexiones/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteMcpConnection: (id: string) =>
+    request<{ ok: boolean }>(`/api/conexiones/${encodeURIComponent(id)}`, { method: "DELETE" }),
   githubAppInstalaciones: () => request<GithubAppEstado>("/api/github/app/instalaciones"),
   vincularGithubApp: (id: number) =>
     request<{ ok: boolean; instalacion: GithubAppInstalacion; cuenta: GithubCuenta }>("/api/github/app/instalacion", {
@@ -1045,4 +1091,12 @@ export type RepositoryAction = {
   state: string;
   result: string | null;
   task_id: string | null;
+};
+
+export type VerificacionConflictos = {
+  verificado: boolean;
+  estado: string;
+  mensaje: string;
+  pr_url?: string;
+  pr_number?: number;
 };

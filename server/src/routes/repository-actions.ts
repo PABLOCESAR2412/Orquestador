@@ -663,6 +663,16 @@ repositoryActions.post("/acciones/:id/resolver-conflictos", async (c) => {
     "Conserva el comportamiento de ambas ramas, resuelve todos los marcadores de conflicto, revisa el diff completo y ejecuta las pruebas pertinentes.",
     "No hagas commit ni push: Telo pedirá aprobación después de mostrar los cambios.",
   ].join("\n\n");
+  const repairMessageId = typeof payload.messageId === "string"
+    ? payload.messageId
+    : db.query<{ id: string }, [string]>(
+        "SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1",
+      ).get(accion.conversation_id)?.id ?? null;
+  const actividadHasta = repairMessageId
+    ? db.query<{ seq: number }, [string, string]>(
+        "SELECT COALESCE(MAX(seq),0) AS seq FROM chat_actividad WHERE conversation_id=? AND turno_id=?",
+      ).get(accion.conversation_id, repairMessageId)?.seq ?? 0
+    : 0;
   const taskId = crearTarea({
     prompt,
     model: origen.model || conversacion.model || "",
@@ -675,8 +685,108 @@ repositoryActions.post("/acciones/:id/resolver-conflictos", async (c) => {
     sourcePrNumber: diagnostico.pr_number,
   });
   payload.repair_task_id = taskId;
+  payload.repair_message_id = repairMessageId;
+  payload.repair_activity_from_seq = actividadHasta;
   db.query("UPDATE repository_actions SET payload=? WHERE id=?").run(JSON.stringify(payload), accion.id);
   return c.json({ task_id: taskId, reutilizada: false }, 202);
+});
+
+repositoryActions.post("/acciones/:id/verificar-conflictos", async (c) => {
+  const accion = db.query<{
+    id: string;
+    project_id: string;
+    conversation_id: string | null;
+    action: string;
+    payload: string;
+    state: string;
+    result: string | null;
+  }, [string]>("SELECT * FROM repository_actions WHERE id=?").get(c.req.param("id"));
+  if (!accion) return c.json({ error: "action_not_found" }, 404);
+  if (accion.action !== "merge" || accion.state !== "failed" || !accion.result || !accion.conversation_id)
+    return c.json({ error: "conflict_resolution_unavailable" }, 409);
+
+  let diagnostico: DiagnosticoConflictos;
+  let payload: { repair_task_id?: string; remote?: string; autenticacion?: ReturnType<typeof fuenteAutenticacionGithub> };
+  try {
+    const error = JSON.parse(accion.result) as { codigo?: string; mensaje?: string };
+    if (error.codigo !== "merge_conflicts" || !error.mensaje) return c.json({ error: "conflict_resolution_unavailable" }, 409);
+    diagnostico = JSON.parse(error.mensaje) as DiagnosticoConflictos;
+    payload = JSON.parse(accion.payload);
+  } catch {
+    return c.json({ error: "conflict_resolution_unavailable" }, 409);
+  }
+  const repairTaskId = payload.repair_task_id;
+  if (!repairTaskId || !diagnostico.resoluble)
+    return c.json({ error: "conflict_resolution_unavailable" }, 409);
+  const tarea = db.query<{
+    status: string;
+    conversation_id: string | null;
+    source_branch: string | null;
+    source_base_branch: string | null;
+    source_pr_number: number | null;
+  }, [string, string]>(
+    "SELECT status,conversation_id,source_branch,source_base_branch,source_pr_number FROM tasks WHERE id=? AND project_id=?",
+  ).get(repairTaskId, accion.project_id);
+  if (!tarea || tarea.conversation_id !== accion.conversation_id ||
+      tarea.source_branch !== diagnostico.rama_fuente || tarea.source_base_branch !== diagnostico.rama_base ||
+      tarea.source_pr_number !== diagnostico.pr_number)
+    return c.json({ verificado: false, estado: "tarea_no_coincide", mensaje: "La tarea ya no coincide con la rama y el Pull Request diagnosticados. Vuelve a revisar la tarea." });
+  if (tarea.status !== "done")
+    return c.json({ verificado: false, estado: tarea.status, mensaje: `La tarea de resolución está ${tarea.status === "failed" ? "fallida" : tarea.status === "cancelled" ? "cancelada" : "en curso"}.` });
+
+  const pushAccion = db.query<{ payload: string }, [string]>(
+    "SELECT payload FROM repository_actions WHERE task_id=? AND action='push' AND state='approved' ORDER BY created_at DESC,rowid DESC LIMIT 1",
+  ).get(repairTaskId);
+  if (!pushAccion)
+    return c.json({ verificado: false, estado: "push_pendiente", mensaje: "La resolución terminó. Revisa y aprueba el commit y la subida al mismo PR antes de verificar GitHub." });
+
+  try {
+    const diff = await diffDeTarea(repairTaskId);
+    if (diff.estado !== "con_cambios" || !diff.commit || !diff.hash ||
+        diff.rama !== diagnostico.rama_fuente || diff.remoto_url !== payload.remote ||
+        diff.aprobaciones.commit?.estado !== "aprobada" || diff.aprobaciones.commit.sha !== diff.commit ||
+        diff.aprobaciones.commit.hash !== diff.hash || !diff.aprobaciones.push ||
+        diff.aprobaciones.push.sha !== diff.commit || diff.aprobaciones.push.rama !== diagnostico.rama_fuente ||
+        diff.aprobaciones.push.remoto !== diff.remoto_url)
+      return c.json({ verificado: false, estado: "cambios_no_subidos", mensaje: "El commit o la subida aprobados ya no coinciden con el diff actual. Revisa los cambios y vuelve a autorizarlos." });
+
+    const datosPush = JSON.parse(pushAccion.payload) as { source_pr_number?: number; rama?: string; remote?: string };
+    if (datosPush.source_pr_number !== diagnostico.pr_number || datosPush.rama !== diagnostico.rama_fuente || datosPush.remote !== payload.remote)
+      return c.json({ verificado: false, estado: "push_no_coincide", mensaje: "La subida aprobada no apunta a la rama del Pull Request diagnosticado." });
+
+    await validarAutenticacionYAcceso(accion.project_id, payload, "merge");
+    const remoto = urlGithubPermitida(payload.remote ?? "");
+    if (!remoto) return c.json({ verificado: false, estado: "remoto_invalido", mensaje: "El remoto guardado ya no es válido para GitHub." });
+    const numero = diagnostico.pr_number;
+    const ruta = "/repos/" + remoto.replace("https://github.com/", "") + `/pulls/${numero}`;
+    const pull = await githubApiPr(accion.project_id, ruta, payload.autenticacion!, undefined, undefined, "merge") as {
+      state?: string;
+      draft?: boolean;
+      html_url?: string;
+      mergeable?: boolean | null;
+      mergeable_state?: string;
+      head?: { ref?: string; sha?: string; repo?: { full_name?: string | null } | null };
+      base?: { ref?: string; repo?: { full_name?: string | null } | null };
+    };
+    if (pull.state !== "open" || pull.draft || pull.head?.ref !== diagnostico.rama_fuente ||
+        pull.base?.ref !== diagnostico.rama_base || pull.head?.sha !== diff.commit ||
+        pull.head?.repo?.full_name?.toLowerCase() !== diagnostico.repo_fuente?.toLowerCase() ||
+        pull.base?.repo?.full_name?.toLowerCase() !== diagnostico.repo_base.toLowerCase())
+      return c.json({ verificado: false, estado: "pr_cambio", mensaje: "El PR ya no está abierto o su rama, base o commit cambiaron. Actualiza el diagnóstico antes de continuar." });
+    if (pull.mergeable === null || pull.mergeable_state === "unknown")
+      return c.json({ verificado: false, estado: "github_calculando", mensaje: "GitHub todavía está calculando si el PR se puede fusionar. Intenta verificarlo de nuevo en unos segundos." });
+    if (pull.mergeable !== true || pull.mergeable_state !== "clean")
+      return c.json({ verificado: false, estado: pull.mergeable_state ?? "no_integrable", mensaje: `GitHub aún no confirma que el PR esté listo para fusionarse (${pull.mergeable_state ?? "estado desconocido"}).` });
+    return c.json({
+      verificado: true,
+      estado: "listo",
+      mensaje: `GitHub confirmó que el PR #${numero} está limpio y que su commit coincide con ${diff.commit.slice(0, 8)}.`,
+      pr_url: pull.html_url ?? diagnostico.pr_url,
+      pr_number: numero,
+    });
+  } catch (error) {
+    return c.json({ verificado: false, estado: "error_verificacion", mensaje: mensajeSeguro(error) }, 409);
+  }
 });
 
 async function validarAutenticacionYAcceso(

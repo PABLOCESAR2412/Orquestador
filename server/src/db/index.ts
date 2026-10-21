@@ -696,6 +696,44 @@ const migrations: Migration[] = [
       ALTER TABLE tasks ADD COLUMN source_pr_number INTEGER;
     `,
   },
+  {
+    // Conserva subagentes como conversaciones hijas del chat que los lanzó.
+    name: "037_subchats_subagentes",
+    sql: `
+      ALTER TABLE conversations ADD COLUMN parent_conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE;
+      ALTER TABLE conversations ADD COLUMN parent_turn_id TEXT;
+      ALTER TABLE conversations ADD COLUMN subagent_turn_id TEXT;
+      ALTER TABLE conversations ADD COLUMN subagent_session_id TEXT;
+      ALTER TABLE conversations ADD COLUMN subagent_agent TEXT;
+      ALTER TABLE conversations ADD COLUMN subagent_prompt TEXT;
+      ALTER TABLE conversations ADD COLUMN subagent_status TEXT CHECK (subagent_status IS NULL OR subagent_status IN ('running','done','failed','cancelled','interrupted'));
+      ALTER TABLE conversations ADD COLUMN subagent_result TEXT;
+      ALTER TABLE conversations ADD COLUMN subagent_workspace TEXT;
+      ALTER TABLE conversations ADD COLUMN subagent_config_dir TEXT;
+      CREATE UNIQUE INDEX conversations_subagent_session ON conversations(subagent_session_id) WHERE subagent_session_id IS NOT NULL;
+      CREATE INDEX conversations_subagent_parent ON conversations(parent_conversation_id, parent_turn_id, created_at);
+    `,
+  },
+  {
+    // Conexiones MCP remotas configuradas por el usuario. La credencial se cifra con la clave maestra.
+    name: "038_conexiones_mcp",
+    sql: `
+      CREATE TABLE mcp_connections (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        url TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+        token_iv TEXT,
+        token_tag TEXT,
+        token_enc TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        CHECK ((token_iv IS NULL AND token_tag IS NULL AND token_enc IS NULL) OR
+               (token_iv IS NOT NULL AND token_tag IS NOT NULL AND token_enc IS NOT NULL))
+      );
+      CREATE INDEX mcp_connections_enabled ON mcp_connections(enabled, name);
+    `,
+  },
 ];
 
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (

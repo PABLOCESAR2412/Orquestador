@@ -13,6 +13,7 @@ import { conMemoria, extraerMemoria, guardarMemoria, guardarPropuestaMemoria, me
 import { conservarMemoriaSegunJev, puntuarMemoriaJev } from "./jev";
 import { inyectarSkillsEnPrompt } from "./resolucion-skills";
 import { imagenesDelPrompt } from "./chat-adjuntos";
+import { configuracionMcpParaAgente } from "./conexiones-mcp";
 
 // Longitud mínima de un valor de secreto para ocultarlo en la salida. Más corto, aparecería en texto normal.
 const MINIMO_OCULTAR = 4;
@@ -27,10 +28,11 @@ export type OpcionesAgente = {
   sessionId?: string | null;
   sessionModel?: string | null;
   cwd: string;
-  timeoutMs?: number;
+  timeoutMs?: number | null;
   signal?: AbortSignal;
   onSesion?: (sessionId: string | null, model: string | null) => void;
   onLinea?: (linea: string) => void;
+  onSubagente?: (linea: string) => void;
   // Solo para la tarea: registra el cambio de modelo en su historial.
   taskId?: string;
   projectId?: string | null;
@@ -42,6 +44,8 @@ export type OpcionesAgente = {
   estilo?: "chat";
   // Directorio temporal de perfiles de subagentes por ejecución de OpenCode.
   opencodeConfigDir?: string;
+  // Captura temporal de eventos de hijos OpenCode, en el mismo perfil efímero.
+  opencodeSubagentesTracePath?: string;
 };
 
 // `modelo` es el que realmente respondió (puede ser el de respaldo), para registrar el uso.
@@ -395,13 +399,24 @@ export function promptContinuacion(prompt: string, tieneSesion = true): string {
 }
 
 async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoAgente> {
+  const mcp = configuracionMcpParaAgente();
   // Claves de proveedor (Ajustes) y secretos del proyecto. Si un nombre se repite, gana el del proyecto.
   const propias: Record<string, string> = {
     ...entornoProveedores(),
     ...(opts.projectId ? entornoDeProyecto(opts.projectId) : {}),
+    ...mcp.variables,
   };
   const ocultos = valoresAOcultar(propias);
-  const idPerfil = opts.conversationId ?? opts.taskId;
+  const idPerfil = opts.conversationId
+    ? db.query<{ id: string }, [string]>(`
+        WITH RECURSIVE familia(id,parent_conversation_id) AS (
+          SELECT id,parent_conversation_id FROM conversations WHERE id=?
+          UNION ALL
+          SELECT padre.id,padre.parent_conversation_id FROM conversations padre JOIN familia f ON f.parent_conversation_id=padre.id
+        )
+        SELECT id FROM familia WHERE parent_conversation_id IS NULL LIMIT 1
+      `).get(opts.conversationId)?.id ?? opts.conversationId
+    : opts.taskId;
   // El modelo de respaldo puede usar OpenCode aunque el primario sea Codex.
   const perfilOpenCodeDir = aislamientoActivo() && idPerfil
     ? prepararPerfilOpenCode(idPerfil)
@@ -422,8 +437,11 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     timeoutMs: opts.timeoutMs,
     signal: opts.signal,
     onLinea: opts.onLinea ? (linea: string) => opts.onLinea?.(ocultarValores(linea, ocultos)) : undefined,
+    onSubagente: opts.onSubagente ? (linea: string) => opts.onSubagente?.(ocultarValores(linea, ocultos)) : undefined,
     extraEnv: propias,
+    servidoresMcp: mcp.servidores,
     opencodeConfigDir: opts.opencodeConfigDir,
+    subagentesTracePath: opts.opencodeSubagentesTracePath,
     perfilOpenCodeDir,
     soloLectura: opts.soloLectura,
   };
@@ -551,7 +569,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     return terminar(r, opts.model, opts.variant ?? null);
   } catch (err) {
     // Si el tiempo se agotó o se canceló, no se reintenta ni se trata como cuota.
-    const agotado = opts.timeoutMs !== undefined && Date.now() - inicio >= opts.timeoutMs;
+    const agotado = opts.timeoutMs !== undefined && opts.timeoutMs !== null && Date.now() - inicio >= opts.timeoutMs;
     if (agotado || opts.signal?.aborted) throw limpiarError(err);
     // Un modelo sin cuota se marca como tal (ver ErrorCuota); cualquier otro error sigue como antes.
     const comoCuota = (e: unknown, modelo: string): unknown =>

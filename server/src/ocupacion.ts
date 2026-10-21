@@ -25,14 +25,24 @@ export function liberarConversacion(id: string): void {
 }
 
 export function conversacionEnCurso(id: string): boolean {
-  return (
-    conversacionesEnCurso.has(id) ||
-    db
-      .query(
-        "SELECT 1 FROM tasks WHERE conversation_id=? AND status IN ('queued','analyzing','waiting_approval','running') LIMIT 1",
-      )
-      .get(id) !== null
-  );
+  const familia = db.query<{ id: string }, [string]>(`
+    WITH RECURSIVE raiz(id,parent_conversation_id) AS (
+      SELECT id,parent_conversation_id FROM conversations WHERE id=?
+      UNION ALL
+      SELECT padre.id,padre.parent_conversation_id FROM conversations padre JOIN raiz hijo ON hijo.parent_conversation_id=padre.id
+    ),
+    familia(id) AS (
+      SELECT id FROM raiz WHERE parent_conversation_id IS NULL
+      UNION ALL
+      SELECT hija.id FROM conversations hija JOIN familia f ON hija.parent_conversation_id=f.id
+    )
+    SELECT id FROM familia
+  `).all(id).map((fila) => fila.id);
+  if (familia.length === 0) familia.push(id);
+  if (familia.some((conversationId) => conversacionesEnCurso.has(conversationId))) return true;
+  return familia.some((conversationId) => db.query(
+    "SELECT 1 FROM tasks WHERE conversation_id=? AND status IN ('queued','analyzing','waiting_approval','running') LIMIT 1",
+  ).get(conversationId) !== null);
 }
 
 // El servidor está leyendo Git de este proyecto ahora mismo: no debe arrancar un chat en él.

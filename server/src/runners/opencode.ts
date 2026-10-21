@@ -1,6 +1,12 @@
+import { closeSync, fstatSync, openSync, readSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
 import { esVariableReservada, SECRETOS_SOLO_SERVIDOR } from "../secretos";
 import type { ImagenAgente } from "../chat-adjuntos";
+import { config } from "../config";
+import type { ServidorMcpAgente } from "../conexiones-mcp";
+import { configuracionOpenCodeMcp } from "../conexiones-mcp";
 
 // Id de sesión de OpenCode. Empieza por letra o cifra: así nunca se lee como una opción de la CLI.
 const PATRON_SESION = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
@@ -268,22 +274,112 @@ async function leerLineas(
   return todo;
 }
 
+function vigilarSubagentes(ruta: string | undefined, alLeer: ((linea: string) => void) | undefined) {
+  if (!ruta || !alLeer) return { cerrar() {} };
+  let desplazamiento = 0;
+  let pendiente = "";
+  const leer = () => {
+    let fd: number | null = null;
+    try {
+      fd = openSync(ruta, "r");
+      const tamano = fstatSync(fd).size;
+      if (tamano < desplazamiento) {
+        desplazamiento = 0;
+        pendiente = "";
+      }
+      const longitud = Math.min(tamano - desplazamiento, 256 * 1024);
+      if (longitud <= 0) return;
+      const buffer = Buffer.allocUnsafe(longitud);
+      const leidos = readSync(fd, buffer, 0, longitud, desplazamiento);
+      desplazamiento += leidos;
+      pendiente += buffer.toString("utf8", 0, leidos);
+      let corte = pendiente.indexOf("\n");
+      while (corte !== -1) {
+        const linea = pendiente.slice(0, corte).trim();
+        pendiente = pendiente.slice(corte + 1);
+        if (linea) {
+          try { alLeer(linea); } catch { /* una falla al registrar no interrumpe OpenCode */ }
+        }
+        corte = pendiente.indexOf("\n");
+      }
+    } catch {
+      // El archivo puede aún no existir en una configuración persistente sin captura.
+    } finally {
+      if (fd !== null) closeSync(fd);
+    }
+  };
+  const timer = setInterval(leer, 180);
+  timer.unref();
+  return {
+    cerrar() {
+      clearInterval(timer);
+      leer();
+      const resto = pendiente.trim();
+      if (resto) {
+        try { alLeer(resto); } catch { /* una falla al registrar no interrumpe OpenCode */ }
+      }
+      pendiente = "";
+    },
+  };
+}
+
 export async function runOpenCode(opts: {
+  servidoresMcp?: ServidorMcpAgente[];
   prompt: string;
   model: string;
   variant?: string;
   sessionId?: string | null;
   cwd: string;
-  timeoutMs?: number;
+  timeoutMs?: number | null;
+  signal?: AbortSignal;
+  onSesion?: (sessionId: string) => void;
+  onLinea?: (linea: string) => void;
+  onSubagente?: (linea: string) => void;
+  extraEnv?: Record<string, string>;
+  opencodeConfigDir?: string;
+  subagentesTracePath?: string;
+  perfilOpenCodeDir?: string;
+  soloLectura?: boolean;
+  imagenes?: ImagenAgente[];
+  onUso?: (uso: Usage) => void;
+}): Promise<RunResult> {
+  const servidores = opts.servidoresMcp ?? [];
+  if (servidores.length === 0) return ejecutarOpenCode(opts);
+
+  const raiz = join(config.dataDir, "perfiles-mcp");
+  mkdirSync(raiz, { recursive: true, mode: 0o700 });
+  const temporal = mkdtempSync(join(raiz, "run-"));
+  const archivo = join(temporal, "opencode.json");
+  try {
+    writeFileSync(archivo, JSON.stringify(configuracionOpenCodeMcp(servidores)), { encoding: "utf8", flag: "wx", mode: 0o600 });
+    return await ejecutarOpenCode({ ...opts, opencodeMcpConfigPath: archivo });
+  } finally {
+    rmSync(temporal, { recursive: true, force: true });
+  }
+}
+
+async function ejecutarOpenCode(opts: {
+  servidoresMcp?: ServidorMcpAgente[];
+  opencodeMcpConfigPath?: string;
+  prompt: string;
+  model: string;
+  variant?: string;
+  sessionId?: string | null;
+  cwd: string;
+  timeoutMs?: number | null;
   signal?: AbortSignal;
   // Se llama en cuanto el agente informa su sesión, aunque la ejecución siga en curso.
   onSesion?: (sessionId: string) => void;
   // Una llamada por cada línea de stdout, en orden, mientras el agente corre.
   onLinea?: (linea: string) => void;
+  // Eventos de subagentes que OpenCode no incluye en la salida NDJSON del runner padre.
+  onSubagente?: (linea: string) => void;
   // Variables extra solo para esta ejecución. Nunca se aceptan nombres TELO_*.
   extraEnv?: Record<string, string>;
   // Perfiles temporales que solicita explícitamente la tarea para sus subagentes.
   opencodeConfigDir?: string;
+  // Archivo temporal NDJSON del plugin de OpenCode con eventos de subagentes.
+  subagentesTracePath?: string;
   // Estado aislado y persistente de OpenCode por conversación o tarea.
   perfilOpenCodeDir?: string;
   soloLectura?: boolean;
@@ -298,6 +394,8 @@ export async function runOpenCode(opts: {
     opts.imagenes,
     opts.perfilOpenCodeDir,
     opts.opencodeConfigDir,
+    opts.subagentesTracePath,
+    opts.opencodeMcpConfigPath,
   );
 
   // Un id de sesión que no cumple el patrón se ignora: ni se pasa a -s ni se reutiliza.
@@ -323,13 +421,19 @@ export async function runOpenCode(opts: {
   if (opts.opencodeConfigDir) {
     env.OPENCODE_CONFIG_DIR = aislamientoActivo() ? "/tmp/telo-opencode-config" : opts.opencodeConfigDir;
   }
+  if (opts.opencodeMcpConfigPath) {
+    env.OPENCODE_CONFIG = aislamientoActivo()
+      ? "/tmp/telo-mcp-config/opencode.json"
+      : opts.opencodeMcpConfigPath;
+  }
   const proc = Bun.spawn(["setsid", ...aislamiento, ...args], {
     cwd: opts.cwd,
     env,
     stdout: "pipe",
     stderr: "pipe",
   });
-  const timer = setTimeout(() => terminarGrupo(proc.pid), opts.timeoutMs ?? 120_000);
+  const monitorSubagentes = vigilarSubagentes(opts.subagentesTracePath, opts.onSubagente);
+  const timer = opts.timeoutMs === null ? null : setTimeout(() => terminarGrupo(proc.pid), opts.timeoutMs ?? 120_000);
   // Al terminar el agente, se cierra lo que quedó de su grupo (procesos en segundo plano). Así nada
   // sigue escribiendo en la carpeta de trabajo después de la ejecución, y las tuberías se cierran.
   void proc.exited.then(() => terminarGrupo(proc.pid));
@@ -389,8 +493,9 @@ export async function runOpenCode(opts: {
       aborted,
     ]);
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
     if (onAbort) opts.signal?.removeEventListener("abort", onAbort);
+    monitorSubagentes.cerrar();
   }
 
   const events = parseEvents(stdout);

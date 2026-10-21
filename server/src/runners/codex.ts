@@ -5,6 +5,7 @@ import { hallarEjecutable } from "../ejecutable";
 import { carpetaHome } from "../hogar";
 import { entornoDelAgente, estimarUso, type RunResult, type Usage } from "./opencode";
 import type { ImagenAgente } from "../chat-adjuntos";
+import { argumentosConfigMcpCodex, type ServidorMcpAgente } from "../conexiones-mcp";
 
 // Termina el grupo de procesos para que herramientas e hijos no queden como zombies huérfanos.
 function terminarGrupo(proc: { pid: number; kill: () => void }) {
@@ -31,12 +32,13 @@ function terminarGrupo(proc: { pid: number; kill: () => void }) {
 // Utiliza la sesión activa autenticada con ChatGPT (`codex login --device-auth`).
 
 export async function runCodex(opts: {
+  servidoresMcp?: ServidorMcpAgente[];
   prompt: string;
   model: string;
   variant?: string;
   sessionId?: string | null;
   cwd: string;
-  timeoutMs?: number;
+  timeoutMs?: number | null;
   signal?: AbortSignal;
   onSesion?: (sessionId: string) => void;
   onLinea?: (linea: string) => void;
@@ -56,11 +58,13 @@ export async function runCodex(opts: {
   const aislamiento = prefijoAislamiento(opts.cwd, opts.soloLectura, opts.imagenes);
   const rutasImagenes = (opts.imagenes ?? []).flatMap((imagen) => ["--image", aislamientoActivo() ? imagen.rutaVisible : imagen.ruta]);
 
-  const args: string[] = [];
+  // Codex toma `-c` como prioridad de ejecución y lee MCP remoto desde la tabla mcp_servers.
+  const ajustesMcp = argumentosConfigMcpCodex(opts.servidoresMcp ?? []);
+  const args: string[] = ["codex", ...ajustesMcp];
   if (opts.sessionId && /^[0-9a-fA-F-]+$/.test(opts.sessionId)) {
-    args.push("codex", "exec", "resume", "--json", ...rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", modeloCodex, opts.sessionId, opts.prompt);
+    args.push("exec", "resume", "--json", ...rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", modeloCodex, opts.sessionId, opts.prompt);
   } else {
-    args.push("codex", "exec", "--json", ...rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", modeloCodex, "-C", opts.cwd, "--", opts.prompt);
+    args.push("exec", "--json", ...rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", modeloCodex, "-C", opts.cwd, "--", opts.prompt);
   }
 
   const comandoCompleto = aislamiento.length > 0 ? ["setsid", ...aislamiento, ...args] : process.platform === "win32" ? ["cmd", "/c", ...args] : ["setsid", ...args];
@@ -76,7 +80,7 @@ export async function runCodex(opts: {
     stderr: "pipe",
   });
 
-  const timer = setTimeout(() => {
+  const timer = opts.timeoutMs === null ? null : setTimeout(() => {
     terminarGrupo(proc);
   }, opts.timeoutMs ?? 180_000);
 
@@ -172,7 +176,7 @@ export async function runCodex(opts: {
     stderr = res[1];
     code = res[2];
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
     if (onAbort) opts.signal?.removeEventListener("abort", onAbort);
   }
 

@@ -12,6 +12,8 @@ WorkingDirectory=/home/orquestador/orquestador/server
 Environment=DATA_DIR=/home/orquestador/orquestador/server/data
 Environment=TELO_RESPALDOS_DIR=/home/orquestador/respaldos
 Environment=TELO_RESPALDOS_CONSERVAR=14
+# Opcional. Archivo root:root 0600 con las credenciales de un bucket privado R2.
+EnvironmentFile=-/etc/orquestador/r2-backups.env
 # Ruta de bun del usuario orquestador. Compruébala con: sudo -u orquestador which bun
 ExecStart=/home/orquestador/.bun/bin/bun scripts/respaldo.ts
 NoNewPrivileges=yes

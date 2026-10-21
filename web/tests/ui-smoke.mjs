@@ -85,7 +85,9 @@ try {
     let skillInstallRequests = 0;
     let diffRequests = 0;
     let taskListRequests = 0;
-    let esperaPollUsada = null;
+    const esperasPollUsadas = [];
+    let resolverEsperaPollLarga;
+    const pollLargoObservado = new Promise(resolve => { resolverEsperaPollLarga = resolve; });
     let medioEstado = "pendiente";
     let sinDatos = false;
     let anunciarEnvioA;
@@ -110,12 +112,21 @@ try {
       };
       else if (path === "/api/media/00000000-0000-4000-8000-000000000001/archivo") return route.fulfill({ status: 200, contentType: "image/svg+xml", headers: { "Content-Disposition": 'attachment; filename="colibri.svg"' }, body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240"><rect width="320" height="240" fill="#d9a441"/><path d="M90 150q50-100 100 0q40-50 80 0" fill="#181c22"/><circle cx="170" cy="95" r="18" fill="#e7e9ec"/></svg>' });
       else if (path === "/api/conversations") data = conversacionesDisponibles ? [
-        { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, created_at: now },
+        { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, created_at: now, subchats: [{ id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true }] },
         { id: "c2", title: "Chat paralelo", model: "nvidia/nemotron-test", project_id: null, project_name: null, created_at: now },
         { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, pendiente_aprobacion: true, estado_tarea: "pendiente_aprobacion", estado_tarea_id: "review-c3", estado_tarea_version: "hash-c3", created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
         { id: "c4", title: "Chat anterior", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() },
         { id: "c5", title: "Chat libre", model: "google/prueba", project_id: null, project_name: null, created_at: now },
       ] : [];
+      else if (path === "/api/conversations/c1/turnos/u1/subagentes") data = [
+        { id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true },
+      ];
+      else if (path === "/api/conversations/c-child/messages") data = [
+        { id: "child-u1", role: "user", content: "Revisa las rutas y reporta riesgos", created_at: now },
+      ];
+      else if (path === "/api/conversations/c-child/turnos/child-u1/actividad") data = [
+        { seq: 1, tipo: "accion", herramienta: "bash", titulo: "Ejecutando git status", detalle: "git status --short", estado: "en_curso" },
+      ];
       else if (path === "/api/conversations/c5/messages") data = [
         { id: "c2a", role: "assistant", content: "Informe adjunto: `libre.md`", model: "nvidia/nemotron-test", created_at: now },
       ];
@@ -276,7 +287,9 @@ try {
         byTask: [{ taskId: "t1", calls: 1, tokens: sinDatos ? 0 : 10, cost: 0, tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 }],
       };
       else if (path.includes("eventos-vivos/poll")) {
-        esperaPollUsada = Number(new URL(route.request().url()).searchParams.get("espera"));
+        const esperaPollUsada = Number(new URL(route.request().url()).searchParams.get("espera"));
+        esperasPollUsadas.push(esperaPollUsada);
+        if (esperaPollUsada >= 8000) resolverEsperaPollLarga();
         data = { cursor: 0, eventos: [] };
       }
       else if (path.includes("eventos-vivos")) return route.fulfill({ contentType: "text/event-stream", body: ": alive\n\n" });
@@ -291,12 +304,44 @@ try {
     await page.getByText("Conversaciones", { exact: true }).waitFor();
     await page.getByRole("heading", { name: "¿Qué vamos a resolver?", exact: true }).waitFor();
     await page.getByRole("button", { name: "Nuevo chat", exact: true }).waitFor();
+    const marcaChatNuevo = page.locator(".tl-vacio-emblema");
+    assert.equal(await marcaChatNuevo.locator("svg").count(), 1, "el chat nuevo reutiliza el símbolo de Telo");
+    assert.equal(await marcaChatNuevo.locator(".tl-vacio-orbita").count(), 2, "el símbolo tiene dos líneas orbitales");
+    assert.equal(await page.locator(".tl-vacio-reticula").count(), 0, "el fondo usa la marca y no una cuadrícula genérica");
+    assert.equal(await marcaChatNuevo.locator(".tl-vacio-orbita").first().evaluate(el => getComputedStyle(el).animationName), "none", "la animación se detiene con movimiento reducido");
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    assert.equal(await marcaChatNuevo.locator(".tl-vacio-orbita").first().evaluate(el => getComputedStyle(el).animationName), "tl-vacio-orbita", "las líneas orbitan cuando el usuario permite movimiento");
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `scratch/capturas-ci/chat-vacio-animado-${width}.png` });
+    await page.emulateMedia({ reducedMotion: "reduce" });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "la pantalla de chat nuevo cabe en móvil y escritorio");
     await page.screenshot({ path: `scratch/capturas-ci/chat-vacio-${width}.png` });
     conversacionesDisponibles = true;
     await page.reload();
     await page.getByText("Conversaciones", { exact: true }).waitFor();
-    assert.equal(esperaPollUsada, 8000, "el sondeo vivo deja margen al límite del proxy HTTP/2");
+    let timeoutPollLargo;
+    await Promise.race([
+      pollLargoObservado,
+      new Promise((_, reject) => { timeoutPollLargo = setTimeout(() => reject(new Error("no se observó el sondeo largo de eventos")), 10_000); }),
+    ]).finally(() => clearTimeout(timeoutPollLargo));
+    assert.ok(esperasPollUsadas.includes(8000), "el sondeo vivo deja margen al límite del proxy HTTP/2");
+    const mensajeSupervisor = page.locator(".tl-msg-agente").filter({ hasText: "Faltan dependencias" }).first();
+    await mensajeSupervisor.locator(".tl-proceso-boton").click();
+    await mensajeSupervisor.getByText("Se crearon 1 subagente", { exact: true }).waitFor();
+    await mensajeSupervisor.getByText("Ejecutando git status", { exact: true }).waitFor();
+    await mensajeSupervisor.getByRole("button", { name: "Abrir subchat", exact: true }).click();
+    await page.getByRole("heading", { name: "Auditar API", exact: true }).waitFor();
+    if (width === 390) {
+      const cajaTituloSubchat = await page.getByRole("heading", { name: "Auditar API", exact: true }).boundingBox();
+      const cajaBotonVolver = await page.locator(".tl-subchat-padre").boundingBox();
+      const cajaAccionesChat = await page.locator(".tl-chat-cabecera-der").boundingBox();
+      assert.ok(cajaTituloSubchat && cajaBotonVolver && cajaAccionesChat, "el encabezado del subchat conserva título, padre y acciones en móvil");
+      assert.ok(cajaTituloSubchat.width > 40, "el título del subchat tiene espacio visible en móvil");
+      assert.ok(cajaBotonVolver.y >= cajaAccionesChat.y + cajaAccionesChat.height, "volver al chat padre queda debajo de las acciones en móvil");
+    }
+    await page.getByRole("button", { name: "Volver al chat principal: Prueba de flujo", exact: true }).click();
+    await page.getByRole("heading", { name: "Prueba de flujo", exact: true }).waitFor();
+    console.log(`${width}px: actividad en vivo y navegación entre supervisor y subchat comprobadas`);
     if (width === 390) {
       await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
       const filaChatAnterior = page.locator('.sidebar-conv[aria-label="Chat anterior"]').locator("..");
@@ -493,7 +538,27 @@ try {
       await respuestaPosterior;
       await page.getByText(textoPosterior, { exact: false }).waitFor();
       assert.ok(Math.abs(await hiloChat.evaluate(el => el.scrollTop) - scrollManual) <= 2, "el crecimiento del mensaje no debe devolver al usuario al final si ya se desplazó hacia arriba");
-      console.log("390px: seguimiento progresivo y scroll manual comprobados");
+
+      await hiloChat.evaluate(el => { el.scrollTop = 0; el.dispatchEvent(new Event("scroll")); });
+      await page.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      const textoAlReanudar = "ACTUALIZACIÓN MIENTRAS TELO ESTABA MINIMIZADO";
+      const respuestaAlReanudar = page.waitForResponse(response => response.url().includes("/api/conversations/c1/messages") && response.request().method() === "GET");
+      ultimo.content += `\n\n${textoAlReanudar} ${"actividad nueva en segundo plano. ".repeat(80)}`;
+      await page.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+        document.dispatchEvent(new Event("visibilitychange"));
+        delete document.visibilityState;
+      });
+      await respuestaAlReanudar;
+      await page.getByText(textoAlReanudar, { exact: false }).waitFor();
+      await page.waitForFunction(() => {
+        const hilo = document.querySelector(".tl-hilo");
+        return hilo && hilo.scrollHeight - hilo.scrollTop - hilo.clientHeight <= 48;
+      });
+      console.log("390px: seguimiento progresivo, scroll manual y regreso desde segundo plano comprobados");
     }
     const primerPrompt = page.getByRole("button", { name: "Ir al prompt 1: git commit y push", exact: true });
     await primerPrompt.click();
@@ -728,6 +793,32 @@ try {
     assert.equal(await page.locator('section.tl-accion-git-actual').count(), 1, "la decisión actualiza la misma tarjeta dentro de su turno");
     assert.equal(approvals, 1);
     assert.equal(await page.locator('section.tl-accion-git-actual [role="alert"]').count(), 0);
+    actions.push({
+      id: "git-pr-fallido",
+      action: "pr",
+      task_id: "t1",
+      message_id: "u2",
+      state: "failed",
+      result: JSON.stringify({ codigo: "git_action", mensaje: "Validation Failed: A pull request already exists for PABLOCESAR2412:telo/prueba" }),
+      payload: JSON.stringify({
+        remote: "https://github.com/ejemplo/pruebas",
+        rama: "telo/prueba",
+        base: "main",
+        title: "Cambios revisados en Telo",
+        pr_url: "https://github.com/ejemplo/pruebas/pull/",
+        pr_number: null,
+        messageId: "u2",
+        autenticacion: { tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "PABLOCESAR2412", instalacion_id: 1 },
+      }),
+    });
+    await page.waitForFunction(() => document.querySelector(".tl-accion-git-actual .approval-panel h2")?.textContent === "Crear pull request");
+    const tarjetaPrFallido = page.locator(".tl-accion-git-actual .approval-panel");
+    assert.equal(await tarjetaPrFallido.locator(".approval-state-ticket.is-failed").textContent(), "No se completó");
+    assert.equal(await tarjetaPrFallido.locator(".approval-pr-link").count(), 0, "un PR rechazado no ofrece un enlace de creación engañoso");
+    assert.match(await tarjetaPrFallido.locator(".approval-result.is-failed").textContent(), /A pull request already exists/);
+    await page.screenshot({ path: `scratch/capturas-ci/git-pr-fallido-${width}.png` });
+    actions.pop();
+    await page.waitForFunction(() => document.querySelector(".tl-accion-git-actual .approval-panel h2")?.textContent === "Commit y push");
     await hiloChat.evaluate(el => { el.scrollTop = 0; el.dispatchEvent(new Event("scroll")); });
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Envío del chat A");
     const requestChatA = page.waitForRequest(request => request.url().endsWith("/api/conversations/c1/messages") && request.method() === "POST" && request.postDataJSON().content === "Envío del chat A");
@@ -880,7 +971,7 @@ try {
       await page.getByRole("group", { name: "Acciones de Prueba de flujo" }).getByRole("button", { name: "Eliminar", exact: true }).click();
       const confirmarEliminar = page.locator(".conv-confirm");
       await confirmarEliminar.waitFor();
-      assert.equal(await confirmarEliminar.getByText("Se eliminarán «Prueba de flujo» y todos sus mensajes. No se puede deshacer.", { exact: true }).isVisible(), true);
+      assert.equal(await confirmarEliminar.getByText("Se eliminarán «Prueba de flujo», sus subchats y todos sus mensajes. No se puede deshacer.", { exact: true }).isVisible(), true);
       assert.equal(await confirmarEliminar.getByRole("button", { name: "Cancelar", exact: true }).evaluate(el => el === document.activeElement), true);
       await page.screenshot({ path: "scratch/capturas-ci/chat-delete-1440.png" });
       await page.keyboard.press("Escape");

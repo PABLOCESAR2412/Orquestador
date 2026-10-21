@@ -35,6 +35,7 @@ const RESTAURAR = {
 let carpeta = "";
 let volcadoAgente = "";
 let volcadoCli = "";
+let marcaEspera = "";
 
 beforeAll(() => {
   carpeta = mkdtempSync(join(tmpdir(), "telo-entorno-"));
@@ -42,6 +43,7 @@ beforeAll(() => {
   mkdirSync(bin);
   volcadoAgente = join(carpeta, "entorno-agente.txt");
   volcadoCli = join(carpeta, "entorno-cli.txt");
+  marcaEspera = join(carpeta, "espera-completada.txt");
 
   // Cada llamada guarda su entorno en un archivo distinto: `models` es el CLI, lo demás es el agente.
   // El agente repite la clave en su respuesta para comprobar que sale oculta.
@@ -59,6 +61,11 @@ if [ "$1" = "models" ]; then
   exit 0
 fi
 env > '${volcadoAgente}'
+for arg in "$@"; do
+  case "$arg" in
+    *ESPERA-LARGA*) sleep 0.2; : > '${marcaEspera}';;
+  esac
+done
 echo '{"type":"text","sessionID":"ses_entorno01","part":{"type":"text","text":"Clave usada: '"$GROQ_API_KEY"'"}}'
 `,
   );
@@ -92,6 +99,29 @@ function variables(ruta: string): Map<string, string> {
 }
 
 describe.skipIf(!Bun.which("setsid"))("entorno de los proveedores en el agente y en el CLI", () => {
+  test("una ejecución sin timeout automático termina y el límite explícito sigue activo", async () => {
+    const inicio = Date.now();
+    rmSync(marcaEspera, { force: true });
+    const resultado = await ejecutarAgente({
+      prompt: "ESPERA-LARGA",
+      model: "opencode/big-pickle",
+      cwd: carpeta,
+      timeoutMs: null,
+    });
+
+    expect(resultado.text).toContain("Clave usada:");
+    expect(existsSync(marcaEspera)).toBe(true);
+    expect(Date.now() - inicio).toBeGreaterThanOrEqual(150);
+    rmSync(marcaEspera, { force: true });
+    await expect(ejecutarAgente({
+      prompt: "ESPERA-LARGA",
+      model: "opencode/big-pickle",
+      cwd: carpeta,
+      timeoutMs: 10,
+    })).rejects.toThrow();
+    expect(existsSync(marcaEspera)).toBe(false);
+  });
+
   test("el agente recibe GROQ_API_KEY y nunca una variable TELO_*", async () => {
     const resultado = await ejecutarAgente({
       prompt: "Hola",

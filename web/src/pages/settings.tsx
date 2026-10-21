@@ -16,13 +16,15 @@ import { TemaPanel } from "../components/settings/panel-tema";
 import { NotificacionesPanel } from "../components/settings/panel-notificaciones";
 import { LoadingSkeleton } from "../components/loading-skeleton";
 import { SesionPanel } from "../components/settings/panel-sesion";
+import { PanelConexiones } from "../components/settings/panel-conexiones";
 
 const ALERT_OPTIONS = [50, 60, 70, 80, 90, 100];
 
-type Pestana = "personalizacion" | "proveedores" | "servidor" | "almacenamiento";
+type Pestana = "personalizacion" | "proveedores" | "conexiones" | "servidor" | "almacenamiento";
 const PESTANAS: { id: Pestana; texto: string }[] = [
   { id: "personalizacion", texto: "Personalización" },
   { id: "proveedores", texto: "Proveedores IA" },
+  { id: "conexiones", texto: "Conexiones" },
   { id: "servidor", texto: "Estado del servidor" },
   { id: "almacenamiento", texto: "Almacenamiento" },
 ];
@@ -218,6 +220,7 @@ export function SettingsPage() {
 
         <div role="tabpanel" id={`aj-panel-${pestana}`} aria-labelledby={`aj-tab-${pestana}`} className="aj-panel">
           {pestana === "personalizacion" && <div className="aj-stack"><TemaPanel /></div>}
+          {pestana === "conexiones" && <PanelConexiones />}
           {pestana === "proveedores" && (
             <div className="aj-stack">
               <section className="aj-kpis" aria-label="Telemetría de la instancia">

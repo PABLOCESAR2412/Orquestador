@@ -7,6 +7,7 @@ type Props = {
   conv: Conversation;
   active: boolean;
   variant?: "arbol" | "lista";
+  selectedConversationId?: string | null;
   onSelect: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onTogglePin: (id: string, pinned: boolean) => void;
@@ -15,7 +16,7 @@ type Props = {
 
 const SVG = { width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
 // Un chat de la barra lateral con estado de actividad y un menú compacto de acciones.
-export function ConvItem({ conv, active, variant = "arbol", onSelect, onRename, onTogglePin, onDelete }: Props) {
+export function ConvItem({ conv, active, variant = "arbol", selectedConversationId, onSelect, onRename, onTogglePin, onDelete }: Props) {
   const [confirmando, setConfirmando] = useState(false);
   const [renombrando, setRenombrando] = useState(false);
   const [menuAbierto, setMenuAbierto] = useState(false);
@@ -145,13 +146,41 @@ export function ConvItem({ conv, active, variant = "arbol", onSelect, onRename, 
         </div>
       </div>
 
+      {variant === "arbol" && Boolean(conv.subchats?.length) && (
+        <div className="conv-subchats" aria-label={`Subchats de ${conv.title}`}>
+          {conv.subchats!.map((hijo) => (
+            <button
+              key={hijo.id}
+              type="button"
+              className={`conv-subchat${hijo.id === selectedConversationId ? " is-active" : ""}${hijo.subagent_status === "running" ? " is-running" : ""}`}
+              aria-current={hijo.id === selectedConversationId ? "true" : undefined}
+              aria-label={`${hijo.title} · ${hijo.subagent_status === "running" ? "En ejecución" : "Subchat"}`}
+              title={`${hijo.title} · ${hijo.subagent_agent || "Subagente"}`}
+              onClick={() => onSelect(hijo.id)}
+            >
+              <span className="conv-subchat-branch" aria-hidden="true">↳</span>
+              <span className="conv-subchat-titulo">{hijo.title}</span>
+              {hijo.subagent_status === "running" ? (
+                <span className="tl-indicador-spinner" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg></span>
+              ) : hijo.subagent_status === "failed" ? (
+                <span className="conv-subchat-fallo" aria-label="Falló">!</span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      )}
+
       {confirmando && (
         <div id={`conv-delete-${conv.id}`} className="conv-menu conv-confirm" role="group" aria-labelledby={`conv-delete-title-${conv.id}`} aria-describedby={`conv-delete-description-${conv.id}`} onKeyDown={(event) => { if (event.key === "Escape") setConfirmando(false); }}>
           <div className="conv-confirm-cabecera">
             <span className="conv-confirm-icono" aria-hidden="true"><svg {...SVG}><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0z" /></svg></span>
             <div>
               <strong id={`conv-delete-title-${conv.id}`} className="conv-confirm-titulo">Eliminar este chat</strong>
-              <p id={`conv-delete-description-${conv.id}`}>Se eliminarán «{conv.title}» y todos sus mensajes. No se puede deshacer.</p>
+              <p id={`conv-delete-description-${conv.id}`}>
+                {conv.subchats?.length
+                  ? `Se eliminarán «${conv.title}», sus subchats y todos sus mensajes. No se puede deshacer.`
+                  : `Se eliminarán «${conv.title}» y todos sus mensajes. No se puede deshacer.`}
+              </p>
             </div>
           </div>
           <div className="conv-rename-acciones">

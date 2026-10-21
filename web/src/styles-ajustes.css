@@ -727,6 +727,129 @@
   flex: 1 1 200px;
 }
 
+/* Conexiones MCP: lista compacta, controles en línea y formularios que caben en móvil. */
+.aj-conexiones-intro { max-width: 72ch; margin-top: 6px; }
+.aj-conexion-nativas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.aj-conexion-nativa {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  background: var(--surface);
+}
+.aj-conexion-nativa + .aj-conexion-nativa { border-left: 1px solid var(--line); }
+.aj-conexion-identidad { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.aj-conexion-identidad h3,
+.aj-conexion-remota h3,
+.aj-conexion-nueva h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.aj-conexion-identidad p { margin: 4px 0 0; color: var(--ink-2); font-size: 12px; line-height: 1.4; }
+.aj-conexion-marca {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+.aj-conexion-estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.aj-conexion-estado i,
+.aj-conexion-aviso::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-3, var(--ink-2));
+}
+.aj-conexion-estado.is-ok i { background: var(--online); }
+.aj-conexion-remota {
+  min-width: 0;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.aj-conexion-remota-cabecera {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+.aj-conexion-datos { min-width: 0; }
+.aj-conexion-titulo { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.aj-conexion-url { margin: 6px 0 4px; color: var(--ink-2); overflow-wrap: anywhere; }
+.aj-conexion-acciones { display: flex; flex-wrap: wrap; gap: 8px; }
+.aj-conexion-acciones .aj-btn { min-height: 34px; padding-inline: 11px; font-size: 13px; }
+.aj-btn-peligro { color: var(--danger); }
+.aj-conexion-edicion {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  min-width: 0;
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.aj-conexion-campo { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.aj-conexion-campo .aj-campo-etiqueta { color: var(--ink-2); font-size: 12px; }
+.aj-conexion-edicion > .aj-conexion-acciones { grid-column: 1 / -1; }
+.aj-conexion-quitar-token { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13px; }
+.aj-conexion-quitar-token input { accent-color: var(--primary); }
+.aj-conexion-nueva {
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.aj-conexion-nueva > .aj-nota { margin-top: 5px; }
+.aj-conexiones-vacio {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--ink-2);
+}
+.aj-conexiones-vacio p { margin: 0; font-size: 13px; }
+.aj-conexiones-vacio strong { color: var(--ink); }
+.aj-conexiones-confianza { max-width: 90ch; }
+.aj-conexion-aviso { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--ink-2); font-size: 13px; }
+.aj-conexion-aviso::before { content: ""; flex: 0 0 7px; background: var(--online); }
+@media (max-width: 760px) {
+  .aj-conexion-nativas { grid-template-columns: minmax(0, 1fr); }
+  .aj-conexion-nativa + .aj-conexion-nativa { border-top: 1px solid var(--line); border-left: 0; }
+}
+@media (max-width: 560px) {
+  .aj-conexion-nativa { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 14px; }
+  .aj-conexion-nativa > .aj-conexion-identidad { grid-column: 1 / -1; }
+  .aj-conexion-nativa > .aj-btn { justify-self: end; }
+  .aj-conexion-remota-cabecera { flex-direction: column; }
+  .aj-conexion-acciones { width: 100%; }
+  .aj-conexion-acciones .aj-btn { flex: 1 1 auto; }
+  .aj-conexion-edicion { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  .aj-conexion-edicion > .aj-conexion-acciones { grid-column: auto; }
+}
+
 .aj-nota {
   margin: 0;
   font-size: 13px;

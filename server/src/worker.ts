@@ -10,6 +10,7 @@ import { config } from "./config";
 import { MAX_TAREAS_SIMULTANEAS } from "./limites";
 import { db } from "./db";
 import { prepararSubagentes } from "./subagentes";
+import { cerrarSubagentesDelTurno, registrarEventoSubagente } from "./subagentes-chat";
 import { publicar } from "./bus";
 import { publicarEstado, registrarEvento } from "./eventos";
 import { ejecutarAgente, ErrorCuota, promptContinuacion, type ResultadoAgente } from "./ejecutar";
@@ -49,8 +50,6 @@ import {
 // Una tarea pasa por dos fases: el analizador produce un plan y el obrero ejecuta el plan aprobado.
 // Entre ambas, si el plan necesita aprobación, la tarea espera en `waiting_approval` sin ocupar el worker.
 
-// Tiempo máximo de cada llamada al agente (el analizador y el obrero tienen la suya).
-const TASK_TIMEOUT_MS = 30 * 60_000;
 const MENSAJE_INTERRUMPIDA = "El servidor se reinició mientras la tarea corría. Puedes reanudarla o reintentarla.";
 // Tamaño máximo de cada línea de salida que viaja por el canal en vivo.
 const MAX_LINEA_EN_VIVO = 4096;
@@ -64,8 +63,6 @@ let wake: (() => void) | null = null;
 
 // Error del analizador u obrero con texto pensado para el usuario.
 class ErrorFase extends Error {}
-// Una llamada al agente superó su tiempo.
-class TiempoAgotado extends Error {}
 
 type QueuedTask = {
   id: string;
@@ -219,23 +216,25 @@ function leerPlan(respuesta: { text: string; textoFinal: string }): Validacion<P
   return { ok: false, motivo };
 }
 
-// Una llamada al agente dentro de la tarea: usa su sesión, tiene su propio tiempo y registra su uso.
+// Una llamada del analizador u obrero: puede durar lo necesario y registra su uso.
 async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise<ResultadoAgente> {
   const { task, controller, salida } = ctx;
   // Una cancelación entre dos llamadas evita lanzar la siguiente: el runner no la vería abortada.
   if (controller.signal.aborted) throw new Error("Tarea cancelada.");
 
-  let agotado = false;
-  const temporizador = setTimeout(() => {
-    agotado = true;
-    controller.abort();
-  }, TASK_TIMEOUT_MS);
   const modeloSolicitado = task.model;
   const esfuerzoSolicitado = task.effort;
   let perfilesSubagente: Awaited<ReturnType<typeof prepararSubagentes>> = null;
+  let huboSubagentes = false;
+  let turnoTerminado = false;
+  const turnoChat = task.conversation_id
+    ? db.query<{ id: string }, [string]>("SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(task.conversation_id)
+    : null;
   try {
     if (aprender) {
       perfilesSubagente = await prepararSubagentes({
+        // El prompt de la fase obrero ya incluye el plan, pero la autorización para delegar
+        // viene de la petición original del usuario.
         prompt: task.prompt,
         modelo: task.model,
         esfuerzo: task.effort,
@@ -252,13 +251,29 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
       sessionId: task.provider_session_id,
       sessionModel: task.provider_session_model,
       cwd: ctx.cwd,
-      timeoutMs: TASK_TIMEOUT_MS,
+      // Las tareas se cancelan desde la interfaz; no se interrumpen por duración.
+      timeoutMs: null,
       signal: controller.signal,
       taskId: task.id,
       conversationId: task.conversation_id,
       soloLectura: estadoActual(task.id) === "analyzing",
       projectId: task.project_id,
       opencodeConfigDir: perfilesSubagente?.directorio,
+      opencodeSubagentesTracePath: perfilesSubagente?.rutaCaptura,
+      onSubagente: perfilesSubagente && task.conversation_id && turnoChat ? (linea) => {
+        try {
+          if ((JSON.parse(linea) as { kind?: string }).kind === "created") huboSubagentes = true;
+        } catch {}
+        registrarEventoSubagente({
+          parentConversationId: task.conversation_id!,
+          parentTurnId: turnoChat.id,
+          workspace: ctx.cwd,
+          configDir: perfilesSubagente!.directorio,
+          model: task.model,
+          eventLine: linea,
+        });
+        publicar({ tipo: "chat", conversacion_id: task.conversation_id!, estado: "en_curso" });
+      } : undefined,
       // Solo el obrero aprende del proyecto: al terminar, guarda su memoria.
       aprender,
       // Guarda la sesión apenas aparece, para poder reanudar si el servidor se reinicia a mitad.
@@ -277,9 +292,8 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
         if (!linea.trim()) return;
         salida.linea(linea);
         if (task.conversation_id) {
-          const turno = db.query<{id:string},[string]>("SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(task.conversation_id);
           const item = itemDeLinea(linea);
-          if (turno && item) registrarActividad(task.conversation_id, turno.id, item);
+          if (turnoChat && item) registrarActividad(task.conversation_id, turnoChat.id, item);
         }
         publicar({ tipo: "salida", task_id: task.id, linea: recortarLinea(linea) });
       },
@@ -293,13 +307,16 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
           .run(result.modelo, result.variante, task.conversation_id, modeloSolicitado, esfuerzoSolicitado);
       }
     }
+    turnoTerminado = true;
     return result;
-  } catch (err) {
-    if (agotado) throw new TiempoAgotado("El agente superó los 30 minutos sin terminar.");
-    throw err;
   } finally {
-    clearTimeout(temporizador);
-    perfilesSubagente?.limpiar();
+    if (perfilesSubagente) {
+      if (huboSubagentes) perfilesSubagente.finalizarCaptura();
+      else perfilesSubagente.limpiar();
+    }
+    if (task.conversation_id && turnoChat) {
+      cerrarSubagentesDelTurno(task.conversation_id, turnoChat.id, turnoTerminado ? "done" : "interrupted");
+    }
   }
 }
 
@@ -555,7 +572,7 @@ async function ejecutarTarea(task: QueuedTask) {
       }
     } else if (err instanceof ErrorCuota) {
       pausarPorCuota(task.id, err, task.provider_session_id !== null, task.conversation_id);
-    } else if (err instanceof TiempoAgotado || err instanceof ErrorFase) {
+    } else if (err instanceof ErrorFase) {
       if (finish(task.id, "failed", { error: err.message })) {
         avisarChat(task.id, err.message, { model: task.model, effort: task.effort });
       }
@@ -636,6 +653,8 @@ async function loop() {
 // Llamar una sola vez al arrancar el servidor.
 export function startWorker() {
   db.query("UPDATE repository_actions SET state='failed',result='El servidor se reinició durante la acción. Comprueba el repositorio antes de solicitarla otra vez.' WHERE state='executing'").run();
+  // Los procesos de OpenCode no sobreviven al reinicio del servidor. No dejes subchats bloqueados en "running".
+  db.query("UPDATE conversations SET subagent_status='interrupted' WHERE parent_conversation_id IS NOT NULL AND subagent_status='running'").run();
   // Una tarea "running" o "analyzing" al arrancar quedó sin proceso por un reinicio: se marca
   // como interrumpida, no como fallida, para que el usuario decida qué hacer.
   // Una tarea en "waiting_approval" no tiene proceso: sigue esperando al usuario.
