@@ -85,7 +85,9 @@ try {
     let skillInstallRequests = 0;
     let diffRequests = 0;
     let taskListRequests = 0;
-    let esperaPollUsada = null;
+    const esperasPollUsadas = [];
+    let resolverEsperaPollLarga;
+    const pollLargoObservado = new Promise(resolve => { resolverEsperaPollLarga = resolve; });
     let medioEstado = "pendiente";
     let sinDatos = false;
     let anunciarEnvioA;
@@ -276,7 +278,9 @@ try {
         byTask: [{ taskId: "t1", calls: 1, tokens: sinDatos ? 0 : 10, cost: 0, tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 }],
       };
       else if (path.includes("eventos-vivos/poll")) {
-        esperaPollUsada = Number(new URL(route.request().url()).searchParams.get("espera"));
+        const esperaPollUsada = Number(new URL(route.request().url()).searchParams.get("espera"));
+        esperasPollUsadas.push(esperaPollUsada);
+        if (esperaPollUsada >= 8000) resolverEsperaPollLarga();
         data = { cursor: 0, eventos: [] };
       }
       else if (path.includes("eventos-vivos")) return route.fulfill({ contentType: "text/event-stream", body: ": alive\n\n" });
@@ -306,7 +310,12 @@ try {
     conversacionesDisponibles = true;
     await page.reload();
     await page.getByText("Conversaciones", { exact: true }).waitFor();
-    assert.equal(esperaPollUsada, 8000, "el sondeo vivo deja margen al límite del proxy HTTP/2");
+    let timeoutPollLargo;
+    await Promise.race([
+      pollLargoObservado,
+      new Promise((_, reject) => { timeoutPollLargo = setTimeout(() => reject(new Error("no se observó el sondeo largo de eventos")), 10_000); }),
+    ]).finally(() => clearTimeout(timeoutPollLargo));
+    assert.ok(esperasPollUsadas.includes(8000), "el sondeo vivo deja margen al límite del proxy HTTP/2");
     if (width === 390) {
       await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
       const filaChatAnterior = page.locator('.sidebar-conv[aria-label="Chat anterior"]').locator("..");
