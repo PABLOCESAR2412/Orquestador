@@ -747,7 +747,7 @@ test("reintegrarSobrePunta aborta, restaura la rama y explica cómo continuar al
     await gitOk(["-c", "user.name=Prueba", "-c", "user.email=prueba@example.test", "commit", "-m", "Cambio conflictivo"], { cwd: clon });
     const head = (await gitOk(["rev-parse", "HEAD"], { cwd: clon })).trim();
 
-    expect.assertions(4);
+    expect.assertions(5);
     try {
       await reintegrarSobrePunta(
         taskId,
@@ -763,6 +763,8 @@ test("reintegrarSobrePunta aborta, restaura la rama y explica cómo continuar al
       expect(String(err.detail)).toContain("Pull Request");
       expect((await gitOk(["rev-parse", "HEAD"], { cwd: clon })).trim()).toBe(head);
       expect((await gitOk(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: clon })).trim()).toBe("telo/prueba");
+      const evento = db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM task_events WHERE task_id=? AND kind='push_fallido'").get(taskId);
+      expect(evento?.n).toBe(1);
     }
   } finally {
     rmSync(origen, { recursive: true, force: true });
@@ -783,7 +785,7 @@ test("un push fallido guarda el detalle claro para la tarjeta", { timeout: 20000
       return original([process.execPath, "-e", "process.exit(0)"], { stdout: "pipe", stderr: "pipe" });
     }
     if (Array.isArray(cmd) && cmd.includes("push")) {
-      return original([process.execPath, "-e", 'process.stderr.write("la punta del remoto no reconoce este commit"); process.exit(1)'], { stdout: "pipe", stderr: "pipe" });
+      return original([process.execPath, "-e", 'process.stderr.write("remote: error: GH013: Repository rule violations found for refs/heads/main.\nremote: Updates must be made through a pull request.\n"); process.exit(1)'], { stdout: "pipe", stderr: "pipe" });
     }
     return original(cmd, opts);
   }) as typeof Bun.spawn);
@@ -794,7 +796,8 @@ test("un push fallido guarda el detalle claro para la tarjeta", { timeout: 20000
     expect(fila.result).toBeTruthy();
     const leido = JSON.parse(fila.result!) as { codigo: string; mensaje: string };
     expect(leido.codigo).toBe("push_fallido");
-    expect(leido.mensaje).toContain("no reconoce");
+    expect(leido.mensaje).toContain("regla de protección");
+    expect(leido.mensaje).toContain("abre un Pull Request");
   } finally {
     espia.mockRestore();
   }

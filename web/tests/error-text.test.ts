@@ -30,6 +30,13 @@ describe("mensajes de error", () => {
     expect(errorText(new ApiError(503, "codex_models_unavailable"))).toContain("modelos de Codex");
   });
 
+  test("da pasos concretos cuando la subida no incluye el detalle del remoto", () => {
+    const texto = errorText(new ApiError(502, "push_fallido"));
+    expect(texto).toContain("remoto sea el repositorio correcto");
+    expect(texto).toContain("permita subidas directas");
+    expect(texto).toContain("sube la rama de la tarea y ábrelo");
+  });
+
   test("da una explicación y un siguiente paso para errores HTTP nuevos y de red", () => {
     const conflicto = errorText(new ApiError(409, "error_nuevo"));
     const servidor = errorText(new ApiError(503, "error_nuevo", "Error: fetch failed"));
