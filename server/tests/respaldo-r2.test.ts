@@ -114,7 +114,7 @@ test("la configuración R2 queda desactivada si está vacía y usa retención se
     TELO_R2_BUCKET: "respaldos",
     TELO_R2_ACCESS_KEY_ID: "acceso",
     TELO_R2_SECRET_ACCESS_KEY: "secreto",
-  })).toMatchObject({ prefijo: "respaldos/", conservar: 2, conservarLocal: 1 });
+  })).toMatchObject({ prefijo: "respaldos/", conservar: 1, conservarLocal: 1 });
 });
 
 test("no permite arrancar con credenciales R2 incompletas ni retenciones inválidas", () => {

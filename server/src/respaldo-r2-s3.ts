@@ -37,7 +37,7 @@ export function leerConfiguracionR2Respaldos(entorno: NodeJS.ProcessEnv): Config
   if (!prefijoBase || prefijoBase.split("/").includes("..") || /[\\\s]/.test(prefijoBase)) {
     throw new Error("TELO_R2_PREFIX debe ser una ruta simple dentro del bucket, por ejemplo respaldos");
   }
-  const conservar = Number(entorno.TELO_R2_RESPALDOS_CONSERVAR || 2);
+  const conservar = Number(entorno.TELO_R2_RESPALDOS_CONSERVAR || 1);
   if (!Number.isSafeInteger(conservar) || conservar < 1 || conservar > 100) {
     throw new Error("TELO_R2_RESPALDOS_CONSERVAR debe ser un entero entre 1 y 100");
   }

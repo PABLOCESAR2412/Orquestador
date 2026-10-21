@@ -18,7 +18,7 @@ Un timer de systemd revisa `main` cada 5 minutos. Si hay commits nuevos, el scri
 
 ## Respaldos en Cloudflare R2
 
-El timer diario crea una copia SQLite verificada y un archivo del espacio de trabajo. R2 es opcional y usa la API S3 con un bucket privado. Telo sube los dos conjuntos locales más recientes, revisa el tamaño y la etiqueta de cada objeto, publica un manifiesto de conjunto completo y solo entonces poda los respaldos remotos. Conserva los dos conjuntos completos más recientes por defecto. Si la subida o la validación fallan, no borra copias locales.
+El timer diario crea una copia SQLite verificada y un archivo del espacio de trabajo. R2 es opcional y usa la API S3 con un bucket privado. Telo sube el conjunto local más reciente por defecto, revisa el tamaño y la etiqueta de cada objeto, publica un manifiesto de conjunto completo y solo entonces poda los respaldos remotos. Conserva un conjunto completo en R2 y una copia local por defecto. Si la subida o la validación fallan, no borra copias locales.
 
 1. En Cloudflare, crea un bucket privado y un token S3 de R2 con permisos de lectura y escritura restringidos a ese bucket. Guarda el ID de cuenta, el nombre del bucket, el Access Key ID y el Secret Access Key; Cloudflare muestra el secreto una sola vez. No habilites acceso público.
 2. En el VM, crea el archivo de credenciales fuera del repo y edítalo con `sudoedit`:
@@ -36,11 +36,11 @@ El timer diario crea una copia SQLite verificada y un archivo del espacio de tra
    TELO_R2_ACCESS_KEY_ID=CLAVE_DE_ACCESO
    TELO_R2_SECRET_ACCESS_KEY=SECRETO_DE_ACCESO
    TELO_R2_PREFIX=respaldos
-   TELO_R2_RESPALDOS_CONSERVAR=2
+   TELO_R2_RESPALDOS_CONSERVAR=1
    TELO_R2_RESPALDOS_LOCALES=1
    ```
 
-   El endpoint se construye con el ID de cuenta. `TELO_R2_RESPALDOS_LOCALES=1` deja el conjunto más reciente en el VPS para que siga funcionando `copiar-respaldo-pc.ps1`; usa `0` solo si no necesitas esa copia local. El servidor guarda dos conjuntos completos en R2 y elimina los anteriores.
+   El endpoint se construye con el ID de cuenta. `TELO_R2_RESPALDOS_LOCALES=1` deja el conjunto más reciente en el VPS para que siga funcionando `copiar-respaldo-pc.ps1`; usa `0` solo si no necesitas esa copia local. El servidor guarda el conjunto completo más reciente en R2 y elimina los anteriores después de verificar la subida. Puedes subir el número si quieres guardar más historial.
 3. Instala la versión actualizada del servicio y ejecuta una prueba manual:
 
    ```bash
@@ -50,7 +50,7 @@ El timer diario crea una copia SQLite verificada y un archivo del espacio de tra
    journalctl -u orquestador-respaldo.service -n 50 --no-pager
    ```
 
-   El primer respaldo con R2 también sube el conjunto local anterior más reciente. Telo reduce copias locales solo al confirmar dos conjuntos completos; un error deja los archivos del VPS intactos. El servicio no migra automáticamente copias históricas que ya no estén entre las dos más recientes.
+   El primer respaldo con R2 sube el conjunto local más reciente disponible. Telo reduce copias locales solo después de confirmar el conjunto completo actual en R2; un error deja los archivos del VPS intactos. El servicio no migra automáticamente copias históricas anteriores.
 
 Para desactivar R2, borra o renombra `/etc/orquestador/r2-backups.env`, recarga systemd y el siguiente respaldo usará la retención local de `TELO_RESPALDOS_CONSERVAR`.
 
