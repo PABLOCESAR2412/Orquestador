@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-20", "tipo": "mediano", "titulo": "Apariencia: 20 temas, 10 tipografías y escala de texto global, guardados en este dispositivo", "pr": 95 },
     { "fecha": "2026-10-20", "tipo": "mediano", "titulo": "Chat: nuevo estado de inicio con marca animada, cargas skeleton, pestañas independientes de PR y avisos de escritorio con sonido", "pr": 95 },
     { "fecha": "2026-10-20", "tipo": "mediano", "titulo": "Git: genera mensajes convencionales, consolida el flujo en una tarjeta y prepara tareas para resolver conflictos de PR", "pr": 95 },
     { "fecha": "2026-10-20", "tipo": "mediano", "titulo": "Medios y Git: muestra el motivo HTTP de Google, redacta credenciales y explica rechazos de reglas de rama", "pr": 93 },

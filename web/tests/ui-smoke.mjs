@@ -44,6 +44,10 @@ try {
     const page = await context.newPage();
     await page.addInitScript(() => {
       if (window.top !== window) return;
+      if ("Notification" in window) {
+        Object.defineProperty(Notification, "permission", { configurable: true, get: () => "granted" });
+        Object.defineProperty(Notification, "requestPermission", { configurable: true, value: async () => "granted" });
+      }
       localStorage.setItem("telo:cola:c1", JSON.stringify([
         { id: "q1", texto: "Primer mensaje reservado", creado: Date.now() },
         { id: "q2", texto: "Segundo mensaje reservado", creado: Date.now() + 1 },
@@ -312,7 +316,12 @@ try {
     await page.locator(".tl-diagrama-visual svg").waitFor();
     await page.locator(".tl-grafico-chat").first().waitFor();
     const comprobarTemaDiagrama = async tema => {
-      await page.evaluate(valor => { document.documentElement.dataset.theme = valor; }, tema);
+      await page.evaluate(valor => {
+        const root = document.documentElement;
+        root.removeAttribute("data-palette");
+        root.removeAttribute("style");
+        root.dataset.theme = valor;
+      }, tema);
       await page.waitForFunction(valor => {
         const root = document.documentElement;
         const figura = document.querySelector(".tl-diagrama-visual svg .node rect");
@@ -324,6 +333,7 @@ try {
         return figura && getComputedStyle(root).colorScheme === (valor === "claro" ? "light" : "dark")
           && getComputedStyle(figura).fill === colorEsperado;
       }, tema);
+      await page.waitForFunction(() => document.querySelectorAll(".tl-diagrama-visual svg .node").length === 3);
     };
     await comprobarTemaDiagrama("oscuro");
     await comprobarTemaDiagrama("claro");
@@ -879,11 +889,41 @@ try {
     await page.goto(`${base}/ajustes`);
     await page.getByRole("heading", { name: "Ajustes y Servidor", exact: true }).waitFor();
     assert.equal(await page.getByRole("heading", { name: "Cuenta de Google", exact: true }).count(), 0);
+    await page.goto(`${base}/ajustes?pestana=personalizacion`);
+    const tarjetaApariencia = page.locator('article[aria-labelledby="ajustes-apariencia"]');
+    await tarjetaApariencia.waitFor();
+    assert.equal(await tarjetaApariencia.getByRole("radio").count(), 20);
+    const fuenteInterfaz = tarjetaApariencia.getByLabel("Tipografía");
+    await fuenteInterfaz.selectOption("instrument");
+    assert.match(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--font")), /Instrument Sans/);
+    await tarjetaApariencia.getByRole("radio", { name: "GitHub Dark", exact: true }).click();
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.palette), "github-dark");
+    const escalaTexto = tarjetaApariencia.getByLabel("Tamaño del texto");
+    await escalaTexto.focus();
+    await escalaTexto.press("ArrowRight");
+    await escalaTexto.press("ArrowRight");
+    await escalaTexto.press("ArrowRight");
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector("#root")).zoom), "1.15");
+    await page.screenshot({ path: `scratch/capturas-ci/personalizacion-${width}.png` });
+    await page.reload();
+    await page.getByRole("heading", { name: "Ajustes y Servidor", exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.palette), "github-dark");
+    assert.match(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--font")), /Instrument Sans/);
+    assert.equal(await page.locator("#root").evaluate((root) => getComputedStyle(root).zoom), "1.15");
+    const aparienciaRecargada = page.locator('article[aria-labelledby="ajustes-apariencia"]');
+    await aparienciaRecargada.getByRole("radio", { name: "Telo Obsidiana", exact: true }).click();
+    await aparienciaRecargada.getByLabel("Tipografía").selectOption("geist");
+    const escalaRestablecer = aparienciaRecargada.getByLabel("Tamaño del texto");
+    await escalaRestablecer.focus();
+    await escalaRestablecer.press("ArrowLeft");
+    await escalaRestablecer.press("ArrowLeft");
+    await escalaRestablecer.press("ArrowLeft");
+    await page.goto(`${base}/ajustes`);
     const tarjetaNotificaciones = page.locator('article[aria-labelledby="ajustes-notificaciones"]');
     await tarjetaNotificaciones.scrollIntoViewIfNeeded();
     const interruptorNotificaciones = tarjetaNotificaciones.getByRole("switch", { name: "Notificaciones de escritorio" });
     await interruptorNotificaciones.click();
-    assert.equal(await interruptorNotificaciones.getAttribute("aria-checked"), "true");
+    await page.waitForFunction(() => document.querySelector('[aria-label="Notificaciones de escritorio"]')?.getAttribute("aria-checked") === "true");
     await tarjetaNotificaciones.getByRole("button", { name: "Probar sonido", exact: true }).click();
     await tarjetaNotificaciones.getByRole("status").filter({ hasText: "Sonido activado." }).waitFor();
     await interruptorNotificaciones.click();

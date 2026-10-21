@@ -68,7 +68,7 @@ function Diagrama({ codigo }: { codigo: string }) {
   useEffect(() => {
     const actualizar = () => setRevisionTema(revision => revision + 1);
     const observer = new MutationObserver(actualizar);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-palette"] });
     const sistema = window.matchMedia("(prefers-color-scheme: light)");
     sistema.addEventListener("change", actualizar);
     return () => {

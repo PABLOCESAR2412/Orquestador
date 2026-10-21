@@ -1,17 +1,11 @@
 import { useState } from "react";
-import { guardarTema, leerTema, type Tema } from "../lib/tema";
+import { guardarTema, leerTema, temaComplementario, temaEsClaro } from "../lib/tema";
 
 // Botón de la barra superior: cambia entre modo claro y oscuro. "Sistema" se elige en Ajustes.
-function esClaroAhora(tema: Tema): boolean {
-  if (tema === "claro") return true;
-  if (tema === "oscuro") return false;
-  return window.matchMedia?.("(prefers-color-scheme: light)").matches ?? false;
-}
-
 export function BotonTema() {
-  const [tema, setTema] = useState<Tema>(() => leerTema());
-  const claro = esClaroAhora(tema);
-  const destino = claro ? "oscuro" : "claro";
+  const [tema, setTema] = useState(() => leerTema());
+  const claro = temaEsClaro(tema);
+  const destino = temaComplementario(tema);
 
   return (
     <button

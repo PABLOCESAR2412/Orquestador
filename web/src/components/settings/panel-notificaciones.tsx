@@ -5,7 +5,6 @@ import {
   notificacionesActivas,
   notificacionesSoportadas,
   pedirPermisoNotificaciones,
-  prepararSonidoNotificaciones,
   probarSonidoNotificaciones,
   sonidoNotificacionesActivo,
 } from "../../lib/notificaciones";
@@ -23,8 +22,6 @@ export function NotificacionesPanel() {
       const siguientePermiso = await pedirPermisoNotificaciones();
       setPermiso(siguientePermiso);
       if (siguientePermiso !== "granted") return;
-      // Tanto permisos de escritorio como Web Audio necesitan un gesto explícito.
-      await prepararSonidoNotificaciones();
     }
     setActivas(valor);
     guardarNotificacionesActivas(valor);

@@ -118,6 +118,11 @@
 * { scrollbar-color: auto; scrollbar-width: auto; }
 html, body, #root { height: 100%; }
 html, body { overflow: hidden; }
+#root {
+  zoom: var(--telo-escala, 1);
+  width: calc(100% / var(--telo-escala, 1));
+  height: calc(100% / var(--telo-escala, 1));
+}
 body { margin: 0; background: var(--bg); font-family: var(--font); color: var(--ink); }
 button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
