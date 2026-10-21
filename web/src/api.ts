@@ -224,7 +224,7 @@ export type ServidorEstado = {
   generado: string;
   proceso: { arrancado: string; segundosActivo: number; bun: string; commit: string | null; rssMb: number; plataforma: string };
   disco: { etiqueta: "datos" | "proyectos"; totalBytes: number; usadoBytes: number; libreBytes: number }[];
-  carpetas: { nombre: string; bytes: number; archivos: number }[];
+  carpetas: { nombre: string; bytes: number; archivos: number; truncado: boolean }[];
   herramientas: { nombre: string; version: string | null; disponible: boolean }[];
   costos: { mesUsd: number; ultimos30dUsd: number; llamadas30d: number; tokens30d: number };
   tareas: { ultimos30d: number; en_cola: number; en_curso: number; max_simultaneas: number };
