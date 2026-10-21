@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api";
+import { LoadingSkeleton } from "../loading-skeleton";
 import { errorText } from "../../lib/model";
 
 export function SesionPanel() {
@@ -55,7 +56,7 @@ export function SesionPanel() {
         )}
       </div>
 
-      {sesiones.isLoading && <p className="aj-nota">Cargando sesiones…</p>}
+      {sesiones.isLoading && !sesiones.data && <LoadingSkeleton tipo="lineas" cantidad={3} />}
       {sesiones.isError && <p className="aj-error" role="alert">{errorText(sesiones.error)}</p>}
 
       {lista.length > 0 && (

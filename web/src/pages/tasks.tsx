@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { api, type ModelInfo, type Task } from "../api";
 import { CostMeter } from "../components/controls";
+import { LoadingSkeleton } from "../components/loading-skeleton";
 import { AvisoCuota } from "../components/cuota-aviso";
 import { ModelPicker } from "../components/model-picker";
 import { HistorialTarea } from "../components/task-history";
@@ -302,7 +303,7 @@ function DetalleTarea({ id }: { id: string }) {
           </div>
         </header>
 
-      {tarea.isPending && <p className="muted-note">Cargando la tarea…</p>}
+      {tarea.isPending && !tarea.data && <LoadingSkeleton tipo="contenido" cantidad={4} />}
 
       {tarea.isError && (
         <section className="panel" aria-live="polite">

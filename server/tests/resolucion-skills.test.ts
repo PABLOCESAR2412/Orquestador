@@ -1,5 +1,5 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -81,4 +81,20 @@ test("activa skills globales por tipo de tarea en el prompt compartido por todos
   expect(resultado.promptFinal).toContain("Instrucciones frontend-design.");
   expect(resultado.promptFinal).toContain("Instrucciones playwright.");
   expect(resultado.promptFinal).toContain("Instrucciones ponytail.");
+});
+
+test("activa la guía visual para crear imágenes e infografías, no para analizarlas", () => {
+  const carpeta = join(homePrueba, ".config", "opencode", "skills", "image-design");
+  mkdirSync(carpeta, { recursive: true });
+  writeFileSync(join(carpeta, "SKILL.md"), "---\nname: image-design\ndescription: Guía de imágenes.\n---\n\nUsa texto vectorial legible.");
+
+  const creacion = inyectarSkillsEnPrompt("Crea una infografía 3D con los datos de esta cronología.");
+  expect(creacion.skillsInvocadas).toContain("image-design");
+  expect(creacion.promptFinal).toContain("Usa texto vectorial legible.");
+
+  const mejora = inyectarSkillsEnPrompt("Ayúdame a mejorar la creación de imágenes para el agente.");
+  expect(mejora.skillsInvocadas).toContain("image-design");
+
+  const analisis = inyectarSkillsEnPrompt("Analiza esta imagen adjunta y dime qué contiene.");
+  expect(analisis.skillsInvocadas).not.toContain("image-design");
 });

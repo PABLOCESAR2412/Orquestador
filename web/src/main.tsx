@@ -7,18 +7,26 @@ import "@fontsource/jetbrains-mono";
 import "@fontsource-variable/instrument-sans";
 import { router } from "./router";
 import { captureInstallPrompt } from "./lib/install";
-import { aplicarTema } from "./lib/tema";
+import { aplicarApariencia } from "./lib/tema";
 import { UpdatePrompt } from "./components/update-prompt";
 import "./styles.css";
 
 captureInstallPrompt();
-// Aplica el tema guardado en este dispositivo antes de montar la app.
-aplicarTema();
+// Aplica tema, tipografía y escala guardados antes del primer render.
+aplicarApariencia();
 
 // Al volver a la app (teléfono o pestaña) los datos se actualizan solos. Sin esto, un mensaje
 // enviado desde la PC no aparecía en el teléfono hasta cambiar de chat.
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true, refetchOnReconnect: true } },
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      staleTime: 15_000,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+      refetchIntervalInBackground: false,
+    },
+  },
 });
 
 createRoot(document.getElementById("root")!).render(

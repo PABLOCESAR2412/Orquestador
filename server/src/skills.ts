@@ -385,6 +385,22 @@ description: Guía de ingeniería para correcciones y cambios de código acotado
 - No cambies Vite/Bun a Vite+ automáticamente. Usa Void solo cuando la meta sea Void/Cloudflare; antes de desplegar exige CLI, credenciales y aprobación explícita.
 `;
 
+export const SKILL_IMAGE_DESIGN_CONTENIDO = `---
+name: image-design
+description: Crea y revisa imágenes, infografías, pósteres y gráficos con composición clara, texto legible y datos fieles.
+---
+
+# Creación de imágenes y gráficos
+
+- Antes de crear, identifica el propósito, el público, el formato y la proporción. Organiza título, contenido principal, apoyos y fuentes en una retícula con márgenes amplios y espacio suficiente entre bloques.
+- Si la imagen contiene datos, fechas, etiquetas o texto exacto, dibuja esos elementos con SVG, HTML, Canvas u otra herramienta programática disponible. Usa el modelo de imagen para la ilustración, textura o fondo; no dependas de texto rasterizado para reproducir cifras o rótulos con precisión.
+- Ajusta la composición al contenido: si no cabe, cambia la distribución o el lienzo antes de reducir la tipografía. En líneas de tiempo alterna los rótulos o sepáralos en filas; en gráficos mantén las cifras, escalas y etiquetas coherentes y sin cruces.
+- Mantén pocos niveles tipográficos, contraste suficiente y texto secundario que pueda leerse al tamaño de uso. Evita perspectiva extrema, texto extruido, adornos o paneles que compitan con la información. Si se pide 3D, aplica profundidad a la escena y los elementos decorativos; conserva planos y legibles los textos y datos.
+- No inventes ni cambies hechos, cifras, nombres o fechas. Si las fuentes discrepan, expresa el rango o la incertidumbre y cita las fuentes disponibles sin saturar el diseño.
+- Renderiza el archivo final y revísalo en conjunto y al tamaño previsto: busca solapamientos, cortes, etiquetas pequeñas, inconsistencias y desequilibrio. Corrige los defectos y vuelve a renderizar. Si no puedes inspeccionar el resultado, indícalo sin afirmar que pasó una revisión visual.
+- Entrega la ruta del archivo, el formato y sus dimensiones; resume cualquier limitación que afecte a la fidelidad visual o a los datos.
+`;
+
 // Crea la carpeta de skills globales si falta. Se llama al arrancar: así bubblewrap siempre puede montarla en
 // solo lectura (si no existiera, el agente podría crearla dentro de ~/.config/opencode, que sí es escribible).
 export function prepararCarpetaGlobal(): void {
@@ -395,6 +411,7 @@ export function prepararCarpetaGlobal(): void {
     ["frontend-design", SKILL_FRONTEND_DESIGN_CONTENIDO],
     ["playwright", SKILL_PLAYWRIGHT_CONTENIDO],
     ["ponytail", SKILL_PONYTAIL_CONTENIDO],
+    ["image-design", SKILL_IMAGE_DESIGN_CONTENIDO],
   ] as const;
   for (const [nombre, contenido] of predeterminadas) {
     try {

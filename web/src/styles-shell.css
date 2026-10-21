@@ -306,6 +306,8 @@
   color: var(--ink-2);
   font-size: 13px;
 }
+.tl-rail-carga { padding: 8px; gap: 8px; }
+.tl-rail-carga .carga-esqueleto-pieza { min-height: 20px; }
 .tl-rail-error { margin: 4px 8px; font-size: 12px; }
 /* Secciones del árbol en la barra lateral: Projects y Conversations */
 .tl-rail-seccion {
@@ -923,6 +925,7 @@
   gap: 16px;
   min-height: 0;
 }
+.tl-cambios-cuerpo > * { flex-shrink: 0; }
 
 .tl-cambios-cuerpo::-webkit-scrollbar {
   width: 6px;
@@ -1145,6 +1148,9 @@
   border: 1px solid var(--line);
   width: fit-content;
   align-self: flex-start;
+  max-width: 100%;
+  overflow-x: auto;
+  flex-shrink: 0;
 }
 
 .tl-cambios-tab {
@@ -1157,6 +1163,7 @@
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .tl-cambios-tab:hover {
@@ -1167,6 +1174,15 @@
   background: var(--surface-2);
   color: var(--ink);
   font-weight: 600;
+}
+@media (max-width: 560px) {
+  .tl-cambios-pestanas {
+    display: grid;
+    grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr) minmax(48px, 0.55fr);
+    width: 100%;
+    overflow: visible;
+  }
+  .tl-cambios-tab { min-width: 0; padding-inline: 4px; font-size: 11px; }
 }
 
 .tl-cambios-filtro-caja {

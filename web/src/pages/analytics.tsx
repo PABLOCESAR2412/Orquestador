@@ -1,6 +1,7 @@
 import { useState, useMemo, type ReactNode } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api, type Analytics, type Task } from "../api";
+import { LoadingSkeleton } from "../components/loading-skeleton";
 import { compact } from "../components/charts";
 import { diaCompleto, VolumenLlamadas } from "../components/an-volumen";
 import { Paginacion } from "../components/paginacion";
@@ -237,7 +238,7 @@ export function AnalyticsPage() {
           </label>
         </div>
 
-        {query.isPending && !data && <p className="muted-note">Cargando analíticas…</p>}
+        {query.isPending && !data && <LoadingSkeleton tipo="tarjetas" cantidad={3} className="an-carga" />}
 
         {query.isError && (
           <section className="an-panel" aria-live="polite">

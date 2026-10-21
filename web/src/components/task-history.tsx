@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
+import { LoadingSkeleton } from "./loading-skeleton";
 import { EVENT_LABEL, formatWhen, sanearDetalle } from "../lib/model";
 
 // Historial de una tarea. Solo se pide cuando el usuario lo abre, y se actualiza mientras está abierto.
@@ -16,7 +17,7 @@ export function HistorialTarea({ id }: { id: string }) {
   return (
     <details className="task-historial" onToggle={(e) => setAbierto(e.currentTarget.open)}>
       <summary>Historial</summary>
-      {eventos.isLoading && <p className="muted-note">Cargando…</p>}
+      {eventos.isLoading && !eventos.data && <LoadingSkeleton tipo="lineas" cantidad={3} />}
       {eventos.isError && (
         <>
           <p className="error" role="alert">

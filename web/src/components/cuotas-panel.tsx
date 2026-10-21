@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { LoadingSkeleton } from "./loading-skeleton";
 import { errorText, formatUsd } from "../lib/model";
 
 // Proveedores que Telo ya conoce. El campo acepta cualquier nombre en minúsculas.
@@ -67,7 +68,7 @@ export function CuotasPanel({ onCerrar }: { onCerrar: () => void }) {
         Telo resta el uso que registra desde que anotas un saldo. Son estimados: ningún proveedor muestra aquí su saldo en vivo todavía.
       </p>
 
-      {cuotas.isLoading && <p className="muted-note">Cargando…</p>}
+      {cuotas.isLoading && !cuotas.data && <LoadingSkeleton tipo="lineas" cantidad={3} />}
       {cuotas.isError && (
         <div className="estado-linea">
           <p className="error" role="alert">

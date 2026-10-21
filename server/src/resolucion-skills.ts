@@ -55,6 +55,10 @@ function skillsAutomaticas(texto: string): string[] {
   if (interfaz) resultado.push("frontend-design", "playwright");
   else if (/\b(playwright|navegador|browser|prueba visual|e2e)\b/i.test(texto)) resultado.push("playwright");
 
+  const mencionaImagen = /\b(im[aá]gen(?:es)?|ilustraci[oó]n(?:es)?|infograf[ií]a(?:s)?|p[oó]ster(?:es)?|poster(?:s)?|gr[aá]fico(?:s)?|arte visual)\b/i.test(texto);
+  const creaImagen = /\b(crea(?:r|ci[oó]n)?|gener(?:a|ar|aci[oó]n)|haz(?:me)?|diseñ(?:a|ar|o)|ilustra(?:r)?|dibuja(?:r)?|produce|compon(?:er|e)|mejora(?:r)?)\b/i.test(texto);
+  if (mencionaImagen && creaImagen) resultado.push("image-design");
+
   const cambioAcotado = texto.length <= 4_000 &&
     /\b(corrige|arregla|fix|bug|error|implementa|añade|agrega|actualiza|cambia|refactoriza)\b/i.test(texto) &&
     !/\b(análisis completo|migración|rediseña todo|reescribe|desde cero|varios proyectos)\b/i.test(texto);

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type ServicioEstado, type ServidorEstado } from "../api";
 import { duracion, formatBytes, porcentaje } from "../components/tarea-formato";
 import { errorText, formatUsd } from "../lib/model";
+import { LoadingSkeleton } from "../components/loading-skeleton";
 import { medirLatencia } from "../lib/latencia";
 
 // Contenido de las pestañas "Estado del servidor" y "Almacenamiento" de Ajustes y Servidor.
@@ -15,6 +16,12 @@ const ETIQUETA_DISCO: Record<string, string> = {
 
 const MAX_MUESTRAS = 60;
 const INTERVALO_MS = 30_000;
+
+function resumenUsoCarpeta(carpeta: ServidorEstado["carpetas"][number]): string {
+  const prefijo = carpeta.truncado ? "≥ " : "";
+  const parcial = carpeta.truncado ? " (parcial)" : "";
+  return `${prefijo}${formatBytes(carpeta.bytes)} · ${prefijo}${carpeta.archivos.toLocaleString("es")} archivos${parcial}`;
+}
 
 export type MuestrasLatencia = {
   // Última medida desde este navegador (ida y vuelta a /api/health).
@@ -138,7 +145,7 @@ function RegistrosServicio() {
           {registros.isFetching ? "Actualizando…" : "Actualizar"}
         </button>
       </div>
-      {registros.isPending && <p className="aj-nota">Leyendo registros…</p>}
+      {registros.isPending && !registros.data && <LoadingSkeleton tipo="contenido" cantidad={3} />}
       {registros.isError && (
         <p className="aj-error" role="alert">
           {errorText(registros.error)}
@@ -280,7 +287,7 @@ export function EstadoServidor({ latencia }: { latencia: MuestrasLatencia }) {
             <Fila
               key={c.nombre}
               etiqueta={c.nombre}
-              valor={`${formatBytes(c.bytes)} · ${c.archivos.toLocaleString("es")} archivos`}
+              valor={resumenUsoCarpeta(c)}
             />
           ))}
         </TarjetaServidor>
@@ -419,17 +426,18 @@ export function AlmacenamientoServidor() {
         <h3 id="aj-carpetas-titulo" className="aj-tarjeta-titulo-simple">
           Carpetas
         </h3>
-        {servidor.isPending && <p className="aj-nota">Consultando…</p>}
+        {servidor.isPending && !servidor.data && <LoadingSkeleton tipo="lineas" cantidad={3} />}
         {datos && carpetas.length === 0 && <p className="aj-nota">Sin carpetas.</p>}
+        {carpetas.some((c) => c.truncado) && (
+          <p className="aj-nota">El conteo alcanzó el límite de lectura; los valores parciales son mínimos y el uso real puede ser mayor.</p>
+        )}
         {carpetas.length > 0 && (
           <ul className="aj-carpetas">
             {carpetas.map((c) => (
               <li key={c.nombre} className="aj-carpeta">
                 <div className="aj-carpeta-cabecera">
                   <span className="aj-mono">{c.nombre}</span>
-                  <span>
-                    {formatBytes(c.bytes)} · {c.archivos.toLocaleString("es")} archivos
-                  </span>
+                  <span>{resumenUsoCarpeta(c)}</span>
                 </div>
                 <div className="aj-barra" aria-hidden="true">
                   <div className="aj-barra-relleno" style={{ width: `${porcentaje(c.bytes, mayor)}%` }} />

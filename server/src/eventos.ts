@@ -19,6 +19,7 @@ export type TipoEvento =
   | "terminada"
   | "modelo_respaldo"
   | "clon_creado"
+  | "conflictos_pr_preparados"
   | "commit_aprobado"
   | "push_aprobado"
   | "push_fallido"

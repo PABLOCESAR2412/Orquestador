@@ -186,6 +186,19 @@
 .approval-notes textarea { padding: 8px 10px; }
 .approval-changes summary, .approval-notes summary { cursor: pointer; font-size: 13px; }
 .approval-panel .approval-buttons { margin: 10px 0 0; }
+.tl-accion-git-actual { width: 100%; min-width: 0; }
+.approval-conflicts {
+  margin-block: 12px;
+  padding: 12px;
+  border: 1px solid var(--danger-line);
+  border-radius: 10px;
+  background: var(--danger-soft);
+}
+.approval-conflicts > :first-child { color: var(--danger); }
+.approval-conflicts p { margin-block: 7px; }
+.approval-conflicts ul { max-height: 180px; overflow: auto; margin-block: 6px 10px; padding-left: 20px; }
+.approval-conflicts code { overflow-wrap: anywhere; }
+.approval-conflicts-plan { color: var(--ink-2); font-size: 13px; }
 .approval-history { margin-block: 8px; font-size: 13px; }
 .approval-history > summary, .approval-history-row > summary { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; cursor: pointer; min-height: 40px; padding-block: 10px; }
 .approval-history > summary::before { content: "+"; }

@@ -148,6 +148,19 @@ test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama
   expect(llamadas).toHaveLength(2);
 });
 
+test("el commit automático toma un asunto convencional de la tarea", { timeout: 15000 }, async () => {
+  const p = await tareaConCommit();
+  db.query("UPDATE tasks SET title=?,prompt=? WHERE id=?").run(
+    "Corrige el scroll al cargar diagramas",
+    "Arregla el salto de scroll al cargar diagramas",
+    p.taskId,
+  );
+  const respuesta = await pedir(`/projects/${p.id}/acciones`, { action: "commit", taskId: p.taskId });
+  expect(respuesta.status).toBe(201);
+  const accion = await respuesta.json() as { payload: string };
+  expect(JSON.parse(accion.payload).message).toBe("fix: corrige el scroll al cargar diagramas");
+});
+
 test("fusionar PR por número desde el chat no crea otra tarea ni otra rama", async () => {
   const p = proyecto();
   db.query("INSERT INTO project_git(project_id,remote) VALUES (?,?)").run(p.id, REMOTO);
@@ -460,6 +473,71 @@ test("push_main ya no se acepta, y merge se puede preparar y autorizar directame
   expect(
     db.query<{ state: string }, [string]>("SELECT state FROM repository_actions WHERE id=?").get(accion.id)?.state,
   ).toBe("approved");
+});
+
+test("un merge con conflictos lista archivos y crea tarea sobre la rama del PR", { timeout: 20000 }, async () => {
+  const p = await tareaConCommit();
+  const conversationId = randomUUID();
+  db.query("INSERT INTO conversations(id,title,project_id) VALUES (?,'Resolver PR',?)").run(conversationId, p.id);
+  db.query("UPDATE tasks SET conversation_id=? WHERE id=?").run(conversationId, p.taskId);
+  guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
+  const preparada = await pedir(`/projects/${p.id}/acciones`, {
+    action: "merge", taskId: p.taskId, conversationId, pr_number: 9,
+    pr_url: "https://github.com/dueno/prueba/pull/9",
+  });
+  const accion = await preparada.json() as { id: string };
+  const originalSpawn = Bun.spawn;
+  const spy = spyOn(Bun, "spawn").mockImplementation(((cmd: any, opts: any) => {
+    if (Array.isArray(cmd) && cmd.includes("fetch") && cmd.includes(REMOTO)) {
+      return originalSpawn([process.execPath, "-e", "process.exit(1)"], { stdout: "pipe", stderr: "pipe" });
+    }
+    return originalSpawn(cmd, opts);
+  }) as typeof Bun.spawn);
+  let taskResolutionId: string | null = null;
+  globalThis.fetch = (async (url: any) => {
+    const destino = String(url);
+    if (destino === "https://api.github.com/repos/dueno/prueba") {
+      return Response.json({ full_name: "dueno/prueba", permissions: { push: true } });
+    }
+    if (destino.endsWith("/pulls/9")) {
+      return Response.json({
+        html_url: "https://github.com/dueno/prueba/pull/9",
+        mergeable: false,
+        mergeable_state: "dirty",
+        head: { ref: p.diff.rama, repo: { full_name: "dueno/prueba" } },
+        base: { ref: "main", repo: { full_name: "dueno/prueba" } },
+      });
+    }
+    if (destino.endsWith("/pulls/9/files?per_page=100"))
+      return Response.json([{ filename: "src/widget.ts" }, { filename: "src/widget.test.ts" }]);
+    throw new Error(`Solicitud inesperada en la prueba: ${destino}`);
+  }) as typeof fetch;
+  try {
+    const resultado = await pedir(`/acciones/${accion.id}/decidir`, { approve: true });
+    expect(resultado.status).toBe(409);
+    const fila = db.query<{ state: string; result: string }, [string]>("SELECT state,result FROM repository_actions WHERE id=?").get(accion.id)!;
+    expect(fila.state).toBe("failed");
+    const error = JSON.parse(fila.result) as { codigo: string; mensaje: string };
+    const diagnostico = JSON.parse(error.mensaje) as { archivos: string[]; resoluble: boolean; rama_fuente: string };
+    expect(error.codigo).toBe("merge_conflicts");
+    expect(diagnostico.archivos).toEqual(["src/widget.ts", "src/widget.test.ts"]);
+    expect(diagnostico.resoluble).toBe(true);
+
+    const reparacion = await pedir(`/acciones/${accion.id}/resolver-conflictos`, {});
+    expect(reparacion.status).toBe(202);
+    const nueva = await reparacion.json() as { task_id: string };
+    taskResolutionId = nueva.task_id;
+    const tarea = db.query<{ status: string; source_branch: string; source_base_branch: string; source_pr_number: number; prompt: string }, [string]>(
+      "SELECT status,source_branch,source_base_branch,source_pr_number,prompt FROM tasks WHERE id=?",
+    ).get(nueva.task_id)!;
+    expect(tarea).toMatchObject({ status: "queued", source_branch: p.diff.rama, source_base_branch: "main", source_pr_number: 9 });
+    expect(tarea.prompt).toContain("src/widget.ts");
+    expect((await pedir(`/acciones/${accion.id}/resolver-conflictos`, {})).status).toBe(200);
+  } finally {
+    spy.mockRestore();
+    db.query("DELETE FROM conversations WHERE id=?").run(conversationId);
+    if (taskResolutionId) db.query("DELETE FROM tasks WHERE id=?").run(taskResolutionId);
+  }
 });
 
 async function conversacionTarea(p: { id: string; taskId: string }): Promise<string> {

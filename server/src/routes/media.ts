@@ -116,8 +116,8 @@ async function procesar(id: string): Promise<void> {
     if (solicitud.tipo === "imagen") {
       const salida = await generarImagen(solicitud, apiKey);
       db.query(
-        "UPDATE media_jobs SET estado='completada',mime=?,bytes=?,contenido=?,error=NULL,updated_at=datetime('now') WHERE id=? AND estado='generando'",
-      ).run(salida.mime, salida.contenido.byteLength, salida.contenido, id);
+        "UPDATE media_jobs SET estado='completada',mime=?,bytes=?,contenido=?,nombre_archivo=?,error=NULL,updated_at=datetime('now') WHERE id=? AND estado='generando'",
+      ).run(salida.mime, salida.contenido.byteLength, salida.contenido, nombreDeMedio(inicial.prompt, "imagen", salida.mime), id);
     } else {
       let operacion = inicial.operacion;
       if (!operacion) {

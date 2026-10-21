@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Project } from "../api";
+import { LoadingSkeleton } from "../components/loading-skeleton";
 import { useShell } from "../components/shell-context";
 import { errorText } from "../lib/model";
 import { MAX_NOMBRE_PROYECTO, rutaCarpeta } from "../lib/proyecto";
@@ -34,7 +35,7 @@ export function ProjectsPage() {
           </button>
         </header>
 
-        {proyectos.isPending && <p className="help-note">Cargando proyectos…</p>}
+        {proyectos.isPending && !proyectos.data && <LoadingSkeleton tipo="tarjetas" cantidad={4} className="proyectos-cuadricula" />}
         {proyectos.data?.length === 0 && (
           <div className="empty-state">Todavía no hay proyectos. Crea el primero con Nuevo proyecto.</div>
         )}

@@ -7,9 +7,11 @@ import {
   aprobarTarea,
   diffDeTarea,
   ErrorTarea,
+  detectarConflictosPullRequest,
   mensajeSeguro,
   urlGithubPermitida,
 } from "../workspace";
+import { crearTarea } from "../tareas";
 import { conProyectoRevisado } from "../ocupacion";
 import { gitOk, gitOkSeguro, prepararRepoSeguro, tieneGitReal } from "../git";
 import {
@@ -19,6 +21,44 @@ import {
   githubApiPr,
 } from "./proyecto-config";
 import { redactar } from "../redaccion";
+
+function mensajeCommitConvencional(titulo: string, prompt: string): string {
+  const generico = /^(cambios revisados en telo|cambios de la tarea|commit)$/i;
+  const texto = [titulo, prompt].find((valor) => valor.trim() && !generico.test(valor.trim()))?.trim() || "actualiza cambios del proyecto";
+  const primeraLinea = texto.split(/[\r\n]/, 1)[0]!.replace(/\s+/g, " ").replace(/[.!?]+$/, "").trim();
+  const yaTipado = /^(feat|fix|docs|test|refactor|perf|chore|build|ci|style|revert)(\([^)]+\))?:\s*.+$/i.test(primeraLinea);
+  if (yaTipado) return primeraLinea.slice(0, 120);
+  const tipo = /\b(corrige|corregir|arregla|arreglar|bug|error|fallo|fix|conflicto|inconsistencia)\b/i.test(`${titulo} ${prompt}`)
+    ? "fix"
+    : /\b(documenta|documentación|docs?)\b/i.test(`${titulo} ${prompt}`)
+      ? "docs"
+      : /\b(prueba|test|specs?)\b/i.test(`${titulo} ${prompt}`)
+        ? "test"
+        : /\b(refactor|limpia|limpieza|simplifica)\b/i.test(`${titulo} ${prompt}`)
+          ? "refactor"
+          : /\b(performance|rendimiento|optimiza|optimización)\b/i.test(`${titulo} ${prompt}`)
+            ? "perf"
+            : /\b(agrega|añade|crea|implemente|implementa|incorpora|nueva función|nuevo)\b/i.test(`${titulo} ${prompt}`)
+              ? "feat"
+              : "chore";
+  const subject = primeraLinea.charAt(0).toLocaleLowerCase("es") + primeraLinea.slice(1);
+  return `${tipo}: ${subject}`.slice(0, 120);
+}
+
+type DiagnosticoConflictos = {
+  codigo: "merge_conflicts";
+  mensaje: string;
+  pr_number: number;
+  pr_url: string;
+  rama_fuente: string;
+  rama_base: string;
+  repo_fuente: string | null;
+  repo_base: string;
+  archivos: string[];
+  archivos_exactos: boolean;
+  task_id: string | null;
+  resoluble: boolean;
+};
 
 export const repositoryActions = new Hono();
 repositoryActions.get("/conversations/:id/acciones", (c) =>
@@ -70,9 +110,9 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
   const tarea = b.taskId
     ? db
         .query<
-          { id: string; status: string; conversation_id: string | null },
+          { id: string; status: string; conversation_id: string | null; title: string; prompt: string; model: string; effort: string | null; source_branch: string | null; source_base_branch: string | null; source_pr_number: number | null },
           [string, string]
-        >("SELECT id,status,conversation_id FROM tasks WHERE id=? AND project_id=?")
+        >("SELECT id,status,conversation_id,title,prompt,model,effort,source_branch,source_base_branch,source_pr_number FROM tasks WHERE id=? AND project_id=?")
         .get(b.taskId, projectId)
     : null;
   if (b.action !== "init" && b.action !== "merge" && !tarea) return c.json({ error: "task_without_repo" }, 409);
@@ -159,10 +199,11 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
       truncado: diff?.truncado ?? false,
       remote: remotoDestino,
       base: cfg.base_branch,
-      message: redactar(b.message || (b.action === "merge" ? "Fusionar Pull Request" : "Cambios revisados en Telo")),
+      message: redactar(b.message || (b.action === "merge" ? "Fusionar Pull Request" : tarea ? mensajeCommitConvencional(tarea.title, tarea.prompt) : "chore: actualiza cambios del proyecto")),
       title: redactar(b.title || (b.action === "merge" ? `Fusionar Pull Request #${b.pr_number ?? numeroPrUrlNumerico ?? ""} en ${cfg.base_branch}` : "Cambios revisados en Telo")),
       pr_number: b.pr_number ?? numeroPrUrlNumerico,
-      pr_url: b.pr_url ?? null,
+      pr_url: b.pr_url ?? (tarea?.source_pr_number && remotoDestino ? `${remotoDestino}/pull/${tarea.source_pr_number}` : null),
+      source_pr_number: tarea?.source_pr_number ?? null,
       descripcion:
         b.action === "init"
           ? "Inicializar Git y crear un primer commit vacío para habilitar los espacios de trabajo. No añade tus archivos."
@@ -276,6 +317,8 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         action: string;
         payload: string;
         state: string;
+        result: string | null;
+        conversation_id: string | null;
       },
       [string]
     >("SELECT * FROM repository_actions WHERE id=?")
@@ -414,6 +457,73 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
       const numeroPull = Number(pullNumber);
       if (!Number.isSafeInteger(numeroPull) || numeroPull < 1)
         throw new Error("No se encontró un número válido del Pull Request para hacer merge.");
+      const rutaPull = "/repos/" + remoto.replace("https://github.com/", "") + `/pulls/${numeroPull}`;
+      const pull = await githubApiPr(
+        row.project_id,
+        rutaPull,
+        p.autenticacion,
+        undefined,
+        undefined,
+        "merge",
+      ) as {
+        html_url?: string;
+        mergeable?: boolean | null;
+        mergeable_state?: string;
+        head?: { ref?: string; repo?: { full_name?: string | null } | null };
+        base?: { ref?: string; repo?: { full_name?: string | null } | null };
+      };
+      if (pull.mergeable === false && pull.mergeable_state === "dirty") {
+        const ramaFuente = pull.head?.ref ?? "";
+        const ramaBase = pull.base?.ref ?? p.base ?? cfg.base_branch;
+        const repoBase = pull.base?.repo?.full_name ?? remoto.replace("https://github.com/", "");
+        const repoFuente = pull.head?.repo?.full_name ?? null;
+        const fuente = row.task_id
+          ? db.query<{ id: string }, [string, string]>("SELECT id FROM tasks WHERE id=? AND project_id=?").get(row.task_id, row.project_id)
+          : db.query<{ id: string }, [string, string]>("SELECT id FROM tasks WHERE project_id=? AND rama=? ORDER BY created_at DESC,rowid DESC LIMIT 1").get(row.project_id, ramaFuente);
+        let archivos: string[] = [];
+        let archivosExactos = false;
+        if (fuente?.id && ramaFuente && ramaBase) {
+          try {
+            archivos = await detectarConflictosPullRequest(fuente.id, remoto, ramaBase, ramaFuente);
+            archivosExactos = archivos.length > 0;
+          } catch {
+            // El listado de archivos del PR sirve como guía si el clon local ya no está disponible.
+          }
+        }
+        if (!archivos.length) {
+          const modificados = await githubApiPr(
+            row.project_id,
+            `${rutaPull}/files?per_page=100`,
+            p.autenticacion,
+            undefined,
+            undefined,
+            "merge",
+          ) as { filename?: string }[];
+          archivos = Array.isArray(modificados)
+            ? modificados.map((archivo) => archivo.filename).filter((ruta): ruta is string => typeof ruta === "string").slice(0, 30)
+            : [];
+        }
+        const resoluble = Boolean(
+          fuente?.id && row.conversation_id && ramaFuente &&
+          ramaFuente !== ramaBase &&
+          repoFuente && repoFuente.toLowerCase() === repoBase.toLowerCase(),
+        );
+        const diagnostico: DiagnosticoConflictos = {
+          codigo: "merge_conflicts",
+          mensaje: `GitHub detectó conflictos entre ${ramaFuente} y ${ramaBase}.`,
+          pr_number: numeroPull,
+          pr_url: pull.html_url ?? p.pr_url ?? `${remoto}/pull/${numeroPull}`,
+          rama_fuente: ramaFuente,
+          rama_base: ramaBase,
+          repo_fuente: repoFuente,
+          repo_base: repoBase,
+          archivos,
+          archivos_exactos: archivosExactos,
+          task_id: fuente?.id ?? null,
+          resoluble,
+        };
+        throw new ErrorTarea("merge_conflicts", 409, JSON.stringify(diagnostico));
+      }
       result = await githubApiPr(
         row.project_id,
         "/repos/" + remoto.replace("https://github.com/", "") + `/pulls/${numeroPull}/merge`,
@@ -444,9 +554,9 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
     if (row.task_id && (row.action === "commit" || row.action === "push" || row.action === "pr")) {
       const t = db
         .query<
-          { plan: string | null; conversation_id: string | null; status: string },
+          { plan: string | null; conversation_id: string | null; status: string; source_pr_number: number | null },
           [string]
-        >("SELECT plan,conversation_id,status FROM tasks WHERE id=?")
+        >("SELECT plan,conversation_id,status,source_pr_number FROM tasks WHERE id=?")
         .get(row.task_id);
       // Sin plan guardado, la cadena solo continúa si el usuario eligió "rama y PR" en la subida.
       const puedeCadena = t?.plan || (row.action === "push" && destinoEmpuje === "rama");
@@ -458,7 +568,7 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
               ? "push"
               : null
             : row.action === "push"
-              ? destinoEmpuje === "base"
+              ? destinoEmpuje === "base" || t.source_pr_number !== null
                 ? null
                 : acciones.includes("pr") || destinoEmpuje === "rama"
                   ? "pr"
@@ -504,6 +614,69 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         : c.json({ error: e.code, detail: e.detail }, e.status)
       : c.json({ error: "git_action", detail: detalle }, 409);
   }
+});
+
+repositoryActions.post("/acciones/:id/resolver-conflictos", async (c) => {
+  const accion = db.query<{
+    id: string;
+    project_id: string;
+    conversation_id: string | null;
+    task_id: string | null;
+    action: string;
+    payload: string;
+    state: string;
+    result: string | null;
+  }, [string]>("SELECT * FROM repository_actions WHERE id=?").get(c.req.param("id"));
+  if (!accion) return c.json({ error: "action_not_found" }, 404);
+  if (accion.action !== "merge" || accion.state !== "failed" || !accion.result)
+    return c.json({ error: "conflict_resolution_unavailable" }, 409);
+  let diagnostico: DiagnosticoConflictos | null = null;
+  try {
+    const externo = JSON.parse(accion.result) as { codigo?: string; mensaje?: string };
+    if (externo.codigo !== "merge_conflicts" || !externo.mensaje) return c.json({ error: "conflict_resolution_unavailable" }, 409);
+    diagnostico = JSON.parse(externo.mensaje) as DiagnosticoConflictos;
+  } catch {
+    return c.json({ error: "conflict_resolution_unavailable" }, 409);
+  }
+  if (!diagnostico.resoluble || !diagnostico.task_id || !accion.conversation_id)
+    return c.json({ error: "conflict_resolution_unavailable", detail: "Esta rama del PR no pertenece al mismo repositorio o ya no hay una tarea de Telo para prepararla." }, 409);
+  const payload = JSON.parse(accion.payload) as Record<string, unknown>;
+  const repairTaskId = typeof payload.repair_task_id === "string" ? payload.repair_task_id : null;
+  const repairTask = repairTaskId
+    ? db.query<{ status: string }, [string]>("SELECT status FROM tasks WHERE id=?").get(repairTaskId)
+    : null;
+  if (repairTask && !["failed", "cancelled"].includes(repairTask.status))
+    return c.json({ task_id: repairTaskId!, reutilizada: true }, 200);
+  const origen = db.query<{ id: string; title: string; model: string; effort: string | null }, [string, string]>(
+    "SELECT id,title,model,effort FROM tasks WHERE id=? AND project_id=?",
+  ).get(diagnostico.task_id, accion.project_id);
+  const conversacion = db.query<{ model: string | null }, [string, string]>("SELECT model FROM conversations WHERE id=? AND project_id=?").get(accion.conversation_id, accion.project_id);
+  if (!origen || !conversacion) return c.json({ error: "conflict_resolution_unavailable" }, 409);
+  const archivos = diagnostico.archivos.length
+    ? diagnostico.archivos.map((archivo) => `- ${archivo}`).join("\n")
+    : "- Inspecciona los archivos con conflictos en la fusión local";
+  const claseLista = diagnostico.archivos_exactos ? "conflictos confirmados" : "archivos modificados por el PR; confirma cuáles tienen conflicto";
+  const prompt = [
+    `Resuelve los conflictos de integración del Pull Request #${diagnostico.pr_number}.`,
+    `El workspace ya está preparado sobre la rama fuente ${diagnostico.rama_fuente} e intenta integrar la rama base ${diagnostico.rama_base}.`,
+    `Archivos (${claseLista}):\n${archivos}`,
+    "Conserva el comportamiento de ambas ramas, resuelve todos los marcadores de conflicto, revisa el diff completo y ejecuta las pruebas pertinentes.",
+    "No hagas commit ni push: Telo pedirá aprobación después de mostrar los cambios.",
+  ].join("\n\n");
+  const taskId = crearTarea({
+    prompt,
+    model: origen.model || conversacion.model || "",
+    effort: origen.effort,
+    projectId: accion.project_id,
+    titulo: `Resolver conflictos PR #${diagnostico.pr_number}`,
+    conversationId: accion.conversation_id,
+    sourceBranch: diagnostico.rama_fuente,
+    sourceBaseBranch: diagnostico.rama_base,
+    sourcePrNumber: diagnostico.pr_number,
+  });
+  payload.repair_task_id = taskId;
+  db.query("UPDATE repository_actions SET payload=? WHERE id=?").run(JSON.stringify(payload), accion.id);
+  return c.json({ task_id: taskId, reutilizada: false }, 202);
 });
 
 async function validarAutenticacionYAcceso(

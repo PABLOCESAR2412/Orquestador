@@ -14,12 +14,14 @@ import { LoginCodexPanel } from "../components/login-codex";
 import { SkillsEditor } from "../components/skills-editor";
 import { TemaPanel } from "../components/settings/panel-tema";
 import { NotificacionesPanel } from "../components/settings/panel-notificaciones";
+import { LoadingSkeleton } from "../components/loading-skeleton";
 import { SesionPanel } from "../components/settings/panel-sesion";
 
 const ALERT_OPTIONS = [50, 60, 70, 80, 90, 100];
 
-type Pestana = "proveedores" | "servidor" | "almacenamiento";
+type Pestana = "personalizacion" | "proveedores" | "servidor" | "almacenamiento";
 const PESTANAS: { id: Pestana; texto: string }[] = [
+  { id: "personalizacion", texto: "Personalización" },
   { id: "proveedores", texto: "Proveedores IA" },
   { id: "servidor", texto: "Estado del servidor" },
   { id: "almacenamiento", texto: "Almacenamiento" },
@@ -188,9 +190,7 @@ export function SettingsPage() {
           <div className="aj-cabecera-texto">
             {eyebrow && <p className="aj-eyebrow">{eyebrow}</p>}
             <h1 className="aj-titulo">Ajustes y Servidor</h1>
-            <p className="aj-descripcion">
-              Configuración de motores de IA, claves API y telemetría de la instancia persistente.
-            </p>
+            <p className="aj-descripcion">Personaliza Telo y administra sus motores de IA, claves y telemetría.</p>
           </div>
         </header>
 
@@ -217,6 +217,7 @@ export function SettingsPage() {
         </div>
 
         <div role="tabpanel" id={`aj-panel-${pestana}`} aria-labelledby={`aj-tab-${pestana}`} className="aj-panel">
+          {pestana === "personalizacion" && <div className="aj-stack"><TemaPanel /></div>}
           {pestana === "proveedores" && (
             <div className="aj-stack">
               <section className="aj-kpis" aria-label="Telemetría de la instancia">
@@ -275,7 +276,7 @@ export function SettingsPage() {
                 {proveedores.isError && (
                   <ErrorConReintento error={proveedores.error} onReintentar={() => void proveedores.refetch()} />
                 )}
-                {proveedores.isPending && <p className="aj-nota">Consultando proveedores…</p>}
+                {proveedores.isPending && !proveedores.data && <LoadingSkeleton tipo="tarjetas" cantidad={3} />}
                 {proveedores.data?.map((p) => (
                   <TarjetaProveedor
                     key={p.id}
@@ -465,7 +466,6 @@ export function SettingsPage() {
                     )}
                   </article>
 
-                  <TemaPanel />
                   <NotificacionesPanel />
                   <SesionPanel />
                 </div>

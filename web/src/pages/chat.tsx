@@ -1,7 +1,7 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad, type RepositoryAction } from "../api";
+import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad } from "../api";
 import { useEventosVivos } from "../lib/eventos-vivos";
 import { ModelPicker } from "../components/model-picker";
 import { UsoPanel } from "../components/uso-panel";
@@ -11,6 +11,7 @@ import { IndicadorPensando, MensajeAgente, MensajeUsuario } from "../components/
 import { ProcesoAgente } from "../components/chat-proceso";
 import { copiarTexto, type ReferenciaArchivo } from "../components/chat-contenido";
 import { ChatArchivoPreview } from "../components/chat-archivo-preview";
+import { LoadingSkeleton } from "../components/loading-skeleton";
 import { ChatConfiguracion } from "../components/chat-configuracion";
 import { AvisoCuota } from "../components/cuota-aviso";
 import { VistaDocumento } from "../components/documentos";
@@ -18,7 +19,7 @@ import { HistorialPrompts, type PromptEnviado } from "../components/chat-histori
 import { MenuComandosChat, type ComandoChat } from "../components/chat-comandos";
 import { MenuSkillsChat, type SkillOpcion } from "../components/chat-skills-picker";
 import { PlanRevision } from "../components/plan-revision";
-import { AccionRepositorioMensaje, AccionesAnteriores, AccionesRepositorioChat } from "../components/repository-approval";
+import { AccionesRepositorioChat } from "../components/repository-approval";
 import { sugerenciasChat } from "../lib/sugerencias";
 import { duracionEntre } from "../lib/tiempo";
 import { effortLabel, errorText, formatWhen, tierBars } from "../lib/model";
@@ -101,6 +102,7 @@ export function ChatPage() {
   const setSelectedId = setSelectedConversationId;
 
   const [draft, setDraft] = useState("");
+  const [creandoChat, setCreandoChat] = useState(false);
   const colasIniciales = useRef<Record<string, MensajeEnCola[]> | null>(null);
   if (colasIniciales.current === null) colasIniciales.current = leerColas();
   const [colasPorChat, setColasPorChat] = useState<Record<string, MensajeEnCola[]>>(colasIniciales.current);
@@ -366,12 +368,6 @@ export function ChatPage() {
     : null);
   const esperandoPlan = tareaChat?.status === "waiting_approval";
   const planPendiente = esperandoPlan && Boolean(tareaChat?.plan && tareaChat?.plan_hash);
-  const accionesGit = useQuery({
-    queryKey: ["repository-actions", selectedId],
-    queryFn: () => api.repositoryActions(selectedId!),
-    enabled: !!selectedId && !!current?.project_id,
-    refetchInterval: 3000,
-  });
   const agenteOcupado =
     !!current?.ocupada || ["queued", "analyzing", "running", "waiting_approval"].includes(tareaChat?.status ?? "");
   const cola = selectedId ? colasPorChat[selectedId] ?? [] : [];
@@ -390,43 +386,6 @@ export function ChatPage() {
   const modelList: ModelInfo[] = models.data?.models ?? [];
   const modelInfo = modelList.find((m) => m.id === current?.model) ?? null;
   const lista = messages.data ?? [];
-  const accionesPorMensaje = useMemo(() => {
-    const porMensaje = new Map<string, Map<string, RepositoryAction[]>>();
-    const indices = new Map(lista.map((mensaje, indice) => [mensaje.id, indice] as const));
-    for (const accion of accionesGit.data ?? []) {
-      if (!accion.message_id) continue;
-      const indice = indices.get(accion.message_id);
-      if (indice === undefined) continue;
-      let destinoId: string | undefined;
-      for (let i = indice + 1; i < lista.length; i++) {
-        if (lista[i]!.role === "user") break;
-        if (lista[i]!.role === "assistant") {
-          destinoId = lista[i]!.id;
-          break;
-        }
-      }
-      // Mantén la tarjeta oculta mientras el turno aún no tenga respuesta.
-      if (!destinoId) continue;
-      const porAccion = porMensaje.get(destinoId) ?? new Map<string, RepositoryAction[]>();
-      const intentos = porAccion.get(accion.action) ?? [];
-      intentos.push(accion);
-      porAccion.set(accion.action, intentos);
-      porMensaje.set(destinoId, porAccion);
-    }
-    return porMensaje;
-  }, [accionesGit.data, lista]);
-  const renderAccionesDe = (mensajeId: string) => current?.project_id && selectedId
-    ? Array.from(accionesPorMensaje.get(mensajeId)?.entries() ?? []).map(([action, intentos]) => {
-        const ultima = intentos.at(-1)!;
-        return (
-          <Fragment key={`${ultima.message_id}-${action}`}>
-            <AccionRepositorioMensaje accion={ultima} conversationId={selectedId} projectId={current.project_id!} taskId={tareaChat?.id} />
-            {intentos.length > 1 && <AccionesAnteriores acciones={intentos.slice(0, -1)} />}
-          </Fragment>
-        );
-      })
-    : null;
-
   const configure = useMutation({
     mutationFn: (patch: Patch) => api.updateConversation(selectedId!, patch),
     onMutate: async (patch) => {
@@ -1103,13 +1062,15 @@ export function ChatPage() {
   };
 
   const nuevoChat = () => {
+    if (creandoChat) return;
+    setCreandoChat(true);
     api.createConversation(null).then(
       (conv) => {
         void qc.invalidateQueries({ queryKey: ["conversations"] });
         setSelectedId(conv.id);
       },
       () => avisar("No se pudo crear el chat"),
-    );
+    ).finally(() => setCreandoChat(false));
   };
 
   // Skills disponibles para el chat (del proyecto y globales)
@@ -1342,10 +1303,30 @@ export function ChatPage() {
       aria-label="Chat"
     >
       {!selectedId ? (
-        <div className="tl-vacio">
+        <div className="tl-vacio" aria-busy={conversations.isPending}>
+          <svg className="tl-vacio-reticula" viewBox="0 0 1200 720" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <g fill="none" stroke="currentColor" strokeWidth="1">
+              <path d="M80 120H1120M80 240H1120M80 360H1120M80 480H1120M80 600H1120M200 40V680M400 40V680M600 40V680M800 40V680M1000 40V680" />
+              <path d="M160 620L600 180L1040 620M160 100L600 540L1040 100" strokeDasharray="4 10" />
+            </g>
+          </svg>
           <div className="tl-vacio-caja">
+            <div className="tl-vacio-emblema" aria-hidden="true">
+              <span className="tl-vacio-pulso" />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <circle cx="19" cy="5" r="2" />
+                <circle cx="5" cy="5" r="2" />
+                <circle cx="5" cy="19" r="2" />
+                <circle cx="19" cy="19" r="2" />
+                <line x1="7" y1="6.5" x2="10" y2="10.5" />
+                <line x1="17" y1="6.5" x2="14" y2="10.5" />
+                <line x1="7" y1="17.5" x2="10" y2="13.5" />
+                <line x1="17" y1="17.5" x2="14" y2="13.5" />
+              </svg>
+            </div>
             {conversations.isPending ? (
-              <p>Cargando chats…</p>
+              <LoadingSkeleton tipo="lineas" cantidad={3} />
             ) : conversations.isError ? (
               <>
                 <h2>No se pudieron cargar los chats</h2>
@@ -1356,14 +1337,15 @@ export function ChatPage() {
               </>
             ) : (
               <>
-                <h2>Sin conversación activa</h2>
-                <p>Elige un chat de la lista o crea un proyecto para agrupar tus chats y tareas.</p>
+                <h2>¿Qué vamos a resolver?</h2>
+                <p>Empieza un chat para hacer una pregunta, explorar una idea o trabajar con tus archivos.</p>
                 <button
                   type="button"
                   className="tl-boton tl-boton-principal"
-                  onClick={() => void navigate({ to: "/proyectos" })}
+                  onClick={nuevoChat}
+                  disabled={creandoChat}
                 >
-                  Nuevo proyecto
+                  {creandoChat ? "Creando chat…" : "Nuevo chat"}
                 </button>
               </>
             )}
@@ -1476,7 +1458,7 @@ export function ChatPage() {
             onTouchCancelCapture={alTerminarToqueEnHilo}
           >
             <div className="tl-hilo-columna">
-              {messages.isPending && <p className="tl-nota">Cargando mensajes…</p>}
+              {messages.isPending && <LoadingSkeleton tipo="contenido" cantidad={4} className="tl-carga-mensajes" />}
               {messages.isError && (
                 <div className="tl-estado-linea">
                   <p className="tl-alerta" role="alert">
@@ -1523,7 +1505,6 @@ export function ChatPage() {
                         marcado={hitos.includes(m.id)}
                         onToggleMarca={() => marcarPrompt(m.id)}
                       />
-                      {renderAccionesDe(m.id)}
                     </>
                   ) : (
                     <>
@@ -1552,7 +1533,6 @@ export function ChatPage() {
                           window.setTimeout(() => inputRef.current?.focus(), 0);
                         }}
                       />
-                      {renderAccionesDe(m.id)}
                     </>
                   )}
                 </div>
@@ -1589,6 +1569,7 @@ export function ChatPage() {
                   projectId={current.project_id}
                   taskId={tareaChat?.id}
                   terminada={!!tareaChat && ["done", "failed", "cancelled", "interrupted"].includes(tareaChat.status)}
+                  taskStatus={tareaChat?.status}
                 />
               )}
               {tareasChat.isError && current?.project_id && <p className="tl-alerta" role="alert">{errorText(tareasChat.error)}</p>}

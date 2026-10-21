@@ -13,12 +13,13 @@ import { MAX_TAREAS_SIMULTANEAS } from "../limites";
 // nombre de equipo ni IPs: las carpetas se nombran por su función y los errores de herramientas se limpian.
 
 type Disco = { totalBytes: number; usadoBytes: number; libreBytes: number };
-type Carpeta = { nombre: string; bytes: number; archivos: number };
+type Carpeta = { nombre: string; bytes: number; archivos: number; truncado: boolean };
 
 const CERO: Disco = { totalBytes: 0, usadoBytes: 0, libreBytes: 0 };
 const TIEMPO_CACHE_MS = 30_000;
 const TIEMPO_HERRAMIENTA_MS = 3_000;
 const TIEMPO_DF_MS = 5_000;
+const MAX_ENTRADAS_ALMACENAMIENTO = 250_000;
 const HERRAMIENTAS = ["opencode", "bwrap", "git", "bun"] as const;
 const RAIZ_REPOSITORIO = resolve(import.meta.dir, "../../..");
 
@@ -92,19 +93,20 @@ function medirBaseDeDatos(datos: string): { bytes: number; archivos: number } {
 async function medirCarpetas(): Promise<Carpeta[]> {
   const datos = resolve(config.dataDir);
   const sinProyectos = { bytes: 0, archivos: 0, truncado: false };
+  const medir = (ruta: string) => medirCarpeta(ruta, MAX_ENTRADAS_ALMACENAMIENTO);
   const [tareas, chat, respaldos, proyectos] = await Promise.all([
-    medirCarpeta(join(datos, "tasks")),
-    medirCarpeta(join(datos, "chat-workspace")),
-    medirCarpeta(join(datos, "respaldos-migracion")),
-    config.projectsDir ? medirCarpeta(resolve(config.projectsDir)) : Promise.resolve(sinProyectos),
+    medir(join(datos, "tasks")),
+    medir(join(datos, "chat-workspace")),
+    medir(join(datos, "respaldos-migracion")),
+    config.projectsDir ? medir(resolve(config.projectsDir)) : Promise.resolve(sinProyectos),
   ]);
   const base = medirBaseDeDatos(datos);
   return [
-    { nombre: "tareas", bytes: tareas.bytes, archivos: tareas.archivos },
-    { nombre: "chat-workspace", bytes: chat.bytes, archivos: chat.archivos },
-    { nombre: "respaldos-migracion", bytes: respaldos.bytes, archivos: respaldos.archivos },
-    { nombre: "base de datos", bytes: base.bytes, archivos: base.archivos },
-    { nombre: "proyectos", bytes: proyectos.bytes, archivos: proyectos.archivos },
+    { nombre: "tareas", ...tareas },
+    { nombre: "chat-workspace", ...chat },
+    { nombre: "respaldos-migracion", ...respaldos },
+    { nombre: "base de datos", ...base, truncado: false },
+    { nombre: "proyectos", ...proyectos },
   ];
 }
 

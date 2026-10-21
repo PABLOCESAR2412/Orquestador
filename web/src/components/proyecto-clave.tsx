@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { LoadingSkeleton } from "./loading-skeleton";
 import { errorText } from "../lib/model";
 import { copiarTexto } from "./chat-contenido";
 import { cuando } from "./tarea-formato";
@@ -99,7 +100,7 @@ export function ProyectoClave({ id }: { id: string }) {
         Con esta clave Telo sube las ramas de las tareas a GitHub sin token. Es una deploy key de este repositorio.
       </p>
 
-      {clave.isPending && <p className="help-note">Cargando la clave…</p>}
+      {clave.isPending && !clave.data && <LoadingSkeleton tipo="lineas" cantidad={2} />}
       {clave.isError && (
         <div className="error-box" role="alert">
           <span className="error-text">{errorText(clave.error)}</span>

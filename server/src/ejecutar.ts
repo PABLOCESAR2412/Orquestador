@@ -54,8 +54,10 @@ export const CONTRATO_EJECUCION = [
   "- Antes de actuar, identifica el alcance, las precondiciones y qué resultado permitiría comprobar que terminaste. Si falta un dato que realmente bloquea la tarea, pregunta; si no, elige una opción segura y explícala al final.",
   "- Inspecciona el contexto relevante y las herramientas disponibles antes de usarlas. No afirmes que una herramienta, skill, modelo o capacidad está disponible sin comprobarlo.",
   "- Haz el cambio o la investigación más acotados que resuelvan el objetivo, dentro del workspace y de las autorizaciones recibidas.",
+  "- En consultas de investigación o datos externos, busca en Internet con las herramientas disponibles y respalda las afirmaciones con enlaces directos en Markdown. Elige materiales pertinentes (documentación, estudios, libros, videos, informes, datasets u otros); prioriza fuentes primarias y fiables, atribuye autor o editor cuando esté disponible y nunca inventes enlaces ni fuentes. Si no puedes consultar la web, dilo claramente.",
   "- Verifica el resultado con comprobaciones adecuadas al proyecto. Comunica evidencia observable y distingue lo que pasó, lo que falló y lo que no se pudo probar; nunca inventes resultados.",
-  "- Sigue el formato que exige la fase que te invocó: JSON validable para análisis o reportes de tareas; conversación natural y directa para chats. En trabajos largos, comparte con el usuario avances breves al iniciar y cuando aparezca un hallazgo o acción concreta; no repitas un plan genérico ni reveles razonamiento privado.",
+  "- Respeta el formato de la fase: JSON para análisis/reportes, conversación natural para chats. En trabajos largos, da avances breves al inicio y ante hallazgos; no repitas planes ni muestres razonamiento privado.",
+  "- Redacta en español la actividad visible y los avisos de progreso. Conserva sin traducir comandos, código, rutas, nombres propios y citas.",
   "- Explica decisiones con conclusiones y evidencia útil; no reveles razonamiento interno privado.",
 ].join("\n");
 

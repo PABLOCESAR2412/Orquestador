@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { LoadingSkeleton } from "./loading-skeleton";
 import { errorText } from "../lib/model";
 
 const LIMITE_BYTES = 64 * 1024;
@@ -153,7 +154,7 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
         </div>
       )}
 
-      {lista.isPending && <p className="aj-nota">Cargando skills…</p>}
+      {lista.isPending && !lista.data && <LoadingSkeleton tipo="lineas" cantidad={3} />}
       {lista.isError && (
         <p className="aj-error" role="alert">
           {errorText(lista.error)}
