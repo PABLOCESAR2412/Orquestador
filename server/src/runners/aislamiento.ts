@@ -145,6 +145,7 @@ export function prefijoAislamiento(
   adjuntos: { ruta: string; rutaVisible: string }[] = [],
   perfilOpenCodeDir?: string,
   opencodeConfigDir?: string,
+  opencodeSubagentesTracePath?: string,
 ): string[] {
   if (!aislamientoActivo()) return [];
 
@@ -240,6 +241,16 @@ export function prefijoAislamiento(
       throw new AislamientoError("carpeta_no_permitida", "La configuración de subagentes no está dentro del almacenamiento de Telo.");
     }
     args.push("--dir", "/tmp/telo-opencode-config", "--ro-bind", perfilReal, "/tmp/telo-opencode-config");
+    if (opencodeSubagentesTracePath) {
+      const captura = rutaReal(opencodeSubagentesTracePath);
+      const esperada = join(perfilReal, "subagentes.ndjson");
+      if (!captura || captura !== esperada || !lstatSync(captura).isFile()) {
+        throw new AislamientoError("carpeta_no_permitida", "El registro temporal de subagentes no es seguro.");
+      }
+      // La configuración y los perfiles siguen en solo lectura. Solo se habilita escritura
+      // en este archivo NDJSON temporal para que el plugin reporte actividad en vivo.
+      args.push("--bind", captura, "/tmp/telo-opencode-config/subagentes.ndjson");
+    }
   }
 
   // Rutas extra en solo lectura (TELO_LECTURA_EXTRA, separadas por ":"), por ejemplo la carpeta de opencode

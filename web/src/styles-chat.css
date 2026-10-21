@@ -245,6 +245,20 @@
   font-weight: 600;
   letter-spacing: -0.01em;
 }
+.tl-subchat-padre {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-family: var(--font);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.tl-subchat-padre:hover { color: var(--ink); border-color: var(--signal); }
+.tl-subchat-padre:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 
 /* Chips de modelo y proyecto */
 .tl-chip {
@@ -1271,6 +1285,44 @@
 }
 
 @media (max-width: 600px) {
+  .tl-chat-cabecera {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    gap: 4px;
+    padding: 6px 10px;
+  }
+  .tl-chat-cabecera-izq {
+    grid-column: 1;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+    gap: 8px;
+  }
+  .tl-chat-cabecera-der {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: end;
+  }
+  .tl-chat-cabecera-izq > .tl-chip-modelo {
+    flex: 0 1 120px;
+    min-width: 0;
+    padding-inline: 7px;
+  }
+  .tl-chat-cabecera-izq > .tl-chip-modelo .tl-chip-nombre {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tl-chat-cabecera-izq > .tl-chat-titulo { flex: 1 1 0; }
+  .tl-chat-cabecera-izq > .tl-subchat-padre {
+    flex: 0 0 32px;
+    min-width: 32px;
+    justify-content: center;
+    padding-inline: 6px;
+  }
+  .tl-chat-cabecera-izq > .tl-subchat-padre > :not([aria-hidden="true"]) { display: none; }
   .tl-composer-izq { column-gap: 4px; }
   .tl-modelo-boton { gap: 5px; padding-inline: 7px; }
   .tl-chip-dato { display: none; }
@@ -1873,6 +1925,61 @@
 
 /* Proceso del agente: pasos en vivo y "Ver proceso" debajo de cada respuesta */
 .tl-proceso-wrap { min-width: 0; margin: 0 0 10px; }
+.tl-subagentes {
+  min-width: 0;
+  margin: 12px 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--line);
+}
+.tl-subagentes-cabecera {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 5px;
+  color: var(--ink);
+  font-size: 13px;
+}
+.tl-subagentes-cabecera > span { color: var(--signal); font-size: 11px; }
+.tl-subagente {
+  min-width: 0;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--line);
+}
+.tl-subagente-cabecera { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.tl-subagente-pulso {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+.tl-subagente.is-running .tl-subagente-pulso { background: var(--signal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--signal) 18%, transparent); }
+.tl-subagente-identidad { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; gap: 2px; }
+.tl-subagente-identidad strong { overflow: hidden; color: var(--ink); font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.tl-subagente-identidad > span { overflow: hidden; color: var(--ink-2); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.tl-subagente-estado { flex: 0 0 auto; color: var(--ink-2); font-size: 11px; }
+.tl-subagente-estado.is-running { color: var(--signal); }
+.tl-subagente-estado.is-error,.tl-subagente-resultado.is-error { color: var(--danger); }
+.tl-subagente-detalle { margin: 7px 0 4px 17px; color: var(--ink-2); font-size: 11px; }
+.tl-subagente-detalle summary,.tl-subagente-resultado summary { width: fit-content; color: var(--ink-2); cursor: pointer; text-underline-offset: 3px; }
+.tl-subagente-detalle p,.tl-subagente-resultado p { margin: 5px 0; color: var(--ink-2); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.tl-subagente .tl-proceso { margin: 6px 0 6px 17px; }
+.tl-subagente-resultado { margin: 7px 0 4px 17px; font-size: 11px; }
+.tl-subagente-abrir {
+  min-height: 30px;
+  margin: 5px 0 0 17px;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.tl-subagente-abrir:hover { border-color: var(--signal); color: var(--ink); }
+.tl-subagente-abrir:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .tl-proceso-boton {
   display: inline-flex;
   align-items: center;

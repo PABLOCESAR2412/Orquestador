@@ -5,7 +5,7 @@ import { partirMensaje } from "../lib/adjuntos";
 import { effortLabel } from "../lib/model";
 import { urlAdjuntoImagenChat, type FormatoDocumento } from "../api";
 import { Contenido, copiarTexto, type ReferenciaArchivo } from "./chat-contenido";
-import { ProcesoAgente, ProcesoGuardado } from "./chat-proceso";
+import { ProcesoAgente, ProcesoGuardado, SubagentesTurno } from "./chat-proceso";
 import { FORMATOS_OPCIONES } from "./documentos";
 import type { PasoActividad } from "../api";
 import { MediaJobCard } from "./media-job-card";
@@ -184,6 +184,7 @@ export function MensajeAgente({
   onGuardar,
   guardando = false,
   proceso,
+  onAbrirSubchat,
   duracion,
   onCitar,
 }: {
@@ -204,6 +205,7 @@ export function MensajeAgente({
   duracion?: string | null;
   // Chat y turno de la respuesta: de ahí salen los pasos del agente ("Ver proceso").
   proceso?: { conversacionId: string; turnoId: string };
+  onAbrirSubchat?: (id: string) => void;
 }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const mediaId = /^\[\[telo-media:([a-f0-9-]+)\]\]$/i.exec(texto.trim())?.[1] ?? null;
@@ -374,7 +376,7 @@ export function MensajeAgente({
         </div>
       </div>
       {!mediaId && proceso && (
-        <ProcesoGuardado conversacionId={proceso.conversacionId} turnoId={proceso.turnoId} textoFinal={texto} />
+        <ProcesoGuardado conversacionId={proceso.conversacionId} turnoId={proceso.turnoId} textoFinal={texto} onAbrirSubchat={onAbrirSubchat} />
       )}
       <div className="tl-msg-texto">
         {mediaId ? <MediaJobCard id={mediaId} /> : (
@@ -399,7 +401,23 @@ export function MensajeAgente({
 }
 
 // Mientras el agente trabaja: "Pensando…" y, debajo, cada paso en cuanto ocurre.
-export function IndicadorPensando({ modelo, vivo = [], desde = null }: { modelo: string; vivo?: PasoActividad[]; desde?: string | null }) {
+export function IndicadorPensando({
+  modelo,
+  vivo = [],
+  desde = null,
+  conversacionId,
+  turnoId,
+  mostrarSubagentes = false,
+  onAbrirSubchat,
+}: {
+  modelo: string;
+  vivo?: PasoActividad[];
+  desde?: string | null;
+  conversacionId?: string;
+  turnoId?: string;
+  mostrarSubagentes?: boolean;
+  onAbrirSubchat?: (id: string) => void;
+}) {
   const [ahora, setAhora] = useState(Date.now());
   useEffect(() => {
     const temporizador = window.setInterval(() => setAhora(Date.now()), 1000);
@@ -448,6 +466,15 @@ export function IndicadorPensando({ modelo, vivo = [], desde = null }: { modelo:
           <span />
         </span>
       </div>
+      {mostrarSubagentes && conversacionId && turnoId && (
+        <SubagentesTurno
+          conversacionId={conversacionId}
+          turnoId={turnoId}
+          onAbrir={onAbrirSubchat}
+          enCurso
+          mostrarEspera
+        />
+      )}
       {vivo.length > 0 && (
         <section className="tl-actividad-live" aria-label="Actividad del agente">
           <div className="tl-actividad-live-cabecera">

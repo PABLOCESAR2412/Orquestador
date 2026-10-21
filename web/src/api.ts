@@ -18,7 +18,21 @@ export type Conversation = {
   // Modelo que se quedó sin cuota en el último turno: el chat espera a que se cambie de modelo y se siga.
   cuota_modelo?: string | null;
   created_at: string;
+  parent_conversation_id?: string | null;
+  parent_turn_id?: string | null;
+  subagent_turn_id?: string | null;
+  subagent_agent?: string | null;
+  subagent_prompt?: string | null;
+  subagent_status?: "running" | "done" | "failed" | "cancelled" | "interrupted" | null;
+  subagent_result?: string | null;
+  subchats?: Conversation[];
 };
+
+export type SubagentChat = Pick<Conversation,
+  "id" | "title" | "model" | "effort" | "project_id" | "parent_conversation_id" | "parent_turn_id" |
+  "project_name" | "ocupada" | "en_proceso" | "subagent_turn_id" | "subagent_agent" | "subagent_prompt" |
+  "subagent_status" | "subagent_result" | "created_at" | "last_message_at"
+>;
 
 export type FormatoDocumento = "docx" | "xlsx" | "html" | "txt" | "md";
 
@@ -722,6 +736,8 @@ export const api = {
   // Pasos del agente de un turno (el id es el del mensaje del usuario).
   listTurnoActividad: (conversacionId: string, turnoId: string) =>
     request<PasoActividad[]>(`/api/conversations/${conversacionId}/turnos/${turnoId}/actividad`),
+  listSubagentes: (conversacionId: string, turnoId: string) =>
+    request<SubagentChat[]>(`/api/conversations/${conversacionId}/turnos/${turnoId}/subagentes`),
   capacidadesMedios: () => request<CapacidadesMediosApi>("/api/media/capacidades"),
   medio: (id: string) => request<MedioJob>(`/api/media/${encodeURIComponent(id)}`),
   confirmarMedio: (id: string) => request<MedioJob>(`/api/media/${encodeURIComponent(id)}/confirmar`, { method: "POST", body: "{}" }),

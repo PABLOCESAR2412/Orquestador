@@ -1,3 +1,4 @@
+import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
 import { esVariableReservada, SECRETOS_SOLO_SERVIDOR } from "../secretos";
 import type { ImagenAgente } from "../chat-adjuntos";
@@ -268,6 +269,55 @@ async function leerLineas(
   return todo;
 }
 
+function vigilarSubagentes(ruta: string | undefined, alLeer: ((linea: string) => void) | undefined) {
+  if (!ruta || !alLeer) return { cerrar() {} };
+  let desplazamiento = 0;
+  let pendiente = "";
+  const leer = () => {
+    let fd: number | null = null;
+    try {
+      fd = openSync(ruta, "r");
+      const tamano = fstatSync(fd).size;
+      if (tamano < desplazamiento) {
+        desplazamiento = 0;
+        pendiente = "";
+      }
+      const longitud = Math.min(tamano - desplazamiento, 256 * 1024);
+      if (longitud <= 0) return;
+      const buffer = Buffer.allocUnsafe(longitud);
+      const leidos = readSync(fd, buffer, 0, longitud, desplazamiento);
+      desplazamiento += leidos;
+      pendiente += buffer.toString("utf8", 0, leidos);
+      let corte = pendiente.indexOf("\n");
+      while (corte !== -1) {
+        const linea = pendiente.slice(0, corte).trim();
+        pendiente = pendiente.slice(corte + 1);
+        if (linea) {
+          try { alLeer(linea); } catch { /* una falla al registrar no interrumpe OpenCode */ }
+        }
+        corte = pendiente.indexOf("\n");
+      }
+    } catch {
+      // El archivo puede aún no existir en una configuración persistente sin captura.
+    } finally {
+      if (fd !== null) closeSync(fd);
+    }
+  };
+  const timer = setInterval(leer, 180);
+  timer.unref();
+  return {
+    cerrar() {
+      clearInterval(timer);
+      leer();
+      const resto = pendiente.trim();
+      if (resto) {
+        try { alLeer(resto); } catch { /* una falla al registrar no interrumpe OpenCode */ }
+      }
+      pendiente = "";
+    },
+  };
+}
+
 export async function runOpenCode(opts: {
   prompt: string;
   model: string;
@@ -280,10 +330,14 @@ export async function runOpenCode(opts: {
   onSesion?: (sessionId: string) => void;
   // Una llamada por cada línea de stdout, en orden, mientras el agente corre.
   onLinea?: (linea: string) => void;
+  // Eventos de subagentes que OpenCode no incluye en la salida NDJSON del runner padre.
+  onSubagente?: (linea: string) => void;
   // Variables extra solo para esta ejecución. Nunca se aceptan nombres TELO_*.
   extraEnv?: Record<string, string>;
   // Perfiles temporales que solicita explícitamente la tarea para sus subagentes.
   opencodeConfigDir?: string;
+  // Archivo temporal NDJSON del plugin de OpenCode con eventos de subagentes.
+  subagentesTracePath?: string;
   // Estado aislado y persistente de OpenCode por conversación o tarea.
   perfilOpenCodeDir?: string;
   soloLectura?: boolean;
@@ -298,6 +352,7 @@ export async function runOpenCode(opts: {
     opts.imagenes,
     opts.perfilOpenCodeDir,
     opts.opencodeConfigDir,
+    opts.subagentesTracePath,
   );
 
   // Un id de sesión que no cumple el patrón se ignora: ni se pasa a -s ni se reutiliza.
@@ -329,6 +384,7 @@ export async function runOpenCode(opts: {
     stdout: "pipe",
     stderr: "pipe",
   });
+  const monitorSubagentes = vigilarSubagentes(opts.subagentesTracePath, opts.onSubagente);
   const timer = setTimeout(() => terminarGrupo(proc.pid), opts.timeoutMs ?? 120_000);
   // Al terminar el agente, se cierra lo que quedó de su grupo (procesos en segundo plano). Así nada
   // sigue escribiendo en la carpeta de trabajo después de la ejecución, y las tuberías se cierran.
@@ -391,6 +447,7 @@ export async function runOpenCode(opts: {
   } finally {
     clearTimeout(timer);
     if (onAbort) opts.signal?.removeEventListener("abort", onAbort);
+    monitorSubagentes.cerrar();
   }
 
   const events = parseEvents(stdout);

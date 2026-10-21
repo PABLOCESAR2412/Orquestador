@@ -321,6 +321,10 @@ export function ChatPage() {
     queryFn: api.listConversations,
     refetchInterval: 4_000,
   });
+  const conversacionesDisponibles = useMemo(
+    () => conversations.data?.flatMap((conv) => [conv, ...(conv.subchats ?? [])]) ?? [],
+    [conversations.data],
+  );
 
   // Abre el chat más reciente al cargar si no hay uno seleccionado
   useEffect(() => {
@@ -344,7 +348,10 @@ export function ChatPage() {
   });
 
   const current: Conversation | null =
-    conversations.data?.find((c) => c.id === selectedId) ?? null;
+    conversacionesDisponibles.find((c) => c.id === selectedId) ?? null;
+  const conversacionPadre = current?.parent_conversation_id
+    ? conversations.data?.find((c) => c.id === current.parent_conversation_id) ?? null
+    : null;
   const permitirAbrirArchivoEnChat = useCallback(() => Boolean(current?.id), [current?.id]);
 
   useEffect(() => {
@@ -1355,6 +1362,20 @@ export function ChatPage() {
                 {contexto && <span className="tl-chip-dato">{contexto}</span>}
               </span>
               <h1 className="tl-chat-titulo">{current?.title ?? "Chat"}</h1>
+              {conversacionPadre && (
+                <button
+                  type="button"
+                  className="tl-chip tl-subchat-padre"
+                  onClick={() => setSelectedId(conversacionPadre.id)}
+                  aria-label={`Volver al chat principal: ${conversacionPadre.title}`}
+                  title={`Volver al chat principal: ${conversacionPadre.title}`}
+                >
+                  <span aria-hidden="true">↖</span>
+                  {current?.subagent_status === "running"
+                    ? `Subagente activo · ${conversacionPadre.title}`
+                    : `Subchat de ${conversacionPadre.title}`}
+                </button>
+              )}
               {current?.project_name && current?.project_id && (
                 <Link
                   to="/proyectos/$id"
@@ -1516,6 +1537,7 @@ export function ChatPage() {
                             ? { conversacionId: selectedId, turnoId: turnoDeRespuesta(i)! }
                             : undefined
                         }
+                        onAbrirSubchat={setSelectedId}
                         onReintentar={
                           lista.slice(0, i).some((p) => p.role === "user") && !enviandoActual
                             ? () => reintentar(m.id)
@@ -1540,6 +1562,10 @@ export function ChatPage() {
                   modelo={nombreAgente}
                   desde={inicioPensando}
                   vivo={(selectedId && vivos[selectedId]?.pasos) || []}
+                  conversacionId={selectedId ?? undefined}
+                  turnoId={selectedId ? vivos[selectedId]?.turnoId ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.id : undefined}
+                    mostrarSubagentes={!current?.model?.startsWith("codex/") && /\b(subagentes?|agentes?\s+(?:en\s+)?paralelo|deleg(?:a|ar|ando)|llama\s+a\s+(?:varios|m[aá]s\s+de\s+uno|un\s+subagente))\b/i.test(envioActual?.content ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.content ?? "")}
+                  onAbrirSubchat={setSelectedId}
                 />
               )}
               {tareaChat && (

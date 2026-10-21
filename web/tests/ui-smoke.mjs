@@ -112,12 +112,21 @@ try {
       };
       else if (path === "/api/media/00000000-0000-4000-8000-000000000001/archivo") return route.fulfill({ status: 200, contentType: "image/svg+xml", headers: { "Content-Disposition": 'attachment; filename="colibri.svg"' }, body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240" viewBox="0 0 320 240"><rect width="320" height="240" fill="#d9a441"/><path d="M90 150q50-100 100 0q40-50 80 0" fill="#181c22"/><circle cx="170" cy="95" r="18" fill="#e7e9ec"/></svg>' });
       else if (path === "/api/conversations") data = conversacionesDisponibles ? [
-        { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, created_at: now },
+        { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, created_at: now, subchats: [{ id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true }] },
         { id: "c2", title: "Chat paralelo", model: "nvidia/nemotron-test", project_id: null, project_name: null, created_at: now },
         { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, pendiente_aprobacion: true, estado_tarea: "pendiente_aprobacion", estado_tarea_id: "review-c3", estado_tarea_version: "hash-c3", created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
         { id: "c4", title: "Chat anterior", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() },
         { id: "c5", title: "Chat libre", model: "google/prueba", project_id: null, project_name: null, created_at: now },
       ] : [];
+      else if (path === "/api/conversations/c1/turnos/u1/subagentes") data = [
+        { id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true },
+      ];
+      else if (path === "/api/conversations/c-child/messages") data = [
+        { id: "child-u1", role: "user", content: "Revisa las rutas y reporta riesgos", created_at: now },
+      ];
+      else if (path === "/api/conversations/c-child/turnos/child-u1/actividad") data = [
+        { seq: 1, tipo: "accion", herramienta: "bash", titulo: "Ejecutando git status", detalle: "git status --short", estado: "en_curso" },
+      ];
       else if (path === "/api/conversations/c5/messages") data = [
         { id: "c2a", role: "assistant", content: "Informe adjunto: `libre.md`", model: "nvidia/nemotron-test", created_at: now },
       ];
@@ -316,6 +325,23 @@ try {
       new Promise((_, reject) => { timeoutPollLargo = setTimeout(() => reject(new Error("no se observó el sondeo largo de eventos")), 10_000); }),
     ]).finally(() => clearTimeout(timeoutPollLargo));
     assert.ok(esperasPollUsadas.includes(8000), "el sondeo vivo deja margen al límite del proxy HTTP/2");
+    const mensajeSupervisor = page.locator(".tl-msg-agente").filter({ hasText: "Faltan dependencias" }).first();
+    await mensajeSupervisor.locator(".tl-proceso-boton").click();
+    await mensajeSupervisor.getByText("Se crearon 1 subagente", { exact: true }).waitFor();
+    await mensajeSupervisor.getByText("Ejecutando git status", { exact: true }).waitFor();
+    await mensajeSupervisor.getByRole("button", { name: "Abrir subchat", exact: true }).click();
+    await page.getByRole("heading", { name: "Auditar API", exact: true }).waitFor();
+    if (width === 390) {
+      const cajaTituloSubchat = await page.getByRole("heading", { name: "Auditar API", exact: true }).boundingBox();
+      const cajaBotonVolver = await page.locator(".tl-subchat-padre").boundingBox();
+      const cajaAccionesChat = await page.locator(".tl-chat-cabecera-der").boundingBox();
+      assert.ok(cajaTituloSubchat && cajaBotonVolver && cajaAccionesChat, "el encabezado del subchat conserva título, padre y acciones en móvil");
+      assert.ok(cajaTituloSubchat.width > 40, "el título del subchat tiene espacio visible en móvil");
+      assert.ok(cajaBotonVolver.y >= cajaAccionesChat.y + cajaAccionesChat.height, "volver al chat padre queda debajo de las acciones en móvil");
+    }
+    await page.getByRole("button", { name: "Volver al chat principal: Prueba de flujo", exact: true }).click();
+    await page.getByRole("heading", { name: "Prueba de flujo", exact: true }).waitFor();
+    console.log(`${width}px: actividad en vivo y navegación entre supervisor y subchat comprobadas`);
     if (width === 390) {
       await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
       const filaChatAnterior = page.locator('.sidebar-conv[aria-label="Chat anterior"]').locator("..");
@@ -925,7 +951,7 @@ try {
       await page.getByRole("group", { name: "Acciones de Prueba de flujo" }).getByRole("button", { name: "Eliminar", exact: true }).click();
       const confirmarEliminar = page.locator(".conv-confirm");
       await confirmarEliminar.waitFor();
-      assert.equal(await confirmarEliminar.getByText("Se eliminarán «Prueba de flujo» y todos sus mensajes. No se puede deshacer.", { exact: true }).isVisible(), true);
+      assert.equal(await confirmarEliminar.getByText("Se eliminarán «Prueba de flujo», sus subchats y todos sus mensajes. No se puede deshacer.", { exact: true }).isVisible(), true);
       assert.equal(await confirmarEliminar.getByRole("button", { name: "Cancelar", exact: true }).evaluate(el => el === document.activeElement), true);
       await page.screenshot({ path: "scratch/capturas-ci/chat-delete-1440.png" });
       await page.keyboard.press("Escape");

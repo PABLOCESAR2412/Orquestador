@@ -509,7 +509,7 @@ export function Shell({ children }: { children: ReactNode }) {
                   const chatsVisibles = filtroTexto
                     ? chats.filter((c) => c.title.toLowerCase().includes(q))
                     : chats;
-                  const tieneChatActivo = chats.some((c) => c.id === selectedConversationId);
+                  const tieneChatActivo = chats.some((c) => c.id === selectedConversationId || c.subchats?.some((hijo) => hijo.id === selectedConversationId));
 
                   return (
                     <div
@@ -580,7 +580,8 @@ export function Shell({ children }: { children: ReactNode }) {
                                 key={c.id}
                                 conv={c}
                                 variant="arbol"
-                                active={currentPath === "/chat" && selectedConversationId === c.id}
+                                active={currentPath === "/chat" && (selectedConversationId === c.id || Boolean(c.subchats?.some((hijo) => hijo.id === selectedConversationId)))}
+                                selectedConversationId={selectedConversationId}
                                 onSelect={handleSelectConv}
                                 onRename={(id, title) => renombrar.mutate({ id, title })}
                                 onTogglePin={(id, pinned) => anclar.mutate({ id, pinned })}
@@ -628,7 +629,8 @@ export function Shell({ children }: { children: ReactNode }) {
                       key={c.id}
                       conv={c}
                       variant="arbol"
-                      active={currentPath === "/chat" && selectedConversationId === c.id}
+                      active={currentPath === "/chat" && (selectedConversationId === c.id || Boolean(c.subchats?.some((hijo) => hijo.id === selectedConversationId)))}
+                      selectedConversationId={selectedConversationId}
                       onSelect={handleSelectConv}
                       onRename={(id, title) => renombrar.mutate({ id, title })}
                       onTogglePin={(id, pinned) => anclar.mutate({ id, pinned })}

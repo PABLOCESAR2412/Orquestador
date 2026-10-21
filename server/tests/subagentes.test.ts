@@ -8,7 +8,7 @@ process.env.DATA_DIR = DATA_PRUEBA;
 const { prepararSubagentes, pideSubagentes } = await import("../src/subagentes");
 type Modelo = (Awaited<ReturnType<typeof import("../src/models").getModels>>)[number];
 
-afterAll(() => rmSync(DATA_PRUEBA, { recursive: true, force: true }));
+afterAll(() => rmSync(DATA_PRUEBA, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
 
 const catalogo = async (): Promise<Modelo[]> => [
   {
@@ -45,6 +45,10 @@ describe("subagentes solicitados por el usuario", () => {
     const perfilesMd = agentes.map((archivo) => readFileSync(join(DATA_PRUEBA, "perfiles-subagente", "ejecucion-prueba", "agents", archivo), "utf8"));
     expect(perfilesMd.some((contenido) => contenido.includes('model: "openai/gpt-4.1-mini#high"'))).toBe(true);
     expect(perfilesMd.some((contenido) => contenido.includes('model: "deepseek/deepseek-v4-flash#high"'))).toBe(true);
+    const plugin = readFileSync(join(DATA_PRUEBA, "perfiles-subagente", "ejecucion-prueba", "plugins", "telo-subagentes.js"), "utf8");
+    expect(plugin).toContain("if (!hijos.has(id))");
+    expect(plugin).toContain("const LIMITE_BYTES = 8 * 1024 * 1024");
+    expect(plugin).toContain("const LIMITE_LINEA = 32 * 1024");
     perfiles?.limpiar();
     expect(() => readdirSync(join(DATA_PRUEBA, "perfiles-subagente", "ejecucion-prueba"))).toThrow();
   });

@@ -21,7 +21,8 @@ import {
   ocuparConversacion,
   proyectoRevisandose,
 } from "../ocupacion";
-import { prepararSubagentes } from "../subagentes";
+import { eliminarPerfilSubagentes, prepararSubagentes } from "../subagentes";
+import { cerrarSubagentesDelTurno, registrarEventoSubagente } from "../subagentes-chat";
 import { detectarSolicitudMedio } from "../generacion-medios";
 import { crearSolicitudMedio } from "./media";
 import { ArchivoError, leerArchivo, leerImagen, leerPdf, normalizarRuta } from "../archivos-proyecto";
@@ -56,6 +57,28 @@ type ConversationRow = {
   repo_path: string | null;
   // Modelo que se quedó sin cuota en el último turno; null si el chat puede seguir.
   cuota_modelo: string | null;
+  parent_conversation_id: string | null;
+  subagent_workspace: string | null;
+  subagent_config_dir: string | null;
+};
+type Subchat = {
+  id: string;
+  title: string;
+  model: string | null;
+  effort: string | null;
+  project_id: string | null;
+  parent_conversation_id: string;
+  parent_turn_id: string;
+  subagent_turn_id: string;
+  subagent_agent: string;
+  subagent_prompt: string;
+  subagent_status: "running" | "done" | "failed" | "cancelled" | "interrupted";
+  subagent_result: string | null;
+  project_name?: string | null;
+  created_at: string;
+  last_message_at: string;
+  ocupada?: boolean;
+  en_proceso?: boolean;
 };
 type Conversation = {
   id: string;
@@ -75,6 +98,7 @@ type Conversation = {
   estado_tarea?: "en_proceso" | "pendiente_aprobacion" | "completada" | null;
   estado_tarea_id?: string | null;
   estado_tarea_version?: string | null;
+  subchats?: Subchat[];
 };
 type Message = {
   id: string;
@@ -115,9 +139,28 @@ chat.get("/conversations", (c) => {
         LEFT JOIN projects p ON p.id = c.project_id
         LEFT JOIN latest_messages m ON m.conversation_id = c.id
         LEFT JOIN latest_tasks t ON t.conversation_id = c.id AND t.rn = 1
+       WHERE c.parent_conversation_id IS NULL
        ORDER BY (c.pinned_at IS NULL), c.pinned_at DESC, c.created_at DESC, c.rowid DESC
     `)
     .all();
+
+  const hijos = db.query<Subchat, []>(`
+    SELECT c.id,c.title,c.model,c.effort,c.project_id,p.name AS project_name,c.parent_conversation_id,c.parent_turn_id,
+           c.subagent_turn_id,c.subagent_agent,c.subagent_prompt,c.subagent_status,c.subagent_result,
+           c.created_at,MAX(c.created_at,COALESCE((SELECT MAX(m.created_at) FROM messages m WHERE m.conversation_id=c.id),c.created_at)) AS last_message_at
+      FROM conversations c
+      LEFT JOIN projects p ON p.id=c.project_id
+     WHERE c.parent_conversation_id IS NOT NULL
+     ORDER BY c.created_at,c.rowid
+  `).all();
+  const hijosPorPadre = new Map<string, Subchat[]>();
+  for (const hijo of hijos) {
+    hijo.ocupada = hijo.subagent_status === "running";
+    hijo.en_proceso = hijo.ocupada;
+    const lista = hijosPorPadre.get(hijo.parent_conversation_id) ?? [];
+    lista.push(hijo);
+    hijosPorPadre.set(hijo.parent_conversation_id, lista);
+  }
 
   return c.json(
     rows.map((r) => {
@@ -131,6 +174,7 @@ chat.get("/conversations", (c) => {
 
       return {
         ...r,
+        subchats: hijosPorPadre.get(r.id) ?? [],
         last_message_at: r.last_msg_at || r.created_at,
         ocupada: chatOcupado(r.id),
         en_proceso: Boolean(enCurso),
@@ -173,16 +217,52 @@ chat.post("/conversations", async (c) => {
 chat.delete("/conversations/:id", (c) => {
   const id = c.req.param("id");
   if (chatOcupado(id)) return c.json({ error: "conversation_busy" }, 409);
+  const parentId = db.query<{ parent_conversation_id: string | null }, [string]>(
+    "SELECT parent_conversation_id FROM conversations WHERE id=?",
+  ).get(id)?.parent_conversation_id ?? null;
+  const perfilesHijos = parentId === null
+    ? db.query<{ subagent_config_dir: string | null }, [string]>(`
+        WITH RECURSIVE familia(id) AS (
+          SELECT id FROM conversations WHERE id=?
+          UNION ALL
+          SELECT hija.id FROM conversations hija JOIN familia f ON hija.parent_conversation_id=f.id
+        )
+        SELECT DISTINCT subagent_config_dir FROM conversations
+         WHERE id IN (SELECT id FROM familia) AND subagent_config_dir IS NOT NULL
+      `).all(id).map((fila) => fila.subagent_config_dir)
+    : [];
   const result = db.query("DELETE FROM conversations WHERE id = ?").run(id);
   if (result.changes === 0) return c.json({ error: "conversation_not_found" }, 404);
   eliminarImagenesConversacion(id);
   eliminarPerfilOpenCode(id);
+  for (const perfil of perfilesHijos) eliminarPerfilSubagentes(perfil);
   return c.json({ ok: true });
 });
 
 // Pasos del agente de un turno (el id es el del mensaje del usuario). Se piden al abrir "Ver proceso".
 chat.get("/conversations/:id/turnos/:turno/actividad", (c) => {
   return c.json(actividadDelTurno(c.req.param("id"), c.req.param("turno")));
+});
+
+chat.get("/conversations/:id/turnos/:turno/subagentes", (c) => {
+  const conversationId = c.req.param("id");
+  const turnId = c.req.param("turno");
+  if (!db.query("SELECT 1 FROM conversations WHERE id=?").get(conversationId)) {
+    return c.json({ error: "conversation_not_found" }, 404);
+  }
+  const filas = db.query<Subchat, [string, string]>(`
+    SELECT c.id,c.title,c.model,c.effort,c.project_id,p.name AS project_name,c.parent_conversation_id,c.parent_turn_id,
+           c.subagent_turn_id,c.subagent_agent,c.subagent_prompt,c.subagent_status,c.subagent_result,
+           c.created_at,MAX(c.created_at,COALESCE((SELECT MAX(m.created_at) FROM messages m WHERE m.conversation_id=c.id),c.created_at)) AS last_message_at
+      FROM conversations c LEFT JOIN projects p ON p.id=c.project_id
+     WHERE c.parent_conversation_id=? AND c.parent_turn_id=?
+     ORDER BY c.created_at,c.rowid
+  `).all(conversationId, turnId);
+  for (const hija of filas) {
+    hija.ocupada = hija.subagent_status === "running";
+    hija.en_proceso = hija.ocupada;
+  }
+  return c.json(filas);
 });
 
 chat.get("/conversations/:id/messages", (c) => {
@@ -479,7 +559,7 @@ function leerConversacion(id: string): ConversationRow | null {
   return (
     db
       .query<ConversationRow, [string]>(
-        "SELECT c.id, c.model, c.effort, c.runner_session_id, c.runner_session_model, c.project_id, c.cuota_modelo, p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id = c.project_id WHERE c.id = ?",
+        "SELECT c.id,c.model,c.effort,c.runner_session_id,c.runner_session_model,c.project_id,c.cuota_modelo,c.parent_conversation_id,c.subagent_workspace,c.subagent_config_dir,p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id=c.project_id WHERE c.id=?",
       )
       .get(id) ?? null
   );
@@ -489,7 +569,8 @@ function raicesArchivosConversacion(conversacion: ConversationRow): string[] {
   const workspaces = db.query<{ workspace: string }, [string]>(
     "SELECT workspace FROM tasks WHERE conversation_id=? AND workspace IS NOT NULL ORDER BY created_at DESC,rowid DESC",
   ).all(conversacion.id).map((tarea) => tarea.workspace);
-  const raizOriginal = conversacion.project_id ? conversacion.repo_path : join(chatWorkspace, conversacion.id);
+  const raizOriginal = conversacion.subagent_workspace
+    ?? (conversacion.project_id ? conversacion.repo_path : join(chatWorkspace, conversacion.parent_conversation_id ?? conversacion.id));
   return [...new Set([...workspaces, ...(raizOriginal ? [raizOriginal] : [])])];
 }
 
@@ -609,11 +690,17 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
   const conversationId = conv.id;
   const inicio = Date.now();
   let result: ResultadoAgente;
+  let turnoTerminado = false;
+  let huboSubagentes = false;
   let perfilesSubagente: Awaited<ReturnType<typeof prepararSubagentes>> = null;
   try {
-    const cwd = join(chatWorkspace, conversationId);
+    const cwd = conv.subagent_workspace || join(chatWorkspace, conv.parent_conversation_id ?? conversationId);
     mkdirSync(cwd, { recursive: true });
-    perfilesSubagente = await prepararSubagentes({ prompt, modelo: model, esfuerzo: conv.effort, idEjecucion: crypto.randomUUID() });
+    // Los subagentes no crean otra generación de subchats: el usuario sigue al supervisor y a sus hijos directos.
+    perfilesSubagente = conv.parent_conversation_id
+      ? null
+      : await prepararSubagentes({ prompt, modelo: model, esfuerzo: conv.effort, idEjecucion: crypto.randomUUID() });
+    const configSubagentes = perfilesSubagente?.directorio ?? conv.subagent_config_dir ?? undefined;
     result = await ejecutarAgente({
       prompt: perfilesSubagente ? `${perfilesSubagente.instruccion}\n\n${prompt}` : prompt,
       model,
@@ -625,7 +712,22 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       projectId: conv.project_id,
       conversationId,
       estilo: "chat",
-      opencodeConfigDir: perfilesSubagente?.directorio,
+      opencodeConfigDir: configSubagentes,
+      opencodeSubagentesTracePath: perfilesSubagente?.rutaCaptura,
+      onSubagente: perfilesSubagente ? (linea) => {
+        try {
+          if ((JSON.parse(linea) as { kind?: string }).kind === "created") huboSubagentes = true;
+        } catch {}
+        registrarEventoSubagente({
+          parentConversationId: conversationId,
+          parentTurnId: turno.id,
+          workspace: cwd,
+          configDir: perfilesSubagente!.directorio,
+          model,
+          eventLine: linea,
+        });
+        publicarChat(conversationId, "en_curso");
+      } : undefined,
       // Guarda la sesión al aparecer para que un timeout o reinicio permita continuar el turno.
       onSesion: (sessionId, sessionModel) => {
         db.query("UPDATE conversations SET runner_session_id=?, runner_session_model=? WHERE id=?")
@@ -637,6 +739,7 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
         if (item) registrarActividad(conversationId, turno.id, item);
       },
     });
+    turnoTerminado = true;
   } catch (err) {
     if (err instanceof ErrorCuota) {
       // La sesión que sí llegó a abrirse se guarda, para seguirla con otro modelo. El aviso de cuota lo muestra el chat.
@@ -664,7 +767,11 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
     );
     return;
   } finally {
-    perfilesSubagente?.limpiar();
+    if (perfilesSubagente) {
+      if (huboSubagentes) perfilesSubagente.finalizarCaptura();
+      else perfilesSubagente.limpiar();
+    }
+    cerrarSubagentesDelTurno(conversationId, turno.id, turnoTerminado ? "done" : "interrupted");
   }
 
   // La respuesta del chat es lo dicho tras la última herramienta; lo anterior queda en el proceso.
@@ -726,7 +833,8 @@ export function avisarTurnosInterrumpidos(): number {
   const chats = db
     .query<{ id: string }, []>(
       `SELECT c.id FROM conversations c
-       WHERE NOT EXISTS (SELECT 1 FROM tasks t WHERE t.conversation_id=c.id)
+       WHERE c.parent_conversation_id IS NULL
+       AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.conversation_id=c.id)
        AND (SELECT m.role FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) = 'user'`,
     )
     .all();
@@ -828,7 +936,7 @@ chat.post("/conversations/:id/messages", async (c) => {
   const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
   const turno = reintento?.turno ?? guardarMensajeUsuario(conversationId, content);
   limpiarAvisosReintentados(conversationId, reintento?.rowid);
-  if (conv.project_id) {
+  if (conv.project_id && !conv.parent_conversation_id) {
     const taskId = encolarTurno(conv, content, model);
     publicarChat(conversationId, "en_curso");
     return c.json({ messages: [turno], taskId }, 202);
@@ -847,7 +955,7 @@ chat.post("/conversations/:id/seguir", async (c) => {
   const conversationId = c.req.param("id");
   const conv = leerConversacion(conversationId);
   if (!conv) return c.json({ error: "conversation_not_found" }, 404);
-  const tarea = conv.project_id ? tareaDelChat(conversationId) : null;
+  const tarea = conv.project_id && !conv.parent_conversation_id ? tareaDelChat(conversationId) : null;
   const modeloAgotado = conv.cuota_modelo ?? (tarea?.status === "sin_cuota"
     ? tarea.modelo_agotado ?? tarea.model
     : null);
@@ -858,7 +966,7 @@ chat.post("/conversations/:id/seguir", async (c) => {
   const bloqueo = motivoDeBloqueo(conv);
   if (bloqueo) return c.json({ error: bloqueo }, 409);
 
-  if (conv.project_id) {
+  if (conv.project_id && !conv.parent_conversation_id) {
     if (!tarea || tarea.status !== "sin_cuota") return c.json({ error: "chat_sin_cuota" }, 409);
     const turno = guardarMensajeUsuario(conversationId, SEGUIR_VISIBLE);
     db.transaction(() => {
