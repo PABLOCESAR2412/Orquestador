@@ -576,6 +576,9 @@ describe("imágenes de una conversación", () => {
     writeFileSync(join(workspaceAnterior, "content.js"), "export const informe = true;");
     writeFileSync(join(workspaceAnterior, "preview", "informe.pdf"), "%PDF-1.4\ncontenido\n%%EOF\n");
     writeFileSync(join(workspaceAnterior, "preview", "p01-12.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01]));
+    mkdirSync(join(workspaceAnterior, "renders"), { recursive: true });
+    const videoBytes = Buffer.from("000000146674797069736f6d000000006d703432", "hex");
+    writeFileSync(join(workspaceAnterior, "renders", "mapa-mental.mp4"), videoBytes);
     writeFileSync(join(raizProyecto, "README.md"), "Archivo del repositorio base");
 
     const texto = await app.request(`/api/conversations/${conversacionId}/archivo?ruta=content.js`);
@@ -589,6 +592,13 @@ describe("imágenes de una conversación", () => {
     const imagen = await app.request(`/api/conversations/${conversacionId}/archivo-imagen?ruta=preview%2Fp01-12.png&meta=1`);
     expect(imagen.status).toBe(200);
     expect(await imagen.json()).toMatchObject({ ruta: "preview/p01-12.png", mime: "image/png" });
+
+    const video = await app.request(`/api/conversations/${conversacionId}/archivo-video?ruta=mapa-mental.mp4&meta=1`);
+    expect(video.status).toBe(200);
+    expect(await video.json()).toMatchObject({ ruta: "renders/mapa-mental.mp4", mime: "video/mp4", tamano: videoBytes.byteLength });
+    const videoContenido = await app.request(`/api/conversations/${conversacionId}/archivo-video?ruta=renders%2Fmapa-mental.mp4`);
+    expect(videoContenido.status).toBe(200);
+    expect(Buffer.from(await videoContenido.arrayBuffer())).toEqual(videoBytes);
 
     const base = await app.request(`/api/conversations/${conversacionId}/archivo?ruta=README.md`);
     expect(base.status).toBe(200);

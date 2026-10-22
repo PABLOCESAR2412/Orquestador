@@ -68,13 +68,13 @@ export function ChatArchivoPreview({
   }, [archivo.data, referencia.linea, esPdf, esImagen, esVideo]);
 
   const lineas = archivo.data?.texto.split("\n") ?? [];
-  const rutaActual = archivo.data?.ruta ?? referencia.ruta;
+  const rutaActual = (esPdf ? pdf.data?.ruta : esImagen ? imagen.data?.ruta : esVideo ? video.data?.ruta : archivo.data?.ruta) ?? referencia.ruta;
   const nombre = (esPdf || esImagen || esVideo ? referencia.ruta : rutaActual).split(/[\\/]/).at(-1) || rutaActual;
   const tipoArchivo = describirTipoArchivo(rutaActual);
   const lineaExiste = Boolean(referencia.linea && referencia.linea > 0 && referencia.linea <= lineas.length);
   const archivoError = esPdf ? pdf.error : esImagen ? imagen.error : esVideo ? video.error : archivo.error;
-  const coincidencias = archivo.error instanceof ApiError && archivo.error.code === "project_path_ambiguous"
-    ? archivo.error.matches ?? []
+  const coincidencias = archivoError instanceof ApiError && archivoError.code === "project_path_ambiguous"
+    ? archivoError.matches ?? []
     : [];
   const puedeReintentar = !(archivoError instanceof ApiError) || archivoError.status >= 500;
   return (
@@ -123,7 +123,7 @@ export function ChatArchivoPreview({
             <>
               <a
                 className="tl-boton tl-boton-compacto"
-                href={urlVideoConversacion(conversationId, referencia.ruta)}
+                href={urlVideoConversacion(conversationId, video.data.ruta)}
                 target="_blank"
                 rel="noreferrer"
                 title={`Abrir ${video.data.nombre} en otra pestaña`}
@@ -132,7 +132,7 @@ export function ChatArchivoPreview({
               </a>
               <a
                 className="tl-boton tl-boton-compacto"
-                href={urlVideoConversacion(conversationId, referencia.ruta, true)}
+                href={urlVideoConversacion(conversationId, video.data.ruta, true)}
                 download={video.data.nombre}
                 title={`Descargar ${video.data.nombre}`}
               >
@@ -185,6 +185,18 @@ export function ChatArchivoPreview({
           {video.isError && (
             <div className="tl-chat-archivo-estado" role="alert">
               <p>No se pudo abrir este video. {errorText(video.error)}</p>
+              {coincidencias.length > 0 && (
+                <ul className="tl-chat-archivo-coincidencias" aria-label="Videos con ese nombre">
+                  {coincidencias.map((ruta) => (
+                    <li key={ruta}>
+                      <button type="button" className="tl-chat-archivo-ruta-opcion" onClick={() => onSelectPath(ruta)}>
+                        <code>{ruta}</code>
+                      </button>
+                    </li>
+                  ))}
+                  {archivoError instanceof ApiError && archivoError.detail && <li>{archivoError.detail}</li>}
+                </ul>
+              )}
               {puedeReintentar && <button type="button" className="tl-boton tl-boton-compacto" onClick={() => void video.refetch()}>Reintentar</button>}
             </div>
           )}
@@ -192,7 +204,7 @@ export function ChatArchivoPreview({
             <div className="tl-chat-archivo-video-marco">
               <video
                 className="tl-chat-archivo-video"
-                src={urlVideoConversacion(conversationId, referencia.ruta)}
+                src={urlVideoConversacion(conversationId, video.data.ruta)}
                 controls
                 playsInline
                 preload="metadata"

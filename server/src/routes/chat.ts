@@ -23,7 +23,7 @@ import {
 } from "../ocupacion";
 import { eliminarPerfilSubagentes, prepararSubagentes } from "../subagentes";
 import { cerrarSubagentesDelTurno, registrarEventoSubagente } from "../subagentes-chat";
-import { ArchivoError, leerArchivo, leerImagen, leerPdf, leerVideo, normalizarRuta } from "../archivos-proyecto";
+import { ArchivoError, buscarArchivosPorNombre, leerArchivo, leerImagen, leerPdf, leerVideo, normalizarRuta } from "../archivos-proyecto";
 import { contarImagenesMarcadas, eliminarImagenesConversacion, guardarImagenAdjunta, idsImagenesMarcadas, leerImagenAdjunta, MAX_IMAGENES_MENSAJE } from "../chat-adjuntos";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
@@ -538,7 +538,7 @@ chat.get("/conversations/:id/archivo-imagen", (c) => {
 });
 
 // Vista previa y descarga de MP4 del workspace; admite rangos para reproducción y búsqueda.
-chat.get("/conversations/:id/archivo-video", (c) => {
+chat.get("/conversations/:id/archivo-video", async (c) => {
   const id = c.req.param("id");
   const conversacion = leerConversacion(id);
   if (!conversacion) return c.json({ error: "conversation_not_found" }, 404);
@@ -547,7 +547,44 @@ chat.get("/conversations/:id/archivo-video", (c) => {
 
   try {
     const ruta = normalizarRuta(c.req.query("ruta"));
-    const archivo = leerEnRaices(raices, (raiz) => leerVideo(raiz, ruta));
+    let archivo: ReturnType<typeof leerVideo>;
+    try {
+      archivo = leerEnRaices(raices, (raiz) => leerVideo(raiz, ruta));
+    } catch (err) {
+      if (!(err instanceof ArchivoError) || err.code !== "project_path_not_found" || ruta.length !== 1) throw err;
+
+      // Los agentes suelen guardar videos en carpetas como `renders/` o `entregables/` y luego
+      // citan solo el nombre. Resuelve ese caso dentro de las raíces autorizadas del chat.
+      let archivoEncontrado: ReturnType<typeof leerVideo> | null = null;
+      for (const raiz of raices) {
+        let busqueda: Awaited<ReturnType<typeof buscarArchivosPorNombre>>;
+        try {
+          busqueda = await buscarArchivosPorNombre(raiz, ruta[0]!);
+        } catch (error) {
+          if (error instanceof ArchivoError && error.code === "project_path_not_found") {
+            continue;
+          }
+          throw error;
+        }
+
+        if (busqueda.rutas.length > 0 && (busqueda.rutas.length > 1 || busqueda.truncada)) {
+          return c.json({
+            error: "project_path_ambiguous",
+            matches: busqueda.rutas,
+            ...(busqueda.truncada ? { detail: "La búsqueda alcanzó su límite; estas rutas pueden no ser todas las coincidencias." } : {}),
+          }, 409);
+        }
+        if (busqueda.truncada) {
+          return c.json({ error: "project_search_incomplete", detail: "La búsqueda alcanzó su límite; abre el video con su ruta completa." }, 409);
+        }
+        if (busqueda.rutas.length === 1) {
+          archivoEncontrado = leerVideo(raiz, normalizarRuta(busqueda.rutas[0]!));
+          break;
+        }
+      }
+      if (!archivoEncontrado) throw err;
+      archivo = archivoEncontrado;
+    }
     const nombreSeguro = archivo.nombre.replace(/[\r\n"\\]/g, "_");
     const nombreAscii = nombreSeguro.normalize("NFKD").replace(/\p{Diacritic}/gu, "").replace(/[^\x20-\x7E]/g, "_").replace(/["\\;]/g, "_");
     const nombreUtf8 = encodeURIComponent(nombreSeguro).replace(/[!'()*]/g, (caracter) => `%${caracter.charCodeAt(0).toString(16).toUpperCase()}`);

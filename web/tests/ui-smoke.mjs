@@ -70,6 +70,7 @@ try {
       { id: "u-retry", role: "user", content: "Quiero una segunda versión de este PDF", created_at: now },
       { id: "s-retry", role: "system", content: "El agente superó el límite de 15 minutos y se detuvo. La sesión quedó guardada; reintenta para continuar donde se quedó.", created_at: now },
     ];
+    messages[3].content += '\n\nFuente: [Precios de Workers](https://developers.cloudflare.com/workers/platform/pricing/ "Tarifas de CPU y memoria")';
     const actions = [
       { id: "git-old", action: "push", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ mensaje: "Falló el intento anterior" }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
       { id: "git-conflict-antiguo", action: "merge", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ codigo: "merge_conflicts", mensaje: JSON.stringify({ codigo: "merge_conflicts", mensaje: "GitHub detectó conflictos entre telo/prueba y main.", pr_number: 9, pr_url: "https://github.com/ejemplo/pruebas/pull/9", rama_fuente: "telo/prueba", rama_base: "main", archivos: ["src/app.ts"], archivos_exactos: true, task_id: "t1", resoluble: true }) }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
@@ -423,6 +424,16 @@ try {
     await vistaDocumento.getByRole("button", { name: "Cerrar", exact: true }).click();
     assert.equal(await page.locator(".tl-tabla-wrap table tbody tr").count(), 1);
     assert.ok((await page.locator(".tl-md pre code").allTextContents()).some(codigo => codigo.includes("└── src/")));
+    const enlaceFuente = page.locator(".tl-enlace-preview-trigger").filter({ hasText: "Precios de Workers" }).first();
+    assert.equal(await enlaceFuente.getAttribute("href"), "https://developers.cloudflare.com/workers/platform/pricing/");
+    await enlaceFuente.hover();
+    const vistaPreviaEnlace = page.locator(".tl-enlace-preview-card").filter({ hasText: "Precios de Workers" }).first();
+    await vistaPreviaEnlace.waitFor({ state: "visible" });
+    assert.match(await vistaPreviaEnlace.textContent(), /developers\.cloudflare\.com/);
+    assert.match(await vistaPreviaEnlace.textContent(), /Tarifas de CPU y memoria/);
+    assert.equal(await vistaPreviaEnlace.getByRole("link", { name: "Abrir" }).getAttribute("target"), "_blank");
+    await enlaceFuente.focus();
+    await vistaPreviaEnlace.waitFor({ state: "visible" });
     assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Llama Test" }).count(), 1);
     assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Nemotron Test" }).count(), 1);
     assert.equal(await page.locator(".tl-msg-esfuerzo").filter({ hasText: "Bajo" }).count(), 1);
