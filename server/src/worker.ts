@@ -25,6 +25,7 @@ import {
   promptObrero,
   promptReparacion,
   requiereAprobacion,
+  serializarRespuestaTarea,
   sinNotas,
   validarPlan,
   validarReporte,
@@ -146,28 +147,16 @@ function finish(
   return true;
 }
 
-function formatearRespuestaTarea(reporte: Reporte, texto: string): string {
-  let mensaje = reporte.resumen?.trim() || "";
-  if (!mensaje && texto.trim()) {
-    mensaje = texto.trim();
-  }
-  const detalles: string[] = [];
-  if (reporte.cambios && reporte.cambios.length > 0) {
-    const lista = reporte.cambios.map((c) => `- ${c.tipo.toUpperCase()}: \`${c.archivo}\``).join("\n");
-    detalles.push(`**Cambios realizados:**\n${lista}`);
-  }
-  if (reporte.pruebas && reporte.pruebas.length > 0) {
-    const lista = reporte.pruebas.map((p) => `- \`${p.comando}\`: ${p.resultado}`).join("\n");
-    detalles.push(`**Pruebas:**\n${lista}`);
-  }
-  if (reporte.pendientes && reporte.pendientes.length > 0) {
-    const lista = reporte.pendientes.map((p) => `- ${p}`).join("\n");
-    detalles.push(`**Pendientes:**\n${lista}`);
-  }
-  if (detalles.length > 0) {
-    return mensaje ? `${mensaje}\n\n${detalles.join("\n\n")}` : detalles.join("\n\n");
-  }
-  return mensaje || "El agente terminó sin devolver un resumen ni cambios o pruebas verificables. No se puede confirmar el resultado.";
+function respuestaDeFallo(resumen: string): string {
+  return serializarRespuestaTarea({
+    estado: "fallo",
+    resumen,
+    cambios: [],
+    pruebas: [],
+    pendientes: [],
+    diff_disponible: false,
+    desviacion: null,
+  });
 }
 
 function avisarChat(id: string, texto?: string, modelo?: { model: string; effort: string | null }) {
@@ -540,7 +529,7 @@ async function ejecutarTarea(task: QueuedTask) {
     const { reporte, texto } = resultado;
     if (reporte.estado === "fallo") {
       if (finish(task.id, "failed", { result: texto, reporte, error: reporte.resumen })) {
-        avisarChat(task.id, reporte.resumen || "La tarea no se pudo completar.", { model: task.model, effort: task.effort });
+        avisarChat(task.id, serializarRespuestaTarea(reporte, texto), { model: task.model, effort: task.effort });
       }
     } else {
       const messageId = task.conversation_id
@@ -548,7 +537,7 @@ async function ejecutarTarea(task: QueuedTask) {
         : undefined;
       if (!finish(task.id, "done", { result: texto, reporte })) return;
       if (task.conversation_id) db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(task.conversation_id);
-      avisarChat(task.id, formatearRespuestaTarea(reporte, texto), { model: task.model, effort: task.effort });
+      avisarChat(task.id, serializarRespuestaTarea(reporte, texto), { model: task.model, effort: task.effort });
       if (task.conversation_id && task.project_id) {
         const accion = ["push","commit","pr"].find(a => planGuardado(task.id)?.requiere_aprobacion.includes(a as "commit"|"push"|"pr"));
         if (accion) {
@@ -574,11 +563,11 @@ async function ejecutarTarea(task: QueuedTask) {
       pausarPorCuota(task.id, err, task.provider_session_id !== null, task.conversation_id);
     } else if (err instanceof ErrorFase) {
       if (finish(task.id, "failed", { error: err.message })) {
-        avisarChat(task.id, err.message, { model: task.model, effort: task.effort });
+        avisarChat(task.id, respuestaDeFallo(err.message), { model: task.model, effort: task.effort });
       }
     } else {
       if (finish(task.id, "failed", { error: mensajeSeguro(err) })) {
-        avisarChat(task.id, `Error en la tarea: ${mensajeSeguro(err)}`, { model: task.model, effort: task.effort });
+        avisarChat(task.id, respuestaDeFallo(`La tarea se detuvo por un error: ${mensajeSeguro(err)}`), { model: task.model, effort: task.effort });
       }
     }
   } finally {

@@ -5,7 +5,28 @@ test("presenta resumen y causa de reportes antiguos sin mostrar memoria interna"
   const datos = interpretarRespuestaTarea('{"estado":"fallo","resumen":"Faltan dependencias","desviacion":"Instala antes de probar"}<telo-memoria>interno</telo-memoria>');
   expect(datos?.resumen).toBe("Faltan dependencias");
   expect(datos?.causa).toBe("Instala antes de probar");
+  expect(datos?.estado).toBe("fallo");
   expect(datos?.detalles).not.toContain("interno");
+});
+
+test("recupera pruebas, cambios y pendientes del nuevo informe estructurado", () => {
+  const datos = interpretarRespuestaTarea(JSON.stringify({
+    tipo: "telo_reporte_tarea",
+    version: 1,
+    estado: "fallo",
+    resumen: "La auditoría terminó con una prueba fallida.",
+    desviacion: "tests/auditoria.test.ts esperaba un valor distinto.",
+    cambios: [{ archivo: "tests/auditoria.test.ts", tipo: "editar" }],
+    pruebas: [{ comando: "bun test tests/auditoria.test.ts", resultado: "fallo" }],
+    pendientes: ["Corregir y ejecutar de nuevo"],
+  }));
+  expect(datos).toMatchObject({
+    estado: "fallo",
+    causa: "tests/auditoria.test.ts esperaba un valor distinto.",
+    cambios: [{ archivo: "tests/auditoria.test.ts", tipo: "editar" }],
+    pruebas: [{ comando: "bun test tests/auditoria.test.ts", resultado: "fallo" }],
+    pendientes: ["Corregir y ejecutar de nuevo"],
+  });
 });
 
 test("tolera JSON malformado sin ejecutar expresiones del modelo", () => {
