@@ -3,13 +3,16 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../config";
 
-mkdirSync(config.dataDir, { recursive: true });
+function abrirBase(dir: string): Database {
+  mkdirSync(dir, { recursive: true });
+  const base = new Database(join(dir, "orquestador.db"), { create: true });
+  base.exec("PRAGMA journal_mode = WAL;");
+  base.exec("PRAGMA foreign_keys = ON;");
+  // Si otra escritura tiene el archivo bloqueado, espera hasta 5 s antes de fallar.
+  base.exec("PRAGMA busy_timeout = 5000;");
+  return base;
+}
 
-export const db = new Database(join(config.dataDir, "orquestador.db"), { create: true });
-db.exec("PRAGMA journal_mode = WAL;");
-db.exec("PRAGMA foreign_keys = ON;");
-// Si otra escritura tiene el archivo bloqueado, espera hasta 5 s antes de fallar.
-db.exec("PRAGMA busy_timeout = 5000;");
 
 // sinClaves: la migración reconstruye una tabla que otras referencian con ON DELETE CASCADE.
 // Con claves foráneas activas, SQLite borraría en cascada esas filas al hacer DROP TABLE, así que
@@ -734,30 +737,26 @@ const migrations: Migration[] = [
       CREATE INDEX mcp_connections_enabled ON mcp_connections(enabled, name);
     `,
   },
+  {
+    // Las consultas de repository_actions van por tarea, conversación y estado; sin índices
+    // eran recorridos completos que crecían con la historia.
+    name: "039_indices_repository_actions",
+    sql: `
+      CREATE INDEX repository_actions_tarea ON repository_actions(task_id, action, state);
+      CREATE INDEX repository_actions_conversacion ON repository_actions(conversation_id, created_at);
+      CREATE INDEX repository_actions_proyecto ON repository_actions(project_id, state, created_at);
+    `,
+  },
 ];
 
-db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
-  name TEXT PRIMARY KEY,
-  applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-);`);
-
-const applied = new Set(
-  db.query<{ name: string }, []>("SELECT name FROM schema_migrations").all().map((r) => r.name),
-);
-
-// Antes de cambiar una base que ya tiene datos, guarda una copia consistente (VACUUM INTO)
-// en DATA_DIR/respaldos-migracion. Una base nueva no necesita copia.
-function copiarAntesDeMigrar(primera: string) {
-  const carpeta = join(config.dataDir, "respaldos-migracion");
+function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {
+  const carpeta = join(dir, "respaldos-migracion");
   mkdirSync(carpeta, { recursive: true });
   const sello = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
   const destino = join(carpeta, `antes-${primera}-${sello}.db`);
-  db.query("VACUUM INTO ?").run(destino);
+  base.query("VACUUM INTO ?").run(destino);
   console.log(`Copia previa a las migraciones: ${destino}`);
 }
-
-const pendientes = migrations.filter((m) => !applied.has(m.name));
-if (pendientes.length > 0 && applied.size > 0) copiarAntesDeMigrar(pendientes[0].name);
 
 // Tablas cuyas claves foráneas se revisan tras una migración sinClaves.
 const TABLAS_CON_CLAVES = [
@@ -769,34 +768,90 @@ const TABLAS_CON_CLAVES = [
   "repository_actions",
 ];
 
-function aplicarMigracion(m: Migration) {
-  const registrar = () => db.query("INSERT INTO schema_migrations (name) VALUES (?)").run(m.name);
+function aplicarMigracion(base: Database, m: Migration) {
+  const registrar = () => base.query("INSERT INTO schema_migrations (name) VALUES (?)").run(m.name);
   if (!m.sinClaves) {
-    db.transaction(() => {
-      db.exec(m.sql);
+    base.transaction(() => {
+      base.exec(m.sql);
       registrar();
     })();
     return;
   }
   // PRAGMA foreign_keys no cambia dentro de una transacción, por eso se apaga fuera.
-  db.exec("PRAGMA foreign_keys = OFF;");
+  base.exec("PRAGMA foreign_keys = OFF;");
   try {
-    db.transaction(() => {
-      db.exec(m.sql);
+    base.transaction(() => {
+      base.exec(m.sql);
       for (const tabla of TABLAS_CON_CLAVES) {
-        if (!db.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(tabla)) continue;
-        const rotas = db.query(`PRAGMA foreign_key_check(${tabla})`).all();
+        if (!base.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(tabla)) continue;
+        const rotas = base.query(`PRAGMA foreign_key_check(${tabla})`).all();
         if (rotas.length > 0) throw new Error(`La migración ${m.name} dejó claves foráneas rotas en ${tabla}`);
       }
       registrar();
     })();
   } finally {
-    db.exec("PRAGMA foreign_keys = ON;");
+    base.exec("PRAGMA foreign_keys = ON;");
   }
 }
 
-for (const m of migrations) {
-  if (applied.has(m.name)) continue;
-  aplicarMigracion(m);
-  console.log(`Migración aplicada: ${m.name}`);
+function prepararBase(dir: string): Database {
+  const base = abrirBase(dir);
+  base.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+  name TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+);`);
+  const applied = new Set(
+    base.query<{ name: string }, []>("SELECT name FROM schema_migrations").all().map((r) => r.name),
+  );
+  // Antes de cambiar una base que ya tiene datos, guarda una copia consistente (VACUUM INTO)
+  // en DATA_DIR/respaldos-migracion. Una base nueva no necesita copia.
+  const pendientes = migrations.filter((m) => !applied.has(m.name));
+  if (pendientes.length > 0 && applied.size > 0) copiarAntesDeMigrar(base, dir, pendientes[0].name);
+  for (const m of migrations) {
+    if (applied.has(m.name)) continue;
+    aplicarMigracion(base, m);
+    console.log(`Migración aplicada: ${m.name}`);
+  }
+  return base;
 }
+
+let dataDirVigente = "";
+let baseAbierta: Database | null = null;
+
+// En pruebas cada archivo fija su DATA_DIR y cierra la base al terminar; como este módulo
+// es único por proceso, el primer DATA_DIR lo capturaba todo y un `db.close()` rompía a
+// los archivos que corrían después. Con este envoltorio la base se abre (y aplica sus
+// migraciones) ligada al DATA_DIR vigente y se reabre si algún archivo la cerró.
+function baseActual(): Database {
+  const dir = process.env.DATA_DIR?.trim() || config.dataDir;
+  if (baseAbierta && dir !== dataDirVigente) {
+    try {
+      baseAbierta.close();
+    } catch {
+      // ya estaba cerrada
+    }
+    baseAbierta = null;
+  }
+  if (!baseAbierta) {
+    baseAbierta = prepararBase(dir);
+    dataDirVigente = dir;
+  }
+  return baseAbierta;
+}
+
+export const db = new Proxy({} as Database, {
+  get(_destino, propiedad) {
+    const base = baseActual();
+    const destino = base as unknown as object;
+    // Un cierre por el proxy deja la base en null: el siguiente acceso la reabre.
+    if (propiedad === "close") {
+      return (...argumentos: unknown[]) => {
+        const resultado = (Reflect.get(destino, "close") as (...los: unknown[]) => unknown).bind(base)(...argumentos);
+        baseAbierta = null;
+        return resultado;
+      };
+    }
+    const valor = Reflect.get(destino, propiedad);
+    return typeof valor === "function" ? (valor as (...argumentos: unknown[]) => unknown).bind(base) : valor;
+  },
+});
