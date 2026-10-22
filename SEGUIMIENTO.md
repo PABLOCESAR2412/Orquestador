@@ -20,7 +20,7 @@ Entrega: [PR #104](https://github.com/PABLOCESAR2412/Orquestador/pull/104). Pend
 
 ### Fallo posterior de CI
 
-- [~] **A10 — Telemetría del agente ficticio fuera del plan en Linux.** El fixture escribía llamadas.jsonl en el workspace; el control nuevo replanificaba correctamente y la prueba esperaba done. Se mueve telemetría y marcadores a .opencode/fixture-analizador, sin ampliar los archivos aprobados del plan. Regresión multiplataforma y repetición de CI pendientes.
+- [~] **A10 — Telemetría del agente ficticio fuera del plan en Linux.** El fixture escribía llamadas.jsonl y el servidor actualizaba salida.log en el workspace. El comparador atribuía ambos al agente y replanificaba. Telemetría del fixture movida a .opencode/fixture-analizador; el worker excluye solo su salida.log en la raíz exacta de la tarea libre. Las regresiones comprueban que otros logs siguen detectándose. Repetición Linux de CI pendiente.
 
 ### Validación de este lote
 

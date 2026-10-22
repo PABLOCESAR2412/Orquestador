@@ -5,7 +5,7 @@ import { repositoryActions } from "./routes/repository-actions";
 import { proyectoOcupado, reservarProyecto, soltarProyecto } from "./ocupacion";
 import { capturarAlcance, comprobarAlcance } from "./alcance-plan";
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { config } from "./config";
 import { MAX_TAREAS_SIMULTANEAS } from "./limites";
 import { db } from "./db";
@@ -390,7 +390,9 @@ async function faseObrero(
   // Las notas se añaden al aprobar y no forman parte del hash del plan aprobado.
   if (aprobacion.plan_hash && (aprobacion.approved_hash !== aprobacion.plan_hash || hashPlan(sinNotas(plan)) !== aprobacion.plan_hash))
     throw new ErrorFase("El plan cambió después de su aprobación. Revisa y aprueba la versión actual.");
-  const alcance = await capturarAlcance(ctx.cwd, plan.pasos.flatMap(p => p.archivos));
+  // Solo el registro que escribe Telo en la raíz de una tarea libre queda fuera del plan.
+  const internos = resolve(ctx.cwd) === resolve(config.dataDir, "tasks", task.id) ? ["salida.log"] : [];
+  const alcance = await capturarAlcance(ctx.cwd, plan.pasos.flatMap(p => p.archivos), internos);
 
   db.query("UPDATE tasks SET status = 'running' WHERE id = ?").run(task.id);
   publicarEstado(task.id);

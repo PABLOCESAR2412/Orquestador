@@ -7,6 +7,7 @@ export type AlcancePlan = {
   cwd: string;
   arbol: string;
   contenido?: Map<string, string>;
+  internos?: string[];
   archivos: { ruta: string; directorio: boolean }[];
 };
 
@@ -77,7 +78,7 @@ function contenidoWorkspace(cwd: string, prefijo = "", resultado = new Map<strin
 }
 
 // Guarda el árbol de trabajo actual, incluidos cambios de turnos anteriores, sin crear commits.
-export async function capturarAlcance(cwd: string, archivosPlan: string[]): Promise<AlcancePlan> {
+export async function capturarAlcance(cwd: string, archivosPlan: string[], archivosInternos: string[] = []): Promise<AlcancePlan> {
   const raiz = resolve(cwd);
   if (lstatSync(raiz).isSymbolicLink())
     throw new Error("El workspace no admite enlaces simbólicos.");
@@ -101,9 +102,10 @@ export async function capturarAlcance(cwd: string, archivosPlan: string[]): Prom
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
   }
+  const internos = archivosInternos.map(rutaDelPlan);
   return gitReal
-    ? { cwd: raiz, archivos, arbol: await arbolActual(raiz) }
-    : { cwd: raiz, archivos, arbol: "", contenido: contenidoWorkspace(raiz) };
+    ? { cwd: raiz, archivos, internos, arbol: await arbolActual(raiz) }
+    : { cwd: raiz, archivos, internos, arbol: "", contenido: contenidoWorkspace(raiz) };
 }
 
 // Solo informa: nunca revierte ni elimina los cambios que necesitan otra aprobación.
@@ -125,6 +127,7 @@ export async function comprobarAlcance(snapshot: AlcancePlan): Promise<string[]>
     .filter(Boolean)
     .filter((ruta) => !ruta.startsWith(".opencode/") && ruta !== ".opencode");
   return cambiados.filter((ruta) => {
+    if (snapshot.internos?.includes(ruta)) return false;
     try {
       rutaDelPlan(ruta);
       sinEnlaces(snapshot.cwd, ruta);
