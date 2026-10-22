@@ -3,6 +3,8 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-22", "tipo": "grande", "titulo": "Fiabilidad: escanea secretos en los blobs del índice, purga el historial con índices nuevos, apaga la tarea por silencio, inyecta guías en tareas sin proyecto y desacopla la suite de la base", "pr": null },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Tareas: etiqueta el evento de PR con conflictos y traduce los errores guardados a frases claras", "pr": null },
     { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Agentes: muestra subchats, actividad y resultados desde la respuesta y limita las sesiones hijas a seguimiento", "pr": 101 },
     { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Skills: integra Context7 global, MCP y manual del proveedor para consultas técnicas", "pr": 101 },
     { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Chat: permite adjuntar videos MP4 y WebM como hojas visuales de cuatro fotogramas", "pr": 101 },
