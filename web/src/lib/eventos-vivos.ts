@@ -49,7 +49,7 @@ function entregar(evento: EventoVivo) {
   const tareaId =
     evento.tipo === "tarea"
       ? evento.id
-      : evento.tipo === "actividad" || evento.tipo === "chat"
+      : evento.tipo === "actividad" || evento.tipo === "chat" || evento.tipo === "configuracion_chat"
       ? null
       : evento.task_id;
 

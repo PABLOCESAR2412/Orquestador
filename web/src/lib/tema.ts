@@ -155,9 +155,13 @@ export function aplicarTema(valor: Tema = leerTema()) {
 }
 
 export function guardarTema(valor: Tema) {
+  const anterior = leerTema();
+  if (anterior !== "sistema") guardarValor(`telo:paleta-${temaEsClaro(anterior) ? "claro" : "oscuro"}`, anterior);
   const canonico: Tema = valor === "oscuro" ? "telo-obsidiana" : valor === "claro" ? "telo-claro" : valor;
   guardarValor(CLAVE_TEMA, canonico);
+  if (canonico !== "sistema") guardarValor(`telo:paleta-${temaEsClaro(canonico) ? "claro" : "oscuro"}`, canonico);
   aplicarTema(canonico);
+  window.dispatchEvent(new Event("telo:tema-cambiado"));
 }
 
 export function guardarTipografia(id: TipografiaId) {
@@ -190,6 +194,9 @@ export function temaEsClaro(valor: Tema): boolean {
 
 export function temaComplementario(valor: Tema): Tema {
   const esClaro = temaEsClaro(valor);
+  // Conserva también paletas sin pareja (Dracula, Monokai, etc.) al volver del otro modo.
+  const recordado = leerValor(`telo:paleta-${esClaro ? "oscuro" : "claro"}`);
+  if (recordado && TEMAS.some((t) => t.id === recordado && t.modo === (esClaro ? "oscuro" : "claro"))) return recordado as Tema;
   const pareja: Partial<Record<TemaId, TemaId>> = {
     "telo-obsidiana": "telo-claro", "telo-claro": "telo-obsidiana",
     "github-dark": "github-light", "github-light": "github-dark",

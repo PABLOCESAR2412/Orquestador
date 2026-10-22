@@ -1,5 +1,6 @@
-import { useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "../api";
 import type { Task, TaskStatus } from "../api";
 import { useEventosVivos } from "./eventos-vivos";
 
@@ -8,6 +9,7 @@ const CLAVE = "telo:notificaciones";
 const CLAVE_SONIDO = "telo:sonido-notificaciones";
 const CLAVE_TIPO_SONIDO = "telo:sonido-notificacion-tipo";
 let contextoAudio: AudioContext | null = null;
+export const sonidoGestionadoPorAndroid = () => typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
 
 export const SONIDOS_NOTIFICACION = [
   { id: "telo", nombre: "Telo" },
@@ -123,6 +125,7 @@ export async function prepararSonidoNotificaciones(): Promise<boolean> {
 
 /** Sonido corto sintetizado, sin descargar audio ni depender de archivos externos. */
 export async function probarSonidoNotificaciones(id = sonidoNotificacionSeleccionado()): Promise<boolean> {
+  if (sonidoGestionadoPorAndroid()) return false;
   const audio = obtenerAudio();
   if (!audio || !(await prepararSonidoNotificaciones())) return false;
   const ahora = audio.currentTime;
@@ -145,9 +148,10 @@ export async function probarSonidoNotificaciones(id = sonidoNotificacionSeleccio
 }
 
 // La API Notification entrega el aviso al sistema operativo incluso con Telo en primer plano.
-async function mostrar(titulo: string, cuerpo: string, etiqueta: string): Promise<void> {
+async function mostrar(titulo: string, cuerpo: string, etiqueta: string, conversationId?: string): Promise<void> {
   if (!notificacionesActivas() || !notificacionesSoportadas() || Notification.permission !== "granted") return;
-  const opciones: NotificationOptions = { body: cuerpo, tag: etiqueta, icon: "/icon.svg" };
+  const url = conversationId ? `/chat?conversacion=${encodeURIComponent(conversationId)}` : "/tareas";
+  const opciones: NotificationOptions = { body: cuerpo, tag: etiqueta, icon: "/notification-icon.png", badge: "/notification-badge.png", silent: !sonidoGestionadoPorAndroid() || !sonidoNotificacionesActivo(), data: { url } };
   // En el teléfono, las notificaciones salen por el service worker de la PWA.
   try {
     const registro = await navigator.serviceWorker?.getRegistration();
@@ -159,7 +163,8 @@ async function mostrar(titulo: string, cuerpo: string, etiqueta: string): Promis
     // Sin service worker disponible, se usa la API directa.
   }
   try {
-    new Notification(titulo, opciones);
+    const aviso = new Notification(titulo, opciones);
+    aviso.onclick = () => { window.focus(); window.location.assign(url); aviso.close(); };
   } catch {
     // Algunos navegadores móviles solo muestran avisos desde el service worker.
   }
@@ -169,6 +174,22 @@ async function mostrar(titulo: string, cuerpo: string, etiqueta: string): Promis
 export function useNotificacionesDeTareas(): void {
   const qc = useQueryClient();
   const avisadas = useRef(new Set<string>());
+  const anteriores = useRef(new Map<string, string>());
+  const chats = useQuery({ queryKey: ["conversations"], queryFn: api.listConversations, refetchInterval: 5000 });
+  const git = useQuery({ queryKey: ["avisos-git"], queryFn: api.avisosGit, refetchInterval: 5000 });
+  useEffect(() => {
+    const emitir = (id: string, estado: string, titulo: string, cuerpo: string, chatId: string) => {
+      const previo = anteriores.current.get(id);
+      anteriores.current.set(id, estado);
+      if ((previo === undefined && !anteriores.current.has(id.startsWith("git-") ? "__git" : "__chats")) || previo === estado || !estado) return;
+      void mostrar(titulo, cuerpo, id, chatId);
+      if (notificacionesActivas() && sonidoNotificacionesActivo()) void probarSonidoNotificaciones();
+    };
+    for (const chat of chats.data ?? []) emitir(`chat-${chat.id}`, chat.requiere_continuar || chat.ultimo_rol === "system" ? `atencion-${chat.last_message_at}` : "", "Telo necesita tu acción", `${chat.title}. Revisa el error o continúa donde quedó.`, chat.id);
+    for (const accion of git.data ?? []) emitir(`git-${accion.id}`, accion.state, accion.state === "pending" ? "Acción Git pendiente" : accion.state === "failed" ? "La acción Git falló" : "Acción Git completada", `${accion.action}. Abre el chat para revisar el resultado.`, accion.conversation_id);
+    if (chats.data) anteriores.current.set("__chats", "1");
+    if (git.data) anteriores.current.set("__git", "1");
+  }, [chats.data, git.data]);
 
   useEventosVivos({}, (evento) => {
     if (evento.tipo !== "tarea") return;
@@ -180,7 +201,7 @@ export function useNotificacionesDeTareas(): void {
     avisadas.current.add(clave);
     if (!notificacionesActivas()) return;
     const tarea = qc.getQueryData<Task[]>(["tasks"])?.find((t) => t.id === evento.id);
-    void mostrar(aviso.titulo, `${tarea?.title ?? "Tarea"}. ${aviso.cuerpo}`, `tarea-${evento.id}`);
+    void mostrar(aviso.titulo, `${tarea?.title ?? "Tarea"}. ${aviso.cuerpo}`, `tarea-${evento.id}`, tarea?.conversation_id ?? undefined);
     if (sonidoNotificacionesActivo()) void probarSonidoNotificaciones();
   });
 }

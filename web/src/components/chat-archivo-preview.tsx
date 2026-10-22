@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, ApiError, urlImagenConversacion, urlPdfConversacion, urlVideoConversacion } from "../api";
 import { LoadingSkeleton } from "./loading-skeleton";
@@ -24,6 +24,9 @@ export function ChatArchivoPreview({
   const esPdf = /\.pdf$/i.test(referencia.ruta);
   const esImagen = /\.(?:png|jpe?g|webp|gif)$/i.test(referencia.ruta);
   const esVideo = /\.mp4$/i.test(referencia.ruta);
+  const esHtml = /\.html?$/i.test(referencia.ruta);
+  const [verCodigo, setVerCodigo] = useState(Boolean(referencia.linea));
+  useEffect(() => setVerCodigo(Boolean(referencia.linea)), [referencia.ruta, referencia.linea]);
   const archivo = useQuery({
     queryKey: ["conversation-file", conversationId, referencia.ruta],
     queryFn: () => api.chatFile(conversationId, referencia.ruta),
@@ -92,6 +95,7 @@ export function ChatArchivoPreview({
           <p title={rutaActual}>{rutaActual}{referencia.linea ? ` · línea ${referencia.linea}` : ""}</p>
         </div>
         <div className="tl-chat-archivo-acciones">
+          {esHtml && <button type="button" className="tl-boton tl-boton-compacto" onClick={() => setVerCodigo(!verCodigo)}>{verCodigo ? "Vista previa" : "Código"}</button>}
           {esPdf && pdf.data && (
             <>
               <a
@@ -256,7 +260,16 @@ export function ChatArchivoPreview({
             </p>
           )}
           {archivo.data.truncado && <p className="tl-chat-archivo-nota">Se muestra el comienzo del archivo; el contenido supera el límite de vista.</p>}
-          <div ref={cuerpoRef} className="tl-chat-archivo-cuerpo" role="region" aria-label={`Contenido de ${rutaActual}`} tabIndex={0}>
+          {esHtml && !verCodigo && !archivo.data.truncado ? (
+            <iframe
+              key={rutaActual}
+              title={`Vista previa de ${nombre}`}
+              sandbox="allow-scripts"
+              referrerPolicy="no-referrer"
+              style={{ width: "100%", flex: "1 1 auto", minHeight: 360, border: 0, background: "white" }}
+              srcDoc={`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https:; style-src 'unsafe-inline' https:; img-src data: blob: https:; font-src data: https:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">${archivo.data.texto}`}
+            />
+          ) : <div ref={cuerpoRef} className="tl-chat-archivo-cuerpo" role="region" aria-label={`Contenido de ${rutaActual}`} tabIndex={0}>
             <pre>{lineas.map((linea, indice) => {
               const numero = indice + 1;
               const activa = numero === referencia.linea;
@@ -272,7 +285,7 @@ export function ChatArchivoPreview({
                 </span>
               );
             })}</pre>
-          </div>
+          </div>}
         </>
       )}
         </>

@@ -63,6 +63,8 @@ test("rechaza tokens demasiado cortos para protegerlos al redactar salidas", asy
 test("genera configuración remota para OpenCode y Codex sin incluir el token literal", () => {
   const runtime = [{ clave: "telo_lms01", url: "https://lms.ejemplo.test/mcp", variableToken: "MCP_AUTH_123" }];
   const openCode = configuracionOpenCodeMcp(runtime);
+  expect(openCode.compaction).toEqual({ auto: true, prune: true });
+  expect(configuracionOpenCodeMcp([]).compaction).toEqual({ auto: true, prune: true });
   const codex = argumentosConfigMcpCodex(runtime);
   expect(JSON.stringify(openCode)).toContain("Bearer {env:MCP_AUTH_123}");
   expect(codex.join(" ")).toContain('mcp_servers.telo_lms01.url="https://lms.ejemplo.test/mcp"');

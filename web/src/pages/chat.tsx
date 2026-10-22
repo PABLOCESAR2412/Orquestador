@@ -112,6 +112,10 @@ export function ChatPage() {
   } = useShell();
   const selectedId = selectedConversationId;
   const setSelectedId = setSelectedConversationId;
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("conversacion");
+    if (id) setSelectedId(id);
+  }, [setSelectedId]);
 
   const [draft, setDraft] = useState("");
   const [creandoChat, setCreandoChat] = useState(false);
@@ -369,18 +373,15 @@ export function ChatPage() {
     queryKey: ["conversations"],
     queryFn: api.listConversations,
     refetchInterval: 4_000,
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
   });
   const conversacionesDisponibles = useMemo(
     () => conversations.data?.flatMap((conv) => [conv, ...(conv.subchats ?? [])]) ?? [],
     [conversations.data],
   );
 
-  // Abre el chat más reciente al cargar si no hay uno seleccionado
-  useEffect(() => {
-    if (!selectedId && conversations.data?.length) {
-      setSelectedId(conversations.data[0].id);
-    }
-  }, [selectedId, conversations.data, setSelectedId]);
+  const proyectosInicio = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
 
   const models = useQuery({
     queryKey: ["models"],
@@ -478,6 +479,10 @@ export function ChatPage() {
   // Pasos del agente en vivo, por chat. Llegan por el canal (evento "actividad") mientras el agente corre.
   const [vivos, setVivos] = useState<Record<string, { turnoId: string; pasos: PasoActividad[] }>>({});
   const { conectado: canalVivoConectado } = useEventosVivos({}, (evento) => {
+    if (evento.tipo === "configuracion_chat") {
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      return;
+    }
     if (evento.tipo === "tarea" || evento.tipo === "evento") {
       const taskId = evento.tipo === "tarea" ? evento.id : evento.task_id;
       if (taskId !== tareaChat?.id) return;
@@ -666,7 +671,7 @@ export function ChatPage() {
   const enviandoActual = !!envioActual;
   const bloqueoEnvioCola = !!modeloAgotadoChat || (!colaActiva && (agenteOcupado || cola.length > 0));
   const puedeEnviar =
-    !!selectedId && !conversacionPadre && !enviandoActual && !subiendoAdjuntos && !bloqueoEnvioCola && (draft.trim() !== "" || adjuntosListos.length > 0 || imagenesPendientes.length > 0 || videosPendientes.length > 0);
+    !!selectedId && !conversacionPadre && !configure.isPending && !enviandoActual && !subiendoAdjuntos && !bloqueoEnvioCola && (draft.trim() !== "" || adjuntosListos.length > 0 || imagenesPendientes.length > 0 || videosPendientes.length > 0);
 
   const submit = async () => {
     if (planPendiente) {
@@ -1375,7 +1380,7 @@ export function ChatPage() {
       aria-label="Chat"
     >
       {!selectedId ? (
-        <div className="tl-vacio" aria-busy={conversations.isPending}>
+        <div className="tl-vacio tl-bienvenida" aria-busy={conversations.isPending}>
           <div className="tl-vacio-caja">
             <div className="tl-vacio-emblema" aria-hidden="true">
               <span className="tl-vacio-orbita tl-vacio-orbita-a" />
@@ -1404,8 +1409,8 @@ export function ChatPage() {
               </>
             ) : (
               <>
-                <h2>¿Qué vamos a resolver?</h2>
-                <p>Empieza un chat para hacer una pregunta, explorar una idea o trabajar con tus archivos.</p>
+                <h2>Bienvenido a Telo</h2>
+                <p>Retoma tu trabajo o empieza una nueva idea.</p>
                 <button
                   type="button"
                   className="tl-boton tl-boton-principal"
@@ -1414,6 +1419,21 @@ export function ChatPage() {
                 >
                   {creandoChat ? "Creando chat…" : "Nuevo chat"}
                 </button>
+                <div className="tl-inicio-recientes">
+                  <section aria-label="Proyectos recientes">
+                    <h3>Proyectos recientes</h3>
+                    {proyectosInicio.isPending ? <p>Cargando proyectos…</p> : proyectosInicio.isError ? <button type="button" onClick={() => void proyectosInicio.refetch()}>Reintentar proyectos</button> : proyectosInicio.data?.length ? [...proyectosInicio.data].sort((a, b) => (b.ultima_actividad ?? b.created_at).localeCompare(a.ultima_actividad ?? a.created_at)).slice(0, 4).map((proyecto) => (
+                      <Link key={proyecto.id} to="/proyectos/$id" params={{ id: proyecto.id }}>{proyecto.name}<span>{proyecto.en_proceso ? "En ejecución" : "Abrir proyecto"}</span></Link>
+                    )) : <p>Tus proyectos aparecerán aquí.</p>}
+                  </section>
+                  <section aria-label="Chats recientes">
+                    <h3>Chats recientes</h3>
+                    {conversations.data?.filter((chat) => !chat.parent_conversation_id).sort((a, b) => (b.last_message_at ?? b.created_at).localeCompare(a.last_message_at ?? a.created_at)).slice(0, 5).map((chat) => (
+                      <button type="button" key={chat.id} onClick={() => setSelectedId(chat.id)}>{chat.title || "Chat sin título"}<span>{chat.ocupada ? "En ejecución" : "Continuar conversación"}</span></button>
+                    ))}
+                    {!conversations.data?.length && <p>Tus conversaciones aparecerán aquí.</p>}
+                  </section>
+                </div>
               </>
             )}
           </div>
