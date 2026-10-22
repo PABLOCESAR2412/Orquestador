@@ -39,6 +39,9 @@ export async function runCodex(opts: {
   sessionId?: string | null;
   cwd: string;
   timeoutMs?: number | null;
+  // El vigilante de actividad es propio de OpenCode; aquí se declara para pasar el mismo
+  // paquete de opciones sin error de tipo y se ignora.
+  tiempoSinActividadMs?: number | null;
   signal?: AbortSignal;
   onSesion?: (sessionId: string) => void;
   onLinea?: (linea: string) => void;

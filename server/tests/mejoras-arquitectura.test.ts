@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { publicar, eventosDesde } from "../src/bus";
 import { limpiarSesionesAntiguas, crearSesionDispositivo } from "../src/auth";
 import { proyectoOcupado } from "../src/ocupacion";
@@ -84,6 +87,32 @@ describe("compartir_contexto entre chats del proyecto", () => {
 
     const promptSinContexto = conInstrucciones(pId, "Acción normal", c2);
     expect(promptSinContexto).toBe("Acción normal");
+  });
+});
+
+describe("documentos guía en tareas sin proyecto", () => {
+  test("lee AGENTS.md y CLAUDE.md del workspace y los antepone al prompt", () => {
+    const raiz = mkdtempSync(join(tmpdir(), "telo-guias-"));
+    try {
+      writeFileSync(join(raiz, "AGENTS.md"), "Convenciones del repo: usa bun y pruebas con bun test.\n");
+      writeFileSync(join(raiz, "CLAUDE.md"), "Guía: reinicia el worker tras cambiar el worker.\n");
+      const salida = conInstrucciones(null, "Repara el scroll del diagrama", null, raiz);
+      expect(salida).toContain("Documentos guía del workspace (AGENTS.md, CLAUDE.md");
+      expect(salida).toContain("Convenciones del repo: usa bun y pruebas con bun test.");
+      expect(salida).toContain("Guía: reinicia el worker tras cambiar el worker.");
+      expect(salida).toContain("Repara el scroll del diagrama");
+    } finally {
+      rmSync(raiz, { recursive: true, force: true });
+    }
+  });
+
+  test("sin documentos guía deja el prompt intacto", () => {
+    const raiz = mkdtempSync(join(tmpdir(), "telo-guias-"));
+    try {
+      expect(conInstrucciones(null, "Pregunta simple", null, raiz)).toBe("Pregunta simple");
+    } finally {
+      rmSync(raiz, { recursive: true, force: true });
+    }
   });
 });
 
