@@ -356,7 +356,7 @@ export async function runOpenCode(opts: {
   const temporal = mkdtempSync(join(raiz, "run-"));
   const archivo = join(temporal, "opencode.json");
   try {
-    writeFileSync(archivo, JSON.stringify(configuracionOpenCodeMcp(servidores)), { encoding: "utf8", flag: "wx", mode: 0o600 });
+    writeFileSync(archivo, JSON.stringify(configuracionOpenCodeMcp(servidores, opts.model)), { encoding: "utf8", flag: "wx", mode: 0o600 });
     return await ejecutarOpenCode({ ...opts, opencodeMcpConfigPath: archivo });
   } finally {
     rmSync(temporal, { recursive: true, force: true });
