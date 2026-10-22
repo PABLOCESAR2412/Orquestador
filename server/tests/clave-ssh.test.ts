@@ -23,7 +23,9 @@ const { db } = await import("../src/db");
 
 const CLAVE_VALIDA = randomBytes(32).toString("base64");
 const CLAVE_ORIGINAL = process.env.TELO_CLAVE_CIFRADO;
-const SSH_KEYGEN = Bun.which("ssh-keygen") !== null;
+// OpenSSH de Windows difiere de la POSIX en lo que estos ejercicios verifican (comandos
+// envueltos en shell y validación de rutas); la función se comprueba en el VM con Linux.
+const SSH_KEYGEN = Bun.which("ssh-keygen") !== null && process.platform !== "win32";
 
 afterEach(() => {
   if (CLAVE_ORIGINAL === undefined) delete process.env.TELO_CLAVE_CIFRADO;
