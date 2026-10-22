@@ -380,7 +380,9 @@ chat.get("/conversations/:id/contexto", (c) => {
 // Las imágenes se suben por separado del JSON del mensaje para conservar el límite pequeño de la API.
 chat.post("/conversations/:id/adjuntos", async (c) => {
   const id = c.req.param("id");
-  if (!leerConversacion(id)) return c.json({ error: "conversation_not_found" }, 404);
+  const conv = leerConversacion(id);
+  if (!conv) return c.json({ error: "conversation_not_found" }, 404);
+  if (conv.parent_conversation_id) return c.json({ error: "subagent_read_only" }, 409);
   const form = await c.req.formData().catch(() => null);
   const archivo = form?.get("archivo");
   if (!(archivo instanceof File)) return c.json({ error: "invalid_image" }, 400);
@@ -958,6 +960,7 @@ chat.post("/conversations/:id/messages", async (c) => {
   const conversationId = c.req.param("id");
   const conv = leerConversacion(conversationId);
   if (!conv) return c.json({ error: "conversation_not_found" }, 404);
+  if (conv.parent_conversation_id) return c.json({ error: "subagent_read_only" }, 409);
 
   const body = await c.req.json<{ content?: unknown; retryOf?: unknown }>().catch(() => null);
   const content = typeof body?.content === "string" ? body.content.trim() : "";
@@ -1051,6 +1054,7 @@ chat.post("/conversations/:id/seguir", async (c) => {
   const conversationId = c.req.param("id");
   const conv = leerConversacion(conversationId);
   if (!conv) return c.json({ error: "conversation_not_found" }, 404);
+  if (conv.parent_conversation_id) return c.json({ error: "subagent_read_only" }, 409);
   const tarea = conv.project_id && !conv.parent_conversation_id ? tareaDelChat(conversationId) : null;
   const modeloAgotado = conv.cuota_modelo ?? (tarea?.status === "sin_cuota"
     ? tarea.modelo_agotado ?? tarea.model

@@ -260,6 +260,8 @@ export function errorText(err: unknown): string {
         return "Este proyecto ya tiene un repositorio configurado y no se puede cambiar desde aquí.";
       case "proyecto_ocupado":
         return "El proyecto está ocupado por una tarea. Intenta de nuevo cuando termine.";
+      case "subagent_read_only":
+        return "Este subchat solo permite revisar la actividad. Vuelve al chat principal para dar instrucciones.";
       case "github_access":
         return textoErrorConAyuda(
           "GitHub no concedió acceso al repositorio.",

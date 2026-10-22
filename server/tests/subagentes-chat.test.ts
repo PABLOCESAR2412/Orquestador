@@ -103,4 +103,28 @@ describe("subchats de subagentes", () => {
       "SELECT subagent_status FROM conversations WHERE parent_conversation_id=?",
     ).get(padre)?.subagent_status).toBe("interrupted");
   });
+
+  test("mantiene los subchats en modo de seguimiento y rechaza nuevos envíos", async () => {
+    const padre = crypto.randomUUID();
+    const hija = crypto.randomUUID();
+    db.query("INSERT INTO conversations (id,title,model) VALUES (?, 'Supervisor', 'openai/gpt-4.1-mini')").run(padre);
+    db.query("INSERT INTO conversations (id,title,model,parent_conversation_id,parent_turn_id,subagent_status) VALUES (?, 'Subagente', 'openai/gpt-4.1-mini', ?, ?, 'done')")
+      .run(hija, padre, crypto.randomUUID());
+
+    const mensaje = await chat.request(`/conversations/${hija}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "Continúa desde aquí" }),
+    });
+    expect(mensaje.status).toBe(409);
+    expect(await mensaje.json()).toEqual({ error: "subagent_read_only" });
+
+    const adjunto = await chat.request(`/conversations/${hija}/adjuntos`, { method: "POST", body: new FormData() });
+    expect(adjunto.status).toBe(409);
+    expect(await adjunto.json()).toEqual({ error: "subagent_read_only" });
+
+    const seguir = await chat.request(`/conversations/${hija}/seguir`, { method: "POST", body: "{}" });
+    expect(seguir.status).toBe(409);
+    expect(await seguir.json()).toEqual({ error: "subagent_read_only" });
+  });
 });

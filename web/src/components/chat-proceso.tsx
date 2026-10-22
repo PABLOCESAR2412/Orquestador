@@ -198,13 +198,18 @@ export function ProcesoGuardado({
   turnoId,
   textoFinal,
   onAbrirSubchat,
+  subagentes,
+  abiertoInicial = false,
 }: {
   conversacionId: string;
   turnoId: string;
   textoFinal: string;
   onAbrirSubchat?: (id: string) => void;
+  subagentes?: SubagentChat[];
+  abiertoInicial?: boolean;
 }) {
-  const [abierto, setAbierto] = useState(false);
+  const [abierto, setAbierto] = useState(abiertoInicial);
+  const subagentesFijos = subagentes?.length ? subagentes : undefined;
   const pasos = useQuery({
     queryKey: ["actividad", conversacionId, turnoId],
     queryFn: () => api.listTurnoActividad(conversacionId, turnoId),
@@ -218,6 +223,14 @@ export function ProcesoGuardado({
 
   return (
     <div className="tl-proceso-wrap">
+      {subagentesFijos && (
+        <SubagentesTurno
+          conversacionId={conversacionId}
+          turnoId={turnoId}
+          onAbrir={onAbrirSubchat}
+          hijosFijos={subagentesFijos}
+        />
+      )}
       <button
         type="button"
         className="tl-proceso-boton"
@@ -252,7 +265,7 @@ export function ProcesoGuardado({
             <p className="tl-nota">No hay pasos guardados para esta respuesta.</p>
           )}
           {pasos.data && pasos.data.length > 0 && <ProcesoAgente pasos={pasos.data} textoFinal={textoFinal} />}
-          {abierto && <SubagentesTurno conversacionId={conversacionId} turnoId={turnoId} onAbrir={onAbrirSubchat} />}
+          {abierto && !subagentesFijos && <SubagentesTurno conversacionId={conversacionId} turnoId={turnoId} onAbrir={onAbrirSubchat} />}
         </div>
       )}
     </div>
@@ -314,29 +327,42 @@ export function SubagentesTurno({
   conversacionId,
   turnoId,
   onAbrir,
+  hijosFijos,
   enCurso = false,
   mostrarEspera = false,
 }: {
   conversacionId: string;
   turnoId: string;
   onAbrir?: (id: string) => void;
+  hijosFijos?: SubagentChat[];
   enCurso?: boolean;
   mostrarEspera?: boolean;
 }) {
   const subagentes = useQuery({
     queryKey: ["subagentes", conversacionId, turnoId],
     queryFn: () => api.listSubagentes(conversacionId, turnoId),
-    enabled: Boolean(conversacionId && turnoId),
-    refetchInterval: (query) => enCurso || query.state.data?.some((hijo) => hijo.subagent_status === "running") ? 1200 : false,
+    enabled: Boolean(conversacionId && turnoId) && hijosFijos === undefined,
+    refetchInterval: (query) => hijosFijos === undefined && (enCurso || query.state.data?.some((hijo) => hijo.subagent_status === "running")) ? 1200 : false,
   });
-  const hijos = subagentes.data ?? [];
+  const hijos = hijosFijos ?? subagentes.data ?? [];
   if (hijos.length === 0 && !(enCurso && mostrarEspera)) return null;
+  const titulo = hijos.length === 0
+    ? "Delegación solicitada"
+    : hijos.length === 1
+      ? "Se creó 1 subagente"
+      : `Se crearon ${hijos.length} subagentes`;
+  const resumen = [
+    [hijos.filter((hijo) => hijo.subagent_status === "running").length, "trabajando"],
+    [hijos.filter((hijo) => hijo.subagent_status === "done").length, "listos"],
+    [hijos.filter((hijo) => hijo.subagent_status === "failed").length, "con error"],
+    [hijos.filter((hijo) => hijo.subagent_status === "cancelled" || hijo.subagent_status === "interrupted").length, "detenidos"],
+  ].filter(([cantidad]) => Number(cantidad) > 0).map(([cantidad, etiqueta]) => `${cantidad} ${etiqueta}`).join(" · ");
 
   return (
     <section className="tl-subagentes" aria-live="polite" aria-label="Subagentes de este turno">
       <header className="tl-subagentes-cabecera">
-        <strong>{hijos.length ? `Se crearon ${hijos.length} ${hijos.length === 1 ? "subagente" : "subagentes"}` : "Delegación solicitada"}</strong>
-        {hijos.some((hijo) => hijo.subagent_status === "running") && <span>En ejecución</span>}
+        <strong>{titulo}</strong>
+        {resumen && <span>{resumen}</span>}
       </header>
       {subagentes.isError && <p className="tl-nota">No se pudo actualizar el estado de los subagentes.</p>}
       {hijos.length === 0 && <p className="tl-nota">Los subchats aparecerán aquí cuando OpenCode cree cada subagente.</p>}

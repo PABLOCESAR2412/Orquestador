@@ -191,6 +191,7 @@ test("instala skills conocidas y desempata rutas múltiples (playwright, caveman
   expect(parsearComandoSkill("playwright")).toEqual({ owner: "openai", repo: "skills", name: "playwright" });
   expect(parsearComandoSkill("npx skills add caveman")).toEqual({ owner: "JuliusBrussee", repo: "caveman", name: "caveman" });
   expect(parsearComandoSkill("npx skills add pbakaus/impeccable")).toEqual({ owner: "pbakaus", repo: "impeccable", name: "impeccable" });
+  expect(parsearComandoSkill("context7")).toEqual({ owner: "upstash", repo: "context7", name: "context7-mcp" });
 
   globalThis.fetch = (async (url) => {
     const destino = String(url);
@@ -240,8 +241,8 @@ test("usa fallback global o directo si la API de GitHub devuelve rate-limit o 50
       return new Response("API rate limit exceeded", { status: 403 });
     }
     // Pero el CDN raw funciona
-    if (destino.includes("raw.githubusercontent.com")) {
-      return new Response("---\nname: context7\ndescription: Frameworks docs\n---\n\nDocs actualizadas");
+    if (destino.endsWith("/plugins/agent-plugins/context7/skills/context7-mcp/SKILL.md")) {
+      return new Response("---\nname: context7-mcp\ndescription: Frameworks docs\n---\n\nDocs actualizadas");
     }
     return new Response("Not found", { status: 404 });
   }) as typeof fetch;
@@ -253,7 +254,7 @@ test("usa fallback global o directo si la API de GitHub devuelve rate-limit o 50
   });
   expect(respuesta.status).toBe(201);
   const data = (await respuesta.json()) as { name: string; content: string };
-  expect(data.name).toBe("context7");
+  expect(data.name).toBe("context7-mcp");
   expect(data.content).toContain("Docs actualizadas");
 });
 

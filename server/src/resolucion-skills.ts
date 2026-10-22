@@ -49,8 +49,25 @@ export type SkillInvocada = {
   ambito: "proyecto" | "global";
 };
 
+export function requiereContext7(texto: string): boolean {
+  const normalizado = texto.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  if (/\bcontext\s*7\b|\bcontext7\b/.test(normalizado)) return true;
+  const tecnologia = /\b(?:react|vue|next(?:\.js)?|svelte|angular|vite|bun|node(?:\.js)?|hono|fastify|express|prisma|drizzle|convex|cloudflare|aws|azure|google cloud|tailwind|typescript|python|rust|go|sdk|api|framework|libreria|biblioteca|library|dependencia|paquete|package|cli)\b/.test(normalizado);
+  const consulta = /\b(?:documentacion|docs?|api|sdk|ejemplo|configurar|configuracion|instalar|integrar|migrar|actualizar|version|implementar|programar|codigo|code|depurar|debug|corregir|arreglar|error|como|how)\b/.test(normalizado);
+  return tecnologia && consulta;
+}
+
 function skillsAutomaticas(texto: string): string[] {
   const resultado: string[] = [];
+  const textoNormalizado = texto.normalize("NFD").replace(/\p{Diacritic}/gu, "");
+  const accionesAutoria = "(?:crea|crear|creacion|redacta|redactar|mejora|mejorar|optimiza|optimizar|revisa|revisar|evalua|evaluar|convierte|convertir|deriva|derivar|disena|disenar|probar|prueba)";
+  const autoriaSkill = new RegExp(
+    `\\b${accionesAutoria}\\b[\\s\\S]{0,48}\\b(?:skills?|habilidades?)\\b|\\b(?:skills?|habilidades?)\\b[\\s\\S]{0,48}\\b${accionesAutoria}\\b`,
+    "i",
+  ).test(textoNormalizado);
+  if (autoriaSkill) resultado.push("skill-authoring");
+  if (requiereContext7(texto)) resultado.push("context7");
+
   const interfaz = /\b(frontend|interfaz|ui|css|componente|responsive|diseño|diseño visual|pantalla|formulario|estilo)\b/i.test(texto);
   if (interfaz) resultado.push("frontend-design", "playwright");
   else if (/\b(playwright|navegador|browser|prueba visual|e2e)\b/i.test(texto)) resultado.push("playwright");

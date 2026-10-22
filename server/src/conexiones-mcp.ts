@@ -61,6 +61,7 @@ export function argumentosConfigMcpCodex(servidores: ServidorMcpAgente[]): strin
 const AAD = (id: string) => `mcp_connections|${id}|token`;
 const MAX_NOMBRE = 64;
 const MAX_URL = 2048;
+const CONTEXT7_URL = "https://mcp.context7.com/mcp";
 
 export function validarNombreConexion(valor: unknown): valor is string {
   return typeof valor === "string" && valor.trim().length > 0 && valor.trim().length <= MAX_NOMBRE && !/[\r\n\0]/.test(valor);
@@ -185,16 +186,20 @@ export function borrarConexionMcp(id: string): boolean {
 
 // Los agentes reciben solo servidores habilitados. Los secretos cifrados nunca se serializan a la API
 // ni se escriben en archivos de configuración: se resuelven por variables temporales del proceso.
-export function configuracionMcpParaAgente(): ConfiguracionMcpAgente {
+export function configuracionMcpParaAgente(incluirContext7 = false): ConfiguracionMcpAgente {
   const filas = db.query<FilaMcp, []>(
     `SELECT id, name, url, enabled, token_iv, token_tag, token_enc, created_at, updated_at
-       FROM mcp_connections WHERE enabled = 1 ORDER BY name COLLATE NOCASE`,
+       FROM mcp_connections ORDER BY name COLLATE NOCASE`,
   ).all();
   const servidores: ServidorMcpAgente[] = [];
   const variables: Record<string, string> = {};
   const clave = claveMaestra();
+  const context7Configurado = filas.some((fila) =>
+    fila.name.trim().toLowerCase() === "context7" || fila.url === CONTEXT7_URL,
+  );
 
   for (const fila of filas) {
+    if (fila.enabled !== 1) continue;
     const servidor: ServidorMcpAgente = {
       clave: `telo_${fila.id.replace(/-/g, "").slice(0, 16)}`,
       url: fila.url,
@@ -217,6 +222,9 @@ export function configuracionMcpParaAgente(): ConfiguracionMcpAgente {
       continue;
     }
     servidores.push(servidor);
+  }
+  if (incluirContext7 && !context7Configurado) {
+    servidores.push({ clave: "context7", url: CONTEXT7_URL });
   }
   return { servidores, variables };
 }

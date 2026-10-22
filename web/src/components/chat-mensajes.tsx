@@ -3,7 +3,7 @@ import { haceTexto, tiempoTranscurrido } from "../lib/tiempo";
 import { interpretarRespuestaTarea } from "../lib/respuesta-tarea";
 import { partirMensaje } from "../lib/adjuntos";
 import { effortLabel } from "../lib/model";
-import { urlAdjuntoImagenChat, type FormatoDocumento } from "../api";
+import { urlAdjuntoImagenChat, type FormatoDocumento, type SubagentChat } from "../api";
 import { Contenido, copiarTexto, type ReferenciaArchivo } from "./chat-contenido";
 import { ProcesoAgente, ProcesoGuardado, SubagentesTurno } from "./chat-proceso";
 import { FORMATOS_OPCIONES } from "./documentos";
@@ -182,9 +182,12 @@ export function MensajeAgente({
   permitirAbrirArchivo,
   onReintentar,
   onGuardar,
+  onDerivarSkill,
   guardando = false,
   proceso,
   onAbrirSubchat,
+  subagentes,
+  abrirProcesoInicial = false,
   duracion,
   onCitar,
 }: {
@@ -200,12 +203,15 @@ export function MensajeAgente({
   onCitar?: (texto: string) => void;
   // Guarda el texto de esta respuesta como documento en el formato elegido.
   onGuardar?: (formato: FormatoDocumento) => void;
+  onDerivarSkill?: () => void;
   guardando?: boolean;
   // Tiempo aproximado entre el mensaje del usuario y esta respuesta.
   duracion?: string | null;
   // Chat y turno de la respuesta: de ahí salen los pasos del agente ("Ver proceso").
   proceso?: { conversacionId: string; turnoId: string };
   onAbrirSubchat?: (id: string) => void;
+  subagentes?: SubagentChat[];
+  abrirProcesoInicial?: boolean;
 }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const mediaId = /^\[\[telo-media:([a-f0-9-]+)\]\]$/i.exec(texto.trim())?.[1] ?? null;
@@ -295,6 +301,20 @@ export function MensajeAgente({
               </svg>
             </button>
           )}
+          {!mediaId && onDerivarSkill && (
+            <button
+              type="button"
+              className="tl-accion-icono"
+              aria-label="Derivar una skill global de esta experiencia"
+              title="Preparar un borrador de skill global a partir de esta experiencia"
+              onClick={onDerivarSkill}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2L12 3z" />
+                <path d="m19 14 .9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9L19 14z" />
+              </svg>
+            </button>
+          )}
           {!mediaId && "speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined" && (
             <button
               type="button"
@@ -376,7 +396,14 @@ export function MensajeAgente({
         </div>
       </div>
       {!mediaId && proceso && (
-        <ProcesoGuardado conversacionId={proceso.conversacionId} turnoId={proceso.turnoId} textoFinal={texto} onAbrirSubchat={onAbrirSubchat} />
+        <ProcesoGuardado
+          conversacionId={proceso.conversacionId}
+          turnoId={proceso.turnoId}
+          textoFinal={texto}
+          onAbrirSubchat={onAbrirSubchat}
+          subagentes={subagentes}
+          abiertoInicial={abrirProcesoInicial}
+        />
       )}
       <div className="tl-msg-texto">
         {mediaId ? <MediaJobCard id={mediaId} /> : (

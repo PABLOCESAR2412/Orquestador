@@ -12,7 +12,7 @@ process.env.TELO_PROYECTOS_DIR = join(raiz, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 
 const { db } = await import("../src/db");
-const { detectarMencionesSkills, inyectarSkillsEnPrompt, resolverSkillsInvocadas } = await import("../src/resolucion-skills");
+const { detectarMencionesSkills, inyectarSkillsEnPrompt, resolverSkillsInvocadas, requiereContext7 } = await import("../src/resolucion-skills");
 const carpetaProyecto = join(raiz, "proyectos", "resolucion-test");
 
 function escribirSkill(ambito: "global" | "proyecto", nombre: string, contenido: string) {
@@ -56,6 +56,43 @@ test("detectarMencionesSkills ignora símbolos monetarios o rutas normales", () 
   expect(detectarMencionesSkills("El costo es $50 o $100 dólares")).toEqual([]);
   expect(detectarMencionesSkills("Visita https://ejemplo.com/ruta/archivo")).toEqual([]);
   expect(detectarMencionesSkills("El usuario es user@email.com")).toEqual([]);
+});
+
+test("activa la skill global de autoría al derivar o evaluar skills y evita activarla al hablar de ellas sin pedir cambios", () => {
+  escribirSkill(
+    "global",
+    "skill-authoring",
+    "---\nname: skill-authoring\ndescription: Crear y probar skills reutilizables.\n---\n\nIncluye casos de prueba positivos y límite.",
+  );
+
+  const derivar = inyectarSkillsEnPrompt("Convierte esta experiencia y mis correcciones en una skill global.");
+  expect(derivar.skillsInvocadas).toContain("skill-authoring");
+  expect(derivar.promptFinal).toContain("Incluye casos de prueba positivos y límite.");
+
+  const evaluar = inyectarSkillsEnPrompt("Evalúa si esta skill se activa cuando corresponde.");
+  expect(evaluar.skillsInvocadas).toContain("skill-authoring");
+
+  const evaluarAcentos = inyectarSkillsEnPrompt("Evalúa si estas habilidades deben convertirse en una skill global.");
+  expect(evaluarAcentos.skillsInvocadas).toContain("skill-authoring");
+
+  const consulta = inyectarSkillsEnPrompt("¿Qué son las skills y cómo funcionan?");
+  expect(consulta.skillsInvocadas).not.toContain("skill-authoring");
+
+  const mención = inyectarSkillsEnPrompt("La skill de frontend ya aparece en esta lista.");
+  expect(mención.skillsInvocadas).not.toContain("skill-authoring");
+});
+
+test("activa Context7 para consultas de APIs y tareas de código con bibliotecas, pero no para trabajo ajeno a documentación técnica", () => {
+  escribirSkill("global", "context7", "---\nname: context7\ndescription: Documentación técnica actualizada.\n---\n\nConsulta resolve-library-id y query-docs.");
+
+  const cambio = inyectarSkillsEnPrompt("Implementa la autenticación con Supabase y revisa la API actual.");
+  expect(cambio.skillsInvocadas).toContain("context7");
+  expect(cambio.promptFinal).toContain("Consulta resolve-library-id y query-docs.");
+  expect(requiereContext7("Usa $context7 para verificar React 19.")).toBe(true);
+
+  const tareaVisual = inyectarSkillsEnPrompt("Corrige el encuadre del video MP4.");
+  expect(tareaVisual.skillsInvocadas).not.toContain("context7");
+  expect(requiereContext7("La rama tiene conflictos de merge.")).toBe(false);
 });
 
 test("resolver e inyectar skills en el prompt", () => {
