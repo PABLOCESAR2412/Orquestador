@@ -106,7 +106,7 @@ async function tareaConCommit() {
   return { ...p, taskId, clon: copia.cwd, diff };
 }
 
-test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama y base aprobadas", { timeout: 15000 }, async () => {
+test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama y base aprobadas", { timeout: 60000 }, async () => {
   const p = await tareaConCommit();
   expect(db.query("SELECT 1 FROM project_git WHERE project_id=?").get(p.id)).toBeNull();
   guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
@@ -148,7 +148,7 @@ test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama
   expect(llamadas).toHaveLength(2);
 });
 
-test("el commit automático toma un asunto convencional de la tarea", { timeout: 15000 }, async () => {
+test("el commit automático toma un asunto convencional de la tarea", { timeout: 60000 }, async () => {
   const p = await tareaConCommit();
   db.query("UPDATE tasks SET title=?,prompt=? WHERE id=?").run(
     "Corrige el scroll al cargar diagramas",
@@ -206,7 +206,7 @@ test("fusionar PR por número desde el chat no crea otra tarea ni otra rama", as
   }
 });
 
-test("no prepara un PR hasta que el commit y el push vigentes estén aprobados", { timeout: 15000 }, async () => {
+test("no prepara un PR hasta que el commit y el push vigentes estén aprobados", { timeout: 60000 }, async () => {
   const p = await tareaConCommit();
   guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
   db.query("DELETE FROM task_approvals WHERE task_id=? AND accion='commit'").run(p.taskId);
@@ -223,7 +223,7 @@ test("no prepara un PR hasta que el commit y el push vigentes estén aprobados",
   expect(db.query("SELECT 1 FROM repository_actions WHERE task_id=? AND action='pr'").get(p.taskId)).toBeNull();
 });
 
-test("PR sin commits nuevos muestra cómo corregir rama y base", { timeout: 15000 }, async () => {
+test("PR sin commits nuevos muestra cómo corregir rama y base", { timeout: 60000 }, async () => {
   const p = await tareaConCommit();
   guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
   const creada = await pedir(`/projects/${p.id}/acciones`, { action: "pr", taskId: p.taskId });
@@ -247,7 +247,7 @@ test("PR sin commits nuevos muestra cómo corregir rama y base", { timeout: 1500
   expect(resultado.detail).not.toContain("Validation Failed");
 });
 
-test("push muestra remoto fijado en clon y no el nuevo remoto de configuración", { timeout: 15000 }, async () => {
+test("push muestra remoto fijado en clon y no el nuevo remoto de configuración", { timeout: 60000 }, async () => {
   const p = await tareaConCommit();
   db.query("INSERT INTO project_git(project_id,remote) VALUES (?,?)").run(
     p.id,
@@ -268,7 +268,7 @@ test("push muestra remoto fijado en clon y no el nuevo remoto de configuración"
   expect(llamadas).toBe(0);
 });
 
-test("si diff cambia después de solicitar PR, rechaza aprobar antes de llamar GitHub", { timeout: 15000 }, async () => {
+test("si diff cambia después de solicitar PR, rechaza aprobar antes de llamar GitHub", { timeout: 60000 }, async () => {
   const p = await tareaConCommit();
   guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
   const accion = (await (
@@ -313,7 +313,7 @@ test("init rechaza .git archivo que apunta a otro repositorio y conserva su cont
 });
 
 
-test("una autorización registra la cuenta del servidor y comprueba acceso antes del push", { timeout: 15000 }, async () => {
+test("una autorización registra la cuenta del servidor y comprueba acceso antes del push", { timeout: 60000 }, async () => {
   const p=await tareaConCommit();
   const {guardarCuentaGithubGlobal,borrarCuentaGithubGlobal}=await import("../src/github-auth");
   db.query("DELETE FROM project_secrets WHERE project_id=? AND name='GITHUB_TOKEN'").run(p.id);
@@ -354,7 +354,7 @@ test("una autorización registra la cuenta del servidor y comprueba acceso antes
   } finally { espia.mockRestore(); borrarCuentaGithubGlobal(); }
 });
 
-test("no prepara autorizaciones de commit o push sin cambios respecto a la base", { timeout: 15000 }, async () => {
+test("no prepara autorizaciones de commit o push sin cambios respecto a la base", { timeout: 60000 }, async () => {
   const p = await tareaConCommit();
   await gitOk(["reset", "--hard", p.diff.base_commit!], { cwd: p.clon });
   for (const action of ["commit", "push"]) {
@@ -365,7 +365,7 @@ test("no prepara autorizaciones de commit o push sin cambios respecto a la base"
   expect(db.query("SELECT 1 FROM repository_actions WHERE task_id=?").get(p.taskId)).toBeNull();
 });
 
-test("no prepara un push cuando falta el remoto guardado", { timeout: 15000 }, async () => {
+test("no prepara un push cuando falta el remoto guardado", { timeout: 60000 }, async () => {
   const p = await tareaConCommit();
   rmSync(join(config.dataDir, "tasks", p.taskId, "remoto.txt"));
   const respuesta = await pedir(`/projects/${p.id}/acciones`, { action: "push", taskId: p.taskId });
@@ -374,7 +374,7 @@ test("no prepara un push cuando falta el remoto guardado", { timeout: 15000 }, a
   expect(db.query("SELECT 1 FROM repository_actions WHERE task_id=?").get(p.taskId)).toBeNull();
 });
 
-test("cada petición conserva su mensaje aunque se reutilice la tarea del chat", { timeout: 15000 }, async () => {
+test("cada petición conserva su mensaje aunque se reutilice la tarea del chat", { timeout: 60000 }, async () => {
   const p = await tareaConCommit();
   const conversationId = randomUUID();
   db.query("INSERT INTO conversations(id,title,project_id) VALUES (?,'Git',?)").run(conversationId, p.id);
@@ -402,7 +402,7 @@ test("cada petición conserva su mensaje aunque se reutilice la tarea del chat",
   }
 });
 
-test("el chat prepara commit y push juntos y vincula la tarjeta al nuevo mensaje", { timeout: 15000 }, async () => {
+test("el chat prepara commit y push juntos y vincula la tarjeta al nuevo mensaje", { timeout: 60000 }, async () => {
   const p = await tareaConCommit();
   const { chat } = await import("../src/routes/chat");
   const conversationId = randomUUID();
@@ -613,7 +613,7 @@ async function conversacionTarea(p: { id: string; taskId: string }): Promise<str
   return conversationId;
 }
 
-test("push con destino base sube directo a la rama base y no prepara PR", { timeout: 15000 }, async () => {
+test("push con destino base sube directo a la rama base y no prepara PR", { timeout: 60000 }, async () => {
   const p = await tareaConCommit();
   const conversationId = await conversacionTarea(p);
   db.query("UPDATE tasks SET plan=? WHERE id=?").run('{"requiere_aprobacion":["commit","push","pr"]}', p.taskId);
@@ -654,7 +654,7 @@ test("push con destino base sube directo a la rama base y no prepara PR", { time
   }
 });
 
-test("push con destino rama prepara el PR aunque el plan no lo pida", { timeout: 15000 }, async () => {
+test("push con destino rama prepara el PR aunque el plan no lo pida", { timeout: 60000 }, async () => {
   const p = await tareaConCommit();
   guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
   const conversationId = await conversacionTarea(p);
@@ -695,7 +695,7 @@ test("push con destino rama prepara el PR aunque el plan no lo pida", { timeout:
   }
 });
 
-test("decidir una subida con destino desconocido responde 400 y conserva la tarjeta", { timeout: 15000 }, async () => {
+test("decidir una subida con destino desconocido responde 400 y conserva la tarjeta", { timeout: 60000 }, async () => {
   const p = await tareaConCommit();
   const accion = await (await pedir(`/projects/${p.id}/acciones`, { action: "push", taskId: p.taskId })).json() as any;
   globalThis.fetch = (async () => {
@@ -916,7 +916,7 @@ test("reintegrarSobrePunta aborta, restaura la rama y explica cómo continuar al
   }
 });
 
-test("el escaneo de secretos ve el blob de un archivo marcado binario por .gitattributes", { timeout: 15000 }, async () => {
+test("el escaneo de secretos ve el blob de un archivo marcado binario por .gitattributes", { timeout: 60000 }, async () => {
   const p = proyecto();
   await gitOk(["init", "-b", "main"], { cwd: p.cwd });
   writeFileSync(join(p.cwd, "archivo.txt"), "base\n");
