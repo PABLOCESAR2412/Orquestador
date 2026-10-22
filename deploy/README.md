@@ -125,7 +125,7 @@ sudo usermod -aG systemd-journal orquestador
 sudo systemctl restart orquestador
 ```
 
-Sin ese permiso, la pestaña muestra un aviso en lugar de los registros. El gasto de Azure necesita aparte una identidad administrada del VM con permiso de lectura de costes (pendiente de decisión; ver `FASE3.md`, tarea 6).
+Sin ese permiso, la pestaña muestra un aviso en lugar de los registros. El gasto de Azure necesita aparte una identidad administrada del VM con permiso de lectura de costes (pendiente de decisión; ver `SEGUIMIENTO.md`, tarea 6).
 
 ## Instalar OpenCode y el login de Codex desde Ajustes (una vez)
 
