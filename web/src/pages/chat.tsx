@@ -1626,6 +1626,7 @@ export function ChatPage() {
                   conversationId={selectedId}
                   projectId={current.project_id}
                   taskId={tareaChat?.id}
+                  ultimoMensajeUsuarioId={[...lista].reverse().find((mensaje) => mensaje.role === "user")?.id ?? null}
                   terminada={!!tareaChat && ["done", "failed", "cancelled", "interrupted"].includes(tareaChat.status)}
                 />
               )}
