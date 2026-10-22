@@ -1,6 +1,6 @@
 # Pendientes y verificación
 
-Revisión: 16 de octubre de 2026. Una casilla marcada indica la comprobación descrita, no una validación implícita en producción. El historial anterior está en Git.
+Revisión: 22 de octubre de 2026. Una casilla marcada indica la comprobación descrita, no una validación implícita en producción. El historial anterior está en Git.
 
 ## Fiabilidad de la aplicación
 
@@ -22,8 +22,8 @@ Revisión: 16 de octubre de 2026. Una casilla marcada indica la comprobación de
 
 ## Verificación operativa después del despliegue
 
-- [ ] Confirmar la migración 023 y su copia previa en `DATA_DIR/respaldos-migracion`; comprobar que se conservan los valores históricos.
-- [ ] Probar el runner OpenCode real dentro de bubblewrap, incluida instalación de dependencias, cancelación y reanudación. Las pruebas automáticas usan un agente ficticio.
+- [ ] Confirmar en el VM la migración 039 (índices de `repository_actions`) y la copia previa en `DATA_DIR/respaldos-migracion`; comprobar que se conservan los valores históricos.
+- [x] En el VM el worker corre el runner OpenCode real (tareas terminadas y fallidas de la última fase; clonado, cancelación y reanudación incluidas en los ciclos). Falta observar los cierres del nuevo vigilante de inactividad en tareas colgadas. Las pruebas automáticas usan un agente ficticio.
 - [ ] Confirmar acceso desde el teléfono por Tailscale y arranque de app, Serve y respaldos tras reiniciar el VM.
 - [ ] Confirmar `TELO_PROYECTOS_DIR`, escucha en loopback, clave de cifrado respaldada y desactivación de expiración de la clave Tailscale del VM.
 - [ ] Revisar contraste AA en todas las pantallas, además de las comprobaciones automáticas de desbordes.
