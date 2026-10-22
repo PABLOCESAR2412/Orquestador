@@ -3,6 +3,8 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Disco: limpieza controlada de dependencias en tareas inactivas y respaldos sin paquetes reconstruibles", "pr": 106 },
+
     {"fecha":"2026-10-22","tipo":"grande","titulo":"Notificaciones: empuja el aviso al dispositivo sin la app abierta (VAPID cifradas, suscripciones, dedupe por evento y receptor en el service worker)","pr":105},
     {"fecha":"2026-10-22","tipo":"minimo","titulo":"Agentes: fija el modelo pequeño de OpenCode al elegido para que titulos y compactación no caigan en modelos fuera del plan","pr":105},
     { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Integración: resuelve conflictos del registro central y conserva las correcciones de auditoría junto con Web Push", "pr": 105 },

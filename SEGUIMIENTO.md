@@ -42,6 +42,12 @@ Entrega: [PR #104](https://github.com/PABLOCESAR2412/Orquestador/pull/104). Fusi
 
 - [x] **A10 — Telemetría del agente ficticio fuera del plan en Linux.** El fixture escribía llamadas.jsonl y el servidor actualizaba salida.log en el workspace. El comparador atribuía ambos al agente y replanificaba. Telemetría del fixture movida a .opencode/fixture-analizador; el worker excluye solo su salida.log en la raíz exacta de la tarea libre. Las regresiones comprueban que otros logs siguen detectándose. Regresiones locales aprobadas; CI servidor Linux aprobada en 0ce2997, ejecución 39827164211 (incluye analizador y worker).
 
+### Investigación de demora del chat (22 de octubre)
+
+- [ ] **A11 — Chat directo sin actividad observable ni recuperación por silencio.** En producción, Top skills figura en proceso durante más de cuatro horas y la actividad del último turno devuelve []. El chat directo pasa timeoutMs:null sin tiempoSinActividadMs; la ocupación se libera solo cuando termina la promesa. La interfaz usa Escribiendo como texto de reserva y no distingue espera de proveedor, cola y trabajo real. Falta instrumentar esas fases y aplicar vigilancia por actividad (sin límite total a herramientas activas), conservando sesión y continuación. Esta investigación no ha cancelado ni reenviado el turno. La causa exacta del proceso pendiente aún no está demostrada: el acceso SSH disponible rechazó la autenticación por clave pública y el diario consultado no contiene un error de proveedor concluyente.
+- [ ] **A12 — Poco espacio libre en el VPS.** API de diagnóstico a 2026-10-22T18:06:59Z: 31.025.332.224 bytes totales, 1.893.724.160 libres (aprox. 6,1 %). Tareas: al menos 6.258.179.051 bytes y 210.786 archivos, medición truncada. Puede afectar renders y escrituras; no se ha demostrado que cause esta espera. Revisar retención y capacidad sin borrar trabajo pendiente. El recolector conserva 14 días y no elimina clones con archivos ignorados; dependencias regenerables podrían impedir su liberación, pendiente de medir. Plan: inventario de disco, cachés y tareas terminadas; comprobar respaldo y trabajo pendiente antes de retirar candidatos; medir espacio antes/después. Acceso con orq_ed25519 rechazado por el VPS. El usuario autorizó telo_respaldo y la copia/verificación/retirada del tar concreto. Acceso limitado a SFTP: descarga permitida, borrado rechazado por la VM con Permission denied. No se eliminó ningún archivo. Última medición SFTP: 30.298.176 KiB totales, 28.813.208 usados, 1.468.584 disponibles (95 % de capacidad ocupada); el uso sigue creciendo durante la revisión.
+- Producción informa commit f94a33b50e21 (PR #103); este lote #104 todavía no estaba desplegado durante la consulta. La latencia visible osciló entre 115 y 964 ms: esos valores por sí solos no explican cuatro horas sin pasos registrados. El endpoint consultado no aporta CPU/RAM libre del sistema; no se atribuye el fallo a saturación de memoria sin medirla.
+
 ### Validación de este lote
 
 - 57 suites independientes del servidor: 435 pruebas aprobadas, cero fallos, 61 omisiones de integración/plataforma. Dos regresiones finales adicionales (base fuera del temporal y .git inválido) también aprobadas: 437 casos distintos en total.
@@ -855,8 +861,32 @@ El consumo de Google es el informado por OpenCode a Telo. No importa el historia
 
 Comandos normales: cd server y bun test; para integración aislada en Linux con bubblewrap/python3, bun run test:worker. Compilación: cd web y bun run build.
 
+### Alternativa Cloudflare (verificada el 22 de octubre)
+
+La interfaz puede alojarse con Workers Static Assets y R2 Standard ofrece 10 GB-mes gratuitos con cuotas de operaciones. El núcleo actual usa Bun, procesos OpenCode/Git y herramientas Linux: Workers no sustituye ese entorno y node:child_process es un stub. Containers exige Workers Paid (mínimo 5 USD/mes más consumo): no satisface el requisito de coste cero. Prioridad: liberar disco de la VM y evaluar descarga de entregables verificados a R2 dentro de su cuota; no se inició migración ni se contrataron servicios.
+
+Fuentes: https://developers.cloudflare.com/containers/platform/pricing/ ; https://developers.cloudflare.com/r2/pricing/ ; https://developers.cloudflare.com/workers/configuration/compatibility-flags/ ; https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/
+
+### Verificación operativa del respaldo — 22 de octubre
+
+- [x] Copiados tar y DB del conjunto 2026-10-22T03-34-43 a `scratch/vm-respaldo-verificado/`, fuera del control de versiones. Ambos coinciden por SHA-256 con la copia existente en la PC. Tar: 2.970.440.587 bytes y 377.485 entradas legibles; SQLite: 6.234.112 bytes, integrity_check=ok, ninguna clave foránea rota. Evidencia local: `scratch/vm-respaldo-verificado/verificacion.json`.
+- [x] El usuario retiró exclusivamente el tar autorizado desde su terminal administrativa. Su salida df confirma 4,2 GB disponibles y 86 % ocupado. Se conservan la DB y ambas copias verificadas en la PC.
+- [ ] Resolver crecimiento recurrente: conservar un tar local diario vuelve a consumir unos 3 GB. Evaluar retención local después de verificar R2 y revisar dependencias regenerables sin eliminar trabajo pendiente. No se cambiaron políticas ni se migró infraestructura.
+### Optimización de tareas y respaldo — 22 de octubre
+
+- [x] Diagnóstico aportado por el usuario: tareas 14 GB, datos 16 GB, perfiles de sesiones 1,4 GB. Una tarea contiene 773 MB de node_modules y 63 MB de .opencode/node_modules sobre 861 MB totales. No extrapolar ese ahorro al resto sin medir.
+- [x] Herramienta `server/scripts/optimizar-disco.ts`: simulación por defecto; aplicar exige Linux y servicio inactivo. Solo tareas terminadas con finished_at; no sigue enlaces y exige directorio ignorado, sin archivos registrados en Git, package.json y lockfile. No retira perfiles, Git, código ni entregables. .opencode necesita su propio lockfile.
+- [x] Nuevos respaldos omiten esos directorios reconstruibles y conservan manifiestos/lockfiles. Contrato de agentes indica reinstalar con frozen/ci si faltan dependencias; no se ejecutan instalaciones privilegiadas ni fuera del aislamiento. Cambios manuales dentro de paquetes ignorados requieren conservación previa por el operador.
+- [x] Pruebas locales: 7 de dependencias/CLI/tar/enlaces, 5 de R2, 8 regresiones de auditoría y 5 del contrato/uso: 25 aprobadas. TypeScript servidor y build web aprobados. Prueba Linux de aplicación con systemd pendiente; Windows valida junctions y fixtures reales de Git/tar.
+- [ ] Desplegar, simular con datos reales, detener servicio, aplicar desde terminal administrativa y medir df antes/después. Este desarrollo no ha borrado dependencias de la VM. Procedimiento en CLAUDE.md, sección Espacio de dependencias.
+Implementación publicada en PR #106: https://github.com/PABLOCESAR2412/Orquestador/pull/106. Aplicación y ahorro real en producción pendientes.
+
 
 ### Integración del PR #105 con main — 22 de octubre
 
 - [x] Conflictos documentales resueltos conservando auditorías del 21 y 22 de octubre, apéndices históricos y correcciones de CI de main. Los registros de cambios de #104 y #105 se conservan juntos. Pruebas de integración locales: 22 de Web Push/MCP/auditoría/dependencias y 31 web aprobadas; instalación frozen, TypeScript servidor y build PWA aprobados. Suite completa del servidor y CI posteriores pendientes.
 - [ ] Web Push real en Android y configuración de producción: la integración de ramas no certifica entrega a un dispositivo ni despliega VAPID.
+
+### Integración del PR #106 con main
+
+- [x] Resueltos los conflictos de seguimiento y versiones, conservando Web Push/modelo pequeño de #105 y la optimización de disco de #106. Verificación: 24 pruebas de disco, R2, Push y MCP aprobadas; TypeScript servidor y build PWA aprobados. La aplicación en la VM sigue pendiente.
