@@ -1,9 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { guardarTema, leerTema, temaComplementario, temaEsClaro } from "../lib/tema";
 
 // Botón de la barra superior: cambia entre modo claro y oscuro. "Sistema" se elige en Ajustes.
 export function BotonTema() {
   const [tema, setTema] = useState(() => leerTema());
+  useEffect(() => {
+    const actualizar = () => setTema(leerTema());
+    window.addEventListener("telo:tema-cambiado", actualizar);
+    window.addEventListener("storage", actualizar);
+    return () => { window.removeEventListener("telo:tema-cambiado", actualizar); window.removeEventListener("storage", actualizar); };
+  }, []);
   const claro = temaEsClaro(tema);
   const destino = temaComplementario(tema);
 

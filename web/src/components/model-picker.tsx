@@ -93,13 +93,22 @@ export function ModelPicker({
     const ancla = el?.offsetParent as HTMLElement | null | undefined;
     if (!el || !ancla) return;
     const ajustar = () => {
+      // En móvil es una hoja fija: no se mide contra el compositor de escritorio.
+      if (window.matchMedia("(max-width: 760px)").matches) {
+        el.style.maxHeight = `${Math.floor((window.visualViewport?.height ?? window.innerHeight) * 0.85)}px`;
+        return;
+      }
       // 10 px de separación con el compositor y 8 px de aire bajo el borde visible.
       const disponible = ancla.getBoundingClientRect().top - limiteVisible(ancla) - 18;
       el.style.maxHeight = `${Math.max(ALTO_MINIMO, Math.min(window.innerHeight * 0.6, disponible))}px`;
     };
     ajustar();
     window.addEventListener("resize", ajustar);
-    return () => window.removeEventListener("resize", ajustar);
+    window.visualViewport?.addEventListener("resize", ajustar);
+    return () => {
+      window.removeEventListener("resize", ajustar);
+      window.visualViewport?.removeEventListener("resize", ajustar);
+    };
   }, []);
 
   const elegir = (m: ModelInfo | null, esfuerzo: string | null = null) => {

@@ -5,6 +5,7 @@ import type { FilaActividad } from "./actividad";
 // una microdesconexión reciban los eventos pendientes al reconectar sin pérdidas.
 
 export type EventoVivo =
+  | { tipo: "configuracion_chat"; conversacion_id: string }
   | { tipo: "tarea"; id: string; status: string; finished_at: string | null }
   | { tipo: "evento"; task_id: string; kind: string; detail: string | null; created_at: string }
   | { tipo: "salida"; task_id: string; linea: string }

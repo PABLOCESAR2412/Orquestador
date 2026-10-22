@@ -1,4 +1,6 @@
 export type Conversation = {
+  ultimo_rol?: string | null;
+  requiere_continuar?: boolean;
   id: string;
   title: string;
   model: string | null;
@@ -507,6 +509,7 @@ export type CapacidadesMediosApi = {
 };
 
 export type EventoVivo =
+  | { tipo: "configuracion_chat"; conversacion_id: string }
   | { tipo: "tarea"; id: string; status: TaskStatus; finished_at: string | null }
   | { tipo: "evento"; task_id: string; kind: TaskEventKind; detail: string | null; created_at: string }
   | { tipo: "salida"; task_id: string; linea: string }
@@ -642,6 +645,7 @@ function skillsRuta(projectId?: string): string {
 }
 
 export const api = {
+  avisosGit: () => request<{id:string;conversation_id:string;action:string;state:string}[]>("/api/avisos-git"),
   projectGit: (id: string) => request<GitConfig>(`/api/projects/${id}/git`),
   saveProjectGit: (
     id: string,

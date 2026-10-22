@@ -349,7 +349,7 @@ export async function runOpenCode(opts: {
   onUso?: (uso: Usage) => void;
 }): Promise<RunResult> {
   const servidores = opts.servidoresMcp ?? [];
-  if (servidores.length === 0) return ejecutarOpenCode(opts);
+  // La configuración runtime también activa compactación automática sin servidores MCP.
 
   const raiz = join(config.dataDir, "perfiles-mcp");
   mkdirSync(raiz, { recursive: true, mode: 0o700 });

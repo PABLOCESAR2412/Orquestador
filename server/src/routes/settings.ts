@@ -1,11 +1,13 @@
 import { Hono } from "hono";
 import { db } from "../db";
 import { validateSelection } from "../models";
+import { publicar } from "../bus";
 
 type Row = { id: string; model: string | null; effort: string | null };
 type Body = { model?: string | null; effort?: string | null; title?: string; pinned?: boolean };
 
 export const settings = new Hono();
+settings.get("/avisos-git", (c) => c.json(db.query(`SELECT a.id,a.conversation_id,a.action,a.state FROM repository_actions a WHERE a.state IN ('pending','failed','approved') AND a.conversation_id IS NOT NULL AND a.rowid IN (SELECT MAX(rowid) FROM repository_actions GROUP BY conversation_id,action) ORDER BY a.rowid DESC LIMIT 100`).all()));
 
 // PATCH /api/conversations/:id  body: { model?, effort?, title?, pinned? }
 // Un campo omitido conserva su valor actual; null lo borra (modelo o esfuerzo).
@@ -49,6 +51,7 @@ settings.patch("/conversations/:id", async (c) => {
     }
 
     db.query("UPDATE conversations SET model = ?, effort = ? WHERE id = ?").run(model, effort, id);
+    publicar({ tipo: "configuracion_chat", conversacion_id: id });
   }
 
   const actual = db

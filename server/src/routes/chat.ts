@@ -10,6 +10,7 @@ import { sesionCompatible } from "../conversacion-contexto";
 import { getPreferences } from "../preferences";
 import { projectRepoPath } from "./projects";
 import { mensajeSeguro } from "../workspace";
+import { carpetaEntregables } from "../entregables";
 import { actividadDelTurno, itemDeLinea, registrarActividad } from "../actividad";
 import { crearTarea } from "../tareas";
 import { notifyWorker } from "../worker";
@@ -122,12 +123,14 @@ chat.get("/conversations", (c) => {
       task_status: string | null;
       task_finished_at: string | null;
       task_plan_hash: string | null;
+      task_reanudable: number | null;
+      ultimo_rol: string | null;
     }, []>(`
       WITH latest_messages AS (
         SELECT conversation_id, MAX(created_at) AS last_msg_at
           FROM messages GROUP BY conversation_id
       ), latest_tasks AS (
-        SELECT id, conversation_id, status, finished_at, plan_hash,
+        SELECT id, conversation_id, status, finished_at, plan_hash, provider_session_id,
                ROW_NUMBER() OVER (PARTITION BY conversation_id ORDER BY created_at DESC, rowid DESC) AS rn
           FROM tasks WHERE conversation_id IS NOT NULL
       )
@@ -135,7 +138,8 @@ chat.get("/conversations", (c) => {
              c.pinned_at, c.cuota_modelo, c.created_at, m.last_msg_at,
              c.runner_session_id IS NOT NULL AS tiene_sesion,
              t.id AS task_id, t.status AS task_status, t.finished_at AS task_finished_at,
-             t.plan_hash AS task_plan_hash
+             t.plan_hash AS task_plan_hash, t.provider_session_id IS NOT NULL AS task_reanudable,
+             (SELECT role FROM messages WHERE conversation_id=c.id ORDER BY created_at DESC,rowid DESC LIMIT 1) AS ultimo_rol
         FROM conversations c
         LEFT JOIN projects p ON p.id = c.project_id
         LEFT JOIN latest_messages m ON m.conversation_id = c.id
@@ -176,6 +180,9 @@ chat.get("/conversations", (c) => {
 
       return {
         ...r,
+        requiere_continuar: !enCurso && (Boolean(r.cuota_modelo) || (tarea
+          ? ["failed", "interrupted"].includes(tarea.status) && Boolean(r.task_reanudable)
+          : Boolean(r.tiene_sesion) && r.ultimo_rol === "system")),
         subchats: hijosPorPadre.get(r.id) ?? [],
         last_message_at: r.last_msg_at || r.created_at,
         ocupada: chatOcupado(r.id),
@@ -679,6 +686,7 @@ function raicesArchivosConversacion(conversacion: ConversationRow): string[] {
   const raizChat = conversacion.subagent_workspace
     ?? join(chatWorkspace, conversacion.parent_conversation_id ?? conversacion.id);
   return [...new Set([
+    ...[...workspaces, raizChat, ...(conversacion.repo_path ? [conversacion.repo_path] : [])].map(carpetaEntregables),
     ...workspaces,
     raizChat,
     ...(conversacion.project_id && conversacion.repo_path ? [conversacion.repo_path] : []),
@@ -787,8 +795,8 @@ function limpiarAvisosReintentados(conversationId: string, rowid: number | undef
   db.query("DELETE FROM messages WHERE conversation_id=? AND role='system' AND rowid>?").run(conversationId, rowid);
 }
 
-// Investigación, subagentes y documentos pueden tardar varios minutos; conservar un tope evita procesos eternos.
-const TIEMPO_TURNO_MS = 900_000;
+// La duración no cancela el trabajo: el usuario conserva la cancelación explícita.
+const TIEMPO_TURNO_MS = null;
 
 // Avisa a los clientes que un turno empezó o terminó. Los demás dispositivos piden de nuevo el chat.
 function publicarChat(conversationId: string, estado: "en_curso" | "terminado"): void {
@@ -799,7 +807,6 @@ function publicarChat(conversationId: string, estado: "en_curso" | "terminado"):
 // como aviso en el chat, porque nadie espera ya la respuesta HTTP.
 async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: string, model: string): Promise<void> {
   const conversationId = conv.id;
-  const inicio = Date.now();
   let result: ResultadoAgente;
   let turnoTerminado = false;
   let huboSubagentes = false;
@@ -861,14 +868,6 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
     }
     if (err instanceof AislamientoError) {
       guardarAviso(conversationId, err.message);
-      return;
-    }
-    // Se explica el límite en vez de mostrar el código de salida (143 es la señal de parada).
-    if (Date.now() - inicio >= TIEMPO_TURNO_MS) {
-      guardarAviso(
-        conversationId,
-        `El agente superó el límite de ${TIEMPO_TURNO_MS / 60_000} minutos y se detuvo. La sesión quedó guardada; reintenta para continuar donde se quedó.`,
-      );
       return;
     }
     // Sin rutas del servidor ni fragmentos de secretos.

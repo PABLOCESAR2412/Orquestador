@@ -1628,3 +1628,13 @@
 :root[data-theme="claro"] .tl-editor-etiqueta {
   color: #0f172a;
 }
+
+/* Las etiquetas largas se ajustan sin invadir la pestaña vecina. */
+@media (max-width: 560px) {
+  .tl-cambios-pestanas { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .tl-cambios-tab { min-height: 44px; padding: 8px 12px; white-space: normal; overflow-wrap: anywhere; text-align: left; font-size: 13px; }
+}
+
+.tl-continuar-pendiente { display: inline-block; flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--signal); animation: tl-continuar-pulso 1.8s ease-in-out infinite; }
+@keyframes tl-continuar-pulso { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .tl-continuar-pendiente { animation: none; } }

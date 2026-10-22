@@ -83,7 +83,7 @@ export function ConvItem({ conv, active, variant = "arbol", selectedConversation
   const esProyecto = Boolean(conv.project_id);
   const tiempoRelativo = haceTextoCorto(conv.last_message_at || conv.created_at);
   const pendienteSinLeer = Boolean(conv.pendiente_aprobacion && marcaVista !== marcaPendiente);
-  const estado = conv.en_proceso ? "En proceso" : pendienteSinLeer ? "Requiere revisión" : conv.completada ? "Lista para revisar" : "";
+  const estado = conv.en_proceso ? "En proceso" : conv.requiere_continuar ? "Requiere tu acción para continuar" : pendienteSinLeer ? "Requiere revisión" : conv.completada ? "Lista para revisar" : "";
 
   return (
     <div ref={filaRef} className={`conv-item${variant === "arbol" ? " is-arbol" : ""}`}>
@@ -117,6 +117,8 @@ export function ConvItem({ conv, active, variant = "arbol", selectedConversation
           <span className="sidebar-conv-meta" aria-label={estado || undefined}>
             {conv.en_proceso ? (
               <span className="tl-indicador-spinner" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg></span>
+            ) : conv.requiere_continuar ? (
+              <span className="tl-continuar-pendiente" title="Requiere tu acción para continuar" aria-hidden="true" />
             ) : pendienteSinLeer ? (
               <span className="tl-indicador-alerta" aria-hidden="true"><span className="tl-indicador-dot is-pendiente" /></span>
             ) : conv.completada ? (

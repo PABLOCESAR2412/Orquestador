@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { config } from "../config";
+import { carpetaEntregables } from "../entregables";
 import { hallarEjecutable } from "../ejecutable";
 
 
@@ -271,6 +272,9 @@ export function prefijoAislamiento(
 
   // La carpeta de trabajo es lo único con escritura fuera del estado de OpenCode.
   args.push(soloLectura ? "--ro-bind" : "--bind", carpeta, carpeta);
+  const entregables = carpetaEntregables(carpeta);
+  mkdirSync(entregables, { recursive: true });
+  args.push("--dir", entregables, soloLectura ? "--ro-bind" : "--bind", entregables, entregables);
   // Si la ejecución es en solo lectura (como el analizador), OpenCode aún necesita escribir
   // su configuración runtime, sesión y su .opencode/.gitignore dentro del workspace.
   // Montamos .opencode con permisos de escritura superpuestos para evitar fallos de EROFS.

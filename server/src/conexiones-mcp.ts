@@ -37,6 +37,7 @@ export type ConfiguracionMcpAgente = {
 
 export function configuracionOpenCodeMcp(servidores: ServidorMcpAgente[]) {
   return {
+    compaction: { auto: true, prune: true },
     mcp: Object.fromEntries(servidores.map((servidor) => [servidor.clave, {
       type: "remote",
       url: servidor.url,

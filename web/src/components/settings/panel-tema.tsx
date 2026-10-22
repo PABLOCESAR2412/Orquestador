@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   guardarEscalaTexto,
   guardarTema,
@@ -14,6 +14,11 @@ import {
 
 export function TemaPanel() {
   const [tema, setTema] = useState<Tema>(() => leerTema());
+  useEffect(() => {
+    const actualizar = () => setTema(leerTema());
+    window.addEventListener("telo:tema-cambiado", actualizar);
+    return () => window.removeEventListener("telo:tema-cambiado", actualizar);
+  }, []);
   const [tipografia, setTipografia] = useState<TipografiaId>(() => leerTipografia());
   const [escala, setEscala] = useState(() => leerEscalaTexto());
   const muestra = TIPOGRAFIAS.find((f) => f.id === tipografia) ?? TIPOGRAFIAS[0];

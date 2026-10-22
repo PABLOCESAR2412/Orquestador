@@ -11,10 +11,12 @@ import {
   SONIDOS_NOTIFICACION,
   sonidoNotificacionSeleccionado,
   sonidoNotificacionesActivo,
+  sonidoGestionadoPorAndroid,
   type SonidoNotificacion,
 } from "../../lib/notificaciones";
 
 export function NotificacionesPanel() {
+  const android = sonidoGestionadoPorAndroid();
   const [activas, setActivas] = useState(() => notificacionesActivas());
   const [sonido, setSonido] = useState(() => sonidoNotificacionesActivo());
   const [tipoSonido, setTipoSonido] = useState<SonidoNotificacion>(() => sonidoNotificacionSeleccionado());
@@ -44,20 +46,20 @@ export function NotificacionesPanel() {
       : permiso === "denied"
         ? "El navegador las bloqueó. Permite las notificaciones de este sitio en Chrome o Edge y vuelve a activarlas aquí."
         : permiso === "granted"
-          ? "Chrome o Edge enviarán los avisos al centro de notificaciones de Windows. Telo debe seguir abierta, aunque puede estar en segundo plano."
+          ? "El navegador enviará los avisos al centro de notificaciones del dispositivo. Telo debe seguir abierta, aunque puede estar en segundo plano."
           : "Actívalas para recibir avisos de tareas terminadas, fallidas o pendientes de tu decisión.";
 
   return (
     <article className="aj-tarjeta" aria-labelledby="ajustes-notificaciones">
       <div className="aj-interruptor">
         <h3 id="ajustes-notificaciones" className="aj-tarjeta-titulo-simple">
-          Notificaciones de escritorio
+          Notificaciones del sistema
         </h3>
         <button
           type="button"
           role="switch"
           aria-checked={activas && permiso !== "no_soportado"}
-          aria-label="Notificaciones de escritorio"
+          aria-label="Notificaciones del sistema"
           className="aj-switch"
           disabled={permiso === "no_soportado"}
           onClick={() => void alCambiar(!activas)}
@@ -80,7 +82,7 @@ export function NotificacionesPanel() {
               }}
             />
           </div>
-          <div className="aj-notificaciones-sonido-acciones">
+          {android ? <p className="aj-nota">Android controla el tono y el volumen desde los ajustes de notificaciones de Telo o del navegador. Los cinco sonidos personalizados están disponibles en escritorio.</p> : <div className="aj-notificaciones-sonido-acciones">
             <label className="aj-notificaciones-selector">
               <span>Sonido de notificación</span>
               <select
@@ -99,7 +101,7 @@ export function NotificacionesPanel() {
               Probar sonido
             </button>
             {sonidoProbado && <span className="aj-nota" role="status">{sonidoProbado}</span>}
-          </div>
+          </div>}
         </div>
       )}
     </article>

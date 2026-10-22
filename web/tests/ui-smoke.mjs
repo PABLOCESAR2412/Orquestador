@@ -331,7 +331,7 @@ try {
     await page.waitForURL("**/chat");
     console.log(`${width}px: sesión local de prueba iniciada`);
     await page.getByText("Conversaciones", { exact: true }).waitFor();
-    await page.getByRole("heading", { name: "¿Qué vamos a resolver?", exact: true }).waitFor();
+    await page.getByRole("heading", { name: "Bienvenido a Telo", exact: true }).waitFor();
     await page.getByRole("button", { name: "Nuevo chat", exact: true }).waitFor();
     const marcaChatNuevo = page.locator(".tl-vacio-emblema");
     assert.equal(await marcaChatNuevo.locator("svg").count(), 1, "el chat nuevo reutiliza el símbolo de Telo");
@@ -347,6 +347,7 @@ try {
     await page.screenshot({ path: `scratch/capturas-ci/chat-vacio-${width}.png` });
     conversacionesDisponibles = true;
     await page.reload();
+    await page.locator(".tl-inicio-recientes").getByRole("button").filter({ hasText: "Prueba de flujo" }).click();
     await page.getByText("Conversaciones", { exact: true }).waitFor();
     let timeoutPollLargo;
     await Promise.race([
@@ -371,7 +372,7 @@ try {
       const cajaAccionesChat = await page.locator(".tl-chat-cabecera-der").boundingBox();
       assert.ok(cajaTituloSubchat && cajaBotonVolver && cajaAccionesChat, "el encabezado del subchat conserva título, padre y acciones en móvil");
       assert.ok(cajaTituloSubchat.width > 40, "el título del subchat tiene espacio visible en móvil");
-      assert.ok(cajaBotonVolver.y >= cajaAccionesChat.y + cajaAccionesChat.height, "volver al chat padre queda debajo de las acciones en móvil");
+      assert.ok(cajaAccionesChat.y >= cajaBotonVolver.y + cajaBotonVolver.height, "las acciones quedan debajo de la identidad y el enlace al supervisor en móvil");
     }
     await page.getByRole("button", { name: "Volver al chat principal: Prueba de flujo", exact: true }).click();
     await page.getByRole("heading", { name: "Prueba de flujo", exact: true }).waitFor();
@@ -1090,9 +1091,9 @@ try {
     await page.goto(`${base}/ajustes`);
     const tarjetaNotificaciones = page.locator('article[aria-labelledby="ajustes-notificaciones"]');
     await tarjetaNotificaciones.scrollIntoViewIfNeeded();
-    const interruptorNotificaciones = tarjetaNotificaciones.getByRole("switch", { name: "Notificaciones de escritorio" });
+    const interruptorNotificaciones = tarjetaNotificaciones.getByRole("switch", { name: "Notificaciones del sistema" });
     await interruptorNotificaciones.click();
-    await page.waitForFunction(() => document.querySelector('[aria-label="Notificaciones de escritorio"]')?.getAttribute("aria-checked") === "true");
+    await page.waitForFunction(() => document.querySelector('[aria-label="Notificaciones del sistema"]')?.getAttribute("aria-checked") === "true");
     const selectorSonido = tarjetaNotificaciones.getByLabel("Sonido de notificación");
     assert.equal(await selectorSonido.locator("option").count(), 5);
     await selectorSonido.selectOption("ascendente");

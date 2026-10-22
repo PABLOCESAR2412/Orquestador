@@ -649,6 +649,15 @@ describe("imágenes de una conversación", () => {
     expect(base.status).toBe(200);
     expect(await base.json()).toMatchObject({ ruta: "README.md", texto: "Archivo del repositorio base" });
 
+    const { carpetaEntregables } = await import("../src/entregables");
+    const entregables = carpetaEntregables(workspaceAnterior);
+    mkdirSync(entregables, { recursive: true });
+    writeFileSync(join(entregables, "reporte-independiente.md"), "# Reporte independiente");
+    const reporte = await app.request(`/api/conversations/${conversacionId}/archivo?ruta=reporte-independiente.md`);
+    expect(reporte.status).toBe(200);
+    expect(await reporte.json()).toMatchObject({ texto: "# Reporte independiente" });
+    expect(entregables.startsWith(workspaceAnterior)).toBe(false);
+
     const ausente = await app.request(`/api/conversations/${conversacionId}/archivo?ruta=Gone.tsx`);
     expect(ausente.status).toBe(404);
     expect(await ausente.json()).toEqual({ error: "project_path_not_found" });
@@ -768,4 +777,31 @@ describe("cuota agotada en chats de proyecto", () => {
     expect(db.query<{ cuota_modelo: string | null }, [string]>("SELECT cuota_modelo FROM conversations WHERE id = ?")
       .get(conversationId)?.cuota_modelo).toBeNull();
   });
+});
+
+test("la selección guardada avisa a otros dispositivos y se lee desde el servidor", async () => {
+  const { settings } = await import("../src/routes/settings");
+  const { eventosDesde, suscribirConEventosDesde } = await import("../src/bus");
+  const id = conversacion();
+  db.query("UPDATE conversations SET model='modelo-anterior',effort=NULL WHERE id=?").run(id);
+  const captura = suscribirConEventosDesde(null, () => {}); const cursor = captura.cursor; captura.baja();
+  const configuracion = new Hono().route("/api", settings);
+  const resultado = await configuracion.request(`/api/conversations/${id}`, {
+    method: "PATCH", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ model: null, effort: null }),
+  });
+  expect(resultado.status).toBe(200);
+  expect(eventosDesde(cursor).some(({ evento }) => evento.tipo === "configuracion_chat" && evento.conversacion_id === id)).toBe(true);
+  const chats = await (await app.request("/api/conversations")).json() as { id: string; model: string | null }[];
+  expect(chats.find((chat: { id: string }) => chat.id === id)!.model).toBeNull();
+});
+
+test("el chat señala la continuación pendiente hasta que vuelve a trabajar", async () => {
+  const id = conversacion();
+  db.query("UPDATE conversations SET runner_session_id='ses_pendiente' WHERE id=?").run(id);
+  db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,?,?)").run(crypto.randomUUID(),id,"system","La tarea se interrumpió. Continúa donde quedó.");
+  const leer = async () => (await (await app.request("/api/conversations")).json() as {id:string;requiere_continuar:boolean}[]).find(c=>c.id===id)!;
+  expect((await leer()).requiere_continuar).toBe(true);
+  db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,?,?)").run(crypto.randomUUID(),id,"user","Continúa donde quedó");
+  expect((await leer()).requiere_continuar).toBe(false);
 });
