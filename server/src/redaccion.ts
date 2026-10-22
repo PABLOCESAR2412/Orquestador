@@ -102,3 +102,21 @@ export function archivosConSecretos(diff: string, valores: string[]): string[] {
   }
   return [...hallados];
 }
+
+// Igual que archivosConSecretos, pero sobre el contenido íntegro de los blobs del índice
+// (etiquetados por el llamador con "\0ruta\0" al empezar). Cubre los secretos que el diff
+// no muestra, por ejemplo un archivo marcado binario con `.gitattributes`. Devuelve
+// rutas, nunca el valor del secreto.
+export function archivosConSecretosEnBlobs(blobs: string, valores: string[]): string[] {
+  const todos = [...valores, ...valoresDeConfiguracion()];
+  const hallados = new Set<string>();
+  let archivo = "(desconocido)";
+  for (const linea of blobs.split("\n")) {
+    if (linea.startsWith("\0")) {
+      archivo = linea.slice(1, linea.indexOf("\0", 1));
+      continue;
+    }
+    if (contieneSecreto(linea, todos)) hallados.add(archivo);
+  }
+  return [...hallados];
+}
