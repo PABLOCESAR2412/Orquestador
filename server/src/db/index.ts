@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { config } from "../config";
 
 function abrirBase(dir: string): Database {
-  if (process.env.TELO_PRUEBAS_BASE_AISLADA === "1") {
+  // `bun test` fija NODE_ENV="test": el guard queda activo aunque el preload de
+  // bunfig no cargara por correr desde otro directorio.
+  if (process.env.TELO_PRUEBAS_BASE_AISLADA === "1" || process.env.NODE_ENV === "test") {
     const destino = resolve(dir);
     const temporales = resolve(tmpdir()) + sep;
     if (!destino.startsWith(temporales)) throw new Error("Las pruebas solo pueden abrir bases dentro del directorio temporal.");
