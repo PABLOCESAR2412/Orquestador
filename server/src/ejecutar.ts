@@ -63,6 +63,7 @@ export const CONTRATO_EJECUCION = [
   "- Interpreta la petición como objetivo y respeta sus restricciones. Usa el historial, memoria, instrucciones y skills pertinentes; no repitas trabajo terminado.",
   "- Define alcance, precondiciones y evidencia de término. Si falta un dato bloqueante, pregunta; si no, elige una opción segura y explícala al final.",
   "- Inspecciona contexto y herramientas antes de usarlas; no afirmes capacidades sin comprobarlas.",
+  "- Dependencias ausentes: reinstala con lockfile frozen/ci; el analizador no instala.",
   "- Haz el cambio o investigación mínimos que resuelvan el objetivo, dentro del workspace y las autorizaciones recibidas.",
   "- Reportes y documentos: usa la carpeta de entregables y enlázalos. Solo van al repo por petición expresa. No prepares commit/PR ni muevas documentos existentes sin autorización.",
   "- Para investigar, busca en Internet y respalda afirmaciones con enlaces directos en Markdown. Usa materiales pertinentes (documentación, estudios, libros, videos, informes, datasets u otros), prioriza fuentes primarias fiables y atribuye autor/editor si está disponible; nunca inventes enlaces ni fuentes. Si no puedes consultar, dilo.",

@@ -15,6 +15,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { sincronizarRespaldosR2, type ConjuntoRespaldo } from "../src/respaldo-r2";
 import { crearAlmacenR2Respaldos, leerConfiguracionR2Respaldos } from "../src/respaldo-r2-s3";
+import { dependenciasRetirables } from "../src/dependencias-disco";
 
 const dataDir = resolve(process.env.DATA_DIR ?? "./data");
 const destino = resolve(process.env.TELO_RESPALDOS_DIR ?? join(homedir(), "respaldos"));
@@ -93,7 +94,22 @@ async function main(): Promise<void> {
   let archivo: string | null = null;
   if (carpetas.length > 0) {
     archivo = join(destino, `espacio-${sello}.tar.gz`);
-    const tar = Bun.spawnSync(["tar", "-czf", archivo, "-C", dataDir, ...carpetas]);
+    const exclusiones: string[] = [];
+    if (carpetas.includes("tasks")) {
+      for (const entrada of readdirSync(join(dataDir, "tasks"), { withFileTypes: true })) {
+        if (!entrada.isDirectory() || entrada.isSymbolicLink() || !/^[a-f0-9-]{36}$/i.test(entrada.name)) continue;
+        try {
+          for (const ruta of await dependenciasRetirables(join(dataDir, "tasks", entrada.name, "repo"))) {
+            const relativa = ruta.slice(dataDir.length + 1).replaceAll("\\", "/");
+            // Los patrones tar no deben interpretar metacaracteres de nombres del agente.
+            if (/^[a-zA-Z0-9_./@-]+$/.test(relativa)) exclusiones.push(`--exclude=${relativa}`);
+          }
+        } catch {
+          // Si Git o sus metadatos no se pueden validar, el respaldo conserva todo.
+        }
+      }
+    }
+    const tar = Bun.spawnSync(["tar", ...exclusiones, "-czf", archivo, "-C", dataDir, ...carpetas]);
     if (tar.exitCode !== 0) {
       rmSync(archivo, { force: true });
       rmSync(copiaDb, { force: true });

@@ -118,6 +118,23 @@ El servicio diario de respaldos puede leer credenciales separadas desde `/etc/or
 
 ## Respaldos
 
+### Espacio de dependencias
+
+`server/scripts/optimizar-disco.ts` enumera dependencias ignoradas de tareas terminadas con lockfile; `--aplicar` las retira solo si `orquestador.service` está inactivo. Ejecutar como el usuario del servicio, nunca con sudo Bun. Conserva tareas no terminadas, Git, código, entregables y perfiles de sesiones. `.opencode` requiere su propio lockfile. El modo simulación no borra dependencias, aunque la puerta Git sanea la configuración local como en las otras operaciones del servidor.
+
+Tras desplegar y sin agentes externos trabajando en esos clones:
+
+```bash
+cd /home/orquestador/orquestador/server
+bun scripts/optimizar-disco.ts
+sudo systemctl stop orquestador.service
+bun scripts/optimizar-disco.ts --aplicar
+sudo systemctl start orquestador.service
+df -h /
+```
+
+La limpieza no es automática ni elimina clones completos. Las dependencias deben reconstruirse con el lockfile antes de volver a probar/compilar; el contrato del agente lo indica, sin ejecutar instalaciones fuera del aislamiento. Si se modificaron paquetes manualmente dentro de `node_modules`, conservar esos cambios antes de aplicar: Git no detecta modificaciones ignoradas. Los respaldos nuevos omiten solo los mismos directorios verificables; conservan manifiestos y lockfiles, pero una restauración requiere acceso a sus paquetes. Los respaldos antiguos no se modifican.
+
 - En el VM, `deploy/orquestador-respaldo.timer` corre cada día a las 03:30 UTC `server/scripts/respaldo.ts`, con el servicio encendido. Guarda en `/home/orquestador/respaldos`: `orquestador-<sello>.db` (copia con `VACUUM INTO`, revisada con `integrity_check`) y `espacio-<sello>.tar.gz` (`chat-workspace`, `tasks`, `entregables` y `chat-attachments`). Sin R2 conserva las últimas `TELO_RESPALDOS_CONSERVAR` (14) de cada tipo. Con R2, sube y verifica los últimos `TELO_R2_RESPALDOS_CONSERVAR` conjuntos (1 por defecto), elimina conjuntos remotos antiguos y reduce las copias del VPS a `TELO_R2_RESPALDOS_LOCALES` (1 por defecto); un error de subida o validación conserva los archivos locales.
 - Antes de aplicar migraciones a una base con datos, el servidor guarda una copia en `DATA_DIR/respaldos-migracion` (`antes-<migración>-<sello>.db`). Esa carpeta no la copia el timer: revísala antes de borrarla.
 - La PC copia esa carpeta por Tailscale con `deploy/copiar-respaldo-pc.ps1`. Los respaldos nunca van al repo. La PC no poda sus copias.
