@@ -52,6 +52,12 @@ async function crearRepo() {
 }
 
 describe("alcance del plan aprobado", () => {
+  test("solo excluye el directorio interno exacto, no prefijos parecidos", async () => {
+    const { cwd } = await crearRepo();
+    const snapshot = await capturarAlcance(cwd, ["src/dentro.txt"]);
+    writeFileSync(join(cwd, ".opencode-no-autorizado.ts"), "fuera");
+    expect(await comprobarAlcance(snapshot)).toEqual([".opencode-no-autorizado.ts"]);
+  });
   test("permite archivos explícitos y contenido de directorios existentes", async () => {
     const { cwd } = await crearRepo();
     const snapshot = await capturarAlcance(cwd, ["src", ".gitignore"]);

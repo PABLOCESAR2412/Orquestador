@@ -2,7 +2,7 @@
 // Imitación de `opencode run --format json` para las pruebas del analizador y el obrero.
 // Decide su respuesta por las marcas del prompt (DESVIAR, TOPE, FALLO, COMMIT, PREGUNTA, INVALIDO)
 // y anota cada llamada en llamadas.jsonl de su carpeta de trabajo.
-import { appendFileSync, existsSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 const argv = process.argv.slice(2);
@@ -17,7 +17,10 @@ const prompt = fin >= 0 ? (argv[fin + 1] ?? "") : (argv.at(-1) ?? "");
 const sIdx = argv.indexOf("-s");
 const sesion = sIdx >= 0 ? (argv[sIdx + 1] ?? null) : null;
 const cwd = process.cwd();
-const ruta = (nombre: string) => join(cwd, nombre);
+// La telemetría del doble de pruebas no forma parte de los archivos del plan.
+const interna = join(cwd, ".opencode", "fixture-analizador");
+mkdirSync(interna, { recursive: true });
+const ruta = (nombre: string) => join(interna, nombre);
 
 // La reparación de un plan inválido también es del analizador, aunque no repita su presentación.
 const rol = prompt.includes("Eres el analizador de Telo") || prompt.includes("no es un plan válido")

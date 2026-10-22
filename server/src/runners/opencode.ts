@@ -5,6 +5,7 @@ import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
 import { esVariableReservada, SECRETOS_SOLO_SERVIDOR } from "../secretos";
 import type { ImagenAgente } from "../chat-adjuntos";
 import { config } from "../config";
+import { actividadDelGrupo } from "./actividad-grupo";
 import type { ServidorMcpAgente } from "../conexiones-mcp";
 import { configuracionOpenCodeMcp } from "../conexiones-mcp";
 
@@ -445,9 +446,13 @@ async function ejecutarOpenCode(opts: {
   // silencio, la ejecución falla con un mensaje claro en vez de retener el slot para siempre.
   let ultimaActividad = Date.now();
   let muertoPorSilencio = false;
+  let actividadAnterior = actividadDelGrupo(proc.pid);
   const vigilante =
     opts.tiempoSinActividadMs && opts.tiempoSinActividadMs > 10_000
       ? setInterval(() => {
+          const actividad = actividadDelGrupo(proc.pid);
+          if (actividad !== null && actividad !== actividadAnterior) ultimaActividad = Date.now();
+          actividadAnterior = actividad;
           if (Date.now() - ultimaActividad < (opts.tiempoSinActividadMs ?? 0)) return;
           muertoPorSilencio = true;
           terminarGrupo(proc.pid);

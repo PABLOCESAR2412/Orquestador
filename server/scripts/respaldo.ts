@@ -89,7 +89,7 @@ async function main(): Promise<void> {
   }
 
   // Carpetas de trabajo de chats y tareas: se archivan juntas.
-  const carpetas = ["chat-workspace", "tasks"].filter((carpeta) => existsSync(join(dataDir, carpeta)));
+  const carpetas = ["chat-workspace", "tasks", "entregables", "chat-attachments"].filter((carpeta) => existsSync(join(dataDir, carpeta)));
   let archivo: string | null = null;
   if (carpetas.length > 0) {
     archivo = join(destino, `espacio-${sello}.tar.gz`);
