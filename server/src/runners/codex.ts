@@ -1,11 +1,9 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
 import { hallarEjecutable } from "../ejecutable";
-import { carpetaHome } from "../hogar";
 import { entornoDelAgente, estimarUso, type RunResult, type Usage } from "./opencode";
 import type { ImagenAgente } from "../chat-adjuntos";
 import { argumentosConfigMcpCodex, type ServidorMcpAgente } from "../conexiones-mcp";
+import { deltaNoRegistrada, sumarTotales, totalesDelEventoTokenCount, type TotalesCodex } from "./tokens-codex";
 
 // Termina el grupo de procesos para que herramientas e hijos no queden como zombies huérfanos.
 function terminarGrupo(proc: { pid: number; kill: () => void }) {
@@ -28,14 +26,10 @@ function terminarGrupo(proc: { pid: number; kill: () => void }) {
   setTimeout(() => enviar("SIGKILL"), 3_000).unref();
 }
 
-// Ejecución de tareas con el CLI de Codex cuando el modelo seleccionado es de Codex (codex/*).
-// Utiliza la sesión activa autenticada con ChatGPT (`codex login --device-auth`).
-
-export async function runCodex(opts: {
+interface OpcionesCodex {
   servidoresMcp?: ServidorMcpAgente[];
   prompt: string;
   model: string;
-  variant?: string;
   sessionId?: string | null;
   cwd: string;
   timeoutMs?: number | null;
@@ -49,7 +43,11 @@ export async function runCodex(opts: {
   soloLectura?: boolean;
   imagenes?: ImagenAgente[];
   onUso?: (uso: Usage) => void;
-}): Promise<RunResult> {
+}
+
+// Ejecución de tareas con el CLI de Codex cuando el modelo seleccionado es de Codex (codex/*).
+// Utiliza la sesión activa autenticada con ChatGPT (`codex login --device-auth`).
+export async function runCodex(opts: OpcionesCodex): Promise<RunResult> {
   const codex = hallarEjecutable("codex");
   if (!codex) {
     throw new Error("El CLI de Codex no está instalado en el servidor. Instálalo desde Ajustes para usar modelos de Codex.");
@@ -63,14 +61,27 @@ export async function runCodex(opts: {
 
   // Codex toma `-c` como prioridad de ejecución y lee MCP remoto desde la tabla mcp_servers.
   const ajustesMcp = argumentosConfigMcpCodex(opts.servidoresMcp ?? []);
-  const args: string[] = ["codex", ...ajustesMcp];
+
+  // Los reintentos ante 429/5xx y el respaldo viven a nivel ejecutar (reintento-transitorio.test.ts):
+  // aquí corre una sola vez para no pisar esa política ni consumir su presupuesto de espera.
+  return await intentoCodex({ ...opts, codex, modeloCodex, aislamiento, rutasImagenes, ajustesMcp });
+}
+
+async function intentoCodex(opts: OpcionesCodex & {
+  codex: string;
+  modeloCodex: string;
+  aislamiento: string[];
+  rutasImagenes: string[];
+  ajustesMcp: string[];
+}): Promise<RunResult> {
+  const args: string[] = ["codex", ...opts.ajustesMcp];
   if (opts.sessionId && /^[0-9a-fA-F-]+$/.test(opts.sessionId)) {
-    args.push("exec", "resume", "--json", ...rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", modeloCodex, opts.sessionId, opts.prompt);
+    args.push("exec", "resume", "--json", ...opts.rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", opts.modeloCodex, opts.sessionId, opts.prompt);
   } else {
-    args.push("exec", "--json", ...rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", modeloCodex, "-C", opts.cwd, "--", opts.prompt);
+    args.push("exec", "--json", ...opts.rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", opts.modeloCodex, "-C", opts.cwd, "--", opts.prompt);
   }
 
-  const comandoCompleto = aislamiento.length > 0 ? ["setsid", ...aislamiento, ...args] : process.platform === "win32" ? ["cmd", "/c", ...args] : ["setsid", ...args];
+  const comandoCompleto = opts.aislamiento.length > 0 ? ["setsid", ...opts.aislamiento, ...args] : process.platform === "win32" ? ["cmd", "/c", ...args] : ["setsid", ...args];
 
   // Aislar variables sensibles usando entornoDelAgente para nunca filtrar TELO_* ni secretos del servidor
   const env = entornoDelAgente(opts.extraEnv);
@@ -91,6 +102,35 @@ export async function runCodex(opts: {
   let text = "";
   let usage: Usage | null = null;
   let ultimoError: string | null = null;
+
+  // Contabilidad incremental (A-m2): los `token_count` traen la cuenta acumulada de la
+  // sesión; los `turn.completed` ya se registran como deltas. Al acabar (éxito, fallo o
+  // cancelación) se registra solo lo que ningún turno completado haya contado ya.
+  const porTurno: TotalesCodex = { input: 0, cached: 0, output: 0, reasoning: 0 };
+  let base: TotalesCodex | null = null;
+  let ultimo: TotalesCodex | null = null;
+  let pendienteRegistrado = false;
+  const registrarPendiente = () => {
+    if (pendienteRegistrado) return;
+    pendienteRegistrado = true;
+    const faltante = deltaNoRegistrada(base, ultimo, porTurno);
+    if (faltante && (faltante.input > 0 || faltante.output > 0 || faltante.reasoning > 0)) {
+      const pendiente: Usage = {
+        input: faltante.input,
+        output: faltante.output,
+        reasoning: faltante.reasoning,
+        cacheRead: faltante.cached,
+        cost: 0,
+        tokensMedidos: true,
+        costeDisponible: false,
+      };
+      try {
+        opts.onUso?.(pendiente);
+      } catch {
+        // Un fallo al registrar el uso no cambia el resultado de la ejecución.
+      }
+    }
+  };
 
   const lector = async () => {
     const reader = proc.stdout.getReader();
@@ -115,12 +155,10 @@ export async function runCodex(opts: {
             if (ev.type === "thread.started" && ev.thread_id) {
               sessionId = ev.thread_id;
               opts.onSesion?.(ev.thread_id);
-            } else if (ev.type === "item.completed" && ev.item) {
-              if (ev.item.type === "agent_message" && typeof ev.item.text === "string") {
-                text += (text ? "\n\n" : "") + ev.item.text;
-              } else if (ev.item.type === "error" && typeof ev.item.message === "string") {
-                ultimoError = ev.item.message;
-              }
+            } else if (ev.item?.type === "agent_message" && typeof ev.item.text === "string") {
+              text += (text ? "\n\n" : "") + ev.item.text;
+            } else if (ev.item?.type === "error" && typeof ev.item.message === "string") {
+              ultimoError = ev.item.message;
             } else if (ev.type === "turn.completed" && ev.usage) {
               const u = ev.usage;
               usage = {
@@ -133,7 +171,18 @@ export async function runCodex(opts: {
                 costeDisponible: false,
               };
               if (usage.input > 0 || usage.output > 0) opts.onUso?.(usage);
-            } else if (ev.type === "error" || ev.type === "turn.failed") {
+              porTurno.input += Math.max(0, usage.input);
+              porTurno.cached += Math.max(0, usage.cacheRead);
+              porTurno.output += Math.max(0, usage.output);
+              porTurno.reasoning += Math.max(0, usage.reasoning);
+            } else {
+              const totales = totalesDelEventoTokenCount(ev);
+              if (totales) {
+                if (!base) base = totales;
+                ultimo = totales;
+              }
+            }
+            if (ev.type === "error" || ev.type === "turn.failed") {
               const msg = ev.message ?? ev.error?.message;
               if (typeof msg === "string") {
                 try {
@@ -178,26 +227,28 @@ export async function runCodex(opts: {
     const res = await Promise.race([salidaPromesa, abortado]);
     stderr = res[1];
     code = res[2];
+
+    if (code !== 0) {
+      const detalle = ultimoError || stderr.trim() || `Codex terminó con código ${code}`;
+      throw new Error(`Codex falló: ${detalle}`);
+    }
+
+    let usoFinal = usage as Usage | null;
+    if (!usoFinal || (usoFinal.input === 0 && usoFinal.output === 0)) {
+      usoFinal = estimarUso(opts.prompt, text.trim());
+      opts.onUso?.(usoFinal);
+    }
+
+    registrarPendiente();
+    return {
+      text: text.trim(),
+      textoFinal: text.trim(),
+      sessionId,
+      usage: usoFinal,
+    };
   } finally {
     if (timer) clearTimeout(timer);
     if (onAbort) opts.signal?.removeEventListener("abort", onAbort);
+    registrarPendiente();
   }
-
-  if (code !== 0) {
-    const detalle = ultimoError || stderr.trim() || `Codex terminó con código ${code}`;
-    throw new Error(`Codex falló: ${detalle}`);
-  }
-
-  let usoFinal = usage as Usage | null;
-  if (!usoFinal || (usoFinal.input === 0 && usoFinal.output === 0)) {
-    usoFinal = estimarUso(opts.prompt, text.trim());
-    opts.onUso?.(usoFinal);
-  }
-
-  return {
-    text: text.trim(),
-    textoFinal: text.trim(),
-    sessionId,
-    usage: usoFinal,
-  };
 }
