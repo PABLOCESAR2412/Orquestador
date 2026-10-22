@@ -6,6 +6,8 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 
 ## Auditoría del 22 de octubre: correcciones comprobadas
 
+Entrega: [PR #104](https://github.com/PABLOCESAR2412/Orquestador/pull/104). Pendiente de CI y merge por el usuario; no desplegado por esta tarea.
+
 - [x] **A01 — Respaldar y restaurar entregables independientes.** El tar incluye entregables y adjuntos. Regresión: respaldo real de SQLite/tar y recuperación del contenido del documento.
 - [x] **A02 — Eliminar sesiones heredadas no revocables.** Solo se aceptan sesiones registradas; regresión: cookie HMAC rechazada, sesión nueva válida y logout efectivo. Las cookies antiguas requieren nuevo login.
 - [x] **A03 — Aislar obligatoriamente las pruebas de la base local.** Preload obligatorio desde raíz y server, DATA_DIR temporal por ejecución y rechazo de bases fuera del directorio temporal. La suite que fallaba ahora pasa sin preparar variables a mano.
