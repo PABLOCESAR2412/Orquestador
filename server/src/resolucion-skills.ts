@@ -59,6 +59,10 @@ function skillsAutomaticas(texto: string): string[] {
   const creaImagen = /\b(crea(?:r|ci[oó]n)?|gener(?:a|ar|aci[oó]n)|haz(?:me)?|diseñ(?:a|ar|o)|ilustra(?:r)?|dibuja(?:r)?|produce|compon(?:er|e)|mejora(?:r)?)\b/i.test(texto);
   if (mencionaImagen && creaImagen) resultado.push("image-design");
 
+  const mencionaMovimiento = /\b(animaci[oó]n(?:es)?|animad[oa]s?|movimiento|video(?:s)?|v[ií]deo(?:s)?|mp4|gif|webp animad[oa]|motion design)\b/i.test(texto);
+  const creaMovimiento = /\b(crea(?:r|ci[oó]n)?|gener(?:a|ar|aci[oó]n)|haz(?:me)?|diseñ(?:a|ar|o)|anima(?:r)?|edita(?:r)?|convierte|produce|mejora(?:r)?|corrige|arregla|revisa)\b/i.test(texto);
+  if (mencionaMovimiento && creaMovimiento) resultado.push("motion-design");
+
   const cambioAcotado = texto.length <= 4_000 &&
     /\b(corrige|arregla|fix|bug|error|implementa|añade|agrega|actualiza|cambia|refactoriza)\b/i.test(texto) &&
     !/\b(análisis completo|migración|rediseña todo|reescribe|desde cero|varios proyectos)\b/i.test(texto);

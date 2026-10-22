@@ -154,9 +154,10 @@ const EXTENSIONES_CODIGO = new Set([
   "json", "css", "scss", "html", "htm",
   "md", "markdown", "py", "sql", "sh", "bash",
   "yaml", "yml", "toml", "lock", "svg", "png", "jpg", "jpeg",
-  "env", "dockerfile", "gitignore", "txt", "conf", "ini", "pdf", "webp", "gif"
+  "env", "dockerfile", "gitignore", "txt", "conf", "ini", "pdf", "webp", "gif", "mp4"
 ]);
 const EXTENSIONES_IMAGEN_RASTER = new Set(["png", "jpg", "jpeg", "webp", "gif"]);
+const EXTENSIONES_VIDEO = new Set(["mp4"]);
 
 const PREFIJOS_CARPETAS = /^(web|server|src|components|lib|pages|styles|routes|runners|tests|\.opencode|\.config|\.github|skills|data|dist|public)\//i;
 
@@ -171,7 +172,7 @@ export function esRutaArchivo(texto: string): boolean {
   const puntoIdx = ultimoSegmento.lastIndexOf(".");
   if (puntoIdx > 0 && puntoIdx < ultimoSegmento.length - 1) {
     const ext = ultimoSegmento.slice(puntoIdx + 1).toLowerCase();
-    if (EXTENSIONES_CODIGO.has(ext) && (!tieneEspacios || ext === "pdf" || EXTENSIONES_IMAGEN_RASTER.has(ext))) return true;
+    if (EXTENSIONES_CODIGO.has(ext) && (!tieneEspacios || ext === "pdf" || EXTENSIONES_IMAGEN_RASTER.has(ext) || EXTENSIONES_VIDEO.has(ext))) return true;
   }
   if (tieneBarras && PREFIJOS_CARPETAS.test(texto)) return true;
   return false;
@@ -264,6 +265,7 @@ const TIPOS_ARCHIVO: Record<string, { etiqueta: string; tipo: string }> = {
   jpeg: { etiqueta: "JPG", tipo: "Imagen JPEG" },
   webp: { etiqueta: "WEBP", tipo: "Imagen WebP" },
   gif: { etiqueta: "GIF", tipo: "Imagen GIF" },
+  mp4: { etiqueta: "MP4", tipo: "Video MP4" },
   env: { etiqueta: "ENV", tipo: "Variables de entorno" },
   dockerfile: { etiqueta: "DOCKER", tipo: "Dockerfile" },
   gitignore: { etiqueta: "GIT", tipo: "Reglas de Git ignore" },

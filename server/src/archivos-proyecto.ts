@@ -21,6 +21,7 @@ export const LIMITE_LISTADO = 500;
 export const LIMITE_LECTURA = 256 * 1024;
 export const LIMITE_PDF = 50 * 1024 * 1024;
 export const LIMITE_IMAGEN = 50 * 1024 * 1024;
+export const LIMITE_VIDEO = 64 * 1024 * 1024;
 const LONGITUD_RUTA_MAX = 1024;
 const MAX_ENTRADAS_BUSQUEDA = 20_000;
 const MAX_RESULTADOS_BUSQUEDA = 9;
@@ -316,6 +317,18 @@ export function leerImagen(
         : bytes.toString("ascii", 0, 6) === "GIF87a" || bytes.toString("ascii", 0, 6) === "GIF89a";
   if (!valida) throw new ArchivoError("formato_imagen_invalido", 415);
   return { ...archivo, nombre, mime: MIME_IMAGEN[extension]! };
+}
+
+// Lee videos MP4 del workspace y valida la cabecera ISO-BMFF antes de servirlos al navegador.
+export function leerVideo(
+  raizProyecto: string,
+  segmentos: string[],
+): { ruta: string; nombre: string; mime: string; tamano: number; contenido: Buffer } {
+  const archivo = leerBinario(raizProyecto, segmentos, ["mp4"], LIMITE_VIDEO, "formato_video_invalido");
+  if (archivo.contenido.length < 12 || archivo.contenido.toString("ascii", 4, 8) !== "ftyp") {
+    throw new ArchivoError("formato_video_invalido", 415);
+  }
+  return { ...archivo, nombre: archivo.ruta.split("/").at(-1)!, mime: "video/mp4" };
 }
 
 // Busca una referencia sin carpeta dentro del proyecto cuando el modelo solo citó el nombre.

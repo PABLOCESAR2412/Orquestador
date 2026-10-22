@@ -64,9 +64,10 @@ describe("skills globales", () => {
 
     expect(readFileSync(join(GLOBAL, "gauntlet", "SKILL.md"), "utf8")).toContain("Personalización conservada.");
     expect(readFileSync(join(frontend, "SKILL.md"), "utf8")).toBe("Skill existente con formato pendiente de corregir.\n");
-    for (const nombre of ["playwright", "ponytail", "image-design"]) {
+    for (const nombre of ["playwright", "ponytail", "image-design", "motion-design"]) {
       expect(readFileSync(join(GLOBAL, nombre, "SKILL.md"), "utf8")).toContain(`name: ${nombre}`);
     }
+    expect(readFileSync(join(GLOBAL, "motion-design", "SKILL.md"), "utf8")).toContain("No dibujes sobre el fotograma anterior");
   });
 
   test("guarda una skill válida y la lista con su descripción", async () => {

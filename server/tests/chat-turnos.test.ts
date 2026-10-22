@@ -486,6 +486,41 @@ describe("imágenes de una conversación", () => {
     expect(descarga.headers.get("content-disposition")).toContain("filename*=UTF-8''infograf%C3%ADa%20de%20prueba.png");
   });
 
+  test("previsualiza, descarga y sirve rangos de videos MP4 del chat", async () => {
+    const id = conversacion();
+    const nombre = "resumen de guerra.mp4";
+    const carpetaChat = join(process.env.DATA_DIR!, "chat-workspace", id);
+    mkdirSync(carpetaChat, { recursive: true });
+    const bytes = Buffer.from("000000146674797069736f6d000000006d703432", "hex");
+    writeFileSync(join(carpetaChat, nombre), bytes);
+    const ruta = `/api/conversations/${id}/archivo-video?ruta=${encodeURIComponent(nombre)}`;
+
+    const meta = await app.request(`${ruta}&meta=1`);
+    expect(meta.status).toBe(200);
+    expect(await meta.json()).toEqual({ ruta: nombre, nombre, mime: "video/mp4", tamano: bytes.byteLength });
+
+    const vista = await app.request(ruta);
+    expect(vista.status).toBe(200);
+    expect(vista.headers.get("content-type")).toBe("video/mp4");
+    expect(vista.headers.get("content-disposition")).toStartWith("inline;");
+    expect(vista.headers.get("accept-ranges")).toBe("bytes");
+    expect(Buffer.from(await vista.arrayBuffer())).toEqual(bytes);
+
+    const rango = await app.request(ruta, { headers: { range: "bytes=4-11" } });
+    expect(rango.status).toBe(206);
+    expect(rango.headers.get("content-range")).toBe(`bytes 4-11/${bytes.byteLength}`);
+    expect(Buffer.from(await rango.arrayBuffer())).toEqual(bytes.subarray(4, 12));
+
+    const descarga = await app.request(`${ruta}&descargar=1`);
+    expect(descarga.headers.get("content-disposition")).toStartWith("attachment;");
+    expect(descarga.headers.get("content-disposition")).toContain("filename*=UTF-8''resumen%20de%20guerra.mp4");
+
+    writeFileSync(join(carpetaChat, "falso.mp4"), "no es un MP4");
+    const invalido = await app.request(`/api/conversations/${id}/archivo-video?ruta=falso.mp4`);
+    expect(invalido.status).toBe(415);
+    expect(await invalido.json()).toEqual({ error: "formato_video_invalido" });
+  });
+
   test("sirve archivos del proyecto y rechaza rutas o firmas no permitidas", async () => {
     const proyectoId = crypto.randomUUID();
     const conversacionId = crypto.randomUUID();
