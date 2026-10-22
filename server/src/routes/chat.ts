@@ -672,9 +672,15 @@ function raicesArchivosConversacion(conversacion: ConversationRow): string[] {
   const workspaces = db.query<{ workspace: string }, [string]>(
     "SELECT workspace FROM tasks WHERE conversation_id=? AND workspace IS NOT NULL ORDER BY created_at DESC,rowid DESC",
   ).all(conversacion.id).map((tarea) => tarea.workspace);
-  const raizOriginal = conversacion.subagent_workspace
-    ?? (conversacion.project_id ? conversacion.repo_path : join(chatWorkspace, conversacion.parent_conversation_id ?? conversacion.id));
-  return [...new Set([...workspaces, ...(raizOriginal ? [raizOriginal] : [])])];
+  // Los turnos normales de chat siempre escriben en chat-workspace, incluso si la conversación
+  // está vinculada a un proyecto. El repositorio también es una raíz válida para sus archivos.
+  const raizChat = conversacion.subagent_workspace
+    ?? join(chatWorkspace, conversacion.parent_conversation_id ?? conversacion.id);
+  return [...new Set([
+    ...workspaces,
+    raizChat,
+    ...(conversacion.project_id && conversacion.repo_path ? [conversacion.repo_path] : []),
+  ])];
 }
 
 function leerEnRaices<T>(raices: string[], leer: (raiz: string) => T): T {

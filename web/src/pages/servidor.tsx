@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type ServicioEstado, type ServidorEstado } from "../api";
+import { api, reintentarConsultaTransitoria, type ServicioEstado, type ServidorEstado } from "../api";
 import { duracion, formatBytes, porcentaje } from "../components/tarea-formato";
 import { errorText, formatUsd } from "../lib/model";
 import { LoadingSkeleton } from "../components/loading-skeleton";
@@ -173,7 +173,7 @@ function textoServicio(datos: ServicioEstado | undefined, error: boolean): strin
 }
 
 export function EstadoServidor({ latencia }: { latencia: MuestrasLatencia }) {
-  const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000 });
+  const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000, retry: reintentarConsultaTransitoria });
   const runner = useQuery({ queryKey: ["runner"], queryFn: api.runnerStatus, refetchInterval: 60_000 });
   const servicio = useQuery({ queryKey: ["servidor-servicio"], queryFn: api.serverService, refetchInterval: 30_000 });
   const [verRegistros, setVerRegistros] = useState(false);
@@ -398,7 +398,7 @@ function TarjetaDisco({
 
 // Discos y carpetas reales del servidor.
 export function AlmacenamientoServidor() {
-  const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000 });
+  const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000, retry: reintentarConsultaTransitoria });
   const datos = servidor.data;
   const carpetas = datos?.carpetas ?? [];
   const mayor = Math.max(0, ...carpetas.map((c) => c.bytes));

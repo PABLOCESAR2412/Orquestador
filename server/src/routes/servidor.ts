@@ -111,11 +111,18 @@ async function medirCarpetas(): Promise<Carpeta[]> {
 }
 
 let cacheCarpetas: { at: number; valor: Carpeta[] } | null = null;
+let medicionCarpetas: Promise<Carpeta[]> | null = null;
 async function carpetasCacheadas(): Promise<Carpeta[]> {
   if (cacheCarpetas && Date.now() - cacheCarpetas.at < TIEMPO_CACHE_MS) return cacheCarpetas.valor;
-  const valor = await medirCarpetas();
-  cacheCarpetas = { at: Date.now(), valor };
-  return valor;
+  // El recorrido puede medir cientos de miles de entradas. Comparte la medición si varias
+  // solicitudes de estado llegan a la vez, en vez de multiplicar el I/O del servidor.
+  medicionCarpetas ??= medirCarpetas()
+    .then((valor) => {
+      cacheCarpetas = { at: Date.now(), valor };
+      return valor;
+    })
+    .finally(() => { medicionCarpetas = null; });
+  return medicionCarpetas;
 }
 
 // Versión de una herramienta: primera línea, sin rutas. Nunca lanza error.

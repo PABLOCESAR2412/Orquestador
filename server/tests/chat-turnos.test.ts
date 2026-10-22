@@ -617,6 +617,9 @@ describe("imágenes de una conversación", () => {
     mkdirSync(join(workspaceAnterior, "renders"), { recursive: true });
     const videoBytes = Buffer.from("000000146674797069736f6d000000006d703432", "hex");
     writeFileSync(join(workspaceAnterior, "renders", "mapa-mental.mp4"), videoBytes);
+    const carpetaChat = join(process.env.DATA_DIR!, "chat-workspace", conversacionId);
+    mkdirSync(carpetaChat, { recursive: true });
+    writeFileSync(join(carpetaChat, "narracion.mp4"), videoBytes);
     writeFileSync(join(raizProyecto, "README.md"), "Archivo del repositorio base");
 
     const texto = await app.request(`/api/conversations/${conversacionId}/archivo?ruta=content.js`);
@@ -637,6 +640,10 @@ describe("imágenes de una conversación", () => {
     const videoContenido = await app.request(`/api/conversations/${conversacionId}/archivo-video?ruta=renders%2Fmapa-mental.mp4`);
     expect(videoContenido.status).toBe(200);
     expect(Buffer.from(await videoContenido.arrayBuffer())).toEqual(videoBytes);
+
+    const videoDelChat = await app.request(`/api/conversations/${conversacionId}/archivo-video?ruta=narracion.mp4&meta=1`);
+    expect(videoDelChat.status).toBe(200);
+    expect(await videoDelChat.json()).toMatchObject({ ruta: "narracion.mp4", mime: "video/mp4" });
 
     const base = await app.request(`/api/conversations/${conversacionId}/archivo?ruta=README.md`);
     expect(base.status).toBe(200);

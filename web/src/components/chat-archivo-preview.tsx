@@ -76,6 +76,10 @@ export function ChatArchivoPreview({
   const coincidencias = archivoError instanceof ApiError && archivoError.code === "project_path_ambiguous"
     ? archivoError.matches ?? []
     : [];
+  const mensajeErrorVideo = video.error instanceof ApiError
+    && ["archivo_chat_no_encontrado", "project_path_not_found"].includes(video.error.code)
+    ? "No encontramos este MP4 en las carpetas accesibles de la conversación. Comprueba que el agente lo haya guardado en el workspace antes de enlazarlo."
+    : errorText(video.error);
   const puedeReintentar = !(archivoError instanceof ApiError) || archivoError.status >= 500;
   return (
     <aside className="tl-chat-archivo-panel" aria-label={`Vista del archivo ${rutaActual}`}>
@@ -184,7 +188,7 @@ export function ChatArchivoPreview({
           {video.isPending && <p className="tl-chat-archivo-estado" role="status">Comprobando video…</p>}
           {video.isError && (
             <div className="tl-chat-archivo-estado" role="alert">
-              <p>No se pudo abrir este video. {errorText(video.error)}</p>
+              <p>No se pudo abrir este video. {mensajeErrorVideo}</p>
               {coincidencias.length > 0 && (
                 <ul className="tl-chat-archivo-coincidencias" aria-label="Videos con ese nombre">
                   {coincidencias.map((ruta) => (

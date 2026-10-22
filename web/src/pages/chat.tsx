@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad } from "../api";
+import { api, ApiError, reintentarConsultaTransitoria, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad } from "../api";
 import { useEventosVivos } from "../lib/eventos-vivos";
 import { ModelPicker } from "../components/model-picker";
 import { UsoPanel } from "../components/uso-panel";
@@ -405,6 +405,7 @@ export function ChatPage() {
     queryFn: () => api.conversationTasks(selectedId!),
     enabled: !!selectedId && !!current?.project_id,
     refetchInterval: 3_000,
+    retry: reintentarConsultaTransitoria,
   });
   const tareaChat = current?.project_id ? tareasChat.data?.at(-1) : undefined;
   const modeloAgotadoChat = current?.cuota_modelo ?? (tareaChat?.status === "sin_cuota"

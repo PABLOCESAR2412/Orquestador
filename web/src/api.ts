@@ -552,6 +552,11 @@ export class ApiError extends Error {
   }
 }
 
+// Reintenta errores de red y 5xx; los 4xx requieren corregir la solicitud y no mejoran esperando.
+export function reintentarConsultaTransitoria(failureCount: number, error: unknown): boolean {
+  return failureCount < 2 && (!(error instanceof ApiError) || error.status >= 500);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
