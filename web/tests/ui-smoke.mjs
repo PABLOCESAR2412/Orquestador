@@ -1093,7 +1093,7 @@ try {
     await tarjetaNotificaciones.scrollIntoViewIfNeeded();
     const interruptorNotificaciones = tarjetaNotificaciones.getByRole("switch", { name: "Notificaciones del sistema" });
     await interruptorNotificaciones.click();
-    await page.waitForFunction(() => document.querySelector('[aria-label="Notificaciones de escritorio"]')?.getAttribute("aria-checked") === "true");
+    await page.waitForFunction(() => document.querySelector('[aria-label="Notificaciones del sistema"]')?.getAttribute("aria-checked") === "true");
     const selectorSonido = tarjetaNotificaciones.getByLabel("Sonido de notificación");
     assert.equal(await selectorSonido.locator("option").count(), 5);
     await selectorSonido.selectOption("ascendente");
