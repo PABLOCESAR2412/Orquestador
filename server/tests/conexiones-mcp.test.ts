@@ -65,6 +65,12 @@ test("genera configuración remota para OpenCode y Codex sin incluir el token li
   const openCode = configuracionOpenCodeMcp(runtime);
   expect(openCode.compaction).toEqual({ auto: true, prune: true });
   expect(configuracionOpenCodeMcp([]).compaction).toEqual({ auto: true, prune: true });
+  // El `small_model` se fija al modelo de la tarea para que los títulos y la compactación
+  // no caigan en modelos del catálogo que la cuenta no tiene (402) o limitados (429).
+  expect(configuracionOpenCodeMcp([], "opencode/deepseek-4.1-flash-free")).toMatchObject({
+    small_model: "opencode/deepseek-4.1-flash-free",
+  });
+  expect(configuracionOpenCodeMcp([])).not.toHaveProperty("small_model");
   const codex = argumentosConfigMcpCodex(runtime);
   expect(JSON.stringify(openCode)).toContain("Bearer {env:MCP_AUTH_123}");
   expect(codex.join(" ")).toContain('mcp_servers.telo_lms01.url="https://lms.ejemplo.test/mcp"');

@@ -4,9 +4,29 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 22 de octubre de
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Hallazgos — auditoría del 21 de octubre de 2026
+
+- [x] **H1 · Escaneo de secretos solo por el diff textual (ALTA).** Con `.gitattributes` el agente podía ocultar contenido; ahora se escanea el blob del índice de cada archivo añadido o modificado (`archivosConSecretosEnBlobs`, topes por blob y total), con la prueba del binario escondido rechazado, y el escáner no bloquea tokens de prueba con marca evidente (ficticia, example…) porque los del dueño cuentan siempre. Evidencia: PR #102, `test: el escaneo de secretos ve el blob…` y `secretos.test.ts`.
+- [x] **H2 · Tarea colgada retenía el slot (MEDIA).** Vigilante de inactividad en el runner de OpenCode: si el agente no emite ninguna línea en `TELO_TIEMPO_INACTIVIDAD_MS` (15 minutos por defecto; 0 lo apaga), se cierra el grupo y la tarea falla con un mensaje claro. El drenado al abortar ya contaba el uso (los eventos pendientes se parsean igual), no hizo falta código nuevo. Evidencia: PR #102.
+- [x] **H3 · Base sin techo y `repository_actions` sin índices (MEDIA).** Migración `039_indices_repository_actions` (tarea+acción+estado, conversación+fecha, proyecto+estado+fecha) y `purgarHistorial()` en el ciclo de limpieza: borra eventos, planes, aprobaciones y solicitudes de tareas terminadas hace más de `TELO_RETENCION_DIAS` (120 días por defecto; 0 la apaga). Las tareas se conservan: son la historia del usuario. Evidencia: PR #102, `retencion.test.ts` (7/7).
+- [x] **H4 · Guías no llegaban en tareas sin proyecto (MEDIA).** `conInstrucciones` lee los documentos guía del workspace (`AGENTS.md`, `CLAUDE.md`, `README.md`) y antepone hasta 8 KB al prompt. Evidencia: PR #102, `mejoras-arquitectura.test.ts` (8/8).
+- [x] **H5 · Suite inservible en Windows (MEDIA).** Causa raíz: `db` singleton abierto una vez por proceso (el primer `DATA_DIR` de prueba ganaba y un `db.close()` rompía el resto: dominó de 103 fallos). Ahora `db` es un Proxy ligado al `DATA_DIR` vigente: reabre al cerrarse y aplica migraciones por apertura; `clave-ssh` anotada `skipIf` en Windows (ejercita OpenSSH POSIX, se verifica en el VM) y `media-routes` cierra la base antes de borrar su carpeta. Evidencia: PR #102, suite completa 485 tests, 0 fail.
+- [x] **H6 · Evento `conflictos_pr_preparados` y errores crudos en la tarjeta (BAJA).** Etiqueta «PR preparado: conflictos por resolver» y `textoErrorTarea` que traduce los códigos guardados a frases. Nota: la etiqueta del evento entró también por el PR #103 y quedó deduplicada en el rebase. Evidencia: PR #102 (+#103).
+- [x] **H7 · Web Push — fase 8 (MEDIA).** Notificaciones que valen sin la app abierta: claves VAPID autogeneradas y cifradas, suscripción por dispositivo (`push_subscripciones`), envío al fallar, al pedir aprobación y al terminar, dedupe por evento (`push_enviados`) y receptor en el service worker (`push-listener.js`); no duplica el aviso si la app está visible y da de baja las suscripciones vencidas (404/410). Evidencia: PR #105, `push.test.ts` (claves cifradas, validación, dedupe, caducidad), suite 492 tests, 0 fail.
+- [ ] **H8 · Registro y gobernanza de disco (BAJA).** Este archivo unifica hallazgos, fases y operativa (los archivos de fase quedan como redirigentes); la purga del historial y limpiarCopias existen, pero no resuelven por sí solas la acumulación de dependencias. Optimización específica en PR #106, todavía pendiente de aplicar y medir en la VM. Evidencia: PR #102 y esta consolidación.
+
+### Análisis menores de la auditoría (mejoras sin bloqueo)
+
+- [x] **A-m1 · Drenado al abortar (tokens).** Verificado que los eventos pendientes se siguen consumiendo y registrando tras el rechazo: no perdió uso; no hace falta cambio.
+- [ ] **A-m2 · Tokens incrementales de Codex.** Los chats de Codex registran el uso al completar el turno; una mejora opcional es tomar los `token_count` intermedios para precisión en ejecuciones largas.
+- [x] **A-m3 · Desalineación de documentación.** AGENTS.md citaba «migración 019» como vigente y decía que faltaba probar OpenCode real en el VM (ya corre real); corregido y desalineación de migraciones resuelta aquí. Evidencia: PR #102.
+- [x] **A-m4 · Higiene del repo local.** `main` local quedó rezagada frente a `origin/main` y ~47 ramas locales viejas; se adelanta `main` con avance rápido y se archivan las ramas sin fusión como `archivo/<rama>` (equipo local, no va por PR).
+- [x] **A-m5 · Títulos en modelos que la cuenta no tiene (22-oct).** El `opencode.json` del tiempo de ejecución no fijaba `small_model`: para los títulos de sesión y la compactación, OpenCode escoge «un modelo barato del catálogo del proveedor» y caía en `gpt-5.4-nano` (402, fuera del plan) o `big-pickle` (429, límite del free tier) aunque la tarea usara DeepSeek. Ahora se fija al modelo elegido por el usuario. Hallazgo desde el registro de inferencia del proveedor (429/402 con modelos que nadie pidió). Evidencia: PR #105, prueba en `conexiones-mcp.test.ts`.
+
+
 ## Auditoría del 22 de octubre: correcciones comprobadas
 
-Entrega: [PR #104](https://github.com/PABLOCESAR2412/Orquestador/pull/104). Pendiente de CI y merge por el usuario; no desplegado por esta tarea.
+Entrega: [PR #104](https://github.com/PABLOCESAR2412/Orquestador/pull/104). Fusionado en main; no se certifica el despliegue por esta resolución.
 
 - [x] **A01 — Respaldar y restaurar entregables independientes.** El tar incluye entregables y adjuntos. Regresión: respaldo real de SQLite/tar y recuperación del contenido del documento.
 - [x] **A02 — Eliminar sesiones heredadas no revocables.** Solo se aceptan sesiones registradas; regresión: cookie HMAC rechazada, sesión nueva válida y logout efectivo. Las cookies antiguas requieren nuevo login.
@@ -116,7 +136,7 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - **Antes de implementar:** investigar los comandos de login de cada CLI en el VM.
 
 ##### 8. Notificaciones
-- Estado: pendiente. Telegram y Discord quedan fuera por decisión del usuario. Hoy los avisos del navegador (`web/src/lib/notificaciones.ts`) solo llegan con Telo abierta.
+- Estado histórico: pendiente al redactar este plan. Actualización del 22 de octubre: Web Push implementado en PR #105; validación de entrega real con app cerrada pendiente en Android. Telegram y Discord quedan fuera por decisión del usuario.
 - Web Push (u otro canal) al fallar, al necesitar aprobación y al terminar una tarea. Es lo único que queda de esta fase: requiere claves VAPID, suscripciones por dispositivo y su protocolo de cifrado (RFC 8291).
 - **Criterio:** cada evento notifica una vez. Reabrir la app no repite las notificaciones.
 
@@ -860,3 +880,13 @@ Fuentes: https://developers.cloudflare.com/containers/platform/pricing/ ; https:
 - [x] Pruebas locales: 7 de dependencias/CLI/tar/enlaces, 5 de R2, 8 regresiones de auditoría y 5 del contrato/uso: 25 aprobadas. TypeScript servidor y build web aprobados. Prueba Linux de aplicación con systemd pendiente; Windows valida junctions y fixtures reales de Git/tar.
 - [ ] Desplegar, simular con datos reales, detener servicio, aplicar desde terminal administrativa y medir df antes/después. Este desarrollo no ha borrado dependencias de la VM. Procedimiento en CLAUDE.md, sección Espacio de dependencias.
 Implementación publicada en PR #106: https://github.com/PABLOCESAR2412/Orquestador/pull/106. Aplicación y ahorro real en producción pendientes.
+
+
+### Integración del PR #105 con main — 22 de octubre
+
+- [x] Conflictos documentales resueltos conservando auditorías del 21 y 22 de octubre, apéndices históricos y correcciones de CI de main. Los registros de cambios de #104 y #105 se conservan juntos. Pruebas de integración locales: 22 de Web Push/MCP/auditoría/dependencias y 31 web aprobadas; instalación frozen, TypeScript servidor y build PWA aprobados. Suite completa del servidor y CI posteriores pendientes.
+- [ ] Web Push real en Android y configuración de producción: la integración de ramas no certifica entrega a un dispositivo ni despliega VAPID.
+
+### Integración del PR #106 con main
+
+- [x] Resueltos los conflictos de seguimiento y versiones, conservando Web Push/modelo pequeño de #105 y la optimización de disco de #106. Verificación: 24 pruebas de disco, R2, Push y MCP aprobadas; TypeScript servidor y build PWA aprobados. La aplicación en la VM sigue pendiente.

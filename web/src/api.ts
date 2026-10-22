@@ -646,6 +646,12 @@ function skillsRuta(projectId?: string): string {
 
 export const api = {
   avisosGit: () => request<{id:string;conversation_id:string;action:string;state:string}[]>("/api/avisos-git"),
+  // Web Push (fases: notificaciones que valen con la app cerrada).
+  clavePush: () => request<{ clave: string }>("/api/push/clave"),
+  suscribirPush: (suscripcion: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+    request<{ ok: true }>("/api/push/suscripciones", { method: "POST", body: JSON.stringify(suscripcion) }),
+  olvidarSuscripcionPush: (endpoint: string) =>
+    request<{ ok: true }>("/api/push/suscripciones", { method: "DELETE", body: JSON.stringify({ endpoint }) }),
   projectGit: (id: string) => request<GitConfig>(`/api/projects/${id}/git`),
   saveProjectGit: (
     id: string,
