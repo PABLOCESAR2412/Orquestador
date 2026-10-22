@@ -80,6 +80,7 @@ try {
       { id: "git1", action: "push", task_id: "t1", message_id: "u-retry", state: "pending", result: null, payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u-retry", autenticacion: { tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "PABLOCESAR2412", instalacion_id: 1 } }) },
     ];
     let authenticated = false;
+    let chatDetenido = false;
     let conversacionesDisponibles = false;
     let modeloC1 = "google/prueba";
     let esfuerzoC1 = null;
@@ -90,6 +91,9 @@ try {
     let reintentos = [];
     let skillInstallRequests = 0;
     let skillSaveRequests = 0;
+    let politicaDisco = { automatica: false, umbral: 85, intervaloHoras: 24, antiguedadDias: 7 };
+    let ultimoDisco = null;
+    let escriturasPreferencias = 0;
     let skillsGuardadas = [];
     let adjuntosChatSubidos = 0;
     let diffRequests = 0;
@@ -103,6 +107,22 @@ try {
     const envioAIniciado = new Promise(resolve => { anunciarEnvioA = resolve; });
     await page.route("**/api/**", async route => {
       const path = new URL(route.request().url()).pathname;
+      if (path === "/api/conversations/c1/detener") {
+        chatDetenido = true;
+        return route.fulfill({ status: 202, json: { outcome: "cancelling" } });
+      }
+      if (path === "/api/preferences" && route.request().method() === "PUT") escriturasPreferencias++;
+      if (path === "/api/servidor/limpieza") {
+        const metodo = route.request().method();
+        if (metodo === "PUT") politicaDisco = route.request().postDataJSON();
+        if (metodo === "POST") {
+          const body = route.request().postDataJSON();
+          assert.equal(body.confirmar, body.modo === "limpiar");
+          ultimoDisco = { fecha: now, modo: body.modo, carpetas: 2, ocupadas: 1, errores: 0, libreAntes: 16e9, libreDespues: 16e9 };
+          return route.fulfill({ json: ultimoDisco });
+        }
+        return route.fulfill({ json: { politica: politicaDisco, ultimo: ultimoDisco, enCurso: false } });
+      }
       let data = [];
       if (path === "/api/sesion") return route.fulfill({ status: authenticated ? 200 : 401, json: { ok: authenticated } });
       if (path === "/api/login") { authenticated = true; data = { ok: true }; }
@@ -310,7 +330,7 @@ try {
       }] };
       else if (path === "/api/analytics") data = {
         days: 30, filtros: { proyecto: null, modelo: null }, proyectos: [], modelos: [], budget: null, usoJev: [],
-        totals: { calls: 1, inputTokens: sinDatos ? 0 : 8, outputTokens: sinDatos ? 0 : 2, cost: 0 }, byDay: [{ day: now.slice(0, 10), calls: 1, cost: 0, tokens: sinDatos ? 0 : 10, tokensEstimados: 0, modelos: [{ model: "google/prueba", provider: "google", calls: 1, tokens: sinDatos ? 0 : 10, estimados: 0 }] }], byModel: [],
+        totals: { calls: 1, inputTokens: sinDatos ? 0 : 8, outputTokens: sinDatos ? 0 : 2, cost: 0 }, byDay: [{ day: now.slice(0, 10), calls: 1, cost: 0, tokens: sinDatos ? 0 : 10, tokensEstimados: 0, modelos: [{ model: "google/prueba", provider: "google", calls: 1, tokens: sinDatos ? 0 : 10, estimados: 0 }] }], byModel: [{ model: "opencode/muse-spark-1.3-contributor-free-con-nombre-extenso", tareas: 0, tokens: 3100000, duracionMediaSeg: 591, cost: 0, calls: 2 }],
         byType: ["chat", "tarea", "otro"].map(tipo => ({ tipo, calls: tipo === "tarea" ? 1 : 0, tokens: tipo === "tarea" && !sinDatos ? 10 : 0, cost: 0, tokensEstimados: 0, sinTokens: tipo === "tarea" && sinDatos ? 1 : 0, sinCoste: tipo === "tarea" && sinDatos ? 1 : 0 })),
         tasks: { done: 1 }, calidad: { tokensMedidos: sinDatos ? 0 : 1, tokensEstimados: 0, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 },
         byTask: [{ taskId: "t1", calls: 1, tokens: sinDatos ? 0 : 10, cost: 0, tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 }],
@@ -1179,6 +1199,11 @@ try {
     await detalleDia.getByText("Tokens procesados", { exact: true }).waitFor();
     await detalleDia.getByText(/google · google\/prueba/).waitFor();
     await page.getByText(/registros con tokens medidos/).waitFor();
+    const tablaModelos = page.locator(".an-tabla-modelos");
+    await tablaModelos.scrollIntoViewIfNeeded();
+    assert.equal(await tablaModelos.evaluate(el => el.scrollWidth > el.parentElement.clientWidth + 1), false, "los nombres largos no desbordan el panel de ejecuciones");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/ejecuciones-${width}.png` });
     await page.getByRole("tab", { name: /Consumo interno de Telo/ }).click();
     const tablaInterna = page.locator(".an-consumo-tabla");
     await tablaInterna.waitFor();
@@ -1192,6 +1217,38 @@ try {
     assert.equal(await page.getByText("No disponible", { exact: true }).count(), 2);
     const origenTarea = page.getByRole("table", { name: /Uso de IA por origen/ }).getByRole("row").filter({ hasText: "Tareas del agente" });
     assert.equal(await origenTarea.getByRole("cell").nth(1).textContent(), "—");
+    conversacionesDisponibles = true; sinDatos = false;
+    await page.goto(`${base}/chat?conversacion=c1`);
+    const botonDetener = page.getByRole("button", { name: "Detener", exact: true });
+    await botonDetener.waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/detener-${width}.png` });
+    await botonDetener.click();
+    assert.equal(chatDetenido, true);
+    assert.equal(await page.evaluate(() => localStorage.getItem("telo:cola-activa:c1")), "false");
+
+    await page.goto(`${base}/ajustes?pestana=almacenamiento`);
+    const disco = page.locator('section[aria-labelledby="disco-mantenimiento"]');
+    const preferenciasAntesDisco = escriturasPreferencias;
+    await disco.getByRole("button", { name: "Analizar sin borrar" }).click();
+    await disco.getByText("2 carpetas candidatas. 1 tareas ocupadas omitidas. 0 incidencias.", { exact: true }).waitFor();
+    await disco.getByLabel("Habilitar limpieza automática").check();
+    await disco.getByLabel("Uso del disco que activa la limpieza (%)").fill("90");
+    await disco.getByRole("button", { name: "Guardar configuración" }).click();
+    await disco.getByText("Configuración guardada en el servidor.", { exact: true }).waitFor();
+    assert.equal(politicaDisco.umbral, 90);
+    assert.equal(politicaDisco.automatica, true);
+    await disco.getByLabel("Conservar dependencias recientes (días)").fill("8");
+    await disco.getByLabel("Conservar dependencias recientes (días)").press("Enter");
+    await disco.getByText("Configuración guardada en el servidor.", { exact: true }).waitFor();
+    assert.equal(politicaDisco.antiguedadDias, 8);
+    await disco.getByRole("button", { name: "Limpiar dependencias ahora" }).click();
+    await disco.getByText("2 carpetas retiradas. 1 tareas ocupadas omitidas. 0 incidencias.", { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await disco.scrollIntoViewIfNeeded();
+    assert.equal(escriturasPreferencias, preferenciasAntesDisco);
+    assert.equal(await page.locator(".aj-barra-guardado").count(), 0);
+    await page.screenshot({ path: `scratch/capturas-ci/disco-${width}.png` });
     assert.deepEqual(errors, []);
     await context.close();
     console.log(`PASS ${width}px: login, mensajes, aprobación Git, código copiable y métricas.`);

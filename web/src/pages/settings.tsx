@@ -175,7 +175,6 @@ export function SettingsPage() {
   const datos = servidor.data;
   const plataforma = datos?.proceso.plataforma;
   const eyebrow = ["Sistema / Control", plataforma].filter(Boolean).join(" · ");
-  const hora = datos ? new Date(datos.generado).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" }) : null;
 
   const estadoGuardado = dirty ? "Cambios sin guardar detectados" : saved ? "Cambios guardados" : "Sincronizado";
 
@@ -215,7 +214,6 @@ export function SettingsPage() {
               </button>
             ))}
           </div>
-          {hora && <span className="aj-sincronia">Datos del servidor · {hora}</span>}
         </div>
 
         <div role="tabpanel" id={`aj-panel-${pestana}`} aria-labelledby={`aj-tab-${pestana}`} className="aj-panel">
@@ -486,7 +484,7 @@ export function SettingsPage() {
           </p>
         )}
 
-        {value && (
+        {value && (pestana !== "almacenamiento" || dirty) && (
           <div className="aj-barra-guardado">
             <div className="aj-estado-guardado">
               <span className={`aj-punto${dirty ? "" : " is-ok"}`} aria-hidden="true" />

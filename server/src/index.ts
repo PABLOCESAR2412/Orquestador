@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { iniciarMantenimientoDisco } from "./mantenimiento-disco";
 import { join, resolve, sep, extname } from "node:path";
 import { config } from "./config";
 import { db } from "./db";
@@ -171,6 +172,7 @@ prepararCarpetaGlobal();
 avisarTurnosInterrumpidos();
 startWorker();
 startScheduler();
+iniciarMantenimientoDisco();
 reanudarGeneracionesMedios();
 limpiarSesionesAntiguas();
 

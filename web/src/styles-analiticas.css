@@ -249,7 +249,13 @@ main.an-principal {
 .an-pista-relleno { display: block; height: 100%; border-radius: inherit; background: var(--bar); }
 
 /* Tabla de ejecuciones */
-.an-tabla-caja { min-width: 0; }
+.an-tabla-caja { min-width: 0; overflow-x: auto; }
+.an-tabla-modelos { table-layout: fixed; }
+.an-tabla-modelos thead th:first-child { width: 38%; }
+.an-tabla.an-tabla-modelos thead th,
+.an-tabla.an-tabla-modelos tbody th,
+.an-tabla-modelos td.an-numero { white-space: normal; overflow-wrap: anywhere; }
+.an-tabla-modelos .an-modelo-ident { min-width: 0; }
 .an-tabla { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
 .an-tabla th,
 .an-tabla td {

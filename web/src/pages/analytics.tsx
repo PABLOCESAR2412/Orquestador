@@ -495,7 +495,7 @@ export function AnalyticsPage() {
 
               {vistaEjecuciones === "modelo" ? (
                 <div className="an-tabla-caja">
-                  <table className="an-tabla" aria-labelledby="an-ejecuciones-titulo">
+                  <table className="an-tabla an-tabla-modelos" aria-labelledby="an-ejecuciones-titulo">
                     <thead>
                       <tr>
                         <th scope="col">Modelo</th>
@@ -518,8 +518,10 @@ export function AnalyticsPage() {
                         return (
                           <tr key={m.model}>
                             <th scope="row" data-etiqueta="Modelo" className="an-celda-modelo">
+                              <div className="an-modelo-ident">
                               <span className="an-modelo-nombre">{parsed.nombre}</span>
                               <span className="an-proveedor-chip">{parsed.proveedor}</span>
+                              </div>
                             </th>
                             <td data-etiqueta="Tareas completadas" className="an-numero">
                               {m.tareas > 0 ? `${m.tareas} ${m.tareas === 1 ? "tarea" : "tareas"}` : "Solo chat / directa"}

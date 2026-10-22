@@ -1,5 +1,6 @@
-import { existsSync, lstatSync, readdirSync, realpathSync, rmSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import { existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, renameSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { gitOkSeguro } from "./git";
 
 const BLOQUEOS = ["bun.lock", "bun.lockb", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"];
@@ -37,14 +38,32 @@ export async function dependenciasRetirables(repo: string): Promise<string[]> {
   return candidatos;
 }
 
-export async function retirarDependencias(repo: string): Promise<string[]> {
+export async function retirarDependencias(repo: string, permitir: () => boolean = () => true): Promise<string[]> {
   const rutas = await dependenciasRetirables(repo);
+  const retiradas: string[] = [];
+  const residuos = join(dirname(resolve(repo)), ".telo-dependencias-retiradas");
+  if (existsSync(residuos)) {
+    if (lstatSync(residuos).isSymbolicLink() || realpathSync(residuos) !== residuos) throw new Error("Directorio de residuos inválido");
+    // Recupera retiros interrumpidos por un reinicio; fuera del repo y de la vista del agente.
+    for (const entrada of readdirSync(residuos, { withFileTypes: true })) {
+      if (entrada.isDirectory() && !entrada.isSymbolicLink() && /^[a-f0-9-]{36}$/i.test(entrada.name)) {
+        await rm(join(residuos, entrada.name), { recursive: true, force: true });
+      }
+    }
+  }
   for (const ruta of rutas) {
+    if (!permitir()) break;
     const relativa = relative(resolve(repo), ruta);
     if (!relativa || relativa.startsWith(`..${sep}`) || resolve(ruta) !== realpathSync(ruta)) {
       throw new Error("Ruta de dependencias fuera del workspace o con enlaces");
     }
-    rmSync(ruta, { recursive: true });
+    mkdirSync(residuos, { recursive: true, mode: 0o700 });
+    if (realpathSync(residuos) !== residuos) throw new Error("Directorio de residuos fuera de la tarea");
+    const retirada = join(residuos, crypto.randomUUID());
+    // El movimiento es atómico antes de ceder el bucle; un agente reanudado puede reinstalar.
+    renameSync(ruta, retirada);
+    await rm(retirada, { recursive: true, force: true });
+    retiradas.push(ruta);
   }
-  return rutas;
+  return retiradas;
 }

@@ -5,6 +5,7 @@ import { duracion, formatBytes, porcentaje } from "../components/tarea-formato";
 import { errorText, formatUsd } from "../lib/model";
 import { LoadingSkeleton } from "../components/loading-skeleton";
 import { medirLatencia } from "../lib/latencia";
+import { DiscoPanel } from "../components/settings/panel-disco";
 
 // Contenido de las pestañas "Estado del servidor" y "Almacenamiento" de Ajustes y Servidor.
 // Solo muestra lo que devuelve la API o lo que este navegador mide. Si un dato falta, la tarjeta dice "—".
@@ -422,6 +423,7 @@ export function AlmacenamientoServidor() {
         />
       </div>
 
+      <DiscoPanel />
       <section className="aj-tarjeta" aria-labelledby="aj-carpetas-titulo">
         <h3 id="aj-carpetas-titulo" className="aj-tarjeta-titulo-simple">
           Carpetas

@@ -644,6 +644,16 @@ export function ChatPage() {
     },
   });
 
+  const detenerChatMutation = useMutation({
+    mutationFn: (id: string) => api.detenerChat(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      void qc.invalidateQueries({ queryKey: ["messages"] });
+      void qc.invalidateQueries({ queryKey: ["conversation-tasks"] });
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+
   const reanudarTareaChat = useMutation({
     mutationFn: ({ taskId }: { taskId: string; conversationId: string }) => api.resumeTask(taskId),
     onSettled: (_tarea, _error, { taskId, conversationId }) => {
@@ -962,7 +972,7 @@ export function ChatPage() {
   const anclarError = anclar.isError ? errorText(anclar.error) : null;
   const planError = decidirPlanMutation.isError ? errorText(decidirPlanMutation.error) : null;
   const cancelarPlanError = cancelarPlanMutation.isError ? errorText(cancelarPlanMutation.error) : null;
-  const error = sendError ?? settingsError ?? docError ?? anclarError ?? planError ?? cancelarPlanError;
+  const error = sendError ?? settingsError ?? docError ?? anclarError ?? planError ?? cancelarPlanError ?? (detenerChatMutation.isError ? errorText(detenerChatMutation.error) : null);
 
   // El mensaje que se envió desde este dispositivo ya puede estar en la lista (el sondeo lo trae antes de terminar).
   const yaGuardado = enviandoActual && (
@@ -2254,6 +2264,18 @@ export function ChatPage() {
                 </div>
 
                 <div className="tl-composer-der">
+                  {(agenteOcupado || current?.en_proceso) && !planPendiente && !conversacionPadre && (
+                    <button type="button" className="ghost tl-detener" disabled={detenerChatMutation.isPending}
+                      onClick={() => {
+                        if (!selectedId) return;
+                        try { localStorage.setItem(claveColaActiva(selectedId), "false"); } catch {}
+                        setColaRevision(revision => revision + 1);
+                        detenerChatMutation.mutate(selectedId);
+                      }}>
+                      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="1" fill="currentColor" /></svg>
+                      {detenerChatMutation.isPending ? "Deteniendo…" : "Detener"}
+                    </button>
+                  )}
                   {planPendiente ? (
                     <div className="tl-composer-decisiones">
                       <button
