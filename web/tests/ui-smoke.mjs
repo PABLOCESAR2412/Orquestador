@@ -72,7 +72,8 @@ try {
     ];
     const actions = [
       { id: "git-old", action: "push", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ mensaje: "Falló el intento anterior" }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
-      { id: "git1", action: "push", task_id: "t1", message_id: "u2", state: "pending", result: null, payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2", autenticacion: { tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "PABLOCESAR2412", instalacion_id: 1 } }) },
+      { id: "git-conflict-antiguo", action: "merge", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ codigo: "merge_conflicts", mensaje: JSON.stringify({ codigo: "merge_conflicts", mensaje: "GitHub detectó conflictos entre telo/prueba y main.", pr_number: 9, pr_url: "https://github.com/ejemplo/pruebas/pull/9", rama_fuente: "telo/prueba", rama_base: "main", archivos: ["src/app.ts"], archivos_exactos: true, task_id: "t1", resoluble: true }) }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
+      { id: "git1", action: "push", task_id: "t1", message_id: "u-retry", state: "pending", result: null, payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u-retry", autenticacion: { tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "PABLOCESAR2412", instalacion_id: 1 } }) },
     ];
     let authenticated = false;
     let conversacionesDisponibles = false;
@@ -204,7 +205,7 @@ try {
           ? { estado: "en_curso" }
           : { estado: "con_cambios", rama: "telo/prueba", base_commit: null, commit: "abcdef012345", archivos: [{ ruta: "src/app.ts", estado: "modificado", adiciones: 2, eliminaciones: 1, binario: false, sensible: false }], hash: "0123456789abcdef", diff: "diff de prueba", truncado: false, remoto: true, aprobaciones: { commit: null, push: null } };
       }
-      else if (path.endsWith("/decidir")) { approvals++; actions[1].state = "approved"; actions[1].result = JSON.stringify({ sha: "abcdef012345" }); return route.fulfill({ status: 409, json: { error: "action_already_decided" } }); }
+      else if (path.endsWith("/decidir")) { approvals++; const action = actions.find(item => item.id === "git1"); action.state = "approved"; action.result = JSON.stringify({ sha: "abcdef012345" }); return route.fulfill({ status: 409, json: { error: "action_already_decided" } }); }
       else if (path === "/api/models/intelligence") data = { configurado: true, disponible: true, version: 4.3, modelos: [{ slug: "prueba", name: "Google Test", creador: "Google", score: 42.5 }] };
       else if (path === "/api/models/usage") data = { counts: { "groq/llama-test": 12, "google/prueba": 5, "nvidia/nemotron-test": 3 } };
       else if (path === "/api/models") data = { models: [
@@ -765,7 +766,8 @@ try {
     assert.notEqual(contrasteGrupo, contrasteChat);
     await page.getByText("Faltan dependencias", { exact: true }).waitFor();
     assert.equal(await page.getByRole("region", { name: "Acción actual del repositorio" }).count(), 1);
-    await page.getByText("Historial de acciones Git · 1", { exact: true }).waitFor();
+    await page.getByText("Historial de acciones Git · 2", { exact: true }).waitFor();
+    assert.equal(await page.getByRole("region", { name: "Resolución del PR #9" }).count(), 0, "un conflicto de un turno anterior no reaparece como acción actual");
     await page.locator(".tl-resumen-cambios").waitFor();
     const accionTrasSuRespuesta = await page.locator(".tl-hilo-columna").evaluate(root => {
       const respuesta = [...root.querySelectorAll(".tl-msg-agente")].find(mensaje => mensaje.textContent?.includes("El segundo intento está listo para revisar."));
@@ -798,12 +800,14 @@ try {
         autenticacion: { tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "PABLOCESAR2412", instalacion_id: 1 },
       }),
     });
-    await page.waitForFunction(() => document.querySelector(".tl-accion-git-actual .approval-panel h2")?.textContent === "Crear pull request");
-    const tarjetaPrFallido = page.locator(".tl-accion-git-actual .approval-panel");
-    assert.equal(await tarjetaPrFallido.locator(".approval-state-ticket.is-failed").textContent(), "No se completó");
-    assert.equal(await tarjetaPrFallido.locator(".approval-pr-link").count(), 0, "un PR rechazado no ofrece un enlace de creación engañoso");
-    assert.match(await tarjetaPrFallido.locator(".approval-result.is-failed").textContent(), /A pull request already exists/);
+    await page.waitForFunction(() => document.querySelector(".tl-accion-git-actual .approval-panel h2")?.textContent === "Commit y push");
+    assert.equal(await page.locator(".tl-accion-git-actual .approval-panel").count(), 1, "un PR fallido de un turno anterior no sustituye la acción vigente");
+    const historialGit = page.locator(".tl-git-intentos");
+    await page.getByText("Historial de acciones Git · 3", { exact: true }).click();
+    assert.match(await historialGit.textContent(), /A pull request already exists/);
+    assert.match(await historialGit.textContent(), /GitHub detectó conflictos entre telo\/prueba y main/);
     await page.screenshot({ path: `scratch/capturas-ci/git-pr-fallido-${width}.png` });
+    await page.getByText("Historial de acciones Git · 3", { exact: true }).click();
     actions.pop();
     await page.waitForFunction(() => document.querySelector(".tl-accion-git-actual .approval-panel h2")?.textContent === "Commit y push");
     await hiloChat.evaluate(el => { el.scrollTop = 0; el.dispatchEvent(new Event("scroll")); });
@@ -824,13 +828,12 @@ try {
     if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
     await page.locator('.sidebar-conv[aria-label^="Prueba de flujo"]').click();
     await page.getByText("Respuesta del chat A", { exact: true }).waitFor();
+    assert.equal(await page.locator('section.tl-accion-git-actual').count(), 0, "la acción aprobada deja de ocupar el chat al empezar un turno nuevo");
+    await page.getByText("Historial de acciones Git · 3", { exact: true }).waitFor();
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Prueba de mensaje");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByText("Mensaje recibido", { exact: true }).waitFor();
-    assert.equal(await page.locator('section.tl-accion-git-actual').evaluate(accion => {
-      const respuestaPosterior = [...document.querySelectorAll(".tl-msg-agente")].find(mensaje => mensaje.textContent?.includes("Mensaje recibido"));
-      return Boolean(respuestaPosterior && (respuestaPosterior.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING));
-    }), true, "la tarjeta Git única muestra el estado más reciente después de los mensajes nuevos");
+    assert.equal(await page.locator('section.tl-accion-git-actual').count(), 0, "las acciones de turnos previos quedan en el historial plegado");
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Haz una imagen de un colibrí");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByRole("button", { name: "Uso", exact: true }).click();

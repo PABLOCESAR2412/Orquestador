@@ -502,11 +502,13 @@ export function AccionesRepositorioChat({
   conversationId,
   projectId,
   taskId,
+  ultimoMensajeUsuarioId,
   terminada,
 }: {
   conversationId: string;
   projectId: string | null;
   taskId?: string;
+  ultimoMensajeUsuarioId?: string | null;
   terminada: boolean;
 }) {
   const qc = useQueryClient();
@@ -542,9 +544,19 @@ export function AccionesRepositorioChat({
     onSuccess: refrescar,
   });
   const lista = acciones.data ?? [];
-  const accionConflicto = [...lista].reverse().find((a) =>
-    a.action === "merge" && a.state === "failed" && diagnosticoConflictos(a.result),
-  ) ?? null;
+  const perteneceAlTurnoActual = (accion: RepositoryAction) => {
+    if (!ultimoMensajeUsuarioId) return false;
+    const payload = payloadDe(accion);
+    return accion.message_id === ultimoMensajeUsuarioId ||
+      payload.messageId === ultimoMensajeUsuarioId ||
+      payload.repair_message_id === ultimoMensajeUsuarioId;
+  };
+  const accionConflicto = [...lista].reverse().find((accion) => {
+    if (accion.action !== "merge" || accion.state !== "failed" || !diagnosticoConflictos(accion.result)) return false;
+    const payload = payloadDe(accion);
+    const tareaReparacionId = typeof payload.repair_task_id === "string" ? payload.repair_task_id : null;
+    return perteneceAlTurnoActual(accion) || Boolean(tareaReparacionId && tareaReparacionId === taskId);
+  }) ?? null;
   const payloadConflicto = accionConflicto ? payloadDe(accionConflicto) : {};
   const diagnosticoActual = accionConflicto ? diagnosticoConflictos(accionConflicto.result) : null;
   const tareaResolucionId = typeof payloadConflicto.repair_task_id === "string" ? payloadConflicto.repair_task_id : null;
@@ -588,8 +600,11 @@ export function AccionesRepositorioChat({
     datosPushResolucion.rama === diagnosticoActual.rama_fuente && datosPushResolucion.remote === diffResolucion.remoto_url,
   );
   const [verificacionVisible, setVerificacionVisible] = useState<{ id: string; resultado: VerificacionConflictos } | null>(null);
-  const accionActual = [...lista].reverse().find((a) => a.id !== accionConflicto?.id && (a.state === "pending" || a.state === "executing"))
-    ?? [...lista].reverse().find((a) => a.id !== accionConflicto?.id && a.state !== "superseded")
+  const accionActual = [...lista].reverse().find((accion) =>
+    accion.id !== accionConflicto?.id && (accion.state === "pending" || accion.state === "executing"),
+  ) ?? [...lista].reverse().find((accion) =>
+    accion.id !== accionConflicto?.id && accion.state !== "superseded" && perteneceAlTurnoActual(accion),
+  )
     ?? null;
   const anteriores = lista.filter((a) => a.id !== accionActual?.id && a.id !== accionConflicto?.id);
   const resolverConflictos = useMutation({
@@ -768,9 +783,9 @@ export function AccionesRepositorioChat({
             projectId={projectId}
             onChange={refrescar}
           />
-          {anteriores.length > 0 && <AccionesAnteriores acciones={anteriores} />}
         </section>
       )}
+      {projectId && anteriores.length > 0 && <AccionesAnteriores acciones={anteriores} />}
       {projectId && terminada && taskId && diff && !pendiente && !conflictoDeTareaActual && (
         <div className="approval-buttons" aria-label="Acciones del repositorio">
           {tieneCambios && !pushVigente && (
