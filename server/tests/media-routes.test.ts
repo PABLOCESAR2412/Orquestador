@@ -8,7 +8,10 @@ process.env.DATA_DIR = DATA_PRUEBA;
 const { db } = await import("../src/db");
 const { crearSolicitudMedio, detectarSolicitudMedio, media } = await import("../src/routes/media");
 
-afterAll(() => rmSync(DATA_PRUEBA, { recursive: true, force: true }));
+afterAll(() => {
+  db.close();
+  rmSync(DATA_PRUEBA, { recursive: true, force: true });
+});
 
 describe("rutas de generaciones multimedia", () => {
   test("crea una solicitud pendiente persistida y permite cancelarla antes de llamar al proveedor", async () => {
@@ -41,6 +44,9 @@ describe("rutas de generaciones multimedia", () => {
     expect([...new Uint8Array(await rango.arrayBuffer())]).toEqual([2, 3]);
 
     const capacidades = await media.request("/media/capacidades");
-    expect(await capacidades.json()).toMatchObject({ imagen: { modelo: "gemini-nano-banana-2.1", gratis: false } });
+    expect(await capacidades.json()).toMatchObject({
+      imagen: { modelo: "gemini-nano-banana-2.1", gratis: false },
+      video: { modeloEconomico: "gemini-omni-1.1-flash", modelo4k: "gemini-omni-1.1-flash", gratis: false, costoEstimadoUsdPorSegundo: 0.1 },
+    });
   });
 });

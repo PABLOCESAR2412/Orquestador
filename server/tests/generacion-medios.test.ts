@@ -23,12 +23,28 @@ describe("detección de pedidos multimedia", () => {
 
   test("elige video económico, duración y relación según la solicitud", () => {
     expect(detectarSolicitudMedio("Quiero un video vertical de 6 segundos de una ciudad futurista"))
-      .toMatchObject({ tipo: "video", modelo: "veo-3.1-lite-generate-preview", resolucion: "720p", duracionSegundos: 6, relacion: "9:16", costoEstimadoUsd: 0.3 });
+      .toMatchObject({ tipo: "video", modelo: "gemini-omni-1.1-flash", resolucion: "720p", duracionSegundos: 6, relacion: "9:16", costoEstimadoUsd: 0.6 });
   });
 
-  test("la resolución 4K elige Veo Fast y aplica los ocho segundos requeridos", () => {
+  test("Omni mantiene la duración pedida también en resolución 4K", () => {
     expect(detectarSolicitudMedio("Crea un video 4K horizontal de 4 segundos"))
-      .toMatchObject({ modelo: "veo-3.1-fast-generate-preview", resolucion: "4k", duracionSegundos: 8, costoEstimadoUsd: 2.4 });
+      .toMatchObject({ modelo: "gemini-omni-1.1-flash", resolucion: "4k", duracionSegundos: 4, costoEstimadoUsd: 0.4 });
+  });
+
+  test("acepta el intervalo de duración de Gemini Omni y usa cuatro segundos por defecto", () => {
+    expect(detectarSolicitudMedio("Crea un video de 3 segundos")?.duracionSegundos).toBe(3);
+    expect(detectarSolicitudMedio("Crea un video de 10 segundos")?.duracionSegundos).toBe(10);
+    expect(detectarSolicitudMedio("Crea un video")?.duracionSegundos).toBe(4);
+  });
+
+  test("envía videos con voz al generador que devuelve el MP4 con audio", () => {
+    expect(detectarSolicitudMedio("Haz un video de 8 segundos con narración en español"))
+      .toMatchObject({ tipo: "video", modelo: "gemini-omni-1.1-flash", duracionSegundos: 8 });
+    expect(detectarSolicitudMedio("Genera un video con voz en off y subtítulos")?.tipo).toBe("video");
+    expect(detectarSolicitudMedio("Crea un video con voz de fondo")?.tipo).toBe("video");
+    expect(detectarSolicitudMedio("Haz un video y ponle una voz cálida")?.tipo).toBe("video");
+    expect(detectarSolicitudMedio("Haz un video sin voz ni narración")?.tipo).toBe("video");
+    expect(detectarSolicitudMedio("Haz un video vertical de 8 segundos con música épica")?.tipo).toBe("video");
   });
 
   test("no interpreta preguntas sobre cómo generar como una orden", () => {
@@ -99,29 +115,51 @@ describe("Google API multimedia", () => {
     expect(promptEnviado).toContain("sin deformar letras ni datos");
   });
 
-  test("inicia video con opciones soportadas y guarda su operación", async () => {
+  test("crea video con Gemini Omni y conserva la URI segura para continuar", async () => {
     const solicitud = detectarSolicitudMedio("Hazme un video vertical de 8 segundos")!;
     let payload: Record<string, any> | null = null;
     const fetcher = (async (_input: string | URL, init?: RequestInit) => {
       payload = JSON.parse(String(init?.body));
-      return new Response(JSON.stringify({ name: "models/veo-3.1-lite-generate-preview/operations/op-123" }), { status: 200 });
+      return Response.json({
+        id: "v1_123",
+        status: "completed",
+        steps: [{ type: "model_output", content: [{ type: "video", mime_type: "video/mp4", uri: "https://generativelanguage.googleapis.com/v1beta/files/file-123:download?alt=media" }] }],
+      });
     }) as typeof fetch;
-    const operacion = await iniciarVideo(solicitud, "test-api-key", fetcher);
-    expect(operacion).toBe("models/veo-3.1-lite-generate-preview/operations/op-123");
+    const inicio = await iniciarVideo(solicitud, "test-api-key", fetcher);
+    expect(inicio.tipo).toBe("operacion");
+    expect(inicio.tipo === "operacion" && inicio.valor).toContain("telo-video-v2:");
     expect(payload).toMatchObject({
-      parameters: { aspectRatio: "9:16", durationSeconds: "8", resolution: "720p", numberOfVideos: 1 },
+      model: "gemini-omni-1.1-flash",
+      response_format: { type: "video", aspect_ratio: "9:16", resolution: "720p", delivery: "uri" },
     });
   });
 
-  test("espera la operación y descarga solo desde hosts permitidos", async () => {
+  test("pide narración hablada en el idioma solicitado y no agrega voz si no se pidió", async () => {
+    const narrado = detectarSolicitudMedio("Haz un video de 6 segundos con voz en off en español")!;
+    let promptEnviado = "";
+    const fetcher = (async (_input: string | URL, init?: RequestInit) => {
+      promptEnviado = JSON.parse(String(init?.body)).input;
+      return Response.json({ id: "v1_123", status: "completed", output_video: { data: Buffer.from([1, 2]).toString("base64") } });
+    }) as typeof fetch;
+    const salida = await iniciarVideo(narrado, "test-api-key", fetcher);
+    expect(salida.tipo).toBe("contenido");
+    expect(promptEnviado).toContain("integra una narración hablada y claramente audible en el mismo MP4");
+    expect(promptEnviado).toContain("si no se indica, español neutro");
+
+    const silencioso = detectarSolicitudMedio("Haz un video de 6 segundos sin voz")!;
+    await iniciarVideo(silencioso, "test-api-key", fetcher);
+    expect(promptEnviado).not.toContain("Audio solicitado:");
+    expect(promptEnviado).toContain("no agregues voz, diálogo ni narración");
+  });
+
+  test("espera que el archivo Google quede activo y descarga solo desde hosts permitidos", async () => {
     let llamados = 0;
     const fetcher = (async (input: string | URL, init?: RequestInit) => {
       llamados++;
-      if (String(input).includes("operations/op-123")) {
+      if (String(input).includes("/files/file-123") && !String(input).includes(":download")) {
         expect(new Headers(init?.headers).get("x-goog-api-key")).toBe("test-api-key");
-        return new Response(JSON.stringify(llamados === 1
-          ? { done: false }
-          : { done: true, response: { generateVideoResponse: { generatedSamples: [{ video: { uri: "https://generativelanguage.googleapis.com/v1beta/files/x:download?alt=media" } }] } } }), { status: 200 });
+        return Response.json({ state: llamados === 1 ? "PROCESSING" : "ACTIVE" });
       }
       if (String(input).includes("generativelanguage.googleapis.com")) {
         expect(new Headers(init?.headers).get("x-goog-api-key")).toBe("test-api-key");
@@ -130,9 +168,40 @@ describe("Google API multimedia", () => {
       expect(new Headers(init?.headers).get("x-goog-api-key")).toBeNull();
       return new Response(new Uint8Array([0, 1, 2, 3]), { status: 200, headers: { "content-type": "video/mp4" } });
     }) as typeof fetch;
-    const resultado = await esperarVideo("models/veo-lite/operations/op-123", "test-api-key", { fetcher, esperar: async () => {}, timeoutMs: 1000 });
+    const operacion = `telo-video-v2:${JSON.stringify({ tipo: "archivo", uri: "https://generativelanguage.googleapis.com/v1beta/files/file-123:download?alt=media" })}`;
+    const resultado = await esperarVideo(operacion, "test-api-key", { fetcher, esperar: async () => {}, timeoutMs: 1000 });
     expect([...resultado]).toEqual([0, 1, 2, 3]);
     expect(llamados).toBe(4);
+  });
+
+  test("continúa una interacción pendiente y acepta el MP4 inline de tamaño limitado", async () => {
+    let llamados = 0;
+    const fetcher = (async (input: string | URL) => {
+      llamados++;
+      expect(String(input)).toContain("/interactions/v1_123");
+      return Response.json(llamados === 1
+        ? { id: "v1_123", status: "in_progress" }
+        : { id: "v1_123", status: "completed", steps: [{ type: "model_output", content: [{ type: "video", mime_type: "video/mp4", data: Buffer.from([1, 2, 3]).toString("base64") }] }] });
+    }) as typeof fetch;
+    const operacion = `telo-video-v2:${JSON.stringify({ tipo: "interaccion", id: "v1_123" })}`;
+    const resultado = await esperarVideo(operacion, "test-api-key", { fetcher, esperar: async () => {}, timeoutMs: 1000 });
+    expect([...resultado]).toEqual([1, 2, 3]);
+    expect(llamados).toBe(2);
+  });
+
+  test("reanuda operaciones Veo antiguas que ya estaban guardadas", async () => {
+    const fetcher = (async (input: string | URL, init?: RequestInit) => {
+      if (String(input).includes("/operations/op-123")) {
+        expect(new Headers(init?.headers).get("x-goog-api-key")).toBe("test-api-key");
+        return Response.json({ done: true, response: { generateVideoResponse: { generatedSamples: [{ video: { uri: "https://generativelanguage.googleapis.com/v1beta/files/file-123:download?alt=media" } }] } } });
+      }
+      if (String(input).includes("generativelanguage.googleapis.com")) {
+        return new Response(null, { status: 302, headers: { location: "https://storage.googleapis.com/temporary/x.mp4" } });
+      }
+      return new Response(new Uint8Array([7, 8]), { status: 200 });
+    }) as typeof fetch;
+    const resultado = await esperarVideo("models/veo-lite/operations/op-123", "test-api-key", { fetcher, esperar: async () => {}, timeoutMs: 1000 });
+    expect([...resultado]).toEqual([7, 8]);
   });
 
   test("traduce errores del proveedor sin revelar su cuerpo", () => {

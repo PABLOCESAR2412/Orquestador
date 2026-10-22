@@ -15,10 +15,16 @@ export type SolicitudMedio = {
 };
 
 const MODELO_IMAGEN = "gemini-nano-banana-2.1";
-const MODELO_VIDEO_LITE = "veo-3.1-lite-generate-preview";
-const MODELO_VIDEO_FAST = "veo-3.1-fast-generate-preview";
+const MODELO_VIDEO = "gemini-omni-1.1-flash";
+const VIDEO_OPERACION_PREFIJO = "telo-video-v2:";
 const RATIOS = ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"] as const;
 const ACCION_EXPLICITA = /^(?:(?:hola[, ]+)?(?:por favor[, ]+)?)?(?:me gustar[ií]a que me hagas|quisiera que me hagas|me puedes hacer|puedes hacerme|puedes crear(?:me)?|podr[ií]as crear(?:me)?|quiero que (?:me )?(?:generes?|hagas?|crees?|produzcas|dibujes|ilustres)|necesito que (?:me )?(?:generes?|hagas?|crees?|produzcas|dibujes|ilustres)|quiero (?:una?\s+(?:imagen|foto|ilustraci[oó]n|video|v[ií]deo|clip|animaci[oó]n|pel[ií]cula|logotipo|logo|p[oó]ster|infograf[ií]a)|generar\s+(?:una?\s+)?(?:imagen|foto|ilustraci[oó]n|video|v[ií]deo|clip)|hacer\s+(?:un\s+)?(?:video|v[ií]deo|clip))|necesito (?:una?\s+(?:imagen|foto|ilustraci[oó]n|video|v[ií]deo|clip|animaci[oó]n|pel[ií]cula|logotipo|logo|p[oó]ster|infograf[ií]a)|generar\s+(?:una?\s+)?(?:imagen|foto|ilustraci[oó]n|video|v[ií]deo|clip)|hacer\s+(?:un\s+)?(?:video|v[ií]deo|clip))|hazme|haz|genera(?:me)?|gen[eé]rame|crear|crea(?:me)?|dibuja|ilustra|produce|make|generate|create)\b/i;
+const PIDE_VOZ_EN_VIDEO = /\b(?:voz|narraci[oó]n|narrador(?:a)?|locuci[oó]n|voice[\s-]?over|doblaje|narrad[oa]|narrar|hablado|di[aá]logo|conversaci[oó]n)\b/i;
+const NIEGA_VOZ_EN_VIDEO = /\b(?:sin|no\s+(?:(?:me|le)\s+)?(?:pongas?|incluyas?|a[nñ]adas?|uses?)|evita|quita|elimina|nada\s+de)\s+(?:(?:ninguna?|la|una)\s+)?(?:voz|narraci[oó]n|narrador(?:a)?|locuci[oó]n|voice[\s-]?over|doblaje|sonido\s+hablado|di[aá]logo|conversaci[oó]n)\b/i;
+
+function solicitaNarracion(prompt: string): boolean {
+  return PIDE_VOZ_EN_VIDEO.test(prompt) && !NIEGA_VOZ_EN_VIDEO.test(prompt);
+}
 
 function relacionDesde(prompt: string, defecto: SolicitudMedio["relacion"]): SolicitudMedio["relacion"] {
   const explicita = new RegExp(`(?:relaci[oó]n(?: de aspecto)?\\s*)?\\b(${RATIOS.map((r) => r.replace(":", "\\:")).join("|")})\\b`, "i").exec(prompt)?.[1];
@@ -54,13 +60,12 @@ export function detectarSolicitudMedio(texto: string): SolicitudMedio | null {
     const costo = resolucion === "4K" ? 0.113 : resolucion === "2K" ? 0.0504 : 0.0336;
     return { tipo, prompt, modelo: MODELO_IMAGEN, resolucion, relacion, duracionSegundos: null, costoEstimadoUsd: costo };
   }
-
-  const solicitada = Number(/\b(4|6|8)\s*(?:s|seg(?:undos?)?)\b/i.exec(prompt)?.[1] ?? 4);
+  const solicitada = Number(/\b(10|[3-9])\s*(?:s|seg(?:undos?)?)\b/i.exec(prompt)?.[1] ?? 4);
   const resolucion: ResolucionVideo = /\b4\s*k\b/i.test(prompt) ? "4k" : /\b1080\s*p\b/i.test(prompt) ? "1080p" : "720p";
-  const duracionSegundos = resolucion === "720p" ? solicitada : 8;
-  const modelo = resolucion === "4k" ? MODELO_VIDEO_FAST : MODELO_VIDEO_LITE;
-  const costoPorSegundo = resolucion === "4k" ? 0.3 : resolucion === "1080p" ? 0.08 : 0.05;
-  return { tipo, prompt, modelo, resolucion, relacion, duracionSegundos, costoEstimadoUsd: Number((costoPorSegundo * duracionSegundos).toFixed(3)) };
+  const duracionSegundos = solicitada;
+  // Precio oficial de referencia para 720p: ~US$0.10/s. 1080p y 4K se entregan reescalados.
+  const costoEstimadoUsd = Number((0.1 * duracionSegundos).toFixed(3));
+  return { tipo, prompt, modelo: MODELO_VIDEO, resolucion, relacion, duracionSegundos, costoEstimadoUsd };
 }
 
 export function nombreDeMedio(prompt: string, tipo: TipoMedio, mimeImagen = "image/jpeg"): string {
@@ -80,7 +85,12 @@ function promptVisual(solicitud: SolicitudMedio): string {
     : /infograf[ií]a|l[ií]nea del tiempo|cronolog[ií]a|gr[aá]fico|diagrama|mapa mental|estad[ií]stica/i.test(solicitud.prompt)
       ? "Dirección visual para infografía: antes de dibujar, distribuye el contenido en una retícula editorial con márgenes amplios, jerarquía tipográfica sencilla y zonas claramente separadas. Conserva exactamente la ortografía, nombres, fechas, etiquetas y cifras solicitados; no agregues datos, textos ni leyendas. Deja espacio real entre título, subtítulo, rótulos, gráficos y tarjetas. Si hay muchos elementos, usa filas o columnas adicionales y cambia la composición; no comprimas, encimes ni recortes el texto para que quepa. Mantén valores, escalas y etiquetas coherentes. Prioriza tipografía plana, grande y de alto contraste frente a adornos; si se pide 3D, limita la profundidad al fondo y a los elementos decorativos, sin deformar letras ni datos."
       : "Dirección visual: respeta la estética indicada y crea una composición intencional con un foco claro, equilibrio, espacio negativo y contraste legible. Evita texto accidental, elementos duplicados, solapamientos o recortes; incluye texto solo si se pidió. Respeta la orientación y resolución solicitadas.";
-  return `${solicitud.prompt}\n\n${direccion}`;
+  const audio = solicitud.tipo !== "video"
+    ? ""
+    : solicitaNarracion(solicitud.prompt)
+      ? "Audio solicitado: integra una narración hablada y claramente audible en el mismo MP4. Usa el idioma solicitado; si no se indica, español neutro. Mantén una dicción natural y sincronizada con las escenas, sin inventar hechos ni reemplazar la voz por texto en pantalla. Añade música solo si se pidió y mantenla por debajo de la voz."
+      : "Audio: no agregues voz, diálogo ni narración; conserva únicamente la música y los sonidos que se pidieron.";
+  return `${solicitud.prompt}\n\n${direccion}${audio ? `\n${audio}` : ""}`;
 }
 
 function registro(valor: unknown): Record<string, any> | null {
@@ -107,10 +117,12 @@ async function respuestaJson(respuesta: Response): Promise<Record<string, any>> 
     }
     throw new Error(`google_http_${respuesta.status}${codigoProveedor ? `|${codigoProveedor}` : ""}${mensajeProveedor ? `|${mensajeProveedor}` : ""}`);
   }
+  // Un MP4 de hasta 64 MiB codificado como base64 necesita aproximadamente 86 MiB de JSON.
+  const maximoJson = 92 * 1024 * 1024;
   const longitud = Number(respuesta.headers.get("content-length") ?? 0);
-  if (longitud > 32 * 1024 * 1024) throw new Error("google_respuesta_grande");
+  if (longitud > maximoJson) throw new Error("google_respuesta_grande");
   const texto = await respuesta.text();
-  if (texto.length > 32 * 1024 * 1024) throw new Error("google_respuesta_grande");
+  if (texto.length > maximoJson) throw new Error("google_respuesta_grande");
   return JSON.parse(texto) as Record<string, any>;
 }
 
@@ -161,26 +173,69 @@ export async function iniciarVideo(
   solicitud: SolicitudMedio,
   apiKey: string,
   fetcher: typeof fetch = fetch,
-): Promise<string> {
+): Promise<{ tipo: "operacion"; valor: string } | { tipo: "contenido"; contenido: Uint8Array }> {
   if (solicitud.tipo !== "video" || solicitud.duracionSegundos === null) throw new Error("tipo_invalido");
-  const respuesta = await fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${solicitud.modelo}:predictLongRunning`, {
+  const respuesta = await fetcher("https://generativelanguage.googleapis.com/v1beta/interactions", {
     method: "POST",
     headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(15 * 60_000),
     body: JSON.stringify({
-      instances: [{ prompt: promptVisual(solicitud) }],
-      parameters: {
-        aspectRatio: solicitud.relacion,
-        durationSeconds: String(solicitud.duracionSegundos),
+      model: MODELO_VIDEO,
+      input: `${promptVisual(solicitud)}\nDuración objetivo: ${solicitud.duracionSegundos} segundos.`,
+      response_format: {
+        type: "video",
+        aspect_ratio: solicitud.relacion,
         resolution: solicitud.resolucion,
-        personGeneration: "allow_all",
-        numberOfVideos: 1,
+        delivery: "uri",
       },
     }),
   });
   const json = await respuestaJson(respuesta);
-  if (typeof json.name !== "string") throw new Error("google_operacion_invalida");
-  return nombreOperacion(json.name);
+  const resultado = registro(json.interaction) ?? json;
+  if (resultado.status === "failed" || registro(resultado.error)) throw new Error("google_video_fallo");
+  const salida = salidaVideo(resultado);
+  if (salida?.uri) return { tipo: "operacion", valor: serializarVideoOperacion({ tipo: "archivo", uri: salida.uri }) };
+  if (salida?.data) return { tipo: "contenido", contenido: decodificarBase64(salida.data, 64 * 1024 * 1024) };
+  if (typeof resultado.id === "string" && /^[A-Za-z0-9_-]{1,200}$/.test(resultado.id) && resultado.status !== "completed") {
+    return { tipo: "operacion", valor: serializarVideoOperacion({ tipo: "interaccion", id: resultado.id }) };
+  }
+  throw new Error("google_sin_video");
+}
+
+type OperacionVideo = { tipo: "archivo"; uri: string } | { tipo: "interaccion"; id: string };
+
+function serializarVideoOperacion(operacion: OperacionVideo): string {
+  return `${VIDEO_OPERACION_PREFIJO}${JSON.stringify(operacion)}`;
+}
+
+function operacionVideo(valor: string): OperacionVideo | null {
+  if (!valor.startsWith(VIDEO_OPERACION_PREFIJO)) return null;
+  try {
+    const json = JSON.parse(valor.slice(VIDEO_OPERACION_PREFIJO.length));
+    if (json?.tipo === "archivo" && typeof json.uri === "string") return { tipo: "archivo", uri: json.uri };
+    if (json?.tipo === "interaccion" && typeof json.id === "string" && /^[A-Za-z0-9_-]{1,200}$/.test(json.id)) {
+      return { tipo: "interaccion", id: json.id };
+    }
+  } catch {}
+  throw new Error("google_operacion_invalida");
+}
+
+function salidaVideo(json: Record<string, any>): { uri?: string; data?: string } | null {
+  const directa = registro(json.output_video);
+  if (typeof directa?.uri === "string" || typeof directa?.data === "string") {
+    return { uri: directa.uri, data: directa.data };
+  }
+  if (!Array.isArray(json.steps)) return null;
+  for (const paso of json.steps) {
+    if (paso?.type !== "model_output" || !Array.isArray(paso.content)) continue;
+    for (const contenido of paso.content) {
+      if (contenido?.type !== "video" || (contenido.mime_type && contenido.mime_type !== "video/mp4")) continue;
+      if (typeof contenido.uri === "string" || typeof contenido.data === "string") {
+        return { uri: contenido.uri, data: contenido.data };
+      }
+    }
+  }
+  return null;
 }
 
 async function descargarVideo(uri: string, apiKey: string, fetcher: typeof fetch, maximo: number): Promise<Uint8Array> {
@@ -227,7 +282,82 @@ export async function esperarVideo(
 ): Promise<Uint8Array> {
   const fetcher = opciones.fetcher ?? fetch;
   const esperar = opciones.esperar ?? ((ms) => Bun.sleep(ms));
-  const hasta = Date.now() + (opciones.timeoutMs ?? 7 * 60_000);
+  const hasta = Date.now() + (opciones.timeoutMs ?? 30 * 60_000);
+  const actual = operacionVideo(operacion);
+  const maximo = opciones.maximo ?? 64 * 1024 * 1024;
+  if (actual?.tipo === "archivo") return esperarArchivoVideo(actual.uri, apiKey, fetcher, esperar, hasta, maximo);
+  if (actual?.tipo === "interaccion") return esperarInteraccionVideo(actual.id, apiKey, fetcher, esperar, hasta, maximo);
+  // Compatibilidad con tareas iniciadas por Telo antes de migrar desde la API de Veo.
+  return esperarOperacionVeo(operacion, apiKey, fetcher, esperar, hasta, maximo);
+}
+
+function idArchivoGoogle(uri: string): string {
+  let url: URL;
+  try { url = new URL(uri); } catch { throw new Error("google_uri_invalida"); }
+  const coincide = /^\/v1beta\/files\/([A-Za-z0-9_-]+):download$/.exec(url.pathname);
+  if (url.protocol !== "https:" || url.hostname !== "generativelanguage.googleapis.com" || !coincide) throw new Error("google_uri_invalida");
+  return coincide[1]!;
+}
+
+async function esperarArchivoVideo(
+  uri: string,
+  apiKey: string,
+  fetcher: typeof fetch,
+  esperar: (ms: number) => Promise<void>,
+  hasta: number,
+  maximo: number,
+): Promise<Uint8Array> {
+  const id = idArchivoGoogle(uri);
+  while (Date.now() < hasta) {
+    const respuesta = await fetcher(`https://generativelanguage.googleapis.com/v1beta/files/${encodeURIComponent(id)}`, {
+      headers: { "x-goog-api-key": apiKey },
+      signal: AbortSignal.timeout(30_000),
+    });
+    const json = await respuestaJson(respuesta);
+    const estado = typeof json.state === "string" ? json.state : json.state?.name;
+    if (estado === "ACTIVE") return descargarVideo(uri, apiKey, fetcher, maximo);
+    if (estado === "FAILED") throw new Error("google_video_fallo");
+    await esperar(5_000);
+  }
+  throw new Error("google_tiempo_agotado");
+}
+
+async function esperarInteraccionVideo(
+  id: string,
+  apiKey: string,
+  fetcher: typeof fetch,
+  esperar: (ms: number) => Promise<void>,
+  hasta: number,
+  maximo: number,
+): Promise<Uint8Array> {
+  if (!/^[A-Za-z0-9_-]{1,200}$/.test(id)) throw new Error("google_operacion_invalida");
+  while (Date.now() < hasta) {
+    const respuesta = await fetcher(`https://generativelanguage.googleapis.com/v1beta/interactions/${encodeURIComponent(id)}`, {
+      headers: { "x-goog-api-key": apiKey },
+      signal: AbortSignal.timeout(30_000),
+    });
+    const json = await respuestaJson(respuesta);
+    const resultado = registro(json.interaction) ?? json;
+    if (resultado.status === "failed" || registro(resultado.error)) throw new Error("google_video_fallo");
+    if (resultado.status === "completed") {
+      const salida = salidaVideo(resultado);
+      if (salida?.uri) return esperarArchivoVideo(salida.uri, apiKey, fetcher, esperar, hasta, maximo);
+      if (salida?.data) return decodificarBase64(salida.data, maximo);
+      throw new Error("google_sin_video");
+    }
+    await esperar(10_000);
+  }
+  throw new Error("google_tiempo_agotado");
+}
+
+async function esperarOperacionVeo(
+  operacion: string,
+  apiKey: string,
+  fetcher: typeof fetch,
+  esperar: (ms: number) => Promise<void>,
+  hasta: number,
+  maximo: number,
+): Promise<Uint8Array> {
   const operacionSegura = nombreOperacion(operacion);
   while (Date.now() < hasta) {
     const respuesta = await fetcher(`https://generativelanguage.googleapis.com/v1beta/${operacionSegura}`, {
@@ -241,7 +371,7 @@ export async function esperarVideo(
       const muestra = json.response?.generateVideoResponse?.generatedSamples?.[0];
       const uri = muestra?.video?.uri;
       if (typeof uri !== "string") throw new Error("google_sin_video");
-      return descargarVideo(uri, apiKey, fetcher, opciones.maximo ?? 64 * 1024 * 1024);
+      return descargarVideo(uri, apiKey, fetcher, maximo);
     }
     await esperar(10_000);
   }

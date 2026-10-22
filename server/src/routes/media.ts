@@ -120,11 +120,19 @@ async function procesar(id: string): Promise<void> {
       ).run(salida.mime, salida.contenido.byteLength, salida.contenido, nombreDeMedio(inicial.prompt, "imagen", salida.mime), id);
     } else {
       let operacion = inicial.operacion;
+      let contenido: Uint8Array;
       if (!operacion) {
-        operacion = await iniciarVideo(solicitud, apiKey);
-        db.query("UPDATE media_jobs SET operacion=?,updated_at=datetime('now') WHERE id=? AND estado='generando'").run(operacion, id);
+        const inicio = await iniciarVideo(solicitud, apiKey);
+        if (inicio.tipo === "contenido") {
+          contenido = inicio.contenido;
+        } else {
+          operacion = inicio.valor;
+          db.query("UPDATE media_jobs SET operacion=?,updated_at=datetime('now') WHERE id=? AND estado='generando'").run(operacion, id);
+          contenido = await esperarVideo(operacion, apiKey);
+        }
+      } else {
+        contenido = await esperarVideo(operacion, apiKey);
       }
-      const contenido = await esperarVideo(operacion, apiKey);
       db.query(
         "UPDATE media_jobs SET estado='completada',mime='video/mp4',bytes=?,contenido=?,error=NULL,updated_at=datetime('now') WHERE id=? AND estado='generando'",
       ).run(contenido.byteLength, contenido, id);
@@ -144,11 +152,12 @@ media.get("/media/capacidades", (c) => c.json({
   apiGoogleConfigurada: clavePublica(),
   imagen: { modelo: "gemini-nano-banana-2.1", gratis: false, resoluciones: ["1K", "2K", "4K"] },
   video: {
-    modeloEconomico: "veo-3.1-lite-generate-preview",
-    modelo4k: "veo-3.1-fast-generate-preview",
+    modeloEconomico: "gemini-omni-1.1-flash",
+    modelo4k: "gemini-omni-1.1-flash",
     gratis: false,
     resoluciones: ["720p", "1080p", "4k"],
-    duracionesSegundos: [4, 6, 8],
+    duracionesSegundos: [3, 4, 5, 6, 7, 8, 9, 10],
+    costoEstimadoUsdPorSegundo: 0.1,
   },
 }));
 

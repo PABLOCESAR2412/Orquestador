@@ -500,7 +500,7 @@ export type MedioJob = {
 export type CapacidadesMediosApi = {
   apiGoogleConfigurada: boolean;
   imagen: { modelo: string; gratis: boolean; resoluciones: string[] };
-  video: { modeloEconomico: string; modelo4k: string; gratis: boolean; resoluciones: string[]; duracionesSegundos: number[] };
+  video: { modeloEconomico: string; modelo4k: string; gratis: boolean; resoluciones: string[]; duracionesSegundos: number[]; costoEstimadoUsdPorSegundo: number };
 };
 
 export type EventoVivo =
