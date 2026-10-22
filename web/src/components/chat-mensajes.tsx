@@ -3,7 +3,7 @@ import { haceTexto, tiempoTranscurrido } from "../lib/tiempo";
 import { interpretarRespuestaTarea } from "../lib/respuesta-tarea";
 import { partirMensaje } from "../lib/adjuntos";
 import { effortLabel } from "../lib/model";
-import { urlAdjuntoImagenChat, type FormatoDocumento } from "../api";
+import { urlAdjuntoImagenChat, type FormatoDocumento, type SubagentChat } from "../api";
 import { Contenido, copiarTexto, type ReferenciaArchivo } from "./chat-contenido";
 import { ProcesoAgente, ProcesoGuardado, SubagentesTurno } from "./chat-proceso";
 import { FORMATOS_OPCIONES } from "./documentos";
@@ -186,6 +186,8 @@ export function MensajeAgente({
   guardando = false,
   proceso,
   onAbrirSubchat,
+  subagentes,
+  abrirProcesoInicial = false,
   duracion,
   onCitar,
 }: {
@@ -208,6 +210,8 @@ export function MensajeAgente({
   // Chat y turno de la respuesta: de ahí salen los pasos del agente ("Ver proceso").
   proceso?: { conversacionId: string; turnoId: string };
   onAbrirSubchat?: (id: string) => void;
+  subagentes?: SubagentChat[];
+  abrirProcesoInicial?: boolean;
 }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const mediaId = /^\[\[telo-media:([a-f0-9-]+)\]\]$/i.exec(texto.trim())?.[1] ?? null;
@@ -392,7 +396,14 @@ export function MensajeAgente({
         </div>
       </div>
       {!mediaId && proceso && (
-        <ProcesoGuardado conversacionId={proceso.conversacionId} turnoId={proceso.turnoId} textoFinal={texto} onAbrirSubchat={onAbrirSubchat} />
+        <ProcesoGuardado
+          conversacionId={proceso.conversacionId}
+          turnoId={proceso.turnoId}
+          textoFinal={texto}
+          onAbrirSubchat={onAbrirSubchat}
+          subagentes={subagentes}
+          abiertoInicial={abrirProcesoInicial}
+        />
       )}
       <div className="tl-msg-texto">
         {mediaId ? <MediaJobCard id={mediaId} /> : (

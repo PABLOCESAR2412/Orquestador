@@ -117,6 +117,7 @@ try {
       ];
       else if (path === "/api/conversations/c-child/messages") data = [
         { id: "child-u1", role: "user", content: "Revisa las rutas y reporta riesgos", created_at: now },
+        { id: "child-a1", role: "assistant", content: "Revisé las rutas y preparé el reporte.", model: "google/prueba", created_at: now },
       ];
       else if (path === "/api/conversations/c-child/turnos/child-u1/actividad") data = [
         { seq: 1, tipo: "accion", herramienta: "bash", titulo: "Ejecutando git status", detalle: "git status --short", estado: "en_curso" },
@@ -347,11 +348,16 @@ try {
     ]).finally(() => clearTimeout(timeoutPollLargo));
     assert.ok(esperasPollUsadas.includes(8000), "el sondeo vivo deja margen al límite del proxy HTTP/2");
     const mensajeSupervisor = page.locator(".tl-msg-agente").filter({ hasText: "Faltan dependencias" }).first();
+    await mensajeSupervisor.getByText("Se creó 1 subagente", { exact: true }).waitFor();
+    await mensajeSupervisor.getByText("1 trabajando", { exact: true }).waitFor();
     await mensajeSupervisor.locator(".tl-proceso-boton").click();
-    await mensajeSupervisor.getByText("Se crearon 1 subagente", { exact: true }).waitFor();
-    await mensajeSupervisor.getByText("Ejecutando git status", { exact: true }).waitFor();
+    await mensajeSupervisor.getByText("Ejecutando git status", { exact: true }).first().waitFor();
     await mensajeSupervisor.getByRole("button", { name: "Abrir subchat", exact: true }).click();
     await page.getByRole("heading", { name: "Auditar API", exact: true }).waitFor();
+    await page.locator(".tl-subchat-solo-lectura").getByText("No se pueden enviar mensajes a esta sesión.").waitFor();
+    assert.equal(await page.locator(".tl-composer").count(), 0, "un subchat no muestra compositor para nuevos prompts");
+    const mensajeSubagente = page.locator(".tl-msg-agente").filter({ hasText: "Revisé las rutas y preparé el reporte." }).last();
+    await mensajeSubagente.getByText("Ejecutando git status", { exact: true }).waitFor();
     if (width === 390) {
       const cajaTituloSubchat = await page.getByRole("heading", { name: "Auditar API", exact: true }).boundingBox();
       const cajaBotonVolver = await page.locator(".tl-subchat-padre").boundingBox();

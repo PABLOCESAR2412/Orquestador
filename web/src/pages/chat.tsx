@@ -401,6 +401,7 @@ export function ChatPage() {
   const conversacionPadre = current?.parent_conversation_id
     ? conversations.data?.find((c) => c.id === current.parent_conversation_id) ?? null
     : null;
+  const conversacionSupervisora = conversacionPadre ?? current;
   const permitirAbrirArchivoEnChat = useCallback(() => Boolean(current?.id), [current?.id]);
 
   useEffect(() => {
@@ -655,7 +656,7 @@ export function ChatPage() {
   const enviandoActual = !!envioActual;
   const bloqueoEnvioCola = !!modeloAgotadoChat || (!colaActiva && (agenteOcupado || cola.length > 0));
   const puedeEnviar =
-    !!selectedId && !enviandoActual && !subiendoAdjuntos && !bloqueoEnvioCola && (draft.trim() !== "" || adjuntosListos.length > 0 || imagenesPendientes.length > 0 || videosPendientes.length > 0);
+    !!selectedId && !conversacionPadre && !enviandoActual && !subiendoAdjuntos && !bloqueoEnvioCola && (draft.trim() !== "" || adjuntosListos.length > 0 || imagenesPendientes.length > 0 || videosPendientes.length > 0);
 
   const submit = async () => {
     if (planPendiente) {
@@ -1542,7 +1543,12 @@ export function ChatPage() {
               {messages.data?.length === 0 && !enviandoActual && (
                 <p className="tl-nota">Aún no hay mensajes. Escribe una instrucción para el agente o pulsa Ctrl+K para comandos.</p>
               )}
-              {lista.map((m, i) => (
+              {lista.map((m, i) => {
+                const turnoId = m.role === "assistant" ? turnoDeRespuesta(i) : null;
+                const subagentes = turnoId
+                  ? conversacionSupervisora?.subchats?.filter((hijo) => hijo.parent_turn_id === turnoId)
+                  : undefined;
+                return (
                 <div key={m.id} className={`tl-hilo-evento${m.role === "user" ? " tl-hilo-evento-prompt" : ""}`}>
                   {m.role === "user" && (
                     <button
@@ -1560,7 +1566,7 @@ export function ChatPage() {
                   {m.role === "system" ? (
                     <article className="tl-msg" aria-label="Aviso del sistema">
                       <p className="tl-alerta" role="status">{m.content}</p>
-                      {!agenteOcupado && i === lista.length - 1 && lista.slice(0, i).some(p => p.role === "user") && (
+                      {!conversacionPadre && !agenteOcupado && i === lista.length - 1 && lista.slice(0, i).some(p => p.role === "user") && (
                         <button type="button" className="tl-boton" onClick={() => reintentarAviso(m.id)}>Reintentar solicitud</button>
                       )}
                     </article>
@@ -1586,32 +1592,31 @@ export function ChatPage() {
                         onAbrirArchivo={current ? abrirArchivo : undefined}
                         permitirAbrirArchivo={permitirAbrirArchivoEnChat}
                         duracion={duracionDeRespuesta(i)}
-                        proceso={
-                          selectedId && turnoDeRespuesta(i)
-                            ? { conversacionId: selectedId, turnoId: turnoDeRespuesta(i)! }
-                            : undefined
-                        }
+                        proceso={selectedId && turnoId ? { conversacionId: selectedId, turnoId } : undefined}
+                        subagentes={subagentes}
+                        abrirProcesoInicial={Boolean(conversacionPadre && m.role === "assistant" && i === lista.length - 1)}
                         onAbrirSubchat={setSelectedId}
                         onReintentar={
-                          lista.slice(0, i).some((p) => p.role === "user") && !enviandoActual
+                          !conversacionPadre && lista.slice(0, i).some((p) => p.role === "user") && !enviandoActual
                             ? () => reintentar(m.id)
                             : undefined
                         }
                         onGuardar={(formato) => crearDoc.mutate({ mensajeId: m.id, formato })}
                         guardando={crearDoc.isPending && crearDoc.variables?.mensajeId === m.id}
-                        onDerivarSkill={() => {
+                        onDerivarSkill={!conversacionPadre ? () => {
                           cambiarBorrador(promptDerivarSkill(m.content));
                           window.setTimeout(() => inputRef.current?.focus(), 0);
-                        }}
-                        onCitar={(texto) => {
+                        } : undefined}
+                        onCitar={!conversacionPadre ? (texto) => {
                           cambiarBorrador(texto);
                           window.setTimeout(() => inputRef.current?.focus(), 0);
-                        }}
+                        } : undefined}
                       />
                     </>
                   )}
                 </div>
-              ))}
+                );
+              })}
               {enviandoActual && !yaGuardado && (
                 <div className="tl-hilo-evento"><MensajeUsuario conversationId={selectedId ?? undefined} texto={envioActual?.content ?? ""} cuando={null} /></div>
               )}
@@ -1641,7 +1646,7 @@ export function ChatPage() {
                   <PlanRevision key={`${tareaChat.id}:${tareaChat.plan_hash}`} tarea={tareaChat} />
                 </div>
               )}
-              {selectedId && current?.project_id && (
+              {selectedId && current?.project_id && !conversacionPadre && (
                 <AccionesRepositorioChat
                   key={selectedId}
                   conversationId={selectedId}
@@ -1652,7 +1657,7 @@ export function ChatPage() {
                 />
               )}
               {tareasChat.isError && current?.project_id && <p className="tl-alerta" role="alert">{errorText(tareasChat.error)}</p>}
-              {modeloAgotadoChat && !pensando && (
+              {modeloAgotadoChat && !pensando && !conversacionPadre && (
                 <AvisoCuota
                   modeloAgotado={modelList.find((m) => m.id === modeloAgotadoChat)?.name ?? modeloAgotadoChat}
                   puedeSeguir={!!current?.model && current.model !== modeloAgotadoChat}
@@ -1665,6 +1670,33 @@ export function ChatPage() {
             </div>
           </div>
 
+          {conversacionPadre ? (
+            <aside className="tl-subchat-solo-lectura" aria-label="Seguimiento del subagente" role="status">
+              <div className="tl-subchat-solo-lectura-cabecera">
+                <span className={`tl-subchat-solo-lectura-punto${current?.subagent_status === "running" ? " is-running" : current?.subagent_status === "failed" ? " is-error" : ""}`} aria-hidden="true" />
+                <strong>
+                  {current?.subagent_status === "running"
+                    ? "Subagente en ejecución"
+                    : current?.subagent_status === "failed"
+                      ? "El subagente terminó con un error"
+                      : current?.subagent_status === "cancelled"
+                        ? "Subagente cancelado"
+                        : current?.subagent_status === "interrupted"
+                          ? "Subagente interrumpido"
+                          : "Subagente completado"}
+                </strong>
+              </div>
+              <p>No se pueden enviar mensajes a esta sesión. Revisa aquí su actividad y vuelve al chat principal para dirigir el trabajo.</p>
+              <button
+                type="button"
+                className="tl-subchat-solo-lectura-volver"
+                aria-label={`Volver a la conversación principal: ${conversacionPadre.title}`}
+                onClick={() => setSelectedId(conversacionPadre.id)}
+              >
+                Volver al chat principal
+              </button>
+            </aside>
+          ) : (
           <form
             className="tl-composer"
             onSubmit={(e: FormEvent) => {
@@ -2232,6 +2264,7 @@ export function ChatPage() {
               Los agentes trabajan en el servidor de forma persistente. Revisa sus cambios antes de aplicarlos.
             </p>
           </form>
+          )}
 
           {mostrarPanelArchivo && archivoAbierto && (
             <div

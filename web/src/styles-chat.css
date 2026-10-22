@@ -275,6 +275,35 @@
 }
 .tl-subchat-padre:hover { color: var(--ink); border-color: var(--signal); }
 .tl-subchat-padre:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.tl-subchat-solo-lectura {
+  flex: 0 0 auto;
+  width: min(100%, var(--ancho-contenido));
+  margin: 6px auto 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.tl-chat-con-archivo > .tl-subchat-solo-lectura { grid-column: 1; grid-row: 3; min-width: 0; }
+.tl-subchat-solo-lectura-cabecera { display: flex; align-items: center; gap: 9px; color: var(--ink); font-size: 13px; }
+.tl-subchat-solo-lectura-punto { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
+.tl-subchat-solo-lectura-punto.is-running { background: var(--signal); }
+.tl-subchat-solo-lectura-punto.is-error { background: var(--danger); }
+.tl-subchat-solo-lectura p { margin: 5px 0 10px 17px; color: var(--ink-2); font-size: 12px; line-height: 1.5; }
+.tl-subchat-solo-lectura-volver {
+  min-height: 40px;
+  margin-left: 17px;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.tl-subchat-solo-lectura-volver:hover { border-color: var(--signal); }
+.tl-subchat-solo-lectura-volver:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 
 /* Chips de modelo y proyecto */
 .tl-chip {
@@ -1949,6 +1978,7 @@
 }
 .tl-subagentes-cabecera {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
@@ -1956,7 +1986,7 @@
   color: var(--ink);
   font-size: 13px;
 }
-.tl-subagentes-cabecera > span { color: var(--signal); font-size: 11px; }
+.tl-subagentes-cabecera > span { color: var(--ink-2); font-size: 11px; text-align: right; }
 .tl-subagente {
   min-width: 0;
   padding: 10px 0 12px;
