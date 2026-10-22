@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import type { Task, TaskStatus } from "../api";
 import { useEventosVivos } from "./eventos-vivos";
 
@@ -204,4 +204,71 @@ export function useNotificacionesDeTareas(): void {
     void mostrar(aviso.titulo, `${tarea?.title ?? "Tarea"}. ${aviso.cuerpo}`, `tarea-${evento.id}`, tarea?.conversation_id ?? undefined);
     if (sonidoNotificacionesActivo()) void probarSonidoNotificaciones();
   });
+}
+
+// ── Web Push (fase 8): avisos que valen con la app cerrada ─────────────────────
+// El navegador registra la suscripción del dispositivo y el servidor la usa para
+// empujar los avisos por RFC 8291. El receptor vive en push-listener.js, cargado por
+// el service worker que produce el build de la PWA.
+
+export function webpushSoportado(): boolean {
+  return typeof navigator !== "undefined" && "serviceWorker" in navigator && "PushManager" in window;
+}
+
+// La clave pública VAPID llega en base64url; pushManager la espera como bytes crudos.
+function claveAplicacion(clave: string): Uint8Array<ArrayBuffer> {
+  const bruta = atob(clave.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (clave.length % 4)) % 4));
+  const bytes = new Uint8Array(new ArrayBuffer(bruta.length));
+  for (let i = 0; i < bruta.length; i += 1) bytes[i] = bruta.charCodeAt(i);
+  return bytes;
+}
+
+async function registroPush(): Promise<ServiceWorkerRegistration> {
+  return (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.ready);
+}
+
+export type ResultadoPush = { activa: boolean; mensaje: string };
+
+export async function webpushActivo(): Promise<boolean> {
+  try {
+    const registro = await registroPush();
+    const suscripcion = await registro.pushManager.getSubscription();
+    return !!suscripcion?.endpoint;
+  } catch {
+    return false;
+  }
+}
+
+export async function suscribirWebPush(): Promise<ResultadoPush> {
+  try {
+    const { clave } = await api.clavePush();
+    const registro = await registroPush();
+    const suscripcion =
+      (await registro.pushManager.getSubscription()) ??
+      (await registro.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: claveAplicacion(clave),
+      }));
+    await api.suscribirPush(suscripcion.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } });
+    return { activa: true, mensaje: "Este dispositivo ahora recibe avisos aunque la app esté cerrada." };
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "clave_sin_cifrado") {
+      return { activa: false, mensaje: "El servidor no tiene clave de cifrado (TELO_CLAVE_CIFRADO): sin ella no puede registrar avisos empujados." };
+    }
+    return { activa: false, mensaje: "El navegador no pudo registrar los avisos empujados. Ten la app abierta o instalada y vuelve a intentarlo." };
+  }
+}
+
+export async function cancelarWebPush(): Promise<ResultadoPush> {
+  try {
+    const registro = await registroPush();
+    const suscripcion = await registro.pushManager.getSubscription();
+    if (suscripcion) {
+      await api.olvidarSuscripcionPush(suscripcion.endpoint).catch(() => undefined);
+      await suscripcion.unsubscribe();
+    }
+    return { activa: false, mensaje: "Este dispositivo dejará de recibir los avisos empujados." };
+  } catch {
+    return { activa: false, mensaje: "Este dispositivo no tenía avisos empujados activos." };
+  }
 }

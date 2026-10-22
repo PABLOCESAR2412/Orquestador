@@ -747,6 +747,26 @@ const migrations: Migration[] = [
       CREATE INDEX repository_actions_proyecto ON repository_actions(project_id, state, created_at);
     `,
   },
+  {
+    // Notificaciones Web Push (fase 8): una suscripción por dispositivo y el sello de
+    // avisos ya enviados, para que un mismo evento de una tarea notifique una sola vez
+    // aunque se reabra o reintente.
+    name: "040_push",
+    sql: `
+      CREATE TABLE push_subscripciones (
+        endpoint TEXT PRIMARY KEY,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        creado TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE push_enviados (
+        tarea_id TEXT NOT NULL,
+        tipo TEXT NOT NULL,
+        creado TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (tarea_id, tipo)
+      );
+    `,
+  },
 ];
 
 function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {

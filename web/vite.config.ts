@@ -52,7 +52,7 @@ export default defineConfig({
       // El service worker no debe responder las rutas de la API: la vuelta de Google y las descargas
       // llegan al servidor, no al index.html guardado en caché.
       workbox: {
-        importScripts: ["/notification-events.js"],
+        importScripts: ["/notification-events.js", "/push-listener.js"],
         navigateFallbackDenylist: [/^\/api\//],
         // Los chunks que se cargan bajo demanda (vistas, Mermaid y ELK) pasan al caché al usarse.
         // Así siguen disponibles sin conexión después de abrirlos una vez, sin descargar todo al instalar.
