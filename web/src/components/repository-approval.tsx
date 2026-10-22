@@ -479,37 +479,20 @@ export function RepositoryApproval({
   );
 }
 
-export function AccionesAnteriores({ acciones }: { acciones: RepositoryAction[] }) {
-  return (
-    <details className="tl-git-intentos">
-      <summary>Historial de acciones Git · {acciones.length}</summary>
-      <ul>
-        {acciones.map((accion) => (
-          <li key={accion.id}>
-            <span>
-              {labels[accion.action] ?? accion.action} · {estados[accion.state] ?? accion.state}
-              {etiquetaAutenticacion(accion) && <small className="approval-history-auth">{etiquetaAutenticacion(accion)}</small>}
-            </span>
-            {accion.result && <span>{resultadoLegible(accion.result)}</span>}
-          </li>
-        ))}
-      </ul>
-    </details>
-  );
-}
-
 export function AccionesRepositorioChat({
   conversationId,
   projectId,
   taskId,
   ultimoMensajeUsuarioId,
   terminada,
+  tareaCompletada,
 }: {
   conversationId: string;
   projectId: string | null;
   taskId?: string;
   ultimoMensajeUsuarioId?: string | null;
   terminada: boolean;
+  tareaCompletada: boolean;
 }) {
   const qc = useQueryClient();
   const [mostrarTodos, setMostrarTodos] = useState(false);
@@ -606,7 +589,6 @@ export function AccionesRepositorioChat({
     accion.id !== accionConflicto?.id && accion.state !== "superseded" && perteneceAlTurnoActual(accion),
   )
     ?? null;
-  const anteriores = lista.filter((a) => a.id !== accionActual?.id && a.id !== accionConflicto?.id);
   const resolverConflictos = useMutation({
     mutationFn: (id: string) => api.resolveRepositoryConflicts(id),
     onMutate: () => setVerificacionVisible(null),
@@ -785,8 +767,7 @@ export function AccionesRepositorioChat({
           />
         </section>
       )}
-      {projectId && anteriores.length > 0 && <AccionesAnteriores acciones={anteriores} />}
-      {projectId && terminada && taskId && diff && !pendiente && !conflictoDeTareaActual && (
+      {projectId && tareaCompletada && taskId && diff && !pendiente && !conflictoDeTareaActual && (
         <div className="approval-buttons" aria-label="Acciones del repositorio">
           {tieneCambios && !pushVigente && (
             <button

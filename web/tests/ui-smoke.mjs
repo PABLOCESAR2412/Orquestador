@@ -83,6 +83,7 @@ try {
     let codexSesionEnPicker = false;
     let jevConfigurada = false;
     let approvals = 0;
+    let reanudaciones = 0;
     let reintentos = [];
     let skillInstallRequests = 0;
     let diffRequests = 0;
@@ -200,6 +201,11 @@ try {
       ];
       else if (path === "/api/conversations/c1/acciones") data = actions;
       else if (path === "/api/conversations/c1/tasks" || path === "/api/tasks") data = [task];
+      else if (path === "/api/tasks/t1/reanudar" && route.request().method() === "POST") {
+        reanudaciones++;
+        task.status = "queued";
+        data = task;
+      }
       else if (path === "/api/tasks/t1/diff") {
         diffRequests++;
         data = diffRequests === 1
@@ -455,7 +461,7 @@ try {
     await page.locator(".tl-modelo-boton").click();
     await selectorModelo.locator(".picker-item").filter({ hasText: "Google Test" }).click();
     await page.locator(".tl-modelo-boton .tl-modelo-nombre").filter({ hasText: "Google Test" }).waitFor();
-    const botonReintento = page.getByRole("button", { name: "Reintentar solicitud", exact: true });
+    const botonReintento = page.getByRole("button", { name: "Continuar donde quedó", exact: true });
     assert.equal(await botonReintento.count(), 1, "solo se puede reintentar el último aviso; los avisos antiguos no muestran la acción");
     const solicitudReintento = page.waitForRequest(request => request.url().endsWith("/api/conversations/c1/messages") && request.method() === "POST" && request.postDataJSON().retryOf === "u-retry");
     await botonReintento.click();
@@ -777,7 +783,7 @@ try {
     assert.notEqual(contrasteGrupo, contrasteChat);
     await page.getByText("Faltan dependencias", { exact: true }).waitFor();
     assert.equal(await page.getByRole("region", { name: "Acción actual del repositorio" }).count(), 1);
-    await page.getByText("Historial de acciones Git · 2", { exact: true }).waitFor();
+    assert.equal(await page.locator(".tl-git-intentos").count(), 0, "el historial Git antiguo no ocupa el hilo del chat");
     assert.equal(await page.getByRole("region", { name: "Resolución del PR #9" }).count(), 0, "un conflicto de un turno anterior no reaparece como acción actual");
     await page.locator(".tl-resumen-cambios").waitFor();
     const accionTrasSuRespuesta = await page.locator(".tl-hilo-columna").evaluate(root => {
@@ -793,6 +799,18 @@ try {
     assert.equal(await page.locator('section.tl-accion-git-actual').count(), 1, "la decisión actualiza la misma tarjeta dentro de su turno");
     assert.equal(approvals, 1);
     assert.equal(await page.locator('section.tl-accion-git-actual [role="alert"]').count(), 0);
+    task.status = "failed";
+    task.reanudable = true;
+    const continuarTarea = page.getByRole("button", { name: "Continuar donde quedó", exact: true });
+    await continuarTarea.waitFor();
+    assert.equal(await page.getByRole("button", { name: "Commit y subir (elige destino)", exact: true }).count(), 0, "no se permite publicar el diff de una tarea fallida");
+    const reanudacion = page.waitForRequest(request => request.url().endsWith("/api/tasks/t1/reanudar") && request.method() === "POST");
+    await continuarTarea.click();
+    await reanudacion;
+    assert.equal(reanudaciones, 1, "el botón retoma la misma tarea guardada");
+    task.status = "done";
+    task.reanudable = false;
+    await page.getByRole("button", { name: "Commit y subir (elige destino)", exact: true }).waitFor();
     actions.push({
       id: "git-pr-fallido",
       action: "pr",
@@ -813,12 +831,8 @@ try {
     });
     await page.waitForFunction(() => document.querySelector(".tl-accion-git-actual .approval-panel h2")?.textContent === "Commit y push");
     assert.equal(await page.locator(".tl-accion-git-actual .approval-panel").count(), 1, "un PR fallido de un turno anterior no sustituye la acción vigente");
-    const historialGit = page.locator(".tl-git-intentos");
-    await page.getByText("Historial de acciones Git · 3", { exact: true }).click();
-    assert.match(await historialGit.textContent(), /A pull request already exists/);
-    assert.match(await historialGit.textContent(), /GitHub detectó conflictos entre telo\/prueba y main/);
+    assert.equal(await page.locator(".tl-git-intentos").count(), 0, "los resultados Git antiguos no se repiten bajo los mensajes");
     await page.screenshot({ path: `scratch/capturas-ci/git-pr-fallido-${width}.png` });
-    await page.getByText("Historial de acciones Git · 3", { exact: true }).click();
     actions.pop();
     await page.waitForFunction(() => document.querySelector(".tl-accion-git-actual .approval-panel h2")?.textContent === "Commit y push");
     await hiloChat.evaluate(el => { el.scrollTop = 0; el.dispatchEvent(new Event("scroll")); });
@@ -840,7 +854,7 @@ try {
     await page.locator('.sidebar-conv[aria-label^="Prueba de flujo"]').click();
     await page.getByText("Respuesta del chat A", { exact: true }).waitFor();
     assert.equal(await page.locator('section.tl-accion-git-actual').count(), 0, "la acción aprobada deja de ocupar el chat al empezar un turno nuevo");
-    await page.getByText("Historial de acciones Git · 3", { exact: true }).waitFor();
+    assert.equal(await page.locator(".tl-git-intentos").count(), 0, "el historial Git permanece fuera del hilo");
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Prueba de mensaje");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByText("Mensaje recibido", { exact: true }).waitFor();
@@ -1009,6 +1023,10 @@ try {
     const interruptorNotificaciones = tarjetaNotificaciones.getByRole("switch", { name: "Notificaciones de escritorio" });
     await interruptorNotificaciones.click();
     await page.waitForFunction(() => document.querySelector('[aria-label="Notificaciones de escritorio"]')?.getAttribute("aria-checked") === "true");
+    const selectorSonido = tarjetaNotificaciones.getByLabel("Sonido de notificación");
+    assert.equal(await selectorSonido.locator("option").count(), 5);
+    await selectorSonido.selectOption("ascendente");
+    assert.equal(await page.evaluate(() => localStorage.getItem("telo:sonido-notificacion-tipo")), "ascendente");
     await tarjetaNotificaciones.getByRole("button", { name: "Probar sonido", exact: true }).click();
     await tarjetaNotificaciones.getByRole("status").filter({ hasText: "Sonido activado." }).waitFor();
     await interruptorNotificaciones.click();

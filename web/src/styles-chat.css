@@ -360,11 +360,6 @@
 }
 
 .tl-msg { display: flex; flex-direction: column; min-width: 0; }
-.tl-git-intentos { width: 100%; color: var(--ink-2); font-size: 13px; }
-.tl-git-intentos > summary { display: flex; align-items: center; min-height: 40px; cursor: pointer; }
-.tl-git-intentos > ul { display: grid; gap: 6px; margin: 0; padding: 0 0 8px 20px; }
-.tl-git-intentos li { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: space-between; }
-.tl-git-intentos li > span:last-child { overflow-wrap: anywhere; }
 .tl-msg-meta {
   color: var(--ink-2);
   font-family: var(--font-mono);
@@ -1020,6 +1015,19 @@
   font-size: 12.5px;
   color: var(--ink-2);
 }
+
+.tl-tarea-continuacion {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.tl-tarea-continuacion > p:first-child { flex: 1 1 280px; margin: 0; color: var(--ink-2); font-size: 13px; }
+.tl-tarea-continuacion > .tl-alerta { flex-basis: 100%; }
 
 /* Botón Uso en la barra de acciones del compositor junto al selector de modelo */
 .tl-uso { flex-shrink: 0; margin-left: 0; }

@@ -572,6 +572,18 @@
   gap: 10px;
 }
 .aj-notificaciones-sonido-acciones .aj-nota { margin: 0; }
+.aj-notificaciones-selector { display: inline-flex; align-items: center; gap: 10px; color: var(--ink-2); font-size: 13px; }
+.aj-notificaciones-selector select {
+  min-width: 150px;
+  min-height: 38px;
+  padding: 6px 28px 6px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
 .aj-switch::after {
   content: "";
   position: absolute;

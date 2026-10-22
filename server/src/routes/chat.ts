@@ -750,7 +750,7 @@ function guardarAviso(conversationId: string, texto: string): void {
   );
 }
 
-function turnoReintentable(conversationId: string, messageId: string, content: string): { turno: TurnoUsuario; rowid: number; continuar: boolean } | null {
+function turnoReintentable(conversationId: string, messageId: string, content: string, tieneSesion: boolean): { turno: TurnoUsuario; rowid: number; continuar: boolean } | null {
   const original = db.query<{ id: string; content: string; rowid: number }, [string, string]>(
     "SELECT id, content, rowid FROM messages WHERE id=? AND conversation_id=? AND role='user'",
   ).get(messageId, conversationId);
@@ -765,7 +765,7 @@ function turnoReintentable(conversationId: string, messageId: string, content: s
   if (ultimoUsuario?.id !== messageId || mensajesPosteriores.length === 0 || mensajesPosteriores.some((mensaje) => mensaje.role !== "system")) {
     return null;
   }
-  const continuar = mensajesPosteriores.some((mensaje) => /^El agente (?:superó el límite de|tardó más de) \d+ minutos/i.test(mensaje.content));
+  const continuar = tieneSesion || mensajesPosteriores.some((mensaje) => /^El agente (?:superó el límite de|tardó más de) \d+ minutos/i.test(mensaje.content));
   return { turno: { id: original.id, role: "user", content: original.content }, rowid: original.rowid, continuar };
 }
 
@@ -960,7 +960,7 @@ chat.post("/conversations/:id/messages", async (c) => {
     return c.json({ error: "invalid_retry" }, 400);
   }
   const retryOf = typeof body?.retryOf === "string" ? body.retryOf : null;
-  const reintento = retryOf ? turnoReintentable(conversationId, retryOf, content) : null;
+  const reintento = retryOf ? turnoReintentable(conversationId, retryOf, content, Boolean(conv.runner_session_id)) : null;
   if (retryOf && !reintento) return c.json({ error: "message_not_retryable" }, 409);
   const bloqueo = motivoDeBloqueo(conv);
   if (bloqueo) return c.json({ error: bloqueo }, 409);
