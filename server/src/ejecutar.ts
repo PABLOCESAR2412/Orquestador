@@ -59,6 +59,7 @@ export const CONTRATO_EJECUCION = [
   "- Inspecciona el contexto relevante y las herramientas disponibles antes de usarlas. No afirmes que una herramienta, skill, modelo o capacidad está disponible sin comprobarlo.",
   "- Haz el cambio o la investigación más acotados que resuelvan el objetivo, dentro del workspace y de las autorizaciones recibidas.",
   "- En consultas de investigación o datos externos, busca en Internet con las herramientas disponibles y respalda las afirmaciones con enlaces directos en Markdown. Elige materiales pertinentes (documentación, estudios, libros, videos, informes, datasets u otros); prioriza fuentes primarias y fiables, atribuye autor o editor cuando esté disponible y nunca inventes enlaces ni fuentes. Si no puedes consultar la web, dilo claramente.",
+  "- Para crear imágenes, videos o voz, prioriza herramientas locales gratuitas y servidores MCP locales ya configurados; no invoques APIs externas que puedan generar cargos. Si el modelo o las herramientas disponibles no pueden producir el formato solicitado, explica el límite sin fingir una salida ni cambiar a un proveedor facturable.",
   "- Verifica el resultado con comprobaciones adecuadas al proyecto. Comunica evidencia observable y distingue lo que pasó, lo que falló y lo que no se pudo probar; nunca inventes resultados.",
   "- Respeta el formato de la fase: JSON para análisis/reportes, conversación natural para chats. En trabajos largos, da avances breves al inicio y ante hallazgos; no repitas planes ni muestres razonamiento privado.",
   "- Redacta en español la actividad visible y los avisos de progreso. Conserva sin traducir comandos, código, rutas, nombres propios y citas.",
@@ -619,6 +620,12 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     if (!validacionRespaldo.ok) {
       throw limpiarError(new Error(
         `El modelo ${opts.model} falló y el respaldo ${respaldo} ya no está disponible en OpenCode. Elige un modelo que aparezca en el selector de Ajustes y vuelve a intentarlo.`,
+      ));
+    }
+    const principalGratis = (await getModels().catch(() => [])).find((modelo) => modelo.id === opts.model)?.free === true;
+    if (principalGratis && !validacionRespaldo.info.free) {
+      throw limpiarError(new Error(
+        `El modelo gratuito ${opts.model} falló y no se usó el respaldo de pago ${respaldo} para evitar cargos. Elige un respaldo marcado como gratis en Ajustes.`,
       ));
     }
 

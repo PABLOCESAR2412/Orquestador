@@ -23,8 +23,6 @@ import {
 } from "../ocupacion";
 import { eliminarPerfilSubagentes, prepararSubagentes } from "../subagentes";
 import { cerrarSubagentesDelTurno, registrarEventoSubagente } from "../subagentes-chat";
-import { detectarSolicitudMedio } from "../generacion-medios";
-import { crearSolicitudMedio } from "./media";
 import { ArchivoError, leerArchivo, leerImagen, leerPdf, leerVideo, normalizarRuta } from "../archivos-proyecto";
 import { contarImagenesMarcadas, eliminarImagenesConversacion, guardarImagenAdjunta, idsImagenesMarcadas, leerImagenAdjunta, MAX_IMAGENES_MENSAJE } from "../chat-adjuntos";
 
@@ -934,19 +932,6 @@ chat.post("/conversations/:id/messages", async (c) => {
     ? tareaActual.modelo_agotado ?? tareaActual.model
     : null);
   if (modeloAgotado) return c.json({ error: "chat_quota_pending" }, 409);
-
-  // Los pedidos explícitos de imagen/video se convierten en una tarjeta pendiente; ningún modelo
-  // de chat los ejecuta y la API de medios no se llama hasta que el usuario confirme el coste.
-  const solicitudMedio = detectarSolicitudMedio(content);
-  if (solicitudMedio) {
-    const turno = reintento?.turno ?? guardarMensajeUsuario(conversationId, content);
-    limpiarAvisosReintentados(conversationId, reintento?.rowid);
-    const trabajo = crearSolicitudMedio(conversationId, turno.id, solicitudMedio);
-    const respuesta = db.query<Message, [string]>(
-      "SELECT id,conversation_id,role,content,created_at,model,effort FROM messages WHERE id=?",
-    ).get(trabajo.messageId)!;
-    return c.json({ messages: [turno, respuesta] }, 202);
-  }
 
   // Fusionar un PR existente por número es una acción directa: no debe crear una tarea ni otra rama.
   const numeroPr = numeroPullRequestParaFusionar(content);

@@ -394,6 +394,7 @@ description: Crea y revisa imágenes, infografías, pósteres y gráficos con co
 
 - Antes de crear, identifica el propósito, el público, el formato y la proporción. Organiza título, contenido principal, apoyos y fuentes en una retícula con márgenes amplios y espacio suficiente entre bloques.
 - Si la imagen contiene datos, fechas, etiquetas o texto exacto, dibuja esos elementos con SVG, HTML, Canvas u otra herramienta programática disponible. Usa el modelo de imagen para la ilustración, textura o fondo; no dependas de texto rasterizado para reproducir cifras o rótulos con precisión.
+- Para mantener el flujo sin cargos por petición, no invoques APIs externas facturables de imagen. Usa primero herramientas locales y el modelo seleccionado solo para las tareas que soporte. Si el usuario pide una imagen fotorrealista y no hay un generador local gratuito disponible, explica el límite y ofrece una composición vectorial; no afirmes que creaste una imagen raster fotorrealista.
 - Ajusta la composición al contenido: si no cabe, cambia la distribución o el lienzo antes de reducir la tipografía. En líneas de tiempo alterna los rótulos o sepáralos en filas; en gráficos mantén las cifras, escalas y etiquetas coherentes y sin cruces.
 - Mantén pocos niveles tipográficos, contraste suficiente y texto secundario que pueda leerse al tamaño de uso. Evita perspectiva extrema, texto extruido, adornos o paneles que compitan con la información. Si se pide 3D, aplica profundidad a la escena y los elementos decorativos; conserva planos y legibles los textos y datos.
 - No inventes ni cambies hechos, cifras, nombres o fechas. Si las fuentes discrepan, expresa el rango o la incertidumbre y cita las fuentes disponibles sin saturar el diseño.
@@ -416,6 +417,8 @@ description: Diseña y verifica animaciones, videos y piezas audiovisuales con e
 - Para MP4 de distribución, prioriza H.264, píxeles yuv420p y la opción faststart; añade audio AAC solo si hay una pista intencional. Mantén GIF y WebP animado como formatos auxiliares, y explica cuando una aplicación de escritorio no admita WebP animado.
 - Verifica el archivo final y reporta su ruta, códec, dimensiones, duración, frecuencia de fotogramas y pista de audio solo cuando una herramienta disponible lo confirme. No afirmes que el reproductor o el formato se validaron si no pudiste abrirlos.
 - Si se solicita narración, prepara un guion breve en español y usa una herramienta de voz disponible; si no existe, dilo y entrega el video sin fingir que tiene audio.
+- Prioriza un TTS local ya instalado o un servidor MCP local, como VoiceStudio (herramienta generate_speech). No llames servicios externos de voz que puedan cobrar. Si no hay TTS configurado o accesible desde el agente, entrega el video sin audio y deja clara esa limitación.
+- Si el usuario menciona una plataforma como Instagram Stories, TikTok o Facebook, adapta directamente proporción, resolución y zonas seguras a ese destino. Si pide cámara lenta, aplícala al render final y comprueba la duración resultante.
 `;
 
 // Crea la carpeta de skills globales si falta. Se llama al arrancar: así bubblewrap siempre puede montarla en

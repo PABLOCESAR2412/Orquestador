@@ -21,6 +21,8 @@ if [ "$1" = "models" ]; then
   echo '{"name":"Prueba","cost":{"input":0,"output":0},"limit":{"context":64000},"variants":{}}'
   echo "opencode/respaldo"
   echo '{"name":"Respaldo","cost":{"input":0,"output":0},"limit":{"context":64000},"variants":{}}'
+  echo "opencode/respaldo-pago"
+  echo '{"name":"Respaldo de pago","cost":{"input":1,"output":2},"limit":{"context":64000},"variants":{}}'
   exit 0
 fi
 anterior=""
@@ -104,5 +106,18 @@ test.skipIf(!Bun.which("setsid"))("el respaldo continúa el trabajo previo con u
   expect(prompt).toContain("Continúa la petición con el historial y el estado del workspace disponibles");
   expect(prompt).toContain("revisa los cambios y artefactos actuales");
   expect(prompt).toContain("FALLBACK-SEGURIDAD");
+  savePreferences(DEFAULT_PREFERENCES);
+});
+
+test.skipIf(!Bun.which("setsid"))("un modelo gratuito no recurre automáticamente a un respaldo de pago", async () => {
+  rmSync(contador, { force: true });
+  savePreferences({ ...DEFAULT_PREFERENCES, fallbackModel: "opencode/respaldo-pago" });
+  invalidarModelos();
+  await expect(ejecutarAgente({
+    prompt: "FALLBACK-SEGURIDAD: termina el cambio sin repetirlo",
+    model: "opencode/prueba",
+    cwd: raiz,
+  })).rejects.toThrow("no se usó el respaldo de pago opencode/respaldo-pago para evitar cargos");
+  expect(readFileSync(contador, "utf8")).toBe("2\n");
   savePreferences(DEFAULT_PREFERENCES);
 });
