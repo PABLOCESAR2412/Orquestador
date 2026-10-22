@@ -79,9 +79,40 @@ function esSecretoReal(valor: string): boolean {
   return true;
 }
 
+// Marcas que delatan un valor de prueba dentro del propio formato de credencial (fixtures de
+// auditoría, ejemplos de documentación, tokens canónicos de manual). Solo se aplican al
+// formato: un secreto guardado por el dueño del proyecto es real por definición y nunca pasa
+// por aquí. Insértar la marca rompe la credencial, así que no abre la puerta a valores reales.
+const MARCAS_DE_PRUEBA = [
+  "fictici",
+  "prueba",
+  "pru3ba",
+  "ejemplo",
+  "example",
+  "dummy",
+  "fake",
+  "falso",
+  "placeholder",
+  "redacted",
+  "ocult",
+  "sample",
+  "test",
+  "abcdefghijklmnop",
+];
+
+function esFormatoDePrueba(hallada: string | undefined): boolean {
+  if (!hallada) return false;
+  const minusculas = hallada.toLowerCase();
+  return MARCAS_DE_PRUEBA.some((marca) => minusculas.includes(marca));
+}
+
 function contieneSecreto(linea: string, valores: string[]): boolean {
   if (ENCABEZADO_CLAVE_PRIVADA.test(linea)) return true;
-  if (PATRONES_CREDENCIAL.some((patron) => patron.test(linea))) return true;
+  for (const patron of PATRONES_CREDENCIAL) {
+    // Un valor con formato de credencial cuenta, salvo que sea un ejemplo marcado como tal.
+    const hallada = patron.exec(linea)?.[0];
+    if (hallada && !esFormatoDePrueba(hallada)) return true;
+  }
   return valores.some((valor) => esSecretoReal(valor) && linea.includes(valor));
 }
 

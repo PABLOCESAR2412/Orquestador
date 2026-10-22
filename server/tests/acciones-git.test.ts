@@ -934,7 +934,7 @@ test("el escaneo de secretos ve el blob de un archivo marcado binario por .gitat
   const copia = await prepararCopia(taskId, p.cwd, p.id);
   // El truco del agente: marcar el archivo binario. Con .gitattributes el diff no muestra
   // el contenido; el escaneo debe leerlo del blob del índice y rechazar el commit.
-  writeFileSync(join(copia.cwd, "secreto.bin"), "AKIAABCDEFGHIJKLMNOP\n");
+  writeFileSync(join(copia.cwd, "secreto.bin"), "AKIAXK7GJQM4N2PLR9Z8\n");
   writeFileSync(join(copia.cwd, ".gitattributes"), "*.bin -diff\n");
   const antes = await diffDeTarea(taskId);
   expect(antes.hash).toBeTruthy();
