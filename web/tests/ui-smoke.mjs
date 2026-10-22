@@ -80,6 +80,7 @@ try {
       { id: "git1", action: "push", task_id: "t1", message_id: "u-retry", state: "pending", result: null, payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u-retry", autenticacion: { tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "PABLOCESAR2412", instalacion_id: 1 } }) },
     ];
     let authenticated = false;
+    let chatDetenido = false;
     let conversacionesDisponibles = false;
     let modeloC1 = "google/prueba";
     let esfuerzoC1 = null;
@@ -103,6 +104,10 @@ try {
     const envioAIniciado = new Promise(resolve => { anunciarEnvioA = resolve; });
     await page.route("**/api/**", async route => {
       const path = new URL(route.request().url()).pathname;
+      if (path === "/api/conversations/c1/detener") {
+        chatDetenido = true;
+        return route.fulfill({ status: 202, json: { outcome: "cancelling" } });
+      }
       let data = [];
       if (path === "/api/sesion") return route.fulfill({ status: authenticated ? 200 : 401, json: { ok: authenticated } });
       if (path === "/api/login") { authenticated = true; data = { ok: true }; }
@@ -1192,6 +1197,15 @@ try {
     assert.equal(await page.getByText("No disponible", { exact: true }).count(), 2);
     const origenTarea = page.getByRole("table", { name: /Uso de IA por origen/ }).getByRole("row").filter({ hasText: "Tareas del agente" });
     assert.equal(await origenTarea.getByRole("cell").nth(1).textContent(), "—");
+    conversacionesDisponibles = true; sinDatos = false;
+    await page.goto(`${base}/chat?conversacion=c1`);
+    const botonDetener = page.getByRole("button", { name: "Detener", exact: true });
+    await botonDetener.waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/detener-${width}.png` });
+    await botonDetener.click();
+    assert.equal(chatDetenido, true);
+    assert.equal(await page.evaluate(() => localStorage.getItem("telo:cola-activa:c1")), "false");
     assert.deepEqual(errors, []);
     await context.close();
     console.log(`PASS ${width}px: login, mensajes, aprobación Git, código copiable y métricas.`);

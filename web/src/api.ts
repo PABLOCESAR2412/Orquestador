@@ -958,6 +958,7 @@ export const api = {
     request<Task>("/api/tasks", { method: "POST", body: JSON.stringify(body) }),
   cancelTask: (id: string) =>
     request<{ outcome: string }>(`/api/tasks/${id}/cancel`, { method: "POST", body: "{}" }),
+  detenerChat: (id: string) => request<{ outcome: string }>(`/api/conversations/${encodeURIComponent(id)}/detener`, { method: "POST", body: "{}" }),
   listProjects: () => request<Project[]>("/api/projects"),
   // Con url, la carpeta queda vacía para clonar ese repo de GitHub (ver verificarRepositorioGithub).
   createProject: (

@@ -13,7 +13,7 @@ import { mensajeSeguro } from "../workspace";
 import { carpetaEntregables } from "../entregables";
 import { actividadDelTurno, itemDeLinea, registrarActividad } from "../actividad";
 import { crearTarea } from "../tareas";
-import { notifyWorker } from "../worker";
+import { cancelTask, notifyWorker } from "../worker";
 import { publicarEstado, registrarEvento } from "../eventos";
 import { repositoryActions } from "./repository-actions";
 import {
@@ -820,6 +820,21 @@ function limpiarAvisosReintentados(conversationId: string, rowid: number | undef
 
 // La duración no cancela el trabajo: el usuario conserva la cancelación explícita.
 const TIEMPO_TURNO_MS = null;
+const controlesTurno = new Map<string, AbortController>();
+
+chat.post("/conversations/:id/detener", c => {
+  const conv = leerConversacion(c.req.param("id"));
+  if (!conv) return c.json({ error: "conversation_not_found" }, 404);
+  if (conv.parent_conversation_id) return c.json({ error: "subagent_readonly" }, 403);
+  const control = controlesTurno.get(conv.id);
+  if (control) { control.abort(); return c.json({ outcome: "cancelling" }, 202); }
+  const tarea = tareaDelChat(conv.id);
+  if (tarea && ["queued", "analyzing", "running", "waiting_approval"].includes(tarea.status)) {
+    const outcome = cancelTask(tarea.id);
+    return c.json({ outcome }, outcome === "cancelling" ? 202 : 200);
+  }
+  return c.json({ outcome: "not_running" });
+});
 
 // Avisa a los clientes que un turno empezó o terminó. Los demás dispositivos piden de nuevo el chat.
 function publicarChat(conversationId: string, estado: "en_curso" | "terminado"): void {
@@ -828,7 +843,7 @@ function publicarChat(conversationId: string, estado: "en_curso" | "terminado"):
 
 // Corre el agente para un turno del chat y guarda su respuesta. Nunca lanza: cualquier fallo queda
 // como aviso en el chat, porque nadie espera ya la respuesta HTTP.
-async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: string, model: string): Promise<void> {
+async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: string, model: string, signal: AbortSignal): Promise<void> {
   const conversationId = conv.id;
   let result: ResultadoAgente;
   let turnoTerminado = false;
@@ -850,6 +865,7 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       sessionModel: conv.runner_session_model,
       cwd,
       timeoutMs: TIEMPO_TURNO_MS,
+      signal,
       projectId: conv.project_id,
       conversationId,
       estilo: "chat",
@@ -882,6 +898,10 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
     });
     turnoTerminado = true;
   } catch (err) {
+    if (signal.aborted) {
+      guardarAviso(conversationId, "Ejecución detenida por ti. El trabajo y la sesión disponibles se conservan; puedes continuar donde quedó.");
+      return;
+    }
     if (err instanceof ErrorCuota) {
       // La sesión que sí llegó a abrirse se guarda, para seguirla con otro modelo. El aviso de cuota lo muestra el chat.
       db.query(
@@ -945,15 +965,18 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
 // El turno corre en segundo plano, no dentro de la petición HTTP. Así, si el móvil se duerme, cambia
 // de app o pierde la red, el agente termina igual, la respuesta queda guardada y se ve al volver.
 function iniciarTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: string, model: string): void {
+  const control = new AbortController();
+  controlesTurno.set(conv.id, control);
   ocuparConversacion(conv.id);
   publicarChat(conv.id, "en_curso");
-  void correrTurno(conv, turno, prompt, model)
+  void correrTurno(conv, turno, prompt, model, control.signal)
     .catch((err) => {
       // correrTurno no lanza; esto solo cubre un fallo al guardar la respuesta.
       console.error("Turno del chat:", mensajeSeguro(err));
       guardarAviso(conv.id, "No se pudo guardar la respuesta. Intenta de nuevo.");
     })
     .finally(() => {
+      controlesTurno.delete(conv.id);
       liberarConversacion(conv.id);
       publicarChat(conv.id, "terminado");
       notifyWorker();

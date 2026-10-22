@@ -17,6 +17,7 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 
 const { db } = await import("../src/db");
 const { config } = await import("../src/config");
+const { conversacionEnCurso } = await import("../src/ocupacion");
 const { chat, avisarTurnosInterrumpidos } = await import("../src/routes/chat");
 const { guardarImagenAdjunta, imagenesDelPrompt } = await import("../src/chat-adjuntos");
 
@@ -108,6 +109,16 @@ function enviarReintento(id: string, content: string, retryOf: string) {
 }
 
 describe("lista de conversaciones", () => {
+  test("detener valida el chat, tolera uno inactivo y cancela su tarea en cola", async () => {
+    expect((await app.request("/api/conversations/inexistente/detener", { method: "POST" })).status).toBe(404);
+    const id = conversacion();
+    const parada = () => app.request(`/api/conversations/${id}/detener`, { method: "POST" });
+    expect(await (await parada()).json()).toEqual({ outcome: "not_running" });
+    const tid = crypto.randomUUID();
+    db.query("INSERT INTO tasks (id,title,prompt,model,status,conversation_id) VALUES (?,'Parar','p','prueba','queued',?)").run(tid, id);
+    expect(await (await parada()).json()).toEqual({ outcome: "cancelled" });
+    expect(db.query<{ status: string }, [string]>("SELECT status FROM tasks WHERE id=?").get(tid)?.status).toBe("cancelled");
+  });
   test("usa el estado de la tarea más reciente sin hacer una consulta por chat", async () => {
     const id = conversacion();
     db.query(`INSERT INTO tasks (id, title, prompt, model, status, conversation_id, created_at, finished_at, plan_hash)
@@ -293,6 +304,16 @@ describe("archivos de texto de chats sin proyecto", () => {
 
 // Estas pruebas lanzan grupos de procesos con `setsid`, igual que el servidor Linux.
 describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
+  test("detener aborta el turno libre y conserva el mensaje para continuar", async () => {
+    const id = conversacion();
+    expect((await enviar(id, "Primera pregunta LENTO")).status).toBe(202);
+    const res = await app.request(`/api/conversations/${id}/detener`, { method: "POST" });
+    expect(res.status).toBe(202);
+    await esperar(() => mensajes(id).some(m => m.role === "system" && m.content.includes("Ejecución detenida por ti")));
+    expect(mensajes(id).some(m => m.role === "user" && m.content === "Primera pregunta LENTO")).toBe(true);
+    expect(mensajes(id).some(m => m.role === "assistant")).toBe(false);
+    await esperar(() => !conversacionEnCurso(id));
+  });
   test("envía las solicitudes de imagen y video al modelo seleccionado sin crear trabajos multimedia de pago", async () => {
     for (const prompt of ["Genera una imagen de un colibrí", "Crea un video vertical de un colibrí"]) {
       const id = conversacion("opencode/big-pickle");
