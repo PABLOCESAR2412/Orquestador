@@ -330,7 +330,7 @@ try {
       }] };
       else if (path === "/api/analytics") data = {
         days: 30, filtros: { proyecto: null, modelo: null }, proyectos: [], modelos: [], budget: null, usoJev: [],
-        totals: { calls: 1, inputTokens: sinDatos ? 0 : 8, outputTokens: sinDatos ? 0 : 2, cost: 0 }, byDay: [{ day: now.slice(0, 10), calls: 1, cost: 0, tokens: sinDatos ? 0 : 10, tokensEstimados: 0, modelos: [{ model: "google/prueba", provider: "google", calls: 1, tokens: sinDatos ? 0 : 10, estimados: 0 }] }], byModel: [],
+        totals: { calls: 1, inputTokens: sinDatos ? 0 : 8, outputTokens: sinDatos ? 0 : 2, cost: 0 }, byDay: [{ day: now.slice(0, 10), calls: 1, cost: 0, tokens: sinDatos ? 0 : 10, tokensEstimados: 0, modelos: [{ model: "google/prueba", provider: "google", calls: 1, tokens: sinDatos ? 0 : 10, estimados: 0 }] }], byModel: [{ model: "opencode/muse-spark-1.3-contributor-free-con-nombre-extenso", tareas: 0, tokens: 3100000, duracionMediaSeg: 591, cost: 0, calls: 2 }],
         byType: ["chat", "tarea", "otro"].map(tipo => ({ tipo, calls: tipo === "tarea" ? 1 : 0, tokens: tipo === "tarea" && !sinDatos ? 10 : 0, cost: 0, tokensEstimados: 0, sinTokens: tipo === "tarea" && sinDatos ? 1 : 0, sinCoste: tipo === "tarea" && sinDatos ? 1 : 0 })),
         tasks: { done: 1 }, calidad: { tokensMedidos: sinDatos ? 0 : 1, tokensEstimados: 0, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 },
         byTask: [{ taskId: "t1", calls: 1, tokens: sinDatos ? 0 : 10, cost: 0, tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 }],
@@ -1199,6 +1199,11 @@ try {
     await detalleDia.getByText("Tokens procesados", { exact: true }).waitFor();
     await detalleDia.getByText(/google · google\/prueba/).waitFor();
     await page.getByText(/registros con tokens medidos/).waitFor();
+    const tablaModelos = page.locator(".an-tabla-modelos");
+    await tablaModelos.scrollIntoViewIfNeeded();
+    assert.equal(await tablaModelos.evaluate(el => el.scrollWidth > el.parentElement.clientWidth + 1), false, "los nombres largos no desbordan el panel de ejecuciones");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/ejecuciones-${width}.png` });
     await page.getByRole("tab", { name: /Consumo interno de Telo/ }).click();
     const tablaInterna = page.locator(".an-consumo-tabla");
     await tablaInterna.waitFor();

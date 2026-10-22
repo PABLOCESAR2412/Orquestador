@@ -913,3 +913,5 @@ Implementación: PR #107 https://github.com/PABLOCESAR2412/Orquestador/pull/107.
 - [x] Pruebas: 21 casos de chat aprobados y 8 regresiones de auditoría, TypeScript servidor y build web aprobados. Playwright verificó botón, llamada de detener y cola pausada a 390/1440 px. Los 12 casos de runner Linux, incluida cancelación real del grupo, se omiten en Windows y quedan para CI. No se detuvo ninguna ejecución de producción desde esta tarea.
 
 - [x] Ajustes: retirada la etiqueta Datos del servidor y la hora junto a las pestañas, con sus estilos sin uso. Sin cambios en las métricas. Validación: compilación web. PR #107.
+
+- [x] Ejecuciones recientes: ancho fijo de columnas, nombres/encabezados con salto de línea y proveedor separado; contención del desplazamiento horizontal en tablas. Playwright con nombre de modelo largo confirma tabla dentro del panel y página sin desborde a 390/1440 px; build web aprobado. Datos y cálculos sin cambios. PR #107.
