@@ -1,0 +1,16 @@
+diff --git a/src/sprintf.js b/src/sprintf.js
+--- a/src/sprintf.js
++++ b/src/sprintf.js
+@@ -30,6 +30,12 @@
+             }
+             else if (node_type === "array") {
+                 match = parse_tree[i] // convenience purposes only
++                // Bound floating-point precision to ECMAScript limits (GHSA-hp3w-g68c-fv3c).
++                if (match[7] && /[efg]/.test(match[8])) {
++                    match = match.slice()
++                    match[7] = String(Math.max(match[8] === "g" ? 1 : 0, Math.min(100, Number(match[7]))))
++                }
++
+                 if (match[2]) { // keyword argument
+                     arg = argv[cursor]
+                     for (k = 0; k < match[2].length; k++) {

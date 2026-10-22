@@ -267,7 +267,7 @@ export function ChatArchivoPreview({
               sandbox="allow-scripts"
               referrerPolicy="no-referrer"
               style={{ width: "100%", flex: "1 1 auto", minHeight: 360, border: 0, background: "white" }}
-              srcDoc={`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https:; style-src 'unsafe-inline' https:; img-src data: blob: https:; font-src data: https:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">${archivo.data.texto}`}
+              src={`/api/conversations/${encodeURIComponent(conversationId)}/archivo-html?ruta=${encodeURIComponent(rutaActual)}`}
             />
           ) : <div ref={cuerpoRef} className="tl-chat-archivo-cuerpo" role="region" aria-label={`Contenido de ${rutaActual}`} tabIndex={0}>
             <pre>{lineas.map((linea, indice) => {

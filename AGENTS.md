@@ -10,7 +10,7 @@ Este archivo describe cómo trabajan los agentes que Orquestador lanza para cada
 4. **Obrero.** Ejecuta el plan aprobado dentro de su workspace, prueba lo que cambió y escribe un reporte.
 5. **Cierre.** La tarea queda `done`, `failed` o `cancelled`. Se guardan el reporte, el costo y el uso. Se notifica al usuario (fase 8 de `SEGUIMIENTO.md`).
 
-Estados (la migración 019 los introdujo; el esquema va por la 039, ver `SEGUIMIENTO.md` fase 5):
+Estados (la migración 019 los introdujo; el esquema va por la 040, ver `SEGUIMIENTO.md` fase 5):
 
 ```
 queued → analyzing → waiting_approval → running → done | failed | cancelled
@@ -84,4 +84,4 @@ Si el plan no requiere aprobación (ningún commit, push o PR, y sin preguntas),
 
 ## Estado del código
 
-Existen la cola, el runner de OpenCode, el registro de costo, el analizador y el obrero (`server/src/worker.ts`, `server/src/plan.ts`), el plan y el reporte por tarea, y la aprobación del plan. El worker corre con OpenCode real en el VM, con trazas y sesiones (ver `SEGUIMIENTO.md` fase 5). Gobernanza en marcha: purga del historial vencido y índices de `repository_actions` (migración 039), vigilante de inactividad y escaneo de secretos sobre los blobs del índice. Queda fuera la notificación Web Push (fase 8). Ver `SEGUIMIENTO.md`.
+Existen la cola, el runner de OpenCode, el registro de costo, el analizador y el obrero (`server/src/worker.ts`, `server/src/plan.ts`), el plan y el reporte por tarea, y la aprobación del plan. El worker corre con OpenCode real en el VM, con trazas y sesiones (ver `SEGUIMIENTO.md` fase 5). Gobernanza en marcha: purga del historial vencido y índices de `repository_actions` (migración 039), vigilante de inactividad y escaneo de secretos sobre los blobs del índice. Web Push está implementado (migración 040); falta validar la entrega real en dispositivos (fase 8). Ver `SEGUIMIENTO.md`.

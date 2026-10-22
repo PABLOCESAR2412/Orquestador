@@ -1,8 +1,8 @@
 # Seguimiento de Telo
 
-Registro central único: hallazgos en curso, fases del producto y verificación operativa. Cuando aparezca un hallazgo, se registra aquí; cuando se corrige, se marca con su prueba (PR, comando o verificación). Un estado `[x]` significa resuelto en la rama citada, no despliegue confirmado en el VM.
+Registro central de fases, revisiones y hallazgos. Actualizado: 22 de octubre de 2026.
 
-Formato: `[x]` resuelto con evidencia · `[ ]` pendiente · `[~]` implementado sin validar.
+Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
 ## Hallazgos — auditoría del 21 de octubre de 2026
 
@@ -13,7 +13,7 @@ Formato: `[x]` resuelto con evidencia · `[ ]` pendiente · `[~]` implementado s
 - [x] **H5 · Suite inservible en Windows (MEDIA).** Causa raíz: `db` singleton abierto una vez por proceso (el primer `DATA_DIR` de prueba ganaba y un `db.close()` rompía el resto: dominó de 103 fallos). Ahora `db` es un Proxy ligado al `DATA_DIR` vigente: reabre al cerrarse y aplica migraciones por apertura; `clave-ssh` anotada `skipIf` en Windows (ejercita OpenSSH POSIX, se verifica en el VM) y `media-routes` cierra la base antes de borrar su carpeta. Evidencia: PR #102, suite completa 485 tests, 0 fail.
 - [x] **H6 · Evento `conflictos_pr_preparados` y errores crudos en la tarjeta (BAJA).** Etiqueta «PR preparado: conflictos por resolver» y `textoErrorTarea` que traduce los códigos guardados a frases. Nota: la etiqueta del evento entró también por el PR #103 y quedó deduplicada en el rebase. Evidencia: PR #102 (+#103).
 - [x] **H7 · Web Push — fase 8 (MEDIA).** Notificaciones que valen sin la app abierta: claves VAPID autogeneradas y cifradas, suscripción por dispositivo (`push_subscripciones`), envío al fallar, al pedir aprobación y al terminar, dedupe por evento (`push_enviados`) y receptor en el service worker (`push-listener.js`); no duplica el aviso si la app está visible y da de baja las suscripciones vencidas (404/410). Evidencia: PR #105, `push.test.ts` (claves cifradas, validación, dedupe, caducidad), suite 492 tests, 0 fail.
-- [x] **H8 · Registro y gobernanza de disco (BAJA).** Este archivo unifica hallazgos, fases y operativa (los archivos de fase quedan como redirigentes); la purga del historial + `limpiarCopias` + la métrica de tamaños de Ajustes → Servidor cubren el disco de tareas antiguas. Evidencia: PR #102 y esta consolidación.
+- [ ] **H8 · Registro y gobernanza de disco (BAJA).** Este archivo unifica hallazgos, fases y operativa (los archivos de fase quedan como redirigentes); la purga del historial y limpiarCopias existen, pero no resuelven por sí solas la acumulación de dependencias. Optimización específica en PR #106, todavía pendiente de aplicar y medir en la VM. Evidencia: PR #102 y esta consolidación.
 
 ### Análisis menores de la auditoría (mejoras sin bloqueo)
 
@@ -24,41 +24,91 @@ Formato: `[x]` resuelto con evidencia · `[ ]` pendiente · `[~]` implementado s
 - [x] **A-m5 · Títulos en modelos que la cuenta no tiene (22-oct).** El `opencode.json` del tiempo de ejecución no fijaba `small_model`: para los títulos de sesión y la compactación, OpenCode escoge «un modelo barato del catálogo del proveedor» y caía en `gpt-5.4-nano` (402, fuera del plan) o `big-pickle` (429, límite del free tier) aunque la tarea usara DeepSeek. Ahora se fija al modelo elegido por el usuario. Hallazgo desde el registro de inferencia del proveedor (429/402 con modelos que nadie pidió). Evidencia: PR #105, prueba en `conexiones-mcp.test.ts`.
 
 
-## Fases del producto
+## Auditoría del 22 de octubre: correcciones comprobadas
 
+Entrega: [PR #104](https://github.com/PABLOCESAR2412/Orquestador/pull/104). Fusionado en main; no se certifica el despliegue por esta resolución.
+
+- [x] **A01 — Respaldar y restaurar entregables independientes.** El tar incluye entregables y adjuntos. Regresión: respaldo real de SQLite/tar y recuperación del contenido del documento.
+- [x] **A02 — Eliminar sesiones heredadas no revocables.** Solo se aceptan sesiones registradas; regresión: cookie HMAC rechazada, sesión nueva válida y logout efectivo. Las cookies antiguas requieren nuevo login.
+- [x] **A03 — Aislar obligatoriamente las pruebas de la base local.** Preload obligatorio desde raíz y server, DATA_DIR temporal por ejecución y rechazo de bases fuera del directorio temporal. La suite que fallaba ahora pasa sin preparar variables a mano.
+- [x] **A04 — Corregir excepciones del alcance del plan.** Excepción exacta de .opencode y comparación por contenido para tareas sin Git. Pruebas de prefijos parecidos con Git y sin Git aprobadas.
+- [x] **A05 — Permitir previews HTML dinámicas con aislamiento efectivo.** Endpoint HTML autenticado con CSP sandbox y origen opaco. Playwright CLI con cabeceras reales: JavaScript activo y acceso a parent.document bloqueado con SecurityError; capturas a 390/1440 px.
+- [x] **A06 — Hacer atómica la actualización de conversaciones.** Validación previa y escritura transaccional. Regresión: un 400 conserva título y anclado; actualización válida aprobada.
+- [x] **A07 — Notificar nuevas transiciones aunque repitan estado.** Deduplicación por transición en lugar de historial eterno de estados. Regresión: failed duplicado no avisa, running → failed avisa otra vez; pendientes iniciales de chat/Git se recuerdan.
+- [x] **A08 — Evitar cerrar herramientas activas por silencio del agente.** El vigilante considera CPU/IO del grupo de procesos, no solo stdout. Fixture /proc verifica actividad CPU e IO y ausencia de actividad. Integración real Linux pendiente.
+- [x] **A09 — Resolver o mitigar las dos alertas de dependencias.** uuid fijado a 11.1.1; sprintf-js lleva parche versionado que acota precisión. Pruebas de buffer insuficiente y formatos extremos aprobadas. bun audit conserva un aviso por versión de sprintf-js: mitigado, no eliminado del catálogo.
+
+### Fallo posterior de CI
+
+- [x] **A10 — Telemetría del agente ficticio fuera del plan en Linux.** El fixture escribía llamadas.jsonl y el servidor actualizaba salida.log en el workspace. El comparador atribuía ambos al agente y replanificaba. Telemetría del fixture movida a .opencode/fixture-analizador; el worker excluye solo su salida.log en la raíz exacta de la tarea libre. Las regresiones comprueban que otros logs siguen detectándose. Regresiones locales aprobadas; CI servidor Linux aprobada en 0ce2997, ejecución 39827164211 (incluye analizador y worker).
+
+### Validación de este lote
+
+- 57 suites independientes del servidor: 435 pruebas aprobadas, cero fallos, 61 omisiones de integración/plataforma. Dos regresiones finales adicionales (base fuera del temporal y .git inválido) también aprobadas: 437 casos distintos en total.
+- TypeScript del servidor aprobado; 31 pruebas web aprobadas.
+- Compilación y recorrido web completo aprobados a 390/1440 px, con el MP4 adjunto como fixture local de decodificación/envío.
+- Preview HTML comprobada mediante Playwright CLI contra el servidor real aislado.
+- [ ] Validar worker/bubblewrap y CPU/IO con procesos Linux reales; Android físico y restauración del conjunto R2 en el VPS.
+- [ ] Sustituir el parche de sprintf-js cuando exista una versión oficial corregida.
+- No se restauraron ni eliminaron filas de las bases locales preexistentes; los nuevos tests obligan a usar temporales.
+
+### Correcciones anteriores conservadas
+
+- [x] Historial Git fuera del hilo y acciones ligadas al turno: cubierto por el recorrido web actual.
+- [x] Navegación supervisor/subchat, selección de modelos, mensajes y aprobación Git: recorrido de interfaz a 390/1440 px.
+- [x] Paletas, versiones y presentación de respuestas: suites web actuales.
+- Los estados y pruebas originales permanecen abajo como archivo histórico. Las casillas operativas sin evidencia nueva siguen pendientes.
+
+### Plan
+
+1. Centralizar el historial sin perder contenido ni cerrar pendientes operativos sin prueba.
+2. Corregir conservación de archivos, sesiones y aislamiento de pruebas.
+3. Corregir alcance, API, previews, notificaciones y herramientas largas.
+4. Revisar dependencias, ejecutar regresiones y actualizar cada estado.
+5. Mantener pendientes las comprobaciones que requieren VPS, Linux o Android.
+
+### Evidencia inicial
+
+Commit a06b9bf: 55 suites (425 aprobadas, 1 fallo por base compartida, 61 omisiones). Suite aislada: 8 aprobadas. Web: 30 casos, build y Playwright 390/1440 px. Se reprodujeron sesión heredada tras logout, PATCH parcial, omisión de prefijos .opencode y bloqueo CSP del HTML. El respaldo omitía entregables. A07/A08 se detectaron por lectura de código. La suite defectuosa escribió fixtures en la base local: no se tocó el VPS ni se restauraron filas automáticamente.
+
+## Hoja de ruta
+
+Fuente histórica: PLAN.md.
+
+### PLAN.md: hoja de ruta de Orquestador
 
 Estado al 14 de octubre de 2026. Una fase no se marca como hecha hasta cumplir sus criterios de aceptación.
 
-## Visión
+#### Visión
 
 Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de forma continua. El sistema pide aprobación antes de tocar repositorios y avisa cuando una tarea falla, necesita aprobación o termina. Todos los proveedores (OpenCode, Google/agy, Codex) se gestionan desde una sola interfaz, con su cuota, costo y rendimiento.
 
-## Fases
+#### Fases
 
-### 0. Base: hecho
+##### 0. Base: hecho
 - Servidor Hono, SQLite con migraciones e interfaz Vite/React en el VM, como servicio systemd.
 - Chat con OpenCode: sesiones con contexto, y tokens y costo por mensaje.
 - **Criterio:** el servicio sigue corriendo al cerrar la sesión SSH o apagar la PC.
 
-### 1. Chat moderno: hecho
+##### 1. Chat moderno: hecho
 - Selector de modelo con medidor de costo, esfuerzo por modelo y barra lateral.
 - **Criterio:** funciona a 390 px y 1440 px, sin scroll horizontal.
 
-### 2. Tareas en segundo plano: hecho (PR #4)
+##### 2. Tareas en segundo plano: hecho (PR #4)
 - Cola de hasta diez tareas independientes en paralelo; las tareas del mismo proyecto se serializan. Cancelar mata el árbol de procesos. Al arrancar, las que seguían en ejecución pasan a `interrupted`.
 - **Criterio:** cancelar una tarea con un proceso hijo (`sleep`) termina en pocos segundos, sin quedar colgada.
 
-### 3. App instalable, analíticas y ajustes: mergeada (PR #5)
+##### 3. App instalable, analíticas y ajustes: mergeada (PR #5)
 - PWA instalable. Analíticas: KPI, costo por día y por modelo, presupuesto del mes. Ajustes: modelo, esfuerzo, presupuesto y aviso.
 - **Pendiente de validar en el VM:** que la migración `004_settings` esté aplicada y que `GET /api/preferences` responda 200.
 - **Criterio:** la app se instala desde HTTPS en el teléfono.
 
-### 4. Rediseño visual: en curso
+##### 4. Rediseño visual: en curso
 - Sistema de diseño en `DESIGN.md`. Pantallas generadas en Stitch con `docs/design/STITCH_PROMPT.md`. `impeccable` como guía de revisión.
 - Revisión automática del 14 de octubre: 32 capturas (8 vistas, 390 y 1440 px, claro y oscuro) sin desbordes horizontales ni errores de consola. Falta revisar el resto a ojo y el contraste AA.
 - **Criterio:** las cinco pantallas revisadas a 390 px y 1440 px. Contraste AA. Solo tokens de color. Sin cambios de comportamiento.
 
-### 5. Analizador y obrero por tarea: mergeada (PR #28). OpenCode real corre en el VM
+##### 5. Analizador y obrero por tarea: mergeada (PR #28). OpenCode real corre en el VM
 - Migración `019_analizador_obrero`: la tabla `tasks` se reconstruye con los estados `analyzing` y `waiting_approval`, y las columnas `plan`, `reporte` y `plan_aprobado_en`. Es la única migración que se aplica con claves foráneas apagadas (`sinClaves`); el runner comprueba la integridad antes de confirmar. El historial (`task_events`) y las aprobaciones (`task_approvals`) se conservan.
 - El analizador produce un plan en JSON (`server/src/plan.ts`). Si el plan pide commit, push o PR, o trae preguntas, la tarea espera en `waiting_approval`. Si no, pasa directo al obrero.
 - El obrero ejecuta solo el plan aprobado, en la misma sesión y carpeta que el analizador, y guarda un reporte en JSON. Si se desvía, la tarea vuelve al analizador con el motivo; el plan se replanifica hasta `MAX_PLANES` (3 versiones) y después la tarea falla.
@@ -66,25 +116,25 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - Pruebas: `server/tests/plan.test.ts` (funciones puras) y `server/tests/analizador.test.ts`, que corre el flujo completo con un `opencode` falso (`server/tests/fixtures/bin/opencode`).
 - Estado real: la BD del VM registra sesiones de OpenCode reales en 35 tareas de la fase (19 falladas, 16 terminadas), con trazas y reportes. Pendiente como señalización: observar el cierre por silencio del vigilante de inactividad en tareas colgadas.
 
-### 6. Proyectos de GitHub
+##### 6. Proyectos de GitHub
 - Estado: mergeada (PR #14), con integración posterior de GitHub App. Cada tarea de un proyecto Git trabaja en su clon (`telo/<id8>`). Aprobación de commit y push ligada al hash del diff; escaneo de secretos antes del commit; la GitHub App vinculada emite tokens breves limitados al repo para clonar, subir y abrir PRs. Prueba real en Test (16 oct. 2026): clonado privado, commit y push completados con la App; falta resolver el 422 de creación de PR en el VM desplegado. Sigue pendiente probar un agente real.
 - La clave privada de la GitHub App vive en el VM, fuera del repo y legible solo por el servicio. La instalación se limita a los repositorios seleccionados.
 - Clonar repos en el VM. Cada tarea corre en el workspace de su proyecto.
 - Antes de commit, push o PR, mostrar el diff en la app y pedir aprobación.
 - **Criterio:** el token nunca aparece en logs ni en respuestas de la API. No hay push sin aprobación registrada.
 
-### 7. Login de proveedores desde la app
+##### 7. Login de proveedores desde la app
 - Codex inicia sesión mediante el flujo de dispositivo. Gemini usa la clave de AI Studio configurada como proveedor.
 - La conexión OAuth de cuenta Google se retiró: solo almacenaba una autorización y no alimentaba el uso de modelos ni sus métricas.
 - **Criterio:** al terminar el flujo, el proveedor aparece como conectado. Ninguna clave se pega en la interfaz.
 - **Antes de implementar:** investigar los comandos de login de cada CLI en el VM.
 
-### 8. Notificaciones
-- Estado: pendiente. Telegram y Discord quedan fuera por decisión del usuario. Hoy los avisos del navegador (`web/src/lib/notificaciones.ts`) solo llegan con Telo abierta.
+##### 8. Notificaciones
+- Estado histórico: pendiente al redactar este plan. Actualización del 22 de octubre: Web Push implementado en PR #105; validación de entrega real con app cerrada pendiente en Android. Telegram y Discord quedan fuera por decisión del usuario.
 - Web Push (u otro canal) al fallar, al necesitar aprobación y al terminar una tarea. Es lo único que queda de esta fase: requiere claves VAPID, suscripciones por dispositivo y su protocolo de cifrado (RFC 8291).
 - **Criterio:** cada evento notifica una vez. Reabrir la app no repite las notificaciones.
 
-### 9. Acceso seguro (Tailscale)
+##### 9. Acceso seguro (Tailscale)
 - Estado: el servidor escucha en `127.0.0.1` por defecto (`TELO_ESCUCHAR`). Pendiente en el VM: probar desde el teléfono, confirmar que `tailscale serve` sigue activo tras reiniciar y desactivar la expiración de la clave.
 - Telo corre en el VM y solo es accesible desde los dispositivos de la red privada de Tailscale, con HTTPS por `tailscale serve`.
 - El login de Telo (`TELO_CLAVE`) sigue activo como segunda capa: Tailscale decide quién llega al servidor; Telo decide quién puede operarlo.
@@ -93,26 +143,26 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - **Criterio:** PC y teléfono abren la app desde cualquier red. Sin Tailscale, la URL no resuelve. El puerto 3000 no está abierto en el NSG.
 - Por ahora no se usa Funnel (acceso público): exigiría endurecer la app antes de publicarla.
 
-### 10. Cuota y saldo de proveedores
+##### 10. Cuota y saldo de proveedores
 - Estado: `GET /api/uso` y el botón «Uso» junto al modelo muestran el gasto y los tokens de las últimas 5 horas y de los últimos 7 días medidos por Telo. Los límites del proveedor no se leen de su API; se muestran como «medido por Telo».
 - Primera versión en `feat/chats-gestion` (migración `008`): el usuario anota el saldo de cada cuenta o clave y Telo resta el uso que registró después. Es estimado. Ningún proveedor se consulta en vivo.
 - Panel con saldo o cuota restante por cuenta o API (OpenCode, OpenRouter, Groq, NVIDIA, Google, Codex) y tiempo restante estimado.
 - Decisión del usuario: consultar saldo o cuota antes que poner un tope de gasto por tarea.
 - **Criterio:** cada proveedor muestra la fecha de su última consulta. Si no hay API de saldo, se marca como manual.
 
-### 11. Proyectos: memoria, skills y AGENTS.md
+##### 11. Proyectos: memoria, skills y AGENTS.md
 - Estado: completada. Instrucciones, skills `SKILL.md`, memoria y `AGENTS.md` por proyecto se incorporan al contexto del agente; las skills globales se resuelven para todos los runners. Las tareas sin proyecto leen los documentos guía (`AGENTS.md`, `CLAUDE.md`, `README.md`) de su propio workspace y los antepone al prompt.
 - Cada proyecto tiene su configuración: skills en formato `SKILL.md`, memoria que el sistema actualiza sola y su propio `AGENTS.md`.
 - **Criterio:** una tarea del proyecto X usa sus skills y su memoria. Cambiar de proyecto no mezcla contexto.
 
-### 12. Runners por proyecto
+##### 12. Runners por proyecto
 - Estado: parcial. OpenCode y Codex comparten la interfaz de ejecución y trabajan dentro del aislamiento del agente. Agy no está integrado y los runners aún no se aíslan en contenedores independientes por proyecto.
 
-### 13. Panel del VM
+##### 13. Panel del VM
 - Estado: parcial. La pestaña Servidor en Ajustes muestra estado del proceso, carpetas y tamaños, herramientas instaladas, costos, uso y latencia medida en el navegador. Pendiente: terminal web (no se decide aún si reemplaza a Cockpit).
 - Configuraciones del servidor desde la app y terminal web integrada. Evaluar si reemplaza a Cockpit (puerto 9090) o solo lo enlaza.
 
-## Decisiones tomadas
+#### Decisiones tomadas
 
 - Stack: TypeScript, Bun, SQLite, PWA. Sin Next.js.
 - Acceso: Tailscale. Cloudflare se descartó (Workers VPC no está disponible en la cuenta) y el Quick Tunnel no sirve como acceso fijo.
@@ -131,7 +181,7 @@ Lanzar tareas de IA desde el teléfono o la PC y dejarlas corriendo en un VM de 
 - Secretos por proyecto cifrados con AES-256-GCM. Sus valores no salen por la API, y el agente de ese proyecto los recibe como variables.
 - El servidor escucha en `127.0.0.1`. Tailscale Serve entrega el tráfico desde el mismo equipo.
 
-## Orden de trabajo
+#### Orden de trabajo
 
 Según la revisión del 10 de octubre, el núcleo es el motor de tareas, el aislamiento del runner, la aprobación y la recuperación. Antes de ampliar proveedores o interfaz:
 
@@ -144,19 +194,22 @@ Según la revisión del 10 de octubre, el núcleo es el motor de tareas, el aisl
 7. Fases 10, 8 y 13: cuota con niveles de precisión, notificaciones por eventos y panel del VM sin terminal web.
 8. Fase 4 (rediseño visual) y proveedores adicionales.
 
-## Preguntas abiertas
+#### Preguntas abiertas
 
 - ¿El panel del VM dentro de la app reemplaza a Cockpit o solo lo enlaza?
 - ¿Qué proveedores tienen API de saldo y cuáles se consultan a mano?
 - ¿La memoria del agente se actualiza sola o solo con aprobación? La revisión recomienda separar observaciones de memoria aprobada.
 
 
-## Verificación operativa
+## Pendientes anteriores
 
+Fuente histórica: TODO.md.
+
+### Pendientes y verificación
 
 Revisión: 22 de octubre de 2026. Una casilla marcada indica la comprobación descrita, no una validación implícita en producción. El historial anterior está en Git.
 
-## Fiabilidad de la aplicación
+#### Fiabilidad de la aplicación
 
 - [x] Inicio por código de dispositivo de Codex: enlace sin ANSI, código visible y copiable; pruebas y revisión a 390/1440 px.
 - [x] La detección de sesión consulta `codex login status`, con límite de tiempo y caché breve; no acepta un archivo de configuración como prueba de autenticación.
@@ -166,7 +219,7 @@ Revisión: 22 de octubre de 2026. Una casilla marcada indica la comprobación de
 - [x] Métricas: tokens medidos, costes estimados, datos ausentes e históricos sin precisión identificada. Uso por tarea en ejecuciones recientes; la memoria sigue incluida en la tarea y no se atribuye dos veces.
 - [x] CI definida para cada PR: tipos, suites aisladas del servidor, worker Linux, build y navegador a 390/1440 px. Confirmar la ejecución concreta en el PR antes de fusionar.
 
-## Prueba real de GitHub App en el VM
+#### Prueba real de GitHub App en el VM
 
 - [x] Repositorio desechable autorizado: `https://github.com/PABLOCESAR2412/Test.git`; confirmado privado y vacío por GitHub.
 - [x] Configurar `TELO_GITHUB_APP_ID` y `TELO_GITHUB_APP_PRIVATE_KEY_PATH` en el servicio, vincular la instalación en Ajustes e incluir Test en su alcance.
@@ -174,7 +227,7 @@ Revisión: 22 de octubre de 2026. Una casilla marcada indica la comprobación de
 - [x] Desde Telo, clonar Test privado con la GitHub App, crear el cambio mínimo y autorizar commit/push. GitHub confirma la rama `telo/0e680496`, el commit `325247bef1fee13ef793813f1f924d2de744984e` y el autor `telo-orquestador[bot]`.
 - [ ] Crear un PR de Test. GitHub respondió 422 en la versión desplegada y Telo ocultó el cuerpo de validación; el código de este PR ahora conserva ese detalle. No se fusionó ni se tocó Cubo. Reintentar una vez que el PR #53 esté desplegado; no repetir solicitudes mientras el motivo siga sin diagnóstico.
 
-## Verificación operativa después del despliegue
+#### Verificación operativa después del despliegue
 
 - [ ] Confirmar en el VM la migración 039 (índices de `repository_actions`) y la copia previa en `DATA_DIR/respaldos-migracion`; comprobar que se conservan los valores históricos.
 - [x] En el VM el worker corre el runner OpenCode real (tareas terminadas y fallidas de la última fase; clonado, cancelación y reanudación incluidas en los ciclos). Falta observar los cierres del nuevo vigilante de inactividad en tareas colgadas. Las pruebas automáticas usan un agente ficticio.
@@ -183,14 +236,16 @@ Revisión: 22 de octubre de 2026. Una casilla marcada indica la comprobación de
 - [ ] Revisar contraste AA en todas las pantallas, además de las comprobaciones automáticas de desbordes.
 - [ ] Confirmar presupuesto y alertas de Azure. Revisar ramas remotas y claves SSH antiguas antes de eliminarlas.
 
-## Acceso de desarrollo
+#### Acceso de desarrollo
 
 La prueba de acceso de GitHub App en Test se completó para clonado, commit y push. Falta que el flujo desplegado muestre el motivo del rechazo 422 para completar la creación del PR. No compartir claves privadas, tokens ni archivos de sesión en el chat.
 
 
-## Apéndice histórico: fase 2
+## Archivo histórico: fase 2
 
-# Fase 2: seguimiento de cambios
+Fuente histórica: FASE2.md.
+
+### Fase 2: seguimiento de cambios
 
 > Registro histórico. Los estados, cantidades y harnesses de esta fase describen la revisión original; las rutas `scratchpad/` eran locales y no están en el repo actual.
 
@@ -201,9 +256,9 @@ Leyenda: [x] hecho y verificado · [~] hecho, pendiente de confirmar en el VM ·
 
 ---
 
-## A. Detener al agotarse la cuota y botón "Seguir"  ✅ terminada
+#### A. Detener al agotarse la cuota y botón "Seguir"  ✅ terminada
 
-### A1. Servidor
+##### A1. Servidor
 
 - [x] `server/src/runners/opencode.ts`: clase `ErrorAgente` con `detalleProveedor`, y función `detalleDelProveedor()` exportada. Usa el evento de error del proveedor o, si no hay, la cola de `stderr` sin rutas. Así una carpeta llamada "cuota" o "saldo" no marca cuota por error.
 - [x] `server/src/ejecutar.ts`:
@@ -216,7 +271,7 @@ Leyenda: [x] hecho y verificado · [~] hecho, pendiente de confirmar en el VM ·
 - [x] `server/src/routes/chat.ts`: `ejecutarTurno()` compartido entre enviar y seguir; `POST /api/conversations/:id/seguir`; `GET /api/conversations` devuelve `cuota_modelo`; un envío exitoso lo limpia.
 - [x] `server/src/eventos.ts` (tipos `sin_cuota`, `seguida`) y `server/src/routes/analytics.ts` (`sin_cuota` en `TASK_STATUSES`).
 
-### A2. Web
+##### A2. Web
 
 - [x] `web/src/api.ts`: tipos nuevos y `api.continueTask()`, `api.continueChat()`.
 - [x] `web/src/lib/model.ts`: etiquetas y mensajes en español.
@@ -227,19 +282,19 @@ Leyenda: [x] hecho y verificado · [~] hecho, pendiente de confirmar en el VM ·
 - [x] `web/src/lib/notificaciones.ts` (aviso de sistema) y `web/src/components/tarea-pasos.tsx` (paso final "Sin cuota").
 - [x] `web/src/cambios.json`: entrada nueva (tipo `mediano`).
 
-### A3. Pruebas
+##### A3. Pruebas
 
 - [x] `server/tests/cuota.test.ts`: 13 pruebas (clasificación, migración, rechazos de seguir).
 - [x] Punta a punta con servidor real y `opencode` falso (harness local no versionado): 25 de 25 en esa revisión.
 - [x] Revisión visual con un harness local no versionado a 390 y 1440 px, claro y oscuro.
 
-### A4. Problemas encontrados y resueltos
+##### A4. Problemas encontrados y resueltos
 
 - La clasificación de cuota leía el mensaje completo, que incluye rutas del servidor. Una carpeta "cuota-…" hacía que cualquier fallo se viera como cuota. Ahora solo cuenta lo que dijo el proveedor (ver A1).
 - El selector de modelo del detalle de tarea abría fuera de la pantalla: el contenedor no era posicionado. Se corrigió con `.cuota-selector`.
 - Las capturas al principio mostraban la versión anterior porque `web/dist` no se había reconstruido. Regla: reconstruir antes de revisar.
 
-### A5. Pendiente de confirmar en el VM
+##### A5. Pendiente de confirmar en el VM
 
 - [~] La detección de cuota usa patrones (429, "rate limit", "quota", "usage limit", "insufficient", "saldo", etc.). El texto exacto que devuelve OpenCode con un modelo sin cuota no está verificado. Hay que comprobarlo con un modelo real agotado. Si el texto no coincide, la tarea queda en `failed` como antes: no hay regresión, pero no se detiene con aviso.
   - Cómo: en el VM, provocar una cuota agotada con un modelo de prueba y revisar `task_events` y la salida de la tarea (`journalctl -u orquestador`).
@@ -247,15 +302,15 @@ Leyenda: [x] hecho y verificado · [~] hecho, pendiente de confirmar en el VM ·
 
 ---
 
-## B. Claves de Groq, NVIDIA y Gemini  🟡 hecha en servidor y web; falta confirmar en el VM
+#### B. Claves de Groq, NVIDIA y Gemini  🟡 hecha en servidor y web; falta confirmar en el VM
 
-### Nombres de variable
+##### Nombres de variable
 
 - Groq: `GROQ_API_KEY`. Confirmado en la documentación de OpenCode.
 - Gemini: se envían **dos** variables, `GOOGLE_GENERATIVE_AI_API_KEY` y `GEMINI_API_KEY`. La nota anterior que daba solo `GEMINI_API_KEY` venía de un mirror de la versión antigua en Go de OpenCode; la versión actual probablemente usa `GOOGLE_GENERATIVE_AI_API_KEY` (no verificado). Enviar las dos evita depender de la versión. Confirmar en el VM con `opencode models` (id de proveedor `google`).
 - NVIDIA: `NVIDIA_API_KEY`. Solo aparece en un artículo de terceros: **no confirmado**. Ver B-VM.
 
-### Servidor
+##### Servidor
 
 - [x] `server/src/claves-proveedor.ts` (nuevo): almacenamiento cifrado con AES-256-GCM, AAD `proveedor:<id>`, misma clave maestra `TELO_CLAVE_CIFRADO` que los secretos. Nunca devuelve valores. `entornoProveedores()` entrega las variables al agente y a `opencode models`.
 - [x] `server/src/db/index.ts`: migración `021_claves_proveedor` (tabla `provider_keys`).
@@ -264,7 +319,7 @@ Leyenda: [x] hecho y verificado · [~] hecho, pendiente de confirmar en el VM ·
 - [x] `server/src/models.ts`: `opencode models` recibe las claves (`entornoDelCli()`); `invalidarModelos()`. Nunca recibe variables `TELO_*`.
 - [x] `server/src/routes/providers.ts`: cada proveedor dice `configured`, `enAgente`, `guardable`, `guardada`, `variable`. Nunca el valor. Groq, NVIDIA y Gemini quedan `implemented: true`.
 
-### Web
+##### Web
 
 - [x] `web/src/api.ts`: tipo `ProviderStatus` con `guardable` y `guardada`; `api.setProviderKey()` y `api.deleteProviderKey()`.
 - [x] `web/src/pages/settings.tsx`: en Ajustes > Proveedores IA, cada proveedor guardable tiene un campo de clave (`CampoClave`) con Mostrar/Ocultar, Guardar y Quitar. Enter guarda sin enviar el formulario de preferencias.
@@ -272,7 +327,7 @@ Leyenda: [x] hecho y verificado · [~] hecho, pendiente de confirmar en el VM ·
 - [x] `web/src/styles-ajustes.css`: `.aj-clave-fila`.
 - [x] `web/src/cambios.json`: entrada nueva (tipo `mediano`).
 
-### Pruebas
+##### Pruebas
 
 - [x] `server/tests/claves-proveedor.test.ts` (nuevo): 21 pruebas. Guardar y leer, valor cifrado en la base, sin clave maestra, clave que no descifra, validación, estado sin valores, redacción, rutas y `GET /providers`.
 - [x] `server/tests/entorno-proveedores.test.ts` (nuevo): 3 pruebas de punto a punto con un `opencode` falso. El agente y `opencode models` reciben `GROQ_API_KEY`; ninguno recibe `TELO_*`; la clave que el agente imprime sale oculta en su respuesta.
@@ -280,7 +335,7 @@ Leyenda: [x] hecho y verificado · [~] hecho, pendiente de confirmar en el VM ·
 - [x] `tsc --noEmit` del servidor y `bun run build` de la web: pasan.
 - [x] Revisión visual con un harness local no versionado a 390 y 1440 px, claro y oscuro: sin desborde horizontal ni errores de consola.
 
-### Pendiente de confirmar en el VM (B-VM)
+##### Pendiente de confirmar en el VM (B-VM)
 
 - [ ] NVIDIA: con `NVIDIA_API_KEY` guardada, ejecutar `opencode models --verbose` (con el mismo entorno del servicio) y comprobar que aparecen modelos `nvidia/...`. Si el nombre de variable o el proveedor son otros, corregir `PROVEEDORES_CON_CLAVE` en `server/src/claves-proveedor.ts` y la lista de `server/src/routes/providers.ts`.
 - [ ] Gemini: confirmar el id de proveedor que usa OpenCode (`google` u otro) y que `GEMINI_API_KEY` basta para que aparezcan sus modelos.
@@ -291,14 +346,14 @@ Cómo hacerlo en el VM:
 2. Entrar a Ajustes > Proveedores IA, pegar la clave en cada proveedor y pulsar Guardar.
 3. Revisar la lista de modelos en Ajustes o en el selector del chat.
 
-### Riesgos conocidos
+##### Riesgos conocidos
 
 - Las claves guardadas llegan a **todos** los agentes, no solo al proveedor que las usa. Un modelo de Groq podría leer la clave de NVIDIA si el agente la busca en su entorno. Mejora posible: pasar a cada agente solo las claves del proveedor de su modelo.
 - La app recorta los espacios de los extremos antes de enviar. Un valor con espacios o saltos por dentro se rechaza con `clave_proveedor_invalida`.
 
 ---
 
-## C. "Generar análisis": memoria y skills del proyecto  ⏳ no empezada
+#### C. "Generar análisis": memoria y skills del proyecto  ⏳ no empezada
 
 - [ ] Ejecución del agente que lea el proyecto y devuelva JSON con memoria y skills propuestas. Reusar `ejecutarAgente` con `aprender` (ver `server/src/memoria.ts`: `guardarMemoria`, `extraerMemoria`).
 - [ ] Migración nueva: tabla `project_skills` (nombre, descripción, contenido, estado propuesto/aceptado, fecha). Rutas en `server/src/routes/projects.ts`.
@@ -308,7 +363,7 @@ Cómo hacerlo en el VM:
 
 ---
 
-## D. Claude y Codex (y login de cuenta de Gemini)  🛑 espera decisión tuya
+#### D. Claude y Codex (y login de cuenta de Gemini)  🛑 espera decisión tuya
 
 Pregunta abierta: ¿inicio de sesión de cuenta en el VM (como en las capturas: abrir enlace y pegar código) o clave de API?
 
@@ -319,14 +374,14 @@ No se codifica hasta decidirlo.
 
 ---
 
-## Orden recomendado
+#### Orden recomendado
 
 1. En el VM, confirmar el texto real de cuota de OpenCode (A5) y los nombres de variable de NVIDIA y Gemini (B-VM).
 2. C: "Generar análisis".
 3. D: esperar tu decisión.
 4. Commit y PR solo cuando lo pidas.
 
-## E. Correcciones tras probar en el VM  🟡 en curso (rama `feat/seguir-tras-cuota`)
+#### E. Correcciones tras probar en el VM  🟡 en curso (rama `feat/seguir-tras-cuota`)
 
 Estado detallado en `FASE3.md`. Resumen:
 
@@ -342,7 +397,7 @@ Estado detallado en `FASE3.md`. Resumen:
 
 Corrección de la nota de Gemini: ver sección B.
 
-### Estado tras la fase 3 (tareas 7, 9 y 10)
+##### Estado tras la fase 3 (tareas 7, 9 y 10)
 
 - Skills globales y por proyecto, editables desde Ajustes y desde el proyecto. Pendiente en el VM: confirmar que OpenCode las lista.
 - OpenCode se puede instalar desde Ajustes con confirmación (comando fijo, `npm install -g --prefix ~/.opencode opencode-ai`). Pendiente: `npm` en el PATH del servicio.
@@ -350,9 +405,11 @@ Corrección de la nota de Gemini: ver sección B.
 - Claude gratis: sin decisión; no se implementa.
 
 
-## Apéndice histórico: fase 3
+## Archivo histórico: fase 3
 
-# Fase 3: correcciones tras probar en el VM
+Fuente histórica: FASE3.md.
+
+### Fase 3: correcciones tras probar en el VM
 
 > Documento histórico de traspaso. Ramas, conteos de pruebas y estados son snapshots de la fecha indicada, no describen el checkout actual. Los harnesses visuales bajo `scratchpad/` eran locales y no están versionados.
 
@@ -364,7 +421,7 @@ Leyenda: [x] hecho y verificado · [~] escrito, sin probar · [ ] pendiente
 
 ---
 
-## Reglas de trabajo (obligatorias)
+#### Reglas de trabajo (obligatorias)
 
 - Idioma: interfaz, errores y comentarios de negocio en español. Identificadores según el archivo.
 - Colores y medidas solo de tokens en `web/src/styles.css`. Ámbar solo para estado activo, alerta o acción principal.
@@ -376,7 +433,7 @@ Leyenda: [x] hecho y verificado · [~] escrito, sin probar · [ ] pendiente
 - No hacer commit de nada que no haya pasado `bun test`, `tsc` del servidor y `bun run build` de la web.
 - Reutilizar componentes existentes (`ConvItem`, `AvisoCuota`, `AppNav`, `errorText`, `api.*`). No duplicar.
 
-## Comandos de verificación
+#### Comandos de verificación
 
 ```
 cd server && bun test                      # suite actual; los conteos indicados en tareas son históricos
@@ -388,7 +445,7 @@ La revisión visual histórica usó un harness local no versionado. El canal en 
 
 ---
 
-## Estado actual
+#### Estado actual
 
 Lista de control. Se marca lo hecho en cada tarea y aquí a la vez.
 
@@ -420,7 +477,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 1. El chat no se detiene si el móvil o la PC se duermen, cambian de app o pierden red
+#### Tarea 1. El chat no se detiene si el móvil o la PC se duermen, cambian de app o pierden red
 
 **Causa.** Antes, el turno corría dentro de la petición HTTP. Si la red se cortaba, `send` fallaba, la web tomaba el error como "no guardado" y devolvía el texto al compositor. Pero el servidor sí había guardado el mensaje y seguía el agente: el resultado era un mensaje duplicado y una respuesta que no aparecía hasta recargar.
 
@@ -441,7 +498,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 2. Quitar "Chat" de la barra lateral y mostrar todos los chats
+#### Tarea 2. Quitar "Chat" de la barra lateral y mostrar todos los chats
 
 **Causa del chat que falta.** `web/src/components/shell.tsx` tiene `if (c.project_id) continue;` en `groupedConversations`. Los chats de proyecto (por ejemplo, los que crea el clonado desde GitHub) no aparecen en la lista. Hipótesis probable, a confirmar con `GET /api/conversations` en el VM: el segundo chat es de un proyecto.
 
@@ -457,7 +514,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 3. Groq, NVIDIA y Gemini: que sus modelos aparezcan y funcionen
+#### Tarea 3. Groq, NVIDIA y Gemini: que sus modelos aparezcan y funcionen
 
 **Lo que se sabe (verificado en código).** `server/src/models.ts` marca `recommended = free || grupo curado`. Groq y NVIDIA de pago no caen en ningún grupo (`GROUPS`), así que quedan fuera del selector de chat (`GET /api/models` sin `all=1`). Aunque la clave llegue a OpenCode, el usuario no ve los modelos. Esa es la causa más probable de "está implementado y no está".
 
@@ -484,7 +541,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 4. Mejorar la vista de proyectos
+#### Tarea 4. Mejorar la vista de proyectos
 
 **Estado actual.** `web/src/pages/proyectos.tsx`: tarjeta con nombre, ruta, estado de origen y tres botones de texto al pie (Renombrar, Quitar ancla, Eliminar) que se parten en dos líneas en 390 px. No muestra actividad.
 
@@ -506,7 +563,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 5. Cierre
+#### Tarea 5. Cierre
 
 1. `FASE2.md`: añadir sección "E. Correcciones tras probar en el VM" con el estado de las tareas 1 a 4. Corregir la nota de Gemini.
 2. `cambios.json`: una entrada por tarea (ya indicadas arriba).
@@ -515,7 +572,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 6. Estado, logs y gasto de Azure en Ajustes
+#### Tarea 6. Estado, logs y gasto de Azure en Ajustes
 
 **Qué ya existe.** `server/src/routes/servidor.ts` (`GET /api/servidor`, caché de 30 s) da disco, herramientas y carpetas, sin rutas ni IPs. Ajustes lo muestra en "Estado del servidor" y "Almacenamiento" (`web/src/pages/servidor.tsx`). Faltan los logs, el estado del servicio y el gasto.
 
@@ -536,7 +593,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 7. Skills configurables desde la app (hecha)
+#### Tarea 7. Skills configurables desde la app (hecha)
 
 **Decisión del usuario.** Globales y por proyecto.
 
@@ -565,7 +622,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 8. Memoria del proyecto editable desde la app
+#### Tarea 8. Memoria del proyecto editable desde la app
 
 **Qué ya existe.** La memoria del proyecto está en `projects.memoria` (migración 014). El agente la escribe al terminar tareas (`server/src/memoria.ts`, `guardarMemoria`, límite `MAX_MEMORIA` de 4 000 caracteres). `DELETE /api/projects/:id/memoria` la borra. `web/src/components/proyecto-memoria.tsx` solo muestra el texto y el botón "Borrar memoria". **No se puede editar.**
 
@@ -582,7 +639,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 9. Claves de proveedores y botón «Instalar» para OpenCode (hecha)
+#### Tarea 9. Claves de proveedores y botón «Instalar» para OpenCode (hecha)
 
 **Decisión del usuario.** Sí, instalar desde la app, con confirmación.
 
@@ -608,7 +665,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 10. Conectar Codex, Gemini y Claude gratis (parcial)
+#### Tarea 10. Conectar Codex, Gemini y Claude gratis (parcial)
 
 **Decisiones.**
 - **(a) Codex:** aprobado el login de dispositivo, ejecutado en el VM.
@@ -650,7 +707,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 11. Acciones git desde los chats (parcial)
+#### Tarea 11. Acciones git desde los chats (parcial)
 
 **Objetivo.** Que un chat con proyecto pueda crear commits, subir una rama y abrir PR sin que el usuario copie comandos. Ninguna acción se ejecuta sin aprobación explícita en Telo. El agente nunca recibe la clave SSH ni los tokens de GitHub.
 
@@ -697,7 +754,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Diagnóstico del 143 («opencode salió con código 143»)
+#### Diagnóstico del 143 («opencode salió con código 143»)
 
 **Causa.** `routes/chat.ts` limita cada turno del chat a 3 minutos (`TIEMPO_TURNO_MS`). Al llegar, `runners/opencode.ts` manda SIGTERM al grupo del agente, que sale con código 143 (128 + 15). `ejecutar.ts` lo trata como tiempo agotado, pero el chat mostraba el código tal cual.
 
@@ -709,7 +766,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 12. Cola de mensajes del chat (pendiente)
+#### Tarea 12. Cola de mensajes del chat (pendiente)
 
 **Hoy.** Si el chat está respondiendo, `POST /api/conversations/:id/messages` responde 409 `conversation_busy` (`motivoDeBloqueo` en `routes/chat.ts`). No hay cola.
 
@@ -728,7 +785,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Tarea 13. Wrangler (Cloudflare) desde Ajustes (pendiente)
+#### Tarea 13. Wrangler (Cloudflare) desde Ajustes (pendiente)
 
 **Qué se verificó.**
 - El paquete `wrangler` existe en npm (versión 4.151.0 en la revisión).
@@ -749,7 +806,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-## Riesgos conocidos
+#### Riesgos conocidos
 
 - Las skills globales las edita la app. Hasta confirmar en el VM que OpenCode las lee, no se sabe si el efecto llega a los agentes.
 - El montaje de solo lectura de `~/.config/opencode/skills` dentro de bubblewrap no se probó con `bwrap` (no está en este entorno).
@@ -757,3 +814,49 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 - Las claves guardadas llegan a **todos** los agentes, no solo al de su proveedor (`ejecutar.ts` inyecta todas). Mejora posible: pasar solo las claves del proveedor del modelo elegido.
 - El chat ya no guarda el mensaje de usuario y la respuesta en la misma transacción que la petición. Si el servidor se cae a mitad de un turno, el aviso de reinicio lo cubre, pero el agente no se reanuda.
+
+
+## Archivo histórico: revisión del 15 de octubre
+
+Fuente histórica: docs/REVISION-2026-10-15.md.
+
+### Revisión del flujo de trabajo — 15 de octubre de 2026
+
+> Snapshot del 15 de octubre de 2026. Ramas, cifras de pruebas y tamaños de bundle describen esa revisión, no el estado actual. La migración que reconstruyó estados y añadió plan/reporte fue `019_analizador_obrero`; la secuencia vigente está en `server/src/db/index.ts`.
+
+Rama: feat/flujo-seguro-proyectos. Cambios locales, sin commit, push ni despliegue.
+
+#### Cambios
+
+- Conservación de cambios pendientes, archivos ignorados y commits sin subida aprobada. Los clones de chats se conservan para mantener continuidad.
+- Cola compartida de chats y tareas; una conversación reutiliza su tarea, sesión y clon. No se comparte la carpeta de escritura entre chats.
+- Analizador de solo lectura, validación del plan JSON, historial de versiones y aprobación por hash. Todos los planes nuevos esperan aprobación antes del obrero.
+- Obrero con .git de solo lectura, reporte JSON y comprobación del alcance Git del plan. Los desvíos se detienen para revisar otro plan, sin borrar los cambios. Las pruebas reportadas como fallidas dejan la tarea fallida.
+- Configuración por proyecto de autor, remoto GitHub, rama destino, token cifrado y comprobación de acceso. Clonar o configurar autor no concede permisos para push.
+- Autorizaciones independientes de init, commit, push y PR en el chat. Autorizar commit solo prepara la siguiente solicitud, nunca autoriza push. La tarjeta muestra el remoto fijado al crear el clon.
+- Skills por proyecto desde texto, URL SKILL.md de GitHub o catálogos oficiales. Contexto del chat propio y opción de compartir mensajes recientes dentro del proyecto.
+- Registro de uso por paso recibido, incluso antes de fallos/cancelaciones y por cada intento de respaldo.
+- Selector de modelo con esfuerzo en su pie, sugerencias locales con Tab, tiempo transcurrido y carga del código por pantalla. El archivo JS principal pasó de aproximadamente 522 KB a 310 KB minificados.
+
+#### Verificación
+
+- Suite del servidor en Linux/WSL: 143 pruebas aprobadas, cero fallidas. La integración del worker se omite en la suite general para no consumir fixtures ajenos; sus hooks también aparecen como omitidos.
+- Integración aislada con bubblewrap real y proveedor simulado: 5 pruebas aprobadas, 37 aserciones. Incluye análisis sin escritura, .git protegido, autorización por hash, uso tras fallo/cancelación, desvíos del plan y autorizaciones sucesivas de commit/push sin publicar.
+- Compilación web con TypeScript y Vite: aprobada.
+- Playwright a 390 y 1440 px en chat, configuración de proyecto y detalle de tarea: sin errores JavaScript ni desbordes. Tab completa la sugerencia; el selector envía el esfuerzo elegido; guardar skills y activar contexto funcionan contra una API local de prueba. Los modelos y el consumo Google de la prueba son fixtures, no una consulta a la cuenta real.
+
+#### Límites y despliegue
+
+La migración `019_analizador_obrero` reconstruye de forma compatible los estados de la cola y añade plan, reporte y aprobación. El servidor realiza un respaldo previo al migrar una base existente. Probar primero sobre una copia del VM.
+
+No se usaron credenciales reales de GitHub/Google ni se cambió el entorno del VM. Push se comprueba localmente con remotos simulados y PR con REST simulado. Para operar en producción, configura la GitHub App en el servidor y vincula una instalación limitada a los repositorios necesarios; el acceso usa tokens breves con Contents o Pull requests según la acción. Las claves SSH existentes se conservan como alternativa.
+
+El consumo de Google es el informado por OpenCode a Telo. No importa el historial externo, saldo ni cuotas del proveedor. Las skills importadas contienen solo SKILL.md: no se instalan sus scripts ni referencias. La comprobación de alcance compara cambios que Git registra; no vigila nuevos archivos ignorados ni demuestra que el agente haya seguido semánticamente todos los pasos.
+
+Comandos normales: cd server y bun test; para integración aislada en Linux con bubblewrap/python3, bun run test:worker. Compilación: cd web y bun run build.
+
+
+### Integración del PR #105 con main — 22 de octubre
+
+- [x] Conflictos documentales resueltos conservando auditorías del 21 y 22 de octubre, apéndices históricos y correcciones de CI de main. Los registros de cambios de #104 y #105 se conservan juntos. Pruebas de integración locales: 22 de Web Push/MCP/auditoría/dependencias y 31 web aprobadas; instalación frozen, TypeScript servidor y build PWA aprobados. Suite completa del servidor y CI posteriores pendientes.
+- [ ] Web Push real en Android y configuración de producción: la integración de ramas no certifica entrega a un dispositivo ni despliega VAPID.

@@ -1,10 +1,9 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { config } from "./config";
 import { db } from "./db";
 
 export const COOKIE_SESION = "telo_sesion";
 export const MIN_CARACTERES_CLAVE = 16;
-const CONTEXTO_SESION = "telo-sesion-v1";
 
 export type SesionInfo = {
   id: string;
@@ -14,11 +13,6 @@ export type SesionInfo = {
   last_seen_at: string;
   actual?: boolean;
 };
-
-export function tokenSesion(): string | null {
-  if (!config.clave) return null;
-  return createHmac("sha256", config.clave).update(CONTEXTO_SESION).digest("hex");
-}
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -54,7 +48,7 @@ export function crearSesionDispositivo(opts: { userAgent?: string; ip?: string }
 const ultimasVistas = new Map<string, number>();
 const INTERVALO_ACTUALIZACION_SESION_MS = 5 * 60_000;
 
-// Comprueba si la cookie corresponde a una sesión activa en auth_sessions (o al HMAC estático anterior).
+// Solo acepta sesiones registradas: todas pueden revocarse.
 export function sesionValida(valor: string | undefined): boolean {
   if (config.sinClave) return true;
   if (!valor) return false;
@@ -77,12 +71,11 @@ export function sesionValida(valor: string | undefined): boolean {
       return true;
     }
   } catch {
-    // Fallback a validación estática si la tabla no está disponible
+    // Si la base no está disponible, se rechaza la sesión.
   }
 
-  // 2. Compatibilidad con el token HMAC estático anterior
-  const esperado = tokenSesion();
-  return esperado !== null && iguales(valor, esperado);
+  // El HMAC antiguo no admite revocación: exige un nuevo inicio de sesión.
+  return false;
 }
 
 export function obtenerIdSesion(valor: string | undefined): string | null {

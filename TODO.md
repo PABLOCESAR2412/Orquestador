@@ -1,4 +1,3 @@
-# TODO.md (redirigente)
+# Pendientes anteriores
 
-El registro central único está en [SEGUIMIENTO.md](SEGUIMIENTO.md): la comprobación posterior al despliegue está en «Verificación operativa». Se conserva este archivo para referencias anteriores.
-
+Registro consolidado en [SEGUIMIENTO.md](SEGUIMIENTO.md). Consulta allí los estados, el historial y los hallazgos actuales. Se conserva este enlace para referencias anteriores.

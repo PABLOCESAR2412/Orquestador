@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import type { Task, TaskStatus } from "../api";
 import { useEventosVivos } from "./eventos-vivos";
+import { registrarTransicion } from "./notificaciones-estado";
 
 // El permiso se solicita solo desde Ajustes, tras una acción explícita del usuario.
 const CLAVE = "telo:notificaciones";
@@ -173,32 +174,28 @@ async function mostrar(titulo: string, cuerpo: string, etiqueta: string, convers
 // Avisa cuando una tarea termina, falla o pide una decisión. Sin permiso, no hace nada.
 export function useNotificacionesDeTareas(): void {
   const qc = useQueryClient();
-  const avisadas = useRef(new Set<string>());
+  const avisadas = useRef(new Map<string, string>());
   const anteriores = useRef(new Map<string, string>());
   const chats = useQuery({ queryKey: ["conversations"], queryFn: api.listConversations, refetchInterval: 5000 });
   const git = useQuery({ queryKey: ["avisos-git"], queryFn: api.avisosGit, refetchInterval: 5000 });
   useEffect(() => {
     const emitir = (id: string, estado: string, titulo: string, cuerpo: string, chatId: string) => {
       const previo = anteriores.current.get(id);
-      anteriores.current.set(id, estado);
-      if ((previo === undefined && !anteriores.current.has(id.startsWith("git-") ? "__git" : "__chats")) || previo === estado || !estado) return;
+      if (!registrarTransicion(anteriores.current, id, estado)) return;
+      if (previo === undefined && id.startsWith("git-") && estado === "approved") return;
       void mostrar(titulo, cuerpo, id, chatId);
       if (notificacionesActivas() && sonidoNotificacionesActivo()) void probarSonidoNotificaciones();
     };
     for (const chat of chats.data ?? []) emitir(`chat-${chat.id}`, chat.requiere_continuar || chat.ultimo_rol === "system" ? `atencion-${chat.last_message_at}` : "", "Telo necesita tu acción", `${chat.title}. Revisa el error o continúa donde quedó.`, chat.id);
     for (const accion of git.data ?? []) emitir(`git-${accion.id}`, accion.state, accion.state === "pending" ? "Acción Git pendiente" : accion.state === "failed" ? "La acción Git falló" : "Acción Git completada", `${accion.action}. Abre el chat para revisar el resultado.`, accion.conversation_id);
-    if (chats.data) anteriores.current.set("__chats", "1");
-    if (git.data) anteriores.current.set("__git", "1");
   }, [chats.data, git.data]);
 
   useEventosVivos({}, (evento) => {
     if (evento.tipo !== "tarea") return;
+    if (!registrarTransicion(avisadas.current, evento.id, evento.status)) return;
     const aviso = AVISOS[evento.status];
     if (!aviso) return;
-    // Un estado se avisa una sola vez, aunque el canal lo repita al reconectar.
-    const clave = `${evento.id}:${evento.status}`;
-    if (avisadas.current.has(clave)) return;
-    avisadas.current.add(clave);
+
     if (!notificacionesActivas()) return;
     const tarea = qc.getQueryData<Task[]>(["tasks"])?.find((t) => t.id === evento.id);
     void mostrar(aviso.titulo, `${tarea?.title ?? "Tarea"}. ${aviso.cuerpo}`, `tarea-${evento.id}`, tarea?.conversation_id ?? undefined);

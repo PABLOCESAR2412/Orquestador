@@ -1,10 +1,13 @@
-import { lstatSync } from "node:fs";
+import { lstatSync, readdirSync, readlinkSync, openSync, readSync, closeSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
-import { gitSeguro, prepararRepoSeguro } from "./git";
+import { gitSeguro, prepararRepoSeguro, tieneGitReal } from "./git";
 
 export type AlcancePlan = {
   cwd: string;
   arbol: string;
+  contenido?: Map<string, string>;
+  internos?: string[];
   archivos: { ruta: string; directorio: boolean }[];
 };
 
@@ -51,8 +54,31 @@ async function arbolActual(cwd: string): Promise<string> {
   return (await git(cwd, ["write-tree"])).trim();
 }
 
+// Sin Git, compara contenidos sin seguir enlaces ni cargar archivos grandes en memoria.
+function contenidoWorkspace(cwd: string, prefijo = "", resultado = new Map<string, string>()): Map<string, string> {
+  for (const nombre of readdirSync(join(cwd, prefijo))) {
+    if (!prefijo && [".git", ".opencode"].includes(nombre)) continue;
+    const ruta = prefijo ? prefijo + "/" + nombre : nombre;
+    const absoluta = join(cwd, ruta);
+    const stat = lstatSync(absoluta);
+    if (stat.isSymbolicLink()) resultado.set(ruta, "enlace:" + readlinkSync(absoluta));
+    else if (stat.isDirectory()) contenidoWorkspace(cwd, ruta, resultado);
+    else if (stat.isFile()) {
+      const hash = createHash("sha256");
+      const fd = openSync(absoluta, "r");
+      try {
+        const buffer = Buffer.alloc(64 * 1024);
+        let bytes: number;
+        while ((bytes = readSync(fd, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, bytes));
+        resultado.set(ruta, hash.digest("hex"));
+      } finally { closeSync(fd); }
+    }
+  }
+  return resultado;
+}
+
 // Guarda el árbol de trabajo actual, incluidos cambios de turnos anteriores, sin crear commits.
-export async function capturarAlcance(cwd: string, archivosPlan: string[]): Promise<AlcancePlan> {
+export async function capturarAlcance(cwd: string, archivosPlan: string[], archivosInternos: string[] = []): Promise<AlcancePlan> {
   const raiz = resolve(cwd);
   if (lstatSync(raiz).isSymbolicLink())
     throw new Error("El workspace no admite enlaces simbólicos.");
@@ -67,13 +93,26 @@ export async function capturarAlcance(cwd: string, archivosPlan: string[]): Prom
     }
     return { ruta, directorio };
   });
-  return { cwd: raiz, archivos, arbol: await arbolActual(raiz) };
+  const gitReal = tieneGitReal(raiz);
+  if (!gitReal) {
+    try {
+      lstatSync(join(raiz, ".git"));
+      throw new Error("El workspace no tiene un repositorio Git seguro.");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+  }
+  const internos = archivosInternos.map(rutaDelPlan);
+  return gitReal
+    ? { cwd: raiz, archivos, internos, arbol: await arbolActual(raiz) }
+    : { cwd: raiz, archivos, internos, arbol: "", contenido: contenidoWorkspace(raiz) };
 }
 
 // Solo informa: nunca revierte ni elimina los cambios que necesitan otra aprobación.
 export async function comprobarAlcance(snapshot: AlcancePlan): Promise<string[]> {
-  const final = await arbolActual(snapshot.cwd);
-  const cambiados = (
+  const contenido = snapshot.contenido ? contenidoWorkspace(snapshot.cwd) : null;
+  const final = contenido ? "" : await arbolActual(snapshot.cwd);
+  const cambiados = contenido ? [...new Set([...snapshot.contenido!.keys(), ...contenido.keys()])].filter(ruta => snapshot.contenido!.get(ruta) !== contenido.get(ruta)) : (
     await git(snapshot.cwd, [
       "diff",
       "--name-only",
@@ -86,8 +125,9 @@ export async function comprobarAlcance(snapshot: AlcancePlan): Promise<string[]>
   )
     .split("\0")
     .filter(Boolean)
-    .filter((ruta) => !ruta.startsWith(".opencode/") && !ruta.startsWith(".opencode"));
+    .filter((ruta) => !ruta.startsWith(".opencode/") && ruta !== ".opencode");
   return cambiados.filter((ruta) => {
+    if (snapshot.internos?.includes(ruta)) return false;
     try {
       rutaDelPlan(ruta);
       sinEnlaces(snapshot.cwd, ruta);

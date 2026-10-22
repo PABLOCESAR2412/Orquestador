@@ -1,6 +1,6 @@
 # Orquestador: instrucciones para agentes de desarrollo
 
-Lee este archivo antes de tocar código. Complementos: `SEGUIMIENTO.md` (hoja de ruta), `SEGUIMIENTO.md` (pendientes), `DESIGN.md` (sistema visual) y `AGENTS.md` (roles de los agentes que el producto lanza para cada tarea).
+Lee este archivo antes de tocar código. Complementos: `SEGUIMIENTO.md` (hoja de ruta, pendientes e historial), `DESIGN.md` (sistema visual) y `AGENTS.md` (roles de los agentes que el producto lanza para cada tarea).
 
 ## Qué es
 
@@ -88,6 +88,8 @@ El servicio diario de respaldos puede leer credenciales separadas desde `/etc/or
 8. **Git.** Trabaja en ramas `feat/`, `fix/` o `docs/`. No hagas commit, push ni PR sin que el usuario lo pida. El usuario hace el merge.
 9. **Versión.** Cada cambio terminado agrega una entrada a `cambios` en `web/src/cambios.json` (fecha, tipo, título y PR). Tipos: `grande` para capacidades nuevas del sistema o de infraestructura; `mediano` para funciones o pantallas; `minimo` para ajustes, correcciones y documentación. No escribas la versión a mano: `web/src/lib/version-sistema.ts` la calcula (cada 5 medianos sube el segundo número y cada 10 mínimos el tercero) y la barra lateral la muestra. No confundirla con `version.json` del build, que usa `lib/version.ts`.
 
+10. **Seguimiento.** Registra hallazgos, cambios de fase y su resolución en `SEGUIMIENTO.md`. Marca cada punto como hecho solo después de ejecutar la prueba citada; conserva los pendientes operativos sin evidencia. No abras más documentos de fase o auditoría separados.
+
 ## Skills recomendadas
 
 - **Diseño de interfaz:** `impeccable` (`/impeccable`). Antes de cambiar UI, lee `DESIGN.md`.
@@ -116,7 +118,7 @@ El servicio diario de respaldos puede leer credenciales separadas desde `/etc/or
 
 ## Respaldos
 
-- En el VM, `deploy/orquestador-respaldo.timer` corre cada día a las 03:30 UTC `server/scripts/respaldo.ts`, con el servicio encendido. Guarda en `/home/orquestador/respaldos`: `orquestador-<sello>.db` (copia con `VACUUM INTO`, revisada con `integrity_check`) y `espacio-<sello>.tar.gz` (`chat-workspace` y `tasks`). Sin R2 conserva las últimas `TELO_RESPALDOS_CONSERVAR` (14) de cada tipo. Con R2, sube y verifica los últimos `TELO_R2_RESPALDOS_CONSERVAR` conjuntos (1 por defecto), elimina conjuntos remotos antiguos y reduce las copias del VPS a `TELO_R2_RESPALDOS_LOCALES` (1 por defecto); un error de subida o validación conserva los archivos locales.
+- En el VM, `deploy/orquestador-respaldo.timer` corre cada día a las 03:30 UTC `server/scripts/respaldo.ts`, con el servicio encendido. Guarda en `/home/orquestador/respaldos`: `orquestador-<sello>.db` (copia con `VACUUM INTO`, revisada con `integrity_check`) y `espacio-<sello>.tar.gz` (`chat-workspace`, `tasks`, `entregables` y `chat-attachments`). Sin R2 conserva las últimas `TELO_RESPALDOS_CONSERVAR` (14) de cada tipo. Con R2, sube y verifica los últimos `TELO_R2_RESPALDOS_CONSERVAR` conjuntos (1 por defecto), elimina conjuntos remotos antiguos y reduce las copias del VPS a `TELO_R2_RESPALDOS_LOCALES` (1 por defecto); un error de subida o validación conserva los archivos locales.
 - Antes de aplicar migraciones a una base con datos, el servidor guarda una copia en `DATA_DIR/respaldos-migracion` (`antes-<migración>-<sello>.db`). Esa carpeta no la copia el timer: revísala antes de borrarla.
 - La PC copia esa carpeta por Tailscale con `deploy/copiar-respaldo-pc.ps1`. Los respaldos nunca van al repo. La PC no poda sus copias.
 - Instalar en el VM (una vez):

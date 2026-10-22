@@ -1,4 +1,3 @@
-# PLAN.md (redirigente)
+# Hoja de ruta
 
-El registro central único está en [SEGUIMIENTO.md](SEGUIMIENTO.md): hallazgos en «Hallazgos», fases en «Fases del producto» y operativa en «Verificación operativa». Se conserva este archivo para referencias anteriores.
-
+Registro consolidado en [SEGUIMIENTO.md](SEGUIMIENTO.md). Consulta allí los estados, el historial y los hallazgos actuales. Se conserva este enlace para referencias anteriores.

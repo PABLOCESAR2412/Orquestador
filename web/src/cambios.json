@@ -3,8 +3,11 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
-    { "fecha": "2026-10-22", "tipo": "grande", "titulo": "Notificaciones: empuja el aviso al dispositivo sin la app abierta (VAPID cifradas, suscripciones, dedupe por evento y receptor en el service worker)", "pr": 105 },
-    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Agentes: fija el modelo pequeño de OpenCode al elegido para que titulos y compactación no caigan en modelos fuera del plan", "pr": 105 },
+    {"fecha":"2026-10-22","tipo":"grande","titulo":"Notificaciones: empuja el aviso al dispositivo sin la app abierta (VAPID cifradas, suscripciones, dedupe por evento y receptor en el service worker)","pr":105},
+    {"fecha":"2026-10-22","tipo":"minimo","titulo":"Agentes: fija el modelo pequeño de OpenCode al elegido para que titulos y compactación no caigan en modelos fuera del plan","pr":105},
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Integración: resuelve conflictos del registro central y conserva las correcciones de auditoría junto con Web Push", "pr": 105 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "CI: separa la telemetría del agente ficticio de los archivos aprobados del plan", "pr": 104 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Auditoría: conserva entregables, revoca sesiones heredadas, aísla pruebas, valida alcance y PATCH, habilita HTML seguro, repite avisos y reconoce herramientas activas; seguimiento central y dependencias mitigadas", "pr": 104 },
     { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Chat: bienvenida con recientes, vista HTML aislada y reportes independientes del repositorio", "pr": 103 },
     { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Continuidad: sincroniza modelos, señala acciones pendientes, amplía avisos y compacta OpenCode sin corte total de 15 minutos", "pr": 103 },
     { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Móvil: adapta cabecera, esfuerzo, versiones y archivos; conserva paletas y usa el sonido de notificación de Android", "pr": 103 },
