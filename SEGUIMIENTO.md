@@ -18,6 +18,10 @@ Entrega: [PR #104](https://github.com/PABLOCESAR2412/Orquestador/pull/104). Pend
 - [x] **A08 — Evitar cerrar herramientas activas por silencio del agente.** El vigilante considera CPU/IO del grupo de procesos, no solo stdout. Fixture /proc verifica actividad CPU e IO y ausencia de actividad. Integración real Linux pendiente.
 - [x] **A09 — Resolver o mitigar las dos alertas de dependencias.** uuid fijado a 11.1.1; sprintf-js lleva parche versionado que acota precisión. Pruebas de buffer insuficiente y formatos extremos aprobadas. bun audit conserva un aviso por versión de sprintf-js: mitigado, no eliminado del catálogo.
 
+### Fallo posterior de CI
+
+- [~] **A10 — Telemetría del agente ficticio fuera del plan en Linux.** El fixture escribía llamadas.jsonl en el workspace; el control nuevo replanificaba correctamente y la prueba esperaba done. Se mueve telemetría y marcadores a .opencode/fixture-analizador, sin ampliar los archivos aprobados del plan. Regresión multiplataforma y repetición de CI pendientes.
+
 ### Validación de este lote
 
 - 57 suites independientes del servidor: 435 pruebas aprobadas, cero fallos, 61 omisiones de integración/plataforma. Dos regresiones finales adicionales (base fuera del temporal y .git inválido) también aprobadas: 437 casos distintos en total.

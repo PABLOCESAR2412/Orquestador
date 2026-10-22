@@ -54,7 +54,7 @@ function eventos(id: string): string[] {
 
 // Cada llamada al agente falso queda anotada en la carpeta de la tarea.
 function llamadas(id: string): { rol: string; sesion: string | null; prompt: string }[] {
-  const ruta = join(config.dataDir, "tasks", id, "llamadas.jsonl");
+  const ruta = join(config.dataDir, "tasks", id, ".opencode", "fixture-analizador", "llamadas.jsonl");
   if (!existsSync(ruta)) return [];
   return readFileSync(ruta, "utf8")
     .trim()
