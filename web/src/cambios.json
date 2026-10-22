@@ -3,6 +3,10 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-21", "tipo": "minimo", "titulo": "Tareas: muestra pruebas y cambios en un informe claro y prepara una corrección al detectar fallos", "pr": 100 },
+    { "fecha": "2026-10-21", "tipo": "minimo", "titulo": "Chat: encuentra medios guardados en chats vinculados a proyectos y reintenta fallos temporales del servidor", "pr": 100 },
+    { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Chat: reanuda tareas interrumpidas, permite el mismo modelo en varios chats, oculta acciones Git antiguas y ofrece cinco sonidos de aviso", "pr": 100 },
+    { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Chat: recupera sesiones OpenCode caducadas, encuentra videos en subcarpetas y previsualiza enlaces externos", "pr": 100 },
     { "fecha": "2026-10-21", "tipo": "minimo", "titulo": "Git: oculta tarjetas de acciones antiguas y conserva su acceso en el historial", "pr": 99 },
     { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Medios: enruta imágenes y videos al agente, bloquea APIs facturables y documenta TTS local", "pr": 98 },
     { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Chat: previsualiza y descarga videos MP4, y añade una skill global para animaciones sin residuos de escena", "pr": 97 },

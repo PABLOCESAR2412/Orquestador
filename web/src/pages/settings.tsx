@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as TeclaReact, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { api, type ModelInfo, type Preferences, type ProviderStatus } from "../api";
+import { api, reintentarConsultaTransitoria, type ModelInfo, type Preferences, type ProviderStatus } from "../api";
 import { EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
 import { useEventosVivos } from "../lib/eventos-vivos";
@@ -45,7 +45,7 @@ export function SettingsPage() {
 
   const prefs = useQuery({ queryKey: ["preferences"], queryFn: api.getPreferences });
   const models = useQuery({ queryKey: ["models"], queryFn: api.listModels, staleTime: 5 * 60_000 });
-  const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000 });
+  const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000, retry: reintentarConsultaTransitoria });
   const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders });
   const cuotas = useQuery({ queryKey: ["cuotas"], queryFn: api.listQuotas });
   const latencia = useMuestrasLatencia();

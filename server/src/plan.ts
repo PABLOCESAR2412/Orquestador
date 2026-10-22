@@ -38,6 +38,20 @@ export type Reporte = {
   desviacion: string | null;
 };
 
+// Contrato visible del chat: mantiene el resultado estructurado para renderizarlo como informe.
+export function serializarRespuestaTarea(reporte: Reporte, textoPlano = ""): string {
+  return JSON.stringify({
+    tipo: "telo_reporte_tarea",
+    version: 1,
+    estado: reporte.estado,
+    resumen: reporte.resumen?.trim() || textoPlano.trim() || "La tarea no devolvió un resumen.",
+    desviacion: reporte.desviacion,
+    cambios: reporte.cambios ?? [],
+    pruebas: reporte.pruebas ?? [],
+    pendientes: reporte.pendientes ?? [],
+  });
+}
+
 export type Validacion<T> = { ok: true; valor: T } | { ok: false; motivo: string };
 
 const esObjeto = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);

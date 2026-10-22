@@ -6,7 +6,25 @@ import { useEventosVivos } from "./eventos-vivos";
 // El permiso se solicita solo desde Ajustes, tras una acción explícita del usuario.
 const CLAVE = "telo:notificaciones";
 const CLAVE_SONIDO = "telo:sonido-notificaciones";
+const CLAVE_TIPO_SONIDO = "telo:sonido-notificacion-tipo";
 let contextoAudio: AudioContext | null = null;
+
+export const SONIDOS_NOTIFICACION = [
+  { id: "telo", nombre: "Telo" },
+  { id: "campana", nombre: "Campana" },
+  { id: "doble", nombre: "Doble" },
+  { id: "ascendente", nombre: "Ascendente" },
+  { id: "suave", nombre: "Suave" },
+] as const;
+export type SonidoNotificacion = (typeof SONIDOS_NOTIFICACION)[number]["id"];
+
+const TONOS: Record<SonidoNotificacion, { tipo: OscillatorType; notas: readonly [number, number, number][] }> = {
+  telo: { tipo: "sine", notas: [[660, 0, 0.24], [880, 0.14, 0.24]] },
+  campana: { tipo: "sine", notas: [[1046, 0, 0.42]] },
+  doble: { tipo: "triangle", notas: [[784, 0, 0.16], [784, 0.22, 0.16], [1046, 0.46, 0.25]] },
+  ascendente: { tipo: "sine", notas: [[523, 0, 0.14], [659, 0.16, 0.14], [784, 0.32, 0.14], [1046, 0.48, 0.25]] },
+  suave: { tipo: "triangle", notas: [[587, 0, 0.34], [740, 0.2, 0.34]] },
+};
 
 // Avisos por estado terminal o de espera. Los demás estados no molestan.
 const AVISOS: Partial<Record<TaskStatus, { titulo: string; cuerpo: string }>> = {
@@ -49,6 +67,23 @@ export function guardarSonidoNotificacionesActivo(activo: boolean): void {
   }
 }
 
+export function sonidoNotificacionSeleccionado(): SonidoNotificacion {
+  try {
+    const id = localStorage.getItem(CLAVE_TIPO_SONIDO);
+    return SONIDOS_NOTIFICACION.find((sonido) => sonido.id === id)?.id ?? "telo";
+  } catch {
+    return "telo";
+  }
+}
+
+export function guardarSonidoNotificacionSeleccionado(id: SonidoNotificacion): void {
+  try {
+    localStorage.setItem(CLAVE_TIPO_SONIDO, id);
+  } catch {
+    // Sin almacenamiento disponible, la preferencia dura lo que la pestaña.
+  }
+}
+
 export function notificacionesSoportadas(): boolean {
   return typeof window !== "undefined" && "Notification" in window;
 }
@@ -86,24 +121,25 @@ export async function prepararSonidoNotificaciones(): Promise<boolean> {
   }
 }
 
-/** Timbre corto sintetizado, sin descargar audio ni depender de archivos externos. */
-export async function probarSonidoNotificaciones(): Promise<boolean> {
+/** Sonido corto sintetizado, sin descargar audio ni depender de archivos externos. */
+export async function probarSonidoNotificaciones(id = sonidoNotificacionSeleccionado()): Promise<boolean> {
   const audio = obtenerAudio();
   if (!audio || !(await prepararSonidoNotificaciones())) return false;
   const ahora = audio.currentTime;
-  for (const [frecuencia, demora] of [[660, 0], [880, 0.14]] as const) {
+  const sonido = TONOS[id] ?? TONOS.telo;
+  for (const [frecuencia, demora, duracion] of sonido.notas) {
     const oscilador = audio.createOscillator();
     const volumen = audio.createGain();
     const inicio = ahora + demora;
-    oscilador.type = "sine";
+    oscilador.type = sonido.tipo;
     oscilador.frequency.setValueAtTime(frecuencia, inicio);
     volumen.gain.setValueAtTime(0.0001, inicio);
-    volumen.gain.exponentialRampToValueAtTime(0.12, inicio + 0.025);
-    volumen.gain.exponentialRampToValueAtTime(0.0001, inicio + 0.24);
+    volumen.gain.exponentialRampToValueAtTime(0.1, inicio + 0.025);
+    volumen.gain.exponentialRampToValueAtTime(0.0001, inicio + duracion);
     oscilador.connect(volumen);
     volumen.connect(audio.destination);
     oscilador.start(inicio);
-    oscilador.stop(inicio + 0.25);
+    oscilador.stop(inicio + duracion + 0.01);
   }
   return true;
 }
@@ -142,6 +178,7 @@ export function useNotificacionesDeTareas(): void {
     const clave = `${evento.id}:${evento.status}`;
     if (avisadas.current.has(clave)) return;
     avisadas.current.add(clave);
+    if (!notificacionesActivas()) return;
     const tarea = qc.getQueryData<Task[]>(["tasks"])?.find((t) => t.id === evento.id);
     void mostrar(aviso.titulo, `${tarea?.title ?? "Tarea"}. ${aviso.cuerpo}`, `tarea-${evento.id}`);
     if (sonidoNotificacionesActivo()) void probarSonidoNotificaciones();

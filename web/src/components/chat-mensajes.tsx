@@ -381,15 +381,19 @@ export function MensajeAgente({
       <div className="tl-msg-texto">
         {mediaId ? <MediaJobCard id={mediaId} /> : (
           <>
-            <Contenido
-              texto={reporte?.resumen ?? texto}
-              onAbrirArchivo={onAbrirArchivo}
-              permitirAbrirArchivo={permitirAbrirArchivo}
-            />
-            {reporte?.causa && <p className="tl-alerta">{reporte.causa}</p>}
+            {reporte ? (
+              <InformeTarea
+                reporte={reporte}
+                onAbrirArchivo={onAbrirArchivo}
+                permitirAbrirArchivo={permitirAbrirArchivo}
+                onPrepararCorreccion={onCitar}
+              />
+            ) : (
+              <Contenido texto={texto} onAbrirArchivo={onAbrirArchivo} permitirAbrirArchivo={permitirAbrirArchivo} />
+            )}
             {reporte && (
               <details className="tl-detalles-reporte">
-                <summary>Ver detalles técnicos</summary>
+                <summary>Ver datos técnicos del reporte</summary>
                 <pre>{reporte.detalles}</pre>
               </details>
             )}
@@ -397,6 +401,120 @@ export function MensajeAgente({
         )}
       </div>
     </article>
+  );
+}
+
+function resultadoPrueba(resultado: string): { etiqueta: string; clase: string; fallo: boolean } {
+  const normalizado = resultado.trim().toLocaleLowerCase();
+  if (/^(ok|correcta|aprobada|passed|pass)$/.test(normalizado)) return { etiqueta: "Correcta", clase: "is-ok", fallo: false };
+  if (/fall(?:o|ó|aron|id[oa]s?)|error|failed|^fail$|exit(?:\s+code)?\s*[:=]?\s*[1-9]/.test(normalizado)) {
+    return { etiqueta: "Falló", clase: "is-fallo", fallo: true };
+  }
+  if (normalizado === "no_aplica" || normalizado === "no aplica") return { etiqueta: "No aplica", clase: "is-neutro", fallo: false };
+  return { etiqueta: resultado, clase: "is-neutro", fallo: false };
+}
+
+function promptCorreccion(reporte: NonNullable<ReturnType<typeof interpretarRespuestaTarea>>): string {
+  const pruebasFallidas = reporte.pruebas.filter((prueba) => resultadoPrueba(prueba.resultado).fallo);
+  return [
+    "Corrige el problema informado en la tarea anterior. Antes de editar, revisa los cambios que ya existen y conserva todo lo que esté correcto; continúa sobre ese trabajo sin empezar desde cero.",
+    `Resumen anterior: ${reporte.resumen}`,
+    reporte.causa ? `Motivo: ${reporte.causa}` : "",
+    pruebasFallidas.length ? `Pruebas fallidas:\n${pruebasFallidas.map((p) => `- ${p.comando}: ${p.resultado}`).join("\n")}` : "",
+    reporte.cambios.length ? `Archivos reportados:\n${reporte.cambios.map((c) => `- ${c.archivo}`).join("\n")}` : "",
+    "Explica la causa concreta, aplica la corrección y vuelve a ejecutar las pruebas afectadas. Informa el resultado real. No hagas commit, push ni PR.",
+  ].filter(Boolean).join("\n\n");
+}
+
+function etiquetaCambio(tipo: string): string {
+  const normalizado = tipo.toLocaleLowerCase();
+  if (normalizado === "crear" || normalizado === "nuevo") return "Creó";
+  if (normalizado === "borrar" || normalizado === "borrado") return "Eliminó";
+  return "Editó";
+}
+
+function InformeTarea({
+  reporte,
+  onAbrirArchivo,
+  permitirAbrirArchivo,
+  onPrepararCorreccion,
+}: {
+  reporte: NonNullable<ReturnType<typeof interpretarRespuestaTarea>>;
+  onAbrirArchivo?: (referencia: ReferenciaArchivo, triggerId: string) => void;
+  permitirAbrirArchivo?: (referencia: ReferenciaArchivo) => boolean;
+  onPrepararCorreccion?: (texto: string) => void;
+}) {
+  const pruebas = reporte.pruebas.map((prueba) => ({ ...prueba, resultadoUI: resultadoPrueba(prueba.resultado) }));
+  const hayFallo = reporte.estado === "fallo" || pruebas.some((prueba) => prueba.resultadoUI.fallo);
+  const requiereRevision = reporte.estado === "desviacion" || reporte.pendientes.length > 0;
+  const estado = hayFallo
+    ? { etiqueta: "Requiere corrección", clase: "is-fallo" }
+    : requiereRevision
+      ? { etiqueta: "Requiere revisión", clase: "is-neutro" }
+      : { etiqueta: "Completada", clase: "is-ok" };
+  const cambiosVisibles = reporte.cambios.slice(0, 4);
+  const cambiosRestantes = reporte.cambios.slice(4);
+  const listaCambios = (cambios: typeof reporte.cambios) => (
+    <ul className="tl-reporte-archivos">
+      {cambios.map((cambio, i) => (
+        <li key={`${cambio.archivo}-${i}`}>
+          <span>{etiquetaCambio(cambio.tipo)}</span>
+          <Contenido texto={`\`${cambio.archivo}\``} onAbrirArchivo={onAbrirArchivo} permitirAbrirArchivo={permitirAbrirArchivo} />
+        </li>
+      ))}
+    </ul>
+  );
+
+  return (
+    <section className={`tl-reporte-tarea ${hayFallo ? "is-fallo" : ""}`} aria-label="Resultado de la tarea">
+      <header className="tl-reporte-cabecera">
+        <h3>Resultado de la tarea</h3>
+        <span className={`tl-reporte-estado ${estado.clase}`} role="status">{estado.etiqueta}</span>
+      </header>
+      <div className="tl-reporte-resumen">
+        <Contenido texto={reporte.resumen} onAbrirArchivo={onAbrirArchivo} permitirAbrirArchivo={permitirAbrirArchivo} />
+      </div>
+      {reporte.causa && <p className="tl-reporte-motivo"><strong>Motivo:</strong> {reporte.causa}</p>}
+      {pruebas.length > 0 && (
+        <section className="tl-reporte-seccion" aria-label="Pruebas">
+          <h4>Pruebas</h4>
+          <ul className="tl-reporte-pruebas">
+            {pruebas.map((prueba, i) => (
+              <li key={`${prueba.comando}-${i}`}>
+                <code>{prueba.comando}</code>
+                <span className={`tl-reporte-prueba-estado ${prueba.resultadoUI.clase}`}>{prueba.resultadoUI.etiqueta}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {reporte.cambios.length > 0 && (
+        <section className="tl-reporte-seccion" aria-label="Cambios realizados">
+          <h4>Cambios realizados · {reporte.cambios.length}</h4>
+          {listaCambios(cambiosVisibles)}
+          {cambiosRestantes.length > 0 && (
+            <details className="tl-reporte-mas">
+              <summary>Ver {cambiosRestantes.length} archivos más</summary>
+              {listaCambios(cambiosRestantes)}
+            </details>
+          )}
+        </section>
+      )}
+      {reporte.pendientes.length > 0 && (
+        <section className="tl-reporte-seccion" aria-label="Pendientes">
+          <h4>Pendientes</h4>
+          <ul className="tl-reporte-pendientes">{reporte.pendientes.map((pendiente, i) => <li key={`${pendiente}-${i}`}>{pendiente}</li>)}</ul>
+        </section>
+      )}
+      {hayFallo && onPrepararCorreccion && (
+        <div className="tl-reporte-acciones">
+          <button type="button" className="tl-boton tl-boton-principal" onClick={() => onPrepararCorreccion(promptCorreccion(reporte))}>
+            Preparar corrección
+          </button>
+          <span>Revisa la instrucción antes de enviarla.</span>
+        </div>
+      )}
+    </section>
   );
 }
 

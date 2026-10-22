@@ -47,6 +47,7 @@ for a in "$@"; do
   ultimo="$a"
 done
 case "$ultimo" in *LENTO*) sleep 1.5 ;; esac
+case "$ultimo" in *FALLO-143*) echo '{"type":"step_finish","timestamp":1,"sessionID":"ses_fallo143","part":{"type":"tool-calls","snapshot":"CAPTURA-JSON-PRUEBA"}}'; exit 143 ;; esac
 case "$ultimo" in *FALLO*) echo "error interno del agente" >&2; exit 1 ;; esac
 case "$ultimo" in *CAMBIO-MODELO*) printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"modelo=%s;sesion=%s;variante=%s;historial=%s"}}\\n' "$modelo" "\${sesion:-nueva}" "\${variante:-auto}" "\${historial:-no}"; exit 0 ;; esac
 case "$ultimo" in *ANALIZA-ADJUNTO*) if [ -n "$imagen" ] && [ -s "$imagen" ]; then echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"La imagen llegó al agente como archivo."}}'; else echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"No llegó ningún archivo de imagen."}}'; fi; exit 0 ;; esac
@@ -124,6 +125,7 @@ describe("lista de conversaciones", () => {
       estado_tarea_id: string | null;
       estado_tarea_version: string | null;
       pendiente_aprobacion: boolean;
+      tiene_sesion: boolean;
     }[];
     expect(response.status).toBe(200);
     expect(lista.find((conversation) => conversation.id === id)).toMatchObject({
@@ -131,7 +133,12 @@ describe("lista de conversaciones", () => {
       estado_tarea_id: ultima,
       estado_tarea_version: "hash-reciente",
       pendiente_aprobacion: false,
+      tiene_sesion: false,
     });
+
+    db.query("UPDATE conversations SET runner_session_id='sesion-prueba' WHERE id=?").run(id);
+    const conSesion = await (await app.request("/api/conversations")).json() as { id: string; tiene_sesion: boolean }[];
+    expect(conSesion.find((conversation) => conversation.id === id)?.tiene_sesion).toBe(true);
   });
 });
 
@@ -338,6 +345,19 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     }
   }, 15_000);
 
+  test("cinco chats pueden usar en paralelo el mismo modelo sin mezclar respuestas", async () => {
+    const lote = Array.from({ length: 5 }, (_, i) => ({ id: conversacion("opencode/prueba"), prompt: `CONCURRENTE-${i} LENTO` }));
+    const inicio = Date.now();
+    const respuestas = await Promise.all(lote.map(({ id, prompt }) => enviar(id, prompt)));
+    expect(respuestas.map((respuesta) => respuesta.status)).toEqual(Array(5).fill(202));
+    await esperar(() => lote.every(({ id }) => mensajes(id).some((mensaje) => mensaje.role === "assistant")));
+    expect(Date.now() - inicio).toBeLessThan(8_000);
+    lote.forEach(({ id, prompt }, i) => {
+      expect(mensajes(id).find((mensaje) => mensaje.role === "user")?.content).toBe(prompt);
+      expect(mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content).toBe(`opencode/prueba: ${i}`);
+    });
+  }, 15_000);
+
   test("el POST responde 202 antes de que el agente termine, y la respuesta llega después", async () => {
     const id = conversacion();
     const inicio = Date.now();
@@ -378,6 +398,24 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     const aviso = mensajes(id).find((m) => m.role === "system");
     expect(aviso?.content.startsWith("No se pudo responder.")).toBe(true);
     expect(mensajes(id).some((m) => m.role === "assistant")).toBe(false);
+  });
+
+  test("un fallo 143 conserva la sesión y permite continuar sin mostrar la salida JSON cruda", async () => {
+    const id = conversacion();
+    const response = await enviar(id, "Completa la tarea FALLO-143");
+    const user = ((await response.json()) as { messages: Mensaje[] }).messages[0]!;
+    await esperar(() => mensajes(id).some((mensaje) => mensaje.role === "system"));
+    const aviso = mensajes(id).find((mensaje) => mensaje.role === "system")!;
+    expect(aviso.content).toContain("código 143 (SIGTERM)");
+    expect(aviso.content).not.toContain("CAPTURA-JSON-PRUEBA");
+    expect(aviso.content).not.toContain("step_finish");
+    expect(db.query<{ runner_session_id: string }, [string]>("SELECT runner_session_id FROM conversations WHERE id=?").get(id)?.runner_session_id)
+      .toBe("ses_fallo143");
+
+    expect((await enviarReintento(id, user.content, user.id)).status).toBe(202);
+    await esperar(() => mensajes(id).some((mensaje) => mensaje.role === "assistant"));
+    expect(mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content).toBe("continuacion;sesion=ses_fallo143");
+    expect(mensajes(id).some((mensaje) => mensaje.role === "system")).toBe(false);
   });
 
   test("reintentar un turno agotado continúa la sesión guardada y no vuelve a enviar el prompt original", async () => {
@@ -576,6 +614,12 @@ describe("imágenes de una conversación", () => {
     writeFileSync(join(workspaceAnterior, "content.js"), "export const informe = true;");
     writeFileSync(join(workspaceAnterior, "preview", "informe.pdf"), "%PDF-1.4\ncontenido\n%%EOF\n");
     writeFileSync(join(workspaceAnterior, "preview", "p01-12.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x01]));
+    mkdirSync(join(workspaceAnterior, "renders"), { recursive: true });
+    const videoBytes = Buffer.from("000000146674797069736f6d000000006d703432", "hex");
+    writeFileSync(join(workspaceAnterior, "renders", "mapa-mental.mp4"), videoBytes);
+    const carpetaChat = join(process.env.DATA_DIR!, "chat-workspace", conversacionId);
+    mkdirSync(carpetaChat, { recursive: true });
+    writeFileSync(join(carpetaChat, "narracion.mp4"), videoBytes);
     writeFileSync(join(raizProyecto, "README.md"), "Archivo del repositorio base");
 
     const texto = await app.request(`/api/conversations/${conversacionId}/archivo?ruta=content.js`);
@@ -589,6 +633,17 @@ describe("imágenes de una conversación", () => {
     const imagen = await app.request(`/api/conversations/${conversacionId}/archivo-imagen?ruta=preview%2Fp01-12.png&meta=1`);
     expect(imagen.status).toBe(200);
     expect(await imagen.json()).toMatchObject({ ruta: "preview/p01-12.png", mime: "image/png" });
+
+    const video = await app.request(`/api/conversations/${conversacionId}/archivo-video?ruta=mapa-mental.mp4&meta=1`);
+    expect(video.status).toBe(200);
+    expect(await video.json()).toMatchObject({ ruta: "renders/mapa-mental.mp4", mime: "video/mp4", tamano: videoBytes.byteLength });
+    const videoContenido = await app.request(`/api/conversations/${conversacionId}/archivo-video?ruta=renders%2Fmapa-mental.mp4`);
+    expect(videoContenido.status).toBe(200);
+    expect(Buffer.from(await videoContenido.arrayBuffer())).toEqual(videoBytes);
+
+    const videoDelChat = await app.request(`/api/conversations/${conversacionId}/archivo-video?ruta=narracion.mp4&meta=1`);
+    expect(videoDelChat.status).toBe(200);
+    expect(await videoDelChat.json()).toMatchObject({ ruta: "narracion.mp4", mime: "video/mp4" });
 
     const base = await app.request(`/api/conversations/${conversacionId}/archivo?ruta=README.md`);
     expect(base.status).toBe(200);

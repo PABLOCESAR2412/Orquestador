@@ -14,6 +14,7 @@ export type Conversation = {
   estado_tarea?: "en_proceso" | "pendiente_aprobacion" | "completada" | null;
   estado_tarea_id?: string | null;
   estado_tarea_version?: string | null;
+  tiene_sesion?: boolean;
   last_message_at?: string | null;
   // Modelo que se quedó sin cuota en el último turno: el chat espera a que se cambie de modelo y se siga.
   cuota_modelo?: string | null;
@@ -549,6 +550,11 @@ export class ApiError extends Error {
   ) {
     super(code);
   }
+}
+
+// Reintenta errores de red y 5xx; los 4xx requieren corregir la solicitud y no mejoran esperando.
+export function reintentarConsultaTransitoria(failureCount: number, error: unknown): boolean {
+  return failureCount < 2 && (!(error instanceof ApiError) || error.status >= 500);
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

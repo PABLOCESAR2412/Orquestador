@@ -1,17 +1,23 @@
 import { useState } from "react";
 import {
   guardarNotificacionesActivas,
+  guardarSonidoNotificacionSeleccionado,
   guardarSonidoNotificacionesActivo,
   notificacionesActivas,
   notificacionesSoportadas,
   pedirPermisoNotificaciones,
+  prepararSonidoNotificaciones,
   probarSonidoNotificaciones,
+  SONIDOS_NOTIFICACION,
+  sonidoNotificacionSeleccionado,
   sonidoNotificacionesActivo,
+  type SonidoNotificacion,
 } from "../../lib/notificaciones";
 
 export function NotificacionesPanel() {
   const [activas, setActivas] = useState(() => notificacionesActivas());
   const [sonido, setSonido] = useState(() => sonidoNotificacionesActivo());
+  const [tipoSonido, setTipoSonido] = useState<SonidoNotificacion>(() => sonidoNotificacionSeleccionado());
   const [permiso, setPermiso] = useState<NotificationPermission | "no_soportado">(() =>
     notificacionesSoportadas() ? Notification.permission : "no_soportado",
   );
@@ -19,6 +25,7 @@ export function NotificacionesPanel() {
 
   const alCambiar = async (valor: boolean) => {
     if (valor) {
+      if (sonido) void prepararSonidoNotificaciones();
       const siguientePermiso = await pedirPermisoNotificaciones();
       setPermiso(siguientePermiso);
       if (siguientePermiso !== "granted") return;
@@ -74,6 +81,20 @@ export function NotificacionesPanel() {
             />
           </div>
           <div className="aj-notificaciones-sonido-acciones">
+            <label className="aj-notificaciones-selector">
+              <span>Sonido de notificación</span>
+              <select
+                aria-label="Sonido de notificación"
+                value={tipoSonido}
+                onChange={(evento) => {
+                  const siguiente = evento.currentTarget.value as SonidoNotificacion;
+                  setTipoSonido(siguiente);
+                  guardarSonidoNotificacionSeleccionado(siguiente);
+                }}
+              >
+                {SONIDOS_NOTIFICACION.map(({ id, nombre }) => <option key={id} value={id}>{nombre}</option>)}
+              </select>
+            </label>
             <button type="button" className="aj-btn" onClick={() => void alProbarSonido()}>
               Probar sonido
             </button>

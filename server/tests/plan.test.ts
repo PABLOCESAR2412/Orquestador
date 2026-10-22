@@ -7,6 +7,7 @@ import {
   promptObrero,
   promptReparacion,
   requiereAprobacion,
+  serializarRespuestaTarea,
   validarPlan,
   validarReporte,
   type Plan,
@@ -150,6 +151,30 @@ describe("validarReporte", () => {
     expect(r.cambios).toEqual([{ archivo: "a.ts", tipo: "editar" }]);
     expect(r.pruebas).toEqual([{ comando: "bun test", resultado: "fallo" }]);
     expect(r.pendientes).toEqual(["Revisar"]);
+  });
+});
+
+describe("serializarRespuestaTarea", () => {
+  test("conserva estado, pruebas y rutas para que el chat muestre el informe completo", () => {
+    const respuesta = JSON.parse(serializarRespuestaTarea({
+      estado: "fallo",
+      resumen: "Falló la prueba de auditoría.",
+      cambios: [{ archivo: "tests/auditoria.test.ts", tipo: "editar" }],
+      pruebas: [{ comando: "bun test tests/auditoria.test.ts", resultado: "fallo" }],
+      pendientes: ["Corregir la expectativa"],
+      diff_disponible: true,
+      desviacion: "La prueba esperaba otro estado.",
+    }));
+    expect(respuesta).toMatchObject({
+      tipo: "telo_reporte_tarea",
+      version: 1,
+      estado: "fallo",
+      resumen: "Falló la prueba de auditoría.",
+      desviacion: "La prueba esperaba otro estado.",
+      cambios: [{ archivo: "tests/auditoria.test.ts", tipo: "editar" }],
+      pruebas: [{ comando: "bun test tests/auditoria.test.ts", resultado: "fallo" }],
+      pendientes: ["Corregir la expectativa"],
+    });
   });
 });
 

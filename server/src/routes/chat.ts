@@ -23,7 +23,7 @@ import {
 } from "../ocupacion";
 import { eliminarPerfilSubagentes, prepararSubagentes } from "../subagentes";
 import { cerrarSubagentesDelTurno, registrarEventoSubagente } from "../subagentes-chat";
-import { ArchivoError, leerArchivo, leerImagen, leerPdf, leerVideo, normalizarRuta } from "../archivos-proyecto";
+import { ArchivoError, buscarArchivosPorNombre, leerArchivo, leerImagen, leerPdf, leerVideo, normalizarRuta } from "../archivos-proyecto";
 import { contarImagenesMarcadas, eliminarImagenesConversacion, guardarImagenAdjunta, idsImagenesMarcadas, leerImagenAdjunta, MAX_IMAGENES_MENSAJE } from "../chat-adjuntos";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
@@ -75,6 +75,7 @@ type Subchat = {
   project_name?: string | null;
   created_at: string;
   last_message_at: string;
+  tiene_sesion?: boolean | number;
   ocupada?: boolean;
   en_proceso?: boolean;
 };
@@ -96,6 +97,7 @@ type Conversation = {
   estado_tarea?: "en_proceso" | "pendiente_aprobacion" | "completada" | null;
   estado_tarea_id?: string | null;
   estado_tarea_version?: string | null;
+  tiene_sesion?: boolean | number;
   subchats?: Subchat[];
 };
 type Message = {
@@ -131,6 +133,7 @@ chat.get("/conversations", (c) => {
       )
       SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name,
              c.pinned_at, c.cuota_modelo, c.created_at, m.last_msg_at,
+             c.runner_session_id IS NOT NULL AS tiene_sesion,
              t.id AS task_id, t.status AS task_status, t.finished_at AS task_finished_at,
              t.plan_hash AS task_plan_hash
         FROM conversations c
@@ -143,7 +146,7 @@ chat.get("/conversations", (c) => {
     .all();
 
   const hijos = db.query<Subchat, []>(`
-    SELECT c.id,c.title,c.model,c.effort,c.project_id,p.name AS project_name,c.parent_conversation_id,c.parent_turn_id,
+    SELECT c.id,c.title,c.model,c.effort,c.project_id,p.name AS project_name,c.runner_session_id IS NOT NULL AS tiene_sesion,c.parent_conversation_id,c.parent_turn_id,
            c.subagent_turn_id,c.subagent_agent,c.subagent_prompt,c.subagent_status,c.subagent_result,
            c.created_at,MAX(c.created_at,COALESCE((SELECT MAX(m.created_at) FROM messages m WHERE m.conversation_id=c.id),c.created_at)) AS last_message_at
       FROM conversations c
@@ -155,6 +158,7 @@ chat.get("/conversations", (c) => {
   for (const hijo of hijos) {
     hijo.ocupada = hijo.subagent_status === "running";
     hijo.en_proceso = hijo.ocupada;
+    hijo.tiene_sesion = Boolean(hijo.tiene_sesion);
     const lista = hijosPorPadre.get(hijo.parent_conversation_id) ?? [];
     lista.push(hijo);
     hijosPorPadre.set(hijo.parent_conversation_id, lista);
@@ -187,6 +191,7 @@ chat.get("/conversations", (c) => {
               : null,
         estado_tarea_id: tarea?.id ?? null,
         estado_tarea_version: tarea?.plan_hash ?? tarea?.finished_at ?? null,
+        tiene_sesion: Boolean(r.tiene_sesion),
       };
     }),
   );
@@ -538,7 +543,7 @@ chat.get("/conversations/:id/archivo-imagen", (c) => {
 });
 
 // Vista previa y descarga de MP4 del workspace; admite rangos para reproducción y búsqueda.
-chat.get("/conversations/:id/archivo-video", (c) => {
+chat.get("/conversations/:id/archivo-video", async (c) => {
   const id = c.req.param("id");
   const conversacion = leerConversacion(id);
   if (!conversacion) return c.json({ error: "conversation_not_found" }, 404);
@@ -547,7 +552,44 @@ chat.get("/conversations/:id/archivo-video", (c) => {
 
   try {
     const ruta = normalizarRuta(c.req.query("ruta"));
-    const archivo = leerEnRaices(raices, (raiz) => leerVideo(raiz, ruta));
+    let archivo: ReturnType<typeof leerVideo>;
+    try {
+      archivo = leerEnRaices(raices, (raiz) => leerVideo(raiz, ruta));
+    } catch (err) {
+      if (!(err instanceof ArchivoError) || err.code !== "project_path_not_found" || ruta.length !== 1) throw err;
+
+      // Los agentes suelen guardar videos en carpetas como `renders/` o `entregables/` y luego
+      // citan solo el nombre. Resuelve ese caso dentro de las raíces autorizadas del chat.
+      let archivoEncontrado: ReturnType<typeof leerVideo> | null = null;
+      for (const raiz of raices) {
+        let busqueda: Awaited<ReturnType<typeof buscarArchivosPorNombre>>;
+        try {
+          busqueda = await buscarArchivosPorNombre(raiz, ruta[0]!);
+        } catch (error) {
+          if (error instanceof ArchivoError && error.code === "project_path_not_found") {
+            continue;
+          }
+          throw error;
+        }
+
+        if (busqueda.rutas.length > 0 && (busqueda.rutas.length > 1 || busqueda.truncada)) {
+          return c.json({
+            error: "project_path_ambiguous",
+            matches: busqueda.rutas,
+            ...(busqueda.truncada ? { detail: "La búsqueda alcanzó su límite; estas rutas pueden no ser todas las coincidencias." } : {}),
+          }, 409);
+        }
+        if (busqueda.truncada) {
+          return c.json({ error: "project_search_incomplete", detail: "La búsqueda alcanzó su límite; abre el video con su ruta completa." }, 409);
+        }
+        if (busqueda.rutas.length === 1) {
+          archivoEncontrado = leerVideo(raiz, normalizarRuta(busqueda.rutas[0]!));
+          break;
+        }
+      }
+      if (!archivoEncontrado) throw err;
+      archivo = archivoEncontrado;
+    }
     const nombreSeguro = archivo.nombre.replace(/[\r\n"\\]/g, "_");
     const nombreAscii = nombreSeguro.normalize("NFKD").replace(/\p{Diacritic}/gu, "").replace(/[^\x20-\x7E]/g, "_").replace(/["\\;]/g, "_");
     const nombreUtf8 = encodeURIComponent(nombreSeguro).replace(/[!'()*]/g, (caracter) => `%${caracter.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -630,9 +672,15 @@ function raicesArchivosConversacion(conversacion: ConversationRow): string[] {
   const workspaces = db.query<{ workspace: string }, [string]>(
     "SELECT workspace FROM tasks WHERE conversation_id=? AND workspace IS NOT NULL ORDER BY created_at DESC,rowid DESC",
   ).all(conversacion.id).map((tarea) => tarea.workspace);
-  const raizOriginal = conversacion.subagent_workspace
-    ?? (conversacion.project_id ? conversacion.repo_path : join(chatWorkspace, conversacion.parent_conversation_id ?? conversacion.id));
-  return [...new Set([...workspaces, ...(raizOriginal ? [raizOriginal] : [])])];
+  // Los turnos normales de chat siempre escriben en chat-workspace, incluso si la conversación
+  // está vinculada a un proyecto. El repositorio también es una raíz válida para sus archivos.
+  const raizChat = conversacion.subagent_workspace
+    ?? join(chatWorkspace, conversacion.parent_conversation_id ?? conversacion.id);
+  return [...new Set([
+    ...workspaces,
+    raizChat,
+    ...(conversacion.project_id && conversacion.repo_path ? [conversacion.repo_path] : []),
+  ])];
 }
 
 function leerEnRaices<T>(raices: string[], leer: (raiz: string) => T): T {
@@ -713,7 +761,7 @@ function guardarAviso(conversationId: string, texto: string): void {
   );
 }
 
-function turnoReintentable(conversationId: string, messageId: string, content: string): { turno: TurnoUsuario; rowid: number; continuar: boolean } | null {
+function turnoReintentable(conversationId: string, messageId: string, content: string, tieneSesion: boolean): { turno: TurnoUsuario; rowid: number; continuar: boolean } | null {
   const original = db.query<{ id: string; content: string; rowid: number }, [string, string]>(
     "SELECT id, content, rowid FROM messages WHERE id=? AND conversation_id=? AND role='user'",
   ).get(messageId, conversationId);
@@ -728,7 +776,7 @@ function turnoReintentable(conversationId: string, messageId: string, content: s
   if (ultimoUsuario?.id !== messageId || mensajesPosteriores.length === 0 || mensajesPosteriores.some((mensaje) => mensaje.role !== "system")) {
     return null;
   }
-  const continuar = mensajesPosteriores.some((mensaje) => /^El agente (?:superó el límite de|tardó más de) \d+ minutos/i.test(mensaje.content));
+  const continuar = tieneSesion || mensajesPosteriores.some((mensaje) => /^El agente (?:superó el límite de|tardó más de) \d+ minutos/i.test(mensaje.content));
   return { turno: { id: original.id, role: "user", content: original.content }, rowid: original.rowid, continuar };
 }
 
@@ -923,7 +971,7 @@ chat.post("/conversations/:id/messages", async (c) => {
     return c.json({ error: "invalid_retry" }, 400);
   }
   const retryOf = typeof body?.retryOf === "string" ? body.retryOf : null;
-  const reintento = retryOf ? turnoReintentable(conversationId, retryOf, content) : null;
+  const reintento = retryOf ? turnoReintentable(conversationId, retryOf, content, Boolean(conv.runner_session_id)) : null;
   if (retryOf && !reintento) return c.json({ error: "message_not_retryable" }, 409);
   const bloqueo = motivoDeBloqueo(conv);
   if (bloqueo) return c.json({ error: bloqueo }, 409);
