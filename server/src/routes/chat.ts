@@ -25,7 +25,7 @@ import { eliminarPerfilSubagentes, prepararSubagentes } from "../subagentes";
 import { cerrarSubagentesDelTurno, registrarEventoSubagente } from "../subagentes-chat";
 import { detectarSolicitudMedio } from "../generacion-medios";
 import { crearSolicitudMedio } from "./media";
-import { ArchivoError, leerArchivo, leerImagen, leerPdf, normalizarRuta } from "../archivos-proyecto";
+import { ArchivoError, leerArchivo, leerImagen, leerPdf, leerVideo, normalizarRuta } from "../archivos-proyecto";
 import { contarImagenesMarcadas, eliminarImagenesConversacion, guardarImagenAdjunta, idsImagenesMarcadas, leerImagenAdjunta, MAX_IMAGENES_MENSAJE } from "../chat-adjuntos";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
@@ -529,6 +529,69 @@ chat.get("/conversations/:id/archivo-imagen", (c) => {
     }
     return new Response(archivo.contenido, {
       headers: { ...cabeceras, "Content-Length": String(archivo.contenido.byteLength) },
+    });
+  } catch (err) {
+    if (err instanceof ArchivoError) {
+      const code = err.code === "project_path_not_found" && !conversacion.project_id ? "archivo_chat_no_encontrado" : err.code;
+      return c.json({ error: code }, err.status);
+    }
+    throw err;
+  }
+});
+
+// Vista previa y descarga de MP4 del workspace; admite rangos para reproducción y búsqueda.
+chat.get("/conversations/:id/archivo-video", (c) => {
+  const id = c.req.param("id");
+  const conversacion = leerConversacion(id);
+  if (!conversacion) return c.json({ error: "conversation_not_found" }, 404);
+  const raices = raicesArchivosConversacion(conversacion);
+  if (!raices.length) return c.json({ error: "project_path_not_found" }, 404);
+
+  try {
+    const ruta = normalizarRuta(c.req.query("ruta"));
+    const archivo = leerEnRaices(raices, (raiz) => leerVideo(raiz, ruta));
+    const nombreSeguro = archivo.nombre.replace(/[\r\n"\\]/g, "_");
+    const nombreAscii = nombreSeguro.normalize("NFKD").replace(/\p{Diacritic}/gu, "").replace(/[^\x20-\x7E]/g, "_").replace(/["\\;]/g, "_");
+    const nombreUtf8 = encodeURIComponent(nombreSeguro).replace(/[!'()*]/g, (caracter) => `%${caracter.charCodeAt(0).toString(16).toUpperCase()}`);
+    const cabeceras = {
+      "Content-Type": archivo.mime,
+      "Content-Disposition": `${c.req.query("descargar") === "1" ? "attachment" : "inline"}; filename="${nombreAscii}"; filename*=UTF-8''${nombreUtf8}`,
+      "Accept-Ranges": "bytes",
+      "X-Content-Type-Options": "nosniff",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "Cache-Control": "private, no-store",
+    };
+
+    if (c.req.query("meta") === "1") {
+      return new Response(JSON.stringify({ ruta: archivo.ruta, nombre: archivo.nombre, mime: archivo.mime, tamano: archivo.tamano }), {
+        headers: { ...cabeceras, "Content-Type": "application/json; charset=utf-8" },
+      });
+    }
+
+    const rango = c.req.header("range");
+    if (!rango) {
+      return new Response(archivo.contenido, {
+        headers: { ...cabeceras, "Content-Length": String(archivo.contenido.byteLength) },
+      });
+    }
+
+    const coincide = /^bytes=(\d+)-(\d*)$/.exec(rango);
+    if (!coincide) {
+      return new Response(null, { status: 416, headers: { ...cabeceras, "Content-Range": `bytes */${archivo.tamano}` } });
+    }
+    const inicio = Number(coincide[1]);
+    const fin = coincide[2] ? Math.min(Number(coincide[2]), archivo.tamano - 1) : archivo.tamano - 1;
+    if (inicio >= archivo.tamano || fin < inicio) {
+      return new Response(null, { status: 416, headers: { ...cabeceras, "Content-Range": `bytes */${archivo.tamano}` } });
+    }
+    const fragmento = archivo.contenido.subarray(inicio, fin + 1);
+    return new Response(fragmento, {
+      status: 206,
+      headers: {
+        ...cabeceras,
+        "Content-Length": String(fragmento.byteLength),
+        "Content-Range": `bytes ${inicio}-${fin}/${archivo.tamano}`,
+      },
     });
   } catch (err) {
     if (err instanceof ArchivoError) {

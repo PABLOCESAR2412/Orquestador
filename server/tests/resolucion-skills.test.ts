@@ -135,3 +135,22 @@ test("activa la guía visual para crear imágenes e infografías, no para analiz
   const analisis = inyectarSkillsEnPrompt("Analiza esta imagen adjunta y dime qué contiene.");
   expect(analisis.skillsInvocadas).not.toContain("image-design");
 });
+
+test("activa la guía global de movimiento al crear o corregir animaciones y videos", () => {
+  const carpeta = join(homePrueba, ".config", "opencode", "skills", "motion-design");
+  mkdirSync(carpeta, { recursive: true });
+  writeFileSync(join(carpeta, "SKILL.md"), "---\nname: motion-design\ndescription: Guía de animación.\n---\n\nCada escena debe ser independiente.");
+
+  const creacion = inyectarSkillsEnPrompt("Crea una animación MP4 para historias, con una línea de tiempo.");
+  expect(creacion.skillsInvocadas).toContain("motion-design");
+  expect(creacion.promptFinal).toContain("Cada escena debe ser independiente.");
+
+  const correccion = inyectarSkillsEnPrompt("Corrige los residuos en el video y verifica el GIF animado.");
+  expect(correccion.skillsInvocadas).toContain("motion-design");
+
+  const movimiento = inyectarSkillsEnPrompt("Haz una imagen en movimiento para historias.");
+  expect(movimiento.skillsInvocadas).toContain("motion-design");
+
+  const analisis = inyectarSkillsEnPrompt("Analiza este video adjunto y descríbelo.");
+  expect(analisis.skillsInvocadas).not.toContain("motion-design");
+});

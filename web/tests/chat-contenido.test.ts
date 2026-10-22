@@ -26,4 +26,9 @@ describe("referencias de archivos del chat", () => {
     expect(esRutaArchivo("captura.webp")).toBe(true);
     expect(esRutaArchivo("una imagen que hizo el agente")).toBe(false);
   });
+
+  test("reconoce videos MP4 con espacios para abrirlos desde el chat", () => {
+    expect(esRutaArchivo("segunda guerra mundial stories.mp4")).toBe(true);
+    expect(separarReferenciaArchivo("segunda guerra mundial stories.mp4")).toEqual({ ruta: "segunda guerra mundial stories.mp4" });
+  });
 });

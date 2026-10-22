@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, ApiError, urlImagenConversacion, urlPdfConversacion } from "../api";
+import { api, ApiError, urlImagenConversacion, urlPdfConversacion, urlVideoConversacion } from "../api";
 import { LoadingSkeleton } from "./loading-skeleton";
 import { errorText } from "../lib/model";
 import { PdfPreview } from "./pdf-preview";
@@ -23,10 +23,11 @@ export function ChatArchivoPreview({
 }) {
   const esPdf = /\.pdf$/i.test(referencia.ruta);
   const esImagen = /\.(?:png|jpe?g|webp|gif)$/i.test(referencia.ruta);
+  const esVideo = /\.mp4$/i.test(referencia.ruta);
   const archivo = useQuery({
     queryKey: ["conversation-file", conversationId, referencia.ruta],
     queryFn: () => api.chatFile(conversationId, referencia.ruta),
-    enabled: !esPdf && !esImagen,
+    enabled: !esPdf && !esImagen && !esVideo,
     retry: reintentarArchivo,
   });
   const pdf = useQuery({
@@ -47,25 +48,31 @@ export function ChatArchivoPreview({
     enabled: esImagen,
     retry: reintentarArchivo,
   });
+  const video = useQuery({
+    queryKey: ["conversation-video", conversationId, referencia.ruta],
+    queryFn: () => api.chatVideoInfo(conversationId, referencia.ruta),
+    enabled: esVideo,
+    retry: reintentarArchivo,
+  });
   const cuerpoRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const cuerpo = cuerpoRef.current;
-    if (!cuerpo || !archivo.data || esPdf || esImagen) return;
+    if (!cuerpo || !archivo.data || esPdf || esImagen || esVideo) return;
     if (!referencia.linea) {
       cuerpo.scrollTop = 0;
       return;
     }
     const objetivo = cuerpo.querySelector<HTMLElement>(`[data-linea="${referencia.linea}"]`);
     if (objetivo) cuerpo.scrollTop = Math.max(0, objetivo.offsetTop - cuerpo.offsetTop - cuerpo.clientHeight / 2);
-  }, [archivo.data, referencia.linea, esPdf, esImagen]);
+  }, [archivo.data, referencia.linea, esPdf, esImagen, esVideo]);
 
   const lineas = archivo.data?.texto.split("\n") ?? [];
   const rutaActual = archivo.data?.ruta ?? referencia.ruta;
-  const nombre = (esPdf || esImagen ? referencia.ruta : rutaActual).split(/[\\/]/).at(-1) || rutaActual;
+  const nombre = (esPdf || esImagen || esVideo ? referencia.ruta : rutaActual).split(/[\\/]/).at(-1) || rutaActual;
   const tipoArchivo = describirTipoArchivo(rutaActual);
   const lineaExiste = Boolean(referencia.linea && referencia.linea > 0 && referencia.linea <= lineas.length);
-  const archivoError = esPdf ? pdf.error : esImagen ? imagen.error : archivo.error;
+  const archivoError = esPdf ? pdf.error : esImagen ? imagen.error : esVideo ? video.error : archivo.error;
   const coincidencias = archivo.error instanceof ApiError && archivo.error.code === "project_path_ambiguous"
     ? archivo.error.matches ?? []
     : [];
@@ -112,6 +119,27 @@ export function ChatArchivoPreview({
               Descargar imagen
             </a>
           )}
+          {esVideo && video.data && (
+            <>
+              <a
+                className="tl-boton tl-boton-compacto"
+                href={urlVideoConversacion(conversationId, referencia.ruta)}
+                target="_blank"
+                rel="noreferrer"
+                title={`Abrir ${video.data.nombre} en otra pestaña`}
+              >
+                Abrir video
+              </a>
+              <a
+                className="tl-boton tl-boton-compacto"
+                href={urlVideoConversacion(conversationId, referencia.ruta, true)}
+                download={video.data.nombre}
+                title={`Descargar ${video.data.nombre}`}
+              >
+                Descargar video
+              </a>
+            </>
+          )}
           <button autoFocus type="button" className="tl-accion-icono" aria-label="Cerrar vista de archivo" title="Cerrar vista de archivo" onClick={onClose}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
               <path d="m6 6 12 12M18 6 6 18" />
@@ -147,6 +175,28 @@ export function ChatArchivoPreview({
                 className="tl-chat-archivo-imagen"
                 src={urlImagenConversacion(conversationId, referencia.ruta)}
                 alt={imagen.data.nombre}
+              />
+            </div>
+          )}
+        </>
+      ) : esVideo ? (
+        <>
+          {video.isPending && <p className="tl-chat-archivo-estado" role="status">Comprobando video…</p>}
+          {video.isError && (
+            <div className="tl-chat-archivo-estado" role="alert">
+              <p>No se pudo abrir este video. {errorText(video.error)}</p>
+              {puedeReintentar && <button type="button" className="tl-boton tl-boton-compacto" onClick={() => void video.refetch()}>Reintentar</button>}
+            </div>
+          )}
+          {video.data && (
+            <div className="tl-chat-archivo-video-marco">
+              <video
+                className="tl-chat-archivo-video"
+                src={urlVideoConversacion(conversationId, referencia.ruta)}
+                controls
+                playsInline
+                preload="metadata"
+                aria-label={video.data.nombre}
               />
             </div>
           )}

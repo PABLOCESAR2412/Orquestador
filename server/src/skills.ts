@@ -401,6 +401,23 @@ description: Crea y revisa imágenes, infografías, pósteres y gráficos con co
 - Entrega la ruta del archivo, el formato y sus dimensiones; resume cualquier limitación que afecte a la fidelidad visual o a los datos.
 `;
 
+export const SKILL_MOTION_DESIGN_CONTENIDO = `---
+name: motion-design
+description: Diseña y verifica animaciones, videos y piezas audiovisuales con escenas limpias, texto correcto y formatos compatibles.
+---
+
+# Diseño de movimiento y video
+
+- Antes de producir, define el público, el formato, la proporción, la duración y una secuencia breve de escenas. Ajusta la composición a las zonas seguras del formato social solicitado.
+- Si el contenido contiene títulos, fechas, nombres o datos, dibújalos como texto vectorial con cadenas revisadas en español. Usa fuentes con glifos latinos y tildes; no agregues pseudoescritura, caracteres asiáticos ni adornos que parezcan letras.
+- Construye cada fotograma desde una escena completa sobre un fondo opaco. No dibujes sobre el fotograma anterior ni conserves capas de escenas que ya terminaron; limita los fundidos a la transición y deja desaparecer por completo la escena saliente.
+- Usa movimiento de cámara o de elementos con intención, ritmo y jerarquía. Si se pide una pieza temática, combina composición, color, tipografía y recursos visuales pertinentes; no sustituyas la dirección artística por texto que solo enumere la petición.
+- Revisa una hoja de contacto con fotogramas del inicio, mitad, final y cada transición. Comprueba texto, residuos, solapamientos, safe areas y que el primer plano no quede negro durante más tiempo del previsto; corrige y vuelve a revisar los defectos.
+- Para MP4 de distribución, prioriza H.264, píxeles yuv420p y la opción faststart; añade audio AAC solo si hay una pista intencional. Mantén GIF y WebP animado como formatos auxiliares, y explica cuando una aplicación de escritorio no admita WebP animado.
+- Verifica el archivo final y reporta su ruta, códec, dimensiones, duración, frecuencia de fotogramas y pista de audio solo cuando una herramienta disponible lo confirme. No afirmes que el reproductor o el formato se validaron si no pudiste abrirlos.
+- Si se solicita narración, prepara un guion breve en español y usa una herramienta de voz disponible; si no existe, dilo y entrega el video sin fingir que tiene audio.
+`;
+
 // Crea la carpeta de skills globales si falta. Se llama al arrancar: así bubblewrap siempre puede montarla en
 // solo lectura (si no existiera, el agente podría crearla dentro de ~/.config/opencode, que sí es escribible).
 export function prepararCarpetaGlobal(): void {
@@ -412,6 +429,7 @@ export function prepararCarpetaGlobal(): void {
     ["playwright", SKILL_PLAYWRIGHT_CONTENIDO],
     ["ponytail", SKILL_PONYTAIL_CONTENIDO],
     ["image-design", SKILL_IMAGE_DESIGN_CONTENIDO],
+    ["motion-design", SKILL_MOTION_DESIGN_CONTENIDO],
   ] as const;
   for (const [nombre, contenido] of predeterminadas) {
     try {
