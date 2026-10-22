@@ -903,3 +903,5 @@ Implementación publicada en PR #106: https://github.com/PABLOCESAR2412/Orquesta
 - [ ] Desplegar y activar la política desde Ajustes si se desea; comprobar primer ciclo real en Linux. No se modificó la configuración de producción ni se detuvieron agentes desde esta revisión.
 - [ ] M06 — El respaldo actual no incluye perfiles-opencode. Preparar copia consistente de sus bases de sesiones y probar recuperación; copiar SQLite mientras se escribe no garantiza integridad. Los perfiles permanecen intactos, visibles en el diagnóstico y fuera de la limpieza. Los archivos y mensajes ya respaldados no sustituyen el estado interno de la sesión del proveedor.
 - [ ] M07 — Revisar por separado caché de paquetes del sistema, journal y respaldos manuales. Requiere medición administrativa actual y política específica; no mezclar esas rutas con dependencias de tareas. No se ha demostrado cuánto espacio adicional se recuperaría.
+
+Implementación: PR #107 https://github.com/PABLOCESAR2412/Orquestador/pull/107. Pendientes de despliegue y validación operativa conservados.

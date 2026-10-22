@@ -3,7 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
-    { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Almacenamiento: análisis y limpieza desde Ajustes, política por uso o intervalo, protección de agentes activos y borrado sin bloquear la API", "pr": null },
+    { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Almacenamiento: análisis y limpieza desde Ajustes, política por uso o intervalo, protección de agentes activos y borrado sin bloquear la API", "pr": 107 },
     { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Disco: limpieza controlada de dependencias en tareas inactivas y respaldos sin paquetes reconstruibles", "pr": 106 },
 
     {"fecha":"2026-10-22","tipo":"grande","titulo":"Notificaciones: empuja el aviso al dispositivo sin la app abierta (VAPID cifradas, suscripciones, dedupe por evento y receptor en el service worker)","pr":105},
