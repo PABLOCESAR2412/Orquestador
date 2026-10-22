@@ -244,6 +244,9 @@ export type ServicioEstado = {
 
 // Últimas líneas del diario del servicio, ya redactadas por el servidor.
 export type RegistrosServidor = { lineas: number; texto: string; generado: string };
+export type PoliticaDisco = { automatica: boolean; umbral: number; intervaloHoras: number; antiguedadDias: number };
+export type ResultadoDisco = { fecha: string; modo: "analizar" | "limpiar"; carpetas: number; ocupadas: number; errores: number; libreAntes: number | null; libreDespues: number | null };
+export type MantenimientoDisco = { politica: PoliticaDisco; ultimo: ResultadoDisco | null; enCurso: boolean };
 
 export type ServidorEstado = {
   generado: string;
@@ -884,6 +887,9 @@ export const api = {
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
   serverService: () => request<ServicioEstado>("/api/servidor/servicio"),
   serverLogs: (lineas = 100) => request<RegistrosServidor>(`/api/servidor/logs?lineas=${lineas}`),
+  mantenimientoDisco: () => request<MantenimientoDisco>("/api/servidor/limpieza"),
+  guardarPoliticaDisco: (politica: PoliticaDisco) => request<MantenimientoDisco>("/api/servidor/limpieza", { method: "PUT", body: JSON.stringify(politica) }),
+  limpiarDisco: (modo: "analizar" | "limpiar") => request<ResultadoDisco>("/api/servidor/limpieza", { method: "POST", body: JSON.stringify({ modo, confirmar: modo === "limpiar" }) }),
   // Instalación de OpenCode: el servidor exige `confirmar: true` y ejecuta solo su comando fijo.
   herramientaInstalacion: (id: string) => request<InstalacionHerramienta>(`/api/herramientas/${id}/instalacion`),
   instalarHerramienta: (id: string) =>

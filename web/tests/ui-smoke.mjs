@@ -90,6 +90,9 @@ try {
     let reintentos = [];
     let skillInstallRequests = 0;
     let skillSaveRequests = 0;
+    let politicaDisco = { automatica: false, umbral: 85, intervaloHoras: 24, antiguedadDias: 7 };
+    let ultimoDisco = null;
+    let escriturasPreferencias = 0;
     let skillsGuardadas = [];
     let adjuntosChatSubidos = 0;
     let diffRequests = 0;
@@ -103,6 +106,18 @@ try {
     const envioAIniciado = new Promise(resolve => { anunciarEnvioA = resolve; });
     await page.route("**/api/**", async route => {
       const path = new URL(route.request().url()).pathname;
+      if (path === "/api/preferences" && route.request().method() === "PUT") escriturasPreferencias++;
+      if (path === "/api/servidor/limpieza") {
+        const metodo = route.request().method();
+        if (metodo === "PUT") politicaDisco = route.request().postDataJSON();
+        if (metodo === "POST") {
+          const body = route.request().postDataJSON();
+          assert.equal(body.confirmar, body.modo === "limpiar");
+          ultimoDisco = { fecha: now, modo: body.modo, carpetas: 2, ocupadas: 1, errores: 0, libreAntes: 16e9, libreDespues: 16e9 };
+          return route.fulfill({ json: ultimoDisco });
+        }
+        return route.fulfill({ json: { politica: politicaDisco, ultimo: ultimoDisco, enCurso: false } });
+      }
       let data = [];
       if (path === "/api/sesion") return route.fulfill({ status: authenticated ? 200 : 401, json: { ok: authenticated } });
       if (path === "/api/login") { authenticated = true; data = { ok: true }; }
@@ -1192,6 +1207,28 @@ try {
     assert.equal(await page.getByText("No disponible", { exact: true }).count(), 2);
     const origenTarea = page.getByRole("table", { name: /Uso de IA por origen/ }).getByRole("row").filter({ hasText: "Tareas del agente" });
     assert.equal(await origenTarea.getByRole("cell").nth(1).textContent(), "—");
+    await page.goto(`${base}/ajustes?pestana=almacenamiento`);
+    const disco = page.locator('section[aria-labelledby="disco-mantenimiento"]');
+    const preferenciasAntesDisco = escriturasPreferencias;
+    await disco.getByRole("button", { name: "Analizar sin borrar" }).click();
+    await disco.getByText("2 carpetas candidatas. 1 tareas ocupadas omitidas. 0 incidencias.", { exact: true }).waitFor();
+    await disco.getByLabel("Habilitar limpieza automática").check();
+    await disco.getByLabel("Uso del disco que activa la limpieza (%)").fill("90");
+    await disco.getByRole("button", { name: "Guardar configuración" }).click();
+    await disco.getByText("Configuración guardada en el servidor.", { exact: true }).waitFor();
+    assert.equal(politicaDisco.umbral, 90);
+    assert.equal(politicaDisco.automatica, true);
+    await disco.getByLabel("Conservar dependencias recientes (días)").fill("8");
+    await disco.getByLabel("Conservar dependencias recientes (días)").press("Enter");
+    await disco.getByText("Configuración guardada en el servidor.", { exact: true }).waitFor();
+    assert.equal(politicaDisco.antiguedadDias, 8);
+    await disco.getByRole("button", { name: "Limpiar dependencias ahora" }).click();
+    await disco.getByText("2 carpetas retiradas. 1 tareas ocupadas omitidas. 0 incidencias.", { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await disco.scrollIntoViewIfNeeded();
+    assert.equal(escriturasPreferencias, preferenciasAntesDisco);
+    assert.equal(await page.locator(".aj-barra-guardado").count(), 0);
+    await page.screenshot({ path: `scratch/capturas-ci/disco-${width}.png` });
     assert.deepEqual(errors, []);
     await context.close();
     console.log(`PASS ${width}px: login, mensajes, aprobación Git, código copiable y métricas.`);

@@ -202,7 +202,7 @@ export function esSensible(ruta: string): boolean {
 // Serializa las operaciones sobre una misma tarea (aprobar, preparar, limpiar).
 const cerrojos = new Map<string, Promise<unknown>>();
 
-function conTarea<T>(taskId: string, fn: () => Promise<T>): Promise<T> {
+export function conTarea<T>(taskId: string, fn: () => Promise<T>): Promise<T> {
   const previo = cerrojos.get(taskId) ?? Promise.resolve();
   const actual = previo.catch(() => {}).then(fn);
   const fin = actual.catch(() => {});

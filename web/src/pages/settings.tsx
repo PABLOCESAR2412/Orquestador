@@ -486,7 +486,7 @@ export function SettingsPage() {
           </p>
         )}
 
-        {value && (
+        {value && (pestana !== "almacenamiento" || dirty) && (
           <div className="aj-barra-guardado">
             <div className="aj-estado-guardado">
               <span className={`aj-punto${dirty ? "" : " is-ok"}`} aria-hidden="true" />
