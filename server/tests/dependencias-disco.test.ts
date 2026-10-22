@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { dependenciasRetirables, retirarDependencias } from "../src/dependencias-disco";
 import { Database } from "bun:sqlite";
 
@@ -31,6 +31,20 @@ test("sin lockfile conserva dependencias", async () => {
   const repo = crearRepo();
   rmSync(join(repo, "bun.lock"));
   expect(await dependenciasRetirables(repo)).toEqual([]);
+});
+test("revalida ocupación inmediatamente antes de borrar", async () => {
+  const repo = crearRepo();
+  expect(await retirarDependencias(repo, () => false)).toEqual([]);
+  expect(existsSync(join(repo, "node_modules"))).toBe(true);
+});
+test("recupera dependencias ya retiradas tras un reinicio sin tocar el repo", async () => {
+  const repo = crearRepo();
+  const huerfana = join(dirname(repo), ".telo-dependencias-retiradas", crypto.randomUUID());
+  mkdirSync(huerfana, { recursive: true });
+  writeFileSync(join(huerfana, "paquete.js"), "residuo");
+  await retirarDependencias(repo);
+  expect(existsSync(huerfana)).toBe(false);
+  expect(readFileSync(join(repo, "trabajo.txt"), "utf8")).toBe("conservar");
 });
 test("conserva archivos registrados en Git dentro de dependencias", async () => {
   const repo = crearRepo();

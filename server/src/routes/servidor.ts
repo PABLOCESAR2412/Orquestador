@@ -7,6 +7,7 @@ import { medirCarpeta } from "../archivos-proyecto";
 import { redactar } from "../redaccion";
 import { hallarEjecutable } from "../ejecutable";
 import { MAX_TAREAS_SIMULTANEAS } from "../limites";
+import { estadoMantenimiento, guardarPoliticaDisco, mantenerDisco, validarPoliticaDisco } from "../mantenimiento-disco";
 
 
 // Estado del servidor para la página Servidor. Ninguna respuesta incluye rutas absolutas,
@@ -94,11 +95,14 @@ async function medirCarpetas(): Promise<Carpeta[]> {
   const datos = resolve(config.dataDir);
   const sinProyectos = { bytes: 0, archivos: 0, truncado: false };
   const medir = (ruta: string) => medirCarpeta(ruta, MAX_ENTRADAS_ALMACENAMIENTO);
-  const [tareas, chat, respaldos, proyectos] = await Promise.all([
+  const [tareas, chat, respaldos, proyectos, perfiles, entregables, adjuntos] = await Promise.all([
     medir(join(datos, "tasks")),
     medir(join(datos, "chat-workspace")),
     medir(join(datos, "respaldos-migracion")),
     config.projectsDir ? medir(resolve(config.projectsDir)) : Promise.resolve(sinProyectos),
+    medir(join(datos, "perfiles-opencode")),
+    medir(join(datos, "entregables")),
+    medir(join(datos, "chat-attachments")),
   ]);
   const base = medirBaseDeDatos(datos);
   return [
@@ -107,6 +111,9 @@ async function medirCarpetas(): Promise<Carpeta[]> {
     { nombre: "respaldos-migracion", ...respaldos },
     { nombre: "base de datos", ...base, truncado: false },
     { nombre: "proyectos", ...proyectos },
+    { nombre: "sesiones de agentes", ...perfiles },
+    { nombre: "entregables", ...entregables },
+    { nombre: "adjuntos", ...adjuntos },
   ];
 }
 
@@ -222,6 +229,23 @@ function costosYTareas() {
 }
 
 export const servidor = new Hono();
+
+servidor.get("/servidor/limpieza", c => c.json(estadoMantenimiento()));
+servidor.put("/servidor/limpieza", async c => {
+  const p = await c.req.json().catch(() => null);
+  if (!validarPoliticaDisco(p)) return c.json({ error: "invalid_request", mensaje: "Revisa los límites de la limpieza." }, 400);
+  guardarPoliticaDisco(p);
+  return c.json(estadoMantenimiento());
+});
+servidor.post("/servidor/limpieza", async c => {
+  const datos = await c.req.json().catch(() => null);
+  if (!datos || !["analizar", "limpiar"].includes(datos.modo) || (datos.modo === "limpiar" && datos.confirmar !== true)) {
+    return c.json({ error: "invalid_request", mensaje: "Confirma la limpieza de dependencias regenerables." }, 400);
+  }
+  const resultado = await mantenerDisco(datos.modo);
+  if (!resultado) return c.json({ error: "conflict", mensaje: "Ya hay una revisión de almacenamiento en curso." }, 409);
+  return c.json(resultado);
+});
 
 // GET /api/servidor
 servidor.get("/servidor", async (c) => {
