@@ -1091,7 +1091,7 @@ try {
     await page.goto(`${base}/ajustes`);
     const tarjetaNotificaciones = page.locator('article[aria-labelledby="ajustes-notificaciones"]');
     await tarjetaNotificaciones.scrollIntoViewIfNeeded();
-    const interruptorNotificaciones = tarjetaNotificaciones.getByRole("switch", { name: "Notificaciones de escritorio" });
+    const interruptorNotificaciones = tarjetaNotificaciones.getByRole("switch", { name: "Notificaciones del sistema" });
     await interruptorNotificaciones.click();
     await page.waitForFunction(() => document.querySelector('[aria-label="Notificaciones de escritorio"]')?.getAttribute("aria-checked") === "true");
     const selectorSonido = tarjetaNotificaciones.getByLabel("Sonido de notificación");

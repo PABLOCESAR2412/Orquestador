@@ -3,6 +3,9 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Chat: bienvenida con recientes, vista HTML aislada y reportes independientes del repositorio", "pr": 103 },
+    { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Continuidad: sincroniza modelos, señala acciones pendientes, amplía avisos y compacta OpenCode sin corte total de 15 minutos", "pr": 103 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Móvil: adapta cabecera, esfuerzo, versiones y archivos; conserva paletas y usa el sonido de notificación de Android", "pr": 103 },
     { "fecha": "2026-10-22", "tipo": "grande", "titulo": "Fiabilidad: escanea secretos en los blobs del índice (sin bloquear valores de prueba), purga el historial con índices nuevos, apaga la tarea por silencio, inyecta guías en tareas sin proyecto y desacopla la suite de la base", "pr": 102 },
     { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Tareas: muestra el evento de PR con conflictos y traduce los errores guardados a frases claras", "pr": 102 },
     { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Chat: reproduce video y audio permitidos bajo la política de contenido (media-src con blob)", "pr": 102 },
