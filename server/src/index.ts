@@ -93,7 +93,7 @@ const cabecerasSeguras = secureHeaders({
 // Hono sobrescribe las cabeceras después de la ruta, así que se saltan aquí.
 app.use("*", (c, next) =>
   /^\/api\/documentos\/[^/]+\/vista$/.test(c.req.path) ||
-  /^\/api\/conversations\/[^/]+\/archivo-pdf$/.test(c.req.path)
+  /^\/api\/conversations\/[^/]+\/archivo-(?:pdf|html)$/.test(c.req.path)
     ? next()
     : cabecerasSeguras(c, next),
 );

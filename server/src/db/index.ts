@@ -1,9 +1,15 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
+import { tmpdir } from "node:os";
 import { config } from "../config";
 
 function abrirBase(dir: string): Database {
+  if (process.env.TELO_PRUEBAS_BASE_AISLADA === "1") {
+    const destino = resolve(dir);
+    const temporales = resolve(tmpdir()) + sep;
+    if (!destino.startsWith(temporales)) throw new Error("Las pruebas solo pueden abrir bases dentro del directorio temporal.");
+  }
   mkdirSync(dir, { recursive: true });
   const base = new Database(join(dir, "orquestador.db"), { create: true });
   base.exec("PRAGMA journal_mode = WAL;");

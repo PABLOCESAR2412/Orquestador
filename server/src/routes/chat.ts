@@ -440,6 +440,29 @@ chat.get("/conversations/:id/archivo", (c) => {
   }
 });
 
+// Documento activo en origen opaco: nunca hereda permisos ni la CSP de la aplicación.
+chat.get("/conversations/:id/archivo-html", (c) => {
+  const conversacion = leerConversacion(c.req.param("id"));
+  if (!conversacion) return c.json({ error: "conversation_not_found" }, 404);
+  try {
+    const ruta = normalizarRuta(c.req.query("ruta"));
+    if (!/\.html?$/i.test(ruta.join("/"))) return c.json({ error: "unsupported_file_type" }, 400);
+    const archivo = leerEnRaices(raicesArchivosConversacion(conversacion), raiz => leerArchivo(raiz, ruta));
+    if (archivo.truncado) return c.json({ error: "file_too_large" }, 413);
+    return new Response(archivo.texto, { headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "X-Frame-Options": "SAMEORIGIN",
+      "Content-Security-Policy": "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' https:; style-src 'unsafe-inline' https:; img-src data: blob: https:; font-src data: https:; media-src data: blob: https:; connect-src 'none'; frame-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'",
+    }});
+  } catch (err) {
+    if (err instanceof ArchivoError) return c.json({ error: err.code }, err.status);
+    throw err;
+  }
+});
+
 chat.get("/conversations/:id/archivo-pdf", (c) => {
   const id = c.req.param("id");
   const conversacion = leerConversacion(id);

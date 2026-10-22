@@ -390,7 +390,7 @@ async function faseObrero(
   // Las notas se añaden al aprobar y no forman parte del hash del plan aprobado.
   if (aprobacion.plan_hash && (aprobacion.approved_hash !== aprobacion.plan_hash || hashPlan(sinNotas(plan)) !== aprobacion.plan_hash))
     throw new ErrorFase("El plan cambió después de su aprobación. Revisa y aprueba la versión actual.");
-  const alcance = task.project_id ? await capturarAlcance(ctx.cwd, plan.pasos.flatMap(p => p.archivos)) : null;
+  const alcance = await capturarAlcance(ctx.cwd, plan.pasos.flatMap(p => p.archivos));
 
   db.query("UPDATE tasks SET status = 'running' WHERE id = ?").run(task.id);
   publicarEstado(task.id);
