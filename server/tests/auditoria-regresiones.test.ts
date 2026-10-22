@@ -93,6 +93,18 @@ test("el bootstrap rechaza una base fuera del temporal antes de abrirla", () => 
  } finally { process.env.DATA_DIR=anterior; }
 });
 
+test("el guard no duerme si el preload no cargó: bun test activa NODE_ENV", () => {
+ const anterior=process.env.DATA_DIR,bandera=process.env.TELO_PRUEBAS_BASE_AISLADA;
+ try {
+  delete process.env.TELO_PRUEBAS_BASE_AISLADA;
+  process.env.DATA_DIR=resolve(import.meta.dir,"../data");
+  expect(() => db.query("SELECT 1")).toThrow("Las pruebas solo pueden abrir bases dentro del directorio temporal.");
+ } finally {
+  if (bandera===undefined) delete process.env.TELO_PRUEBAS_BASE_AISLADA; else process.env.TELO_PRUEBAS_BASE_AISLADA=bandera;
+  process.env.DATA_DIR=anterior;
+ }
+});
+
 test("un .git inválido no se trata como workspace libre", async () => {
  const cwd=join(raiz,"git-invalido");mkdirSync(cwd);
  writeFileSync(join(cwd,".git"),"gitdir: /otro/repositorio");
