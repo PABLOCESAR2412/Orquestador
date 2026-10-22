@@ -182,6 +182,7 @@ export function MensajeAgente({
   permitirAbrirArchivo,
   onReintentar,
   onGuardar,
+  onDerivarSkill,
   guardando = false,
   proceso,
   onAbrirSubchat,
@@ -200,6 +201,7 @@ export function MensajeAgente({
   onCitar?: (texto: string) => void;
   // Guarda el texto de esta respuesta como documento en el formato elegido.
   onGuardar?: (formato: FormatoDocumento) => void;
+  onDerivarSkill?: () => void;
   guardando?: boolean;
   // Tiempo aproximado entre el mensaje del usuario y esta respuesta.
   duracion?: string | null;
@@ -292,6 +294,20 @@ export function MensajeAgente({
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
+          )}
+          {!mediaId && onDerivarSkill && (
+            <button
+              type="button"
+              className="tl-accion-icono"
+              aria-label="Derivar una skill global de esta experiencia"
+              title="Preparar un borrador de skill global a partir de esta experiencia"
+              onClick={onDerivarSkill}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2L12 3z" />
+                <path d="m19 14 .9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9L19 14z" />
               </svg>
             </button>
           )}

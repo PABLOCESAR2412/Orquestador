@@ -3749,6 +3749,35 @@ button:disabled { opacity: 0.4; cursor: default; }
   border-radius: var(--radius-sm);
   background: var(--surface-lowest);
 }
+.skills-modos,
+.skills-nueva-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.skills-nueva-acciones { justify-content: space-between; }
+.skills-revision {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.skills-revision summary {
+  color: var(--ink);
+  cursor: pointer;
+}
+.skills-revision ul {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+.skills-revision li { overflow-wrap: anywhere; }
 .skills-etiqueta {
   display: flex;
   justify-content: space-between;
@@ -3772,6 +3801,9 @@ button:disabled { opacity: 0.4; cursor: default; }
 @media (max-width: 420px) {
   .skills-cabecera { gap: 8px; }
   .skills-cabecera > button { min-height: 40px; padding-inline: 10px; }
+  .skills-modos > button { flex: 1 1 140px; min-height: 40px; }
+  .skills-nueva-acciones { align-items: flex-start; }
+  .skills-texto { min-height: 220px; }
 }
 .skills-lista {
   display: grid;

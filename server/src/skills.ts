@@ -421,6 +421,48 @@ description: Diseña y verifica animaciones, videos y piezas audiovisuales con e
 - Si el usuario menciona una plataforma como Instagram Stories, TikTok o Facebook, adapta directamente proporción, resolución y zonas seguras a ese destino. Si pide cámara lenta, aplícala al render final y comprueba la duración resultante.
 `;
 
+export const SKILL_AUTORIA_CONTENIDO = `---
+name: skill-authoring
+description: Crea, deriva, revisa y mejora skills para agentes a partir de tareas repetidas, resultados verificados y correcciones del usuario. Úsala cuando se pida crear o perfeccionar una skill, convertir una experiencia en un flujo reutilizable o evaluar si una skill se activa y funciona bien.
+---
+
+# Crear y mejorar skills
+
+Convierte procedimientos repetidos en instrucciones reutilizables, específicas y comprobables. Usa el historial relevante de la conversación: solicitud inicial, resultado, errores observados y correcciones del usuario.
+
+## Método
+
+1. Revisa las skills disponibles y edita una existente si ya cubre el mismo objetivo. No dupliques habilidades.
+2. Extrae solo el patrón que se pueda reutilizar. Mantén fuera de una skill global los nombres, rutas, datos y decisiones exclusivos de un proyecto, salvo que la persona pida una skill de proyecto.
+3. Define una sola responsabilidad, sus casos de uso y cuándo no debe activarse. La descripción debe indicar qué hace y qué peticiones la disparan.
+4. Escribe un \`SKILL.md\` breve con el procedimiento, entradas necesarias, criterios observables de éxito, límites y qué hacer si falta o se contradice información.
+5. Mantén los detalles condicionales fuera del cuerpo principal cuando haya archivos de referencia disponibles. Enlaza solo recursos que existan junto a la skill; no dejes rutas pendientes. Añade scripts únicamente para pasos deterministas y seguros.
+6. Incluye casos para comprobar la selección y la ejecución: una petición que sí debe activarla, una parecida que no, un caso normal y un caso límite. Indica qué modelos se probaron realmente y qué queda pendiente; no presentes ejemplos hipotéticos como pruebas ejecutadas.
+7. Entrega el contenido como borrador editable, explica qué experiencia lo motivó y espera la revisión de la persona. Nunca guardes ni reemplaces una skill global por iniciativa propia.
+
+## Criterio de calidad
+
+Una skill lista tiene un disparador claro, un objetivo único, pasos accionables, criterios de éxito verificables, manejo de límites y casos de prueba. Si una sección solo repite conocimiento general del modelo, elimínala.
+`;
+
+export const SKILL_CONTEXT7_CONTENIDO = `---
+name: context7
+description: Consulta documentación actual y ejemplos de bibliotecas, frameworks, SDK, APIs y herramientas de línea de comandos al implementarlos, configurarlos, migrarlos o depurarlos.
+---
+
+# Documentación técnica actual
+
+Usa Context7 cuando la tarea dependa de la API, configuración, versión o comportamiento actual de una biblioteca o servicio. No lo uses para responder preguntas que el código del repositorio ya resuelve por sí mismo.
+
+## Consulta
+
+1. Llama a \`resolve-library-id\` con el nombre exacto de la biblioteca y la pregunta concreta. Elige el resultado oficial o el que coincida con la versión indicada.
+2. Llama a \`query-docs\` con el ID elegido y una sola pregunta específica. Separa conceptos diferentes en consultas distintas.
+3. Contrasta la documentación con las versiones y los patrones presentes en el repositorio antes de cambiar código.
+
+Envía solo el nombre de la tecnología y preguntas conceptuales. No envíes código privado del proyecto, credenciales, datos de usuarios ni contenido de archivos. Si Context7 no está disponible o limita la consulta, continúa con fuentes oficiales accesibles y deja claro qué verificaste.
+`;
+
 // Crea la carpeta de skills globales si falta. Se llama al arrancar: así bubblewrap siempre puede montarla en
 // solo lectura (si no existiera, el agente podría crearla dentro de ~/.config/opencode, que sí es escribible).
 export function prepararCarpetaGlobal(): void {
@@ -433,6 +475,8 @@ export function prepararCarpetaGlobal(): void {
     ["ponytail", SKILL_PONYTAIL_CONTENIDO],
     ["image-design", SKILL_IMAGE_DESIGN_CONTENIDO],
     ["motion-design", SKILL_MOTION_DESIGN_CONTENIDO],
+    ["skill-authoring", SKILL_AUTORIA_CONTENIDO],
+    ["context7", SKILL_CONTEXT7_CONTENIDO],
   ] as const;
   for (const [nombre, contenido] of predeterminadas) {
     try {

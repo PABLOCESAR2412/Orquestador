@@ -1,7 +1,7 @@
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync } from "node:fs";
-import { extname, resolve } from "node:path";
+import { basename, extname, resolve } from "node:path";
 
 // Solo fixtures locales: estas pruebas nunca llaman a proveedores ni a repositorios reales.
 const root = existsSync("web/dist") ? resolve("web/dist") : resolve("dist");
@@ -25,6 +25,9 @@ function crearPdfPrueba() {
 }
 const pdfPrueba = crearPdfPrueba();
 const pngPrueba = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC", "base64");
+const videoPathPrueba = process.env.TELO_UI_VIDEO_FIXTURE;
+const nombreVideoPrueba = videoPathPrueba ? basename(videoPathPrueba) : "video-prueba.webm";
+const nombreHojaPrueba = `Fotogramas de ${nombreVideoPrueba.replace(/\.[^.]+$/, "")}.jpg`;
 const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
   const path = resolve(root, "." + new URL(req.url).pathname);
   const file = Bun.file(path);
@@ -84,6 +87,9 @@ try {
     let approvals = 0;
     let reintentos = [];
     let skillInstallRequests = 0;
+    let skillSaveRequests = 0;
+    let skillsGuardadas = [];
+    let adjuntosChatSubidos = 0;
     let diffRequests = 0;
     let taskListRequests = 0;
     const esperasPollUsadas = [];
@@ -161,6 +167,18 @@ try {
           data = { messages: messages.slice(-2) };
         } else data = messages;
       }
+      else if (path === "/api/conversations/c1/adjuntos" && route.request().method() === "POST") {
+        adjuntosChatSubidos += 1;
+        return route.fulfill({
+          status: 201,
+          json: {
+            id: `00000000-0000-4000-8000-${String(adjuntosChatSubidos).padStart(12, "0")}`,
+            nombre: nombreHojaPrueba,
+            mime: "image/jpeg",
+            bytes: 2048,
+          },
+        });
+      }
       else if (path === "/api/conversations/c1/archivo-pdf" || path === "/api/conversations/c2/archivo-pdf") {
         const params = new URL(route.request().url()).searchParams;
         const nombre = path.includes("/c2/") ? "libre.pdf" : "informe revisión.pdf";
@@ -232,6 +250,21 @@ try {
         skillInstallRequests++;
         await new Promise(resolve => setTimeout(resolve, 100));
         return route.fulfill({ status: 409, json: { error: "skill_command_ambiguous" } });
+      }
+      else if (path === "/api/skills") data = { skills: skillsGuardadas.map(({ contenido, ...skill }) => skill) };
+      else if (path.startsWith("/api/skills/") && route.request().method() === "GET") {
+        const nombre = decodeURIComponent(path.slice("/api/skills/".length));
+        const skill = skillsGuardadas.find(item => item.nombre === nombre);
+        if (!skill) return route.fulfill({ status: 404, json: { error: "skill_no_encontrada" } });
+        data = skill;
+      }
+      else if (path.startsWith("/api/skills/") && route.request().method() === "PUT") {
+        const nombre = decodeURIComponent(path.slice("/api/skills/".length));
+        const contenido = route.request().postDataJSON().contenido;
+        skillsGuardadas = skillsGuardadas.filter(item => item.nombre !== nombre);
+        skillsGuardadas.push({ nombre, descripcion: "Skill preparada desde una experiencia", valida: true, bytes: Buffer.byteLength(contenido), modificada: now, contenido });
+        skillSaveRequests++;
+        data = { creada: true };
       }
       else if (path === "/api/servidor") data = null;
       else if (path === "/api/cuotas") data = { proveedores: [] };
@@ -398,6 +431,10 @@ try {
     assert.equal(await page.locator(".tl-codigo-pestana").filter({ hasText: "chart" }).count(), 1, "JSON inválido se conserva como código");
     const mensajeUsuario = page.locator(".tl-msg-usuario").filter({ hasText: "git commit y push" }).first();
     const mensajeAgente = page.locator(".tl-msg-agente").filter({ hasText: "Faltan dependencias" }).first();
+    await mensajeAgente.getByRole("button", { name: "Derivar una skill global de esta experiencia", exact: true }).click();
+    const borradorChat = page.locator(".tl-composer-input");
+    assert.match(await borradorChat.inputValue(), /^\$skill-authoring\n\n/);
+    await borradorChat.fill("");
     for (const mensaje of [mensajeUsuario, mensajeAgente]) {
       const [meta, acciones] = await Promise.all([
         mensaje.locator(".tl-msg-meta").boundingBox(),
@@ -834,6 +871,33 @@ try {
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByText("Mensaje recibido", { exact: true }).waitFor();
     assert.equal(await page.locator('section.tl-accion-git-actual').count(), 0, "las acciones de turnos previos quedan en el historial plegado");
+    if (videoPathPrueba) {
+      await page.locator('input[type="file"]').setInputFiles(videoPathPrueba);
+      await page.getByText("4 fotogramas · sin audio", { exact: false }).waitFor();
+      assert.equal(await page.getByRole("button", { name: "Enviar", exact: true }).isDisabled(), false, "un video válido debe habilitar el envío aunque el borrador esté vacío");
+      const subidaVideo = page.waitForRequest(request =>
+        request.url().endsWith("/api/conversations/c1/adjuntos") && request.method() === "POST",
+      );
+      const solicitudVideo = page.waitForRequest(request =>
+        request.url().endsWith("/api/conversations/c1/messages") &&
+        request.method() === "POST" &&
+        request.postDataJSON().content.includes(nombreHojaPrueba),
+      );
+      await page.getByRole("button", { name: "Enviar", exact: true }).click();
+      try {
+        await subidaVideo;
+      } catch {
+        const errorVideo = await page.locator(".tl-composer .tl-alerta").textContent().catch(() => "sin mensaje de error visible");
+        throw new Error(`el video no llegó al endpoint de adjuntos: ${errorVideo}`);
+      }
+      await solicitudVideo;
+      assert.equal(adjuntosChatSubidos, 1, "la hoja de fotogramas se sube antes de enviar el mensaje");
+      const hojaEnviada = page.locator(".tl-msg-usuario img[alt]").last();
+      await hojaEnviada.waitFor({ state: "attached" });
+      assert.equal(await hojaEnviada.getAttribute("alt"), nombreHojaPrueba);
+    } else {
+      console.log("SKIP video: define TELO_UI_VIDEO_FIXTURE con un MP4 o WebM local para probar la decodificación real.");
+    }
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Haz una imagen de un colibrí");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByRole("button", { name: "Uso", exact: true }).click();
@@ -1043,6 +1107,17 @@ try {
     await comandoSkill.dispatchEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true });
     await page.getByText("El repositorio tiene más de una skill con ese nombre. Elige un repositorio que contenga una sola.", { exact: true }).waitFor();
     assert.equal(skillInstallRequests, 1);
+    await page.getByRole("button", { name: "Crear desde propuesta", exact: true }).click();
+    const borradorSkill = page.getByLabel("Borrador de SKILL.md");
+    await borradorSkill.fill("---\nname: resumen-experiencia\ndescription: Úsala para convertir un flujo repetido en instrucciones comprobables.\n---\n\n# Objetivo\n\nReutilizar el procedimiento y verificar el resultado.\n");
+    assert.equal(await page.getByRole("button", { name: "Guardar skill revisada", exact: true }).isDisabled(), false);
+    await page.screenshot({ path: `scratch/capturas-ci/skills-borrador-${width}.png` });
+    const respuestaGuardado = page.waitForResponse(response => response.request().method() === "PUT" && response.url().includes("/api/skills/resumen-experiencia"));
+    await page.getByRole("button", { name: "Guardar skill revisada", exact: true }).click();
+    assert.equal((await respuestaGuardado).status(), 200);
+    await page.locator("#skills-contenido").waitFor();
+    assert.equal(skillSaveRequests, 1);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     codexSesionEnPicker = true;
     await page.reload();
     await page.locator(".model-chip").click();

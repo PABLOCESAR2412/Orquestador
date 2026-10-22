@@ -97,6 +97,23 @@ test("guarda la credencial cifrada y solo la entrega al runner si la conexión e
   expect(configuracionMcpParaAgente()).toEqual({ servidores: [], variables: {} });
 });
 
+test("habilita el MCP oficial de Context7 solo en tareas que lo necesitan y respeta una conexión propia", async () => {
+  const predeterminado = configuracionMcpParaAgente(true);
+  expect(predeterminado.servidores).toContainEqual({ clave: "context7", url: "https://mcp.context7.com/mcp" });
+  expect(configuracionOpenCodeMcp(predeterminado.servidores).mcp).toHaveProperty("context7");
+  expect(argumentosConfigMcpCodex(predeterminado.servidores).join(" ")).toContain("mcp_servers.context7.url");
+
+  const respuesta = await app.request("/conexiones", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ nombre: "Context7", url: "https://docs.ejemplo.test/mcp" }),
+  });
+  expect(respuesta.status).toBe(201);
+  const propio = configuracionMcpParaAgente(true);
+  expect(propio.servidores).toHaveLength(1);
+  expect(propio.servidores[0]?.url).toBe("https://docs.ejemplo.test/mcp");
+});
+
 test("valida entradas, conserva credenciales al editar y permite quitarlas y borrar la conexión", async () => {
   const invalida = await app.request("/conexiones", {
     method: "POST",

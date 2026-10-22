@@ -285,8 +285,9 @@ const SKILLS_CONOCIDAS: Record<string, { owner: string; repo: string; name: stri
   caveman: { owner: "JuliusBrussee", repo: "caveman", name: "caveman" },
   impeccable: { owner: "pbakaus", repo: "impeccable", name: "impeccable" },
   "frontend-design": { owner: "vercel-labs", repo: "agent-skills", name: "frontend-design" },
-  context7: { owner: "upstash", repo: "context7", name: "context7" },
-  "context-7": { owner: "upstash", repo: "context7", name: "context7" },
+  context7: { owner: "upstash", repo: "context7", name: "context7-mcp" },
+  "context-7": { owner: "upstash", repo: "context7", name: "context7-mcp" },
+  "context7-mcp": { owner: "upstash", repo: "context7", name: "context7-mcp" },
 };
 
 // Interpreta el comando de Skills CLI como datos. Soporta comandos completos, abreviados y URLs.
@@ -515,6 +516,9 @@ export async function instalarSkillComando(ambito: AmbitoSkills, comando: unknow
     } else {
       // Intento de descarga directa de CDN raw sin consumir cuota de la API REST de GitHub
       const urlsCdn = [
+        ...(pedido.owner === "upstash" && pedido.repo === "context7" && pedido.name === "context7-mcp"
+          ? [`https://raw.githubusercontent.com/upstash/context7/main/plugins/agent-plugins/context7/skills/context7-mcp/SKILL.md`]
+          : []),
         `https://raw.githubusercontent.com/${pedido.owner}/${pedido.repo}/main/skills/.curated/${pedido.name}/SKILL.md`,
         `https://raw.githubusercontent.com/${pedido.owner}/${pedido.repo}/main/skills/${pedido.name}/SKILL.md`,
         `https://raw.githubusercontent.com/${pedido.owner}/${pedido.repo}/main/${pedido.name}/SKILL.md`,

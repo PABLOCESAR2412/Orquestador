@@ -11,7 +11,7 @@ import { runCodex } from "./runners/codex";
 import { promptConHistorial, sesionCompatible } from "./conversacion-contexto";
 import { conMemoria, extraerMemoria, guardarMemoria, guardarPropuestaMemoria, memoriaDelProyecto, quitarBloqueMemoria } from "./memoria";
 import { conservarMemoriaSegunJev, puntuarMemoriaJev } from "./jev";
-import { inyectarSkillsEnPrompt } from "./resolucion-skills";
+import { inyectarSkillsEnPrompt, requiereContext7 } from "./resolucion-skills";
 import { imagenesDelPrompt } from "./chat-adjuntos";
 import { configuracionMcpParaAgente } from "./conexiones-mcp";
 
@@ -400,7 +400,7 @@ export function promptContinuacion(prompt: string, tieneSesion = true): string {
 }
 
 async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoAgente> {
-  const mcp = configuracionMcpParaAgente();
+  const mcp = configuracionMcpParaAgente(requiereContext7(opts.prompt));
   // Claves de proveedor (Ajustes) y secretos del proyecto. Si un nombre se repite, gana el del proyecto.
   const propias: Record<string, string> = {
     ...entornoProveedores(),
