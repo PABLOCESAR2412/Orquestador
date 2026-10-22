@@ -76,6 +76,9 @@ const cabecerasSeguras = secureHeaders({
       "https://*.githubusercontent.com",
       "https://github.com",
     ],
+    // El chat encarga video y audio como blob: del propio origen; sin media-src, el
+    // default-src lo bloqueaba y el reproductor quedaba mudo en el VM.
+    mediaSrc: ["'self'", "blob:"],
     connectSrc: ["'self'"],
     workerSrc: ["'self'"],
     manifestSrc: ["'self'"],
