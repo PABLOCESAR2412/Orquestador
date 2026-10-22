@@ -498,9 +498,10 @@ export type MedioJob = {
 };
 
 export type CapacidadesMediosApi = {
-  apiGoogleConfigurada: boolean;
-  imagen: { modelo: string; gratis: boolean; resoluciones: string[] };
-  video: { modeloEconomico: string; modelo4k: string; gratis: boolean; resoluciones: string[]; duracionesSegundos: number[] };
+  politica: "sin_generacion_multimedia_externa_facturable";
+  imagen: { ruta: "modelo_seleccionado_y_herramientas_locales" };
+  video: { ruta: "modelo_seleccionado_y_herramientas_locales" };
+  voz: { ruta: "herramienta_local_o_servidor_mcp_configurado" };
 };
 
 export type EventoVivo =
@@ -767,7 +768,6 @@ export const api = {
     request<SubagentChat[]>(`/api/conversations/${conversacionId}/turnos/${turnoId}/subagentes`),
   capacidadesMedios: () => request<CapacidadesMediosApi>("/api/media/capacidades"),
   medio: (id: string) => request<MedioJob>(`/api/media/${encodeURIComponent(id)}`),
-  confirmarMedio: (id: string) => request<MedioJob>(`/api/media/${encodeURIComponent(id)}/confirmar`, { method: "POST", body: "{}" }),
   cancelarMedio: (id: string) => request<{ ok: boolean }>(`/api/media/${encodeURIComponent(id)}/cancelar`, { method: "POST", body: "{}" }),
   sendMessage: (id: string, content: string, retryOf?: string) =>
     request<{ messages: Message[] }>(`/api/conversations/${id}/messages`, {

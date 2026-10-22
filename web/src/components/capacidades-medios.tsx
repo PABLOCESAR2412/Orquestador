@@ -1,6 +1,4 @@
 import { useRef, type RefObject } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../api";
 import { useDialogo } from "./controls";
 
 export function CapacidadesMedios({
@@ -15,7 +13,6 @@ export function CapacidadesMedios({
   disparador?: RefObject<HTMLElement | null>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const medios = useQuery({ queryKey: ["capacidades-medios"], queryFn: api.capacidadesMedios, staleTime: 60_000 });
   const cerrar = () => {
     disparador?.current?.focus();
     onCerrar();
@@ -32,10 +29,11 @@ export function CapacidadesMedios({
       <dl className="tl-medios-lista">
         <div><dt>Gráficos</dt><dd>Diagramas Mermaid, barras, líneas, pastel, dona y estadísticas.</dd></div>
         <div><dt>Documentos</dt><dd>Word, Excel, HTML, texto y Markdown; la vista puede imprimirse o guardarse como PDF.</dd></div>
-        <div><dt>Imágenes</dt><dd>Google Nano Banana 2.1: JPEG en 1K, 2K o 4K. {medios.data?.apiGoogleConfigurada ? "API configurada." : "API key de Google sin configurar."}</dd></div>
-        <div><dt>Vídeo</dt><dd>Google Veo 3.1 Lite: 720p/1080p; Veo Fast: 4K. Puedes pedir relación vertical, horizontal y duración de 4, 6 u 8 segundos.</dd></div>
+        <div><dt>Imágenes</dt><dd>El agente usa el modelo seleccionado y herramientas locales como SVG, HTML o Canvas. El resultado depende de las herramientas disponibles.</dd></div>
+        <div><dt>Vídeo</dt><dd>Puede crear animaciones con herramientas locales como FFmpeg. Pide directamente la proporción, duración, ritmo y plataforma de destino.</dd></div>
+        <div><dt>Voz</dt><dd>Para narración, conecta VoiceStudio u otro TTS local por MCP en Ajustes → Conexiones. El agente puede añadir el audio al MP4 si FFmpeg está instalado.</dd></div>
       </dl>
-      <p className="tl-medios-nota">Se activa al pedir una imagen o video en lenguaje natural. La generación usa Google API aunque el chat use otro modelo; estos modelos no tienen nivel gratuito. Telo muestra el costo estimado y espera tu autorización antes de generar. <a href="https://ai.google.dev/gemini-api/docs/pricing" target="_blank" rel="noreferrer">Ver precios oficiales</a>.{!medios.data?.apiGoogleConfigurada && <> Configura la API key en <a href="/ajustes?pestana=proveedores">Ajustes → Proveedores IA</a>.</>}</p>
+      <p className="tl-medios-nota">Este flujo no llama generadores externos de pago. Para reducir costes del modelo, elige una opción marcada como gratis en el selector. Las herramientas locales no cobran por petición, aunque usan el almacenamiento y el procesamiento de tu equipo o servidor. Si no hay un generador local compatible, el agente explicará el límite en vez de sustituirlo por una API facturable.</p>
     </div>
   );
 }

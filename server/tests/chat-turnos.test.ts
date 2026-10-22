@@ -286,6 +286,17 @@ describe("archivos de texto de chats sin proyecto", () => {
 
 // Estas pruebas lanzan grupos de procesos con `setsid`, igual que el servidor Linux.
 describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
+  test("envía las solicitudes de imagen y video al modelo seleccionado sin crear trabajos multimedia de pago", async () => {
+    for (const prompt of ["Genera una imagen de un colibrí", "Crea un video vertical de un colibrí"]) {
+      const id = conversacion("opencode/big-pickle");
+      const respuesta = await enviar(id, prompt);
+      expect(respuesta.status).toBe(202);
+      await esperar(() => mensajes(id).some((mensaje) => mensaje.role === "assistant"));
+      expect(mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content).toBe("Respuesta lista.");
+      expect(db.query<{ total: number }, [string]>("SELECT COUNT(*) AS total FROM media_jobs WHERE conversation_id=?").get(id)?.total).toBe(0);
+    }
+  });
+
   test("inyecta el contrato común aunque el chat use un runner de OpenCode", async () => {
     const id = conversacion();
     const response = await enviar(id, "CONTRATO-EJECUCION-PRUEBA");

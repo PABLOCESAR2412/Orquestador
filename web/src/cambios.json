@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Medios: enruta imágenes y videos al agente, bloquea APIs facturables y documenta TTS local", "pr": 98 },
     { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Chat: previsualiza y descarga videos MP4, y añade una skill global para animaciones sin residuos de escena", "pr": 97 },
     { "fecha": "2026-10-21", "tipo": "grande", "titulo": "Respaldos: guarda el último conjunto verificado en un bucket privado de Cloudflare R2 y depura copias antiguas", "pr": 96 },
     { "fecha": "2026-10-21", "tipo": "minimo", "titulo": "Tareas: elimina el corte automático de 30 minutos y conserva la cancelación manual", "pr": 96 },

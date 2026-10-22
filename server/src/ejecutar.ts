@@ -54,13 +54,14 @@ export type ResultadoAgente = RunResult & { modelo: string; variante: string | n
 // Contrato común, antes de los prompts de fase, para chats y tareas con cualquier runner.
 export const CONTRATO_EJECUCION = [
   "Contrato de ejecución común de Telo (aplica a cualquier modelo y proveedor):",
-  "- Interpreta la petición actual como objetivo principal y conserva sus restricciones explícitas. Usa el historial, la memoria, las instrucciones y las skills como contexto pertinente; no repitas trabajo ya terminado.",
-  "- Antes de actuar, identifica el alcance, las precondiciones y qué resultado permitiría comprobar que terminaste. Si falta un dato que realmente bloquea la tarea, pregunta; si no, elige una opción segura y explícala al final.",
-  "- Inspecciona el contexto relevante y las herramientas disponibles antes de usarlas. No afirmes que una herramienta, skill, modelo o capacidad está disponible sin comprobarlo.",
-  "- Haz el cambio o la investigación más acotados que resuelvan el objetivo, dentro del workspace y de las autorizaciones recibidas.",
-  "- En consultas de investigación o datos externos, busca en Internet con las herramientas disponibles y respalda las afirmaciones con enlaces directos en Markdown. Elige materiales pertinentes (documentación, estudios, libros, videos, informes, datasets u otros); prioriza fuentes primarias y fiables, atribuye autor o editor cuando esté disponible y nunca inventes enlaces ni fuentes. Si no puedes consultar la web, dilo claramente.",
-  "- Verifica el resultado con comprobaciones adecuadas al proyecto. Comunica evidencia observable y distingue lo que pasó, lo que falló y lo que no se pudo probar; nunca inventes resultados.",
-  "- Respeta el formato de la fase: JSON para análisis/reportes, conversación natural para chats. En trabajos largos, da avances breves al inicio y ante hallazgos; no repitas planes ni muestres razonamiento privado.",
+  "- Interpreta la petición como objetivo y respeta sus restricciones. Usa el historial, memoria, instrucciones y skills pertinentes; no repitas trabajo terminado.",
+  "- Define alcance, precondiciones y evidencia de término. Si falta un dato bloqueante, pregunta; si no, elige una opción segura y explícala al final.",
+  "- Inspecciona contexto y herramientas antes de usarlas; no afirmes capacidades sin comprobarlas.",
+  "- Haz el cambio o investigación mínimos que resuelvan el objetivo, dentro del workspace y las autorizaciones recibidas.",
+  "- Para investigar, busca en Internet y respalda afirmaciones con enlaces directos en Markdown. Usa materiales pertinentes (documentación, estudios, libros, videos, informes, datasets u otros), prioriza fuentes primarias fiables y atribuye autor/editor si está disponible; nunca inventes enlaces ni fuentes. Si no puedes consultar, dilo.",
+  "- Para imágenes, videos o voz, usa primero herramientas locales gratuitas o MCP configurados; no llames APIs que puedan cobrar. Si no puedes producir el formato, explica el límite sin fingir resultados ni usar proveedores de pago.",
+  "- Verifica el resultado y comunica evidencia observable, separando lo correcto, lo fallido y lo no probado; nunca inventes resultados.",
+  "- Respeta el formato de fase: JSON para análisis/reportes y conversación natural para chats. En trabajos largos, da avances breves; no repitas planes ni muestres razonamiento privado.",
   "- Redacta en español la actividad visible y los avisos de progreso. Conserva sin traducir comandos, código, rutas, nombres propios y citas.",
   "- Explica decisiones con conclusiones y evidencia útil; no reveles razonamiento interno privado.",
 ].join("\n");
@@ -619,6 +620,12 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     if (!validacionRespaldo.ok) {
       throw limpiarError(new Error(
         `El modelo ${opts.model} falló y el respaldo ${respaldo} ya no está disponible en OpenCode. Elige un modelo que aparezca en el selector de Ajustes y vuelve a intentarlo.`,
+      ));
+    }
+    const principalGratis = (await getModels().catch(() => [])).find((modelo) => modelo.id === opts.model)?.free === true;
+    if (principalGratis && !validacionRespaldo.info.free) {
+      throw limpiarError(new Error(
+        `El modelo gratuito ${opts.model} falló y no se usó el respaldo de pago ${respaldo} para evitar cargos. Elige un respaldo marcado como gratis en Ajustes.`,
       ));
     }
 
