@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad } from "../api";
+import { api, ApiError, reintentarConsultaTransitoria, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad } from "../api";
 import { useEventosVivos } from "../lib/eventos-vivos";
 import { ModelPicker } from "../components/model-picker";
 import { UsoPanel } from "../components/uso-panel";
@@ -418,6 +418,7 @@ export function ChatPage() {
     queryFn: () => api.conversationTasks(selectedId!),
     enabled: !!selectedId && !!current?.project_id,
     refetchInterval: 3_000,
+    retry: reintentarConsultaTransitoria,
   });
   const tareaChat = current?.project_id ? tareasChat.data?.at(-1) : undefined;
   const modeloAgotadoChat = current?.cuota_modelo ?? (tareaChat?.status === "sin_cuota"
@@ -635,6 +636,15 @@ export function ChatPage() {
       void qc.invalidateQueries({ queryKey: ["tasks"] });
       void qc.invalidateQueries({ queryKey: ["conversation-tasks"] });
       if (tareaChat?.id) void qc.invalidateQueries({ queryKey: ["task", tareaChat.id] });
+    },
+  });
+
+  const reanudarTareaChat = useMutation({
+    mutationFn: ({ taskId }: { taskId: string; conversationId: string }) => api.resumeTask(taskId),
+    onSettled: (_tarea, _error, { taskId, conversationId }) => {
+      void qc.invalidateQueries({ queryKey: ["conversation-tasks", conversationId] });
+      void qc.invalidateQueries({ queryKey: ["task", taskId] });
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
     },
   });
 
@@ -1566,8 +1576,10 @@ export function ChatPage() {
                   {m.role === "system" ? (
                     <article className="tl-msg" aria-label="Aviso del sistema">
                       <p className="tl-alerta" role="status">{m.content}</p>
-                      {!conversacionPadre && !agenteOcupado && i === lista.length - 1 && lista.slice(0, i).some(p => p.role === "user") && (
-                        <button type="button" className="tl-boton" onClick={() => reintentarAviso(m.id)}>Reintentar solicitud</button>
+                      {!conversacionPadre && !tareaChat?.reanudable && !agenteOcupado && i === lista.length - 1 && lista.slice(0, i).some(p => p.role === "user") && (
+                        <button type="button" className="tl-boton" onClick={() => reintentarAviso(m.id)}>
+                          {current?.tiene_sesion || /sesión quedó guardada/i.test(m.content) ? "Continuar donde quedó" : "Reintentar solicitud"}
+                        </button>
                       )}
                     </article>
                   ) : m.role === "user" ? (
@@ -1644,6 +1656,20 @@ export function ChatPage() {
                     </details>
                   )}
                   <PlanRevision key={`${tareaChat.id}:${tareaChat.plan_hash}`} tarea={tareaChat} />
+                  {selectedId && tareaChat.reanudable && (tareaChat.status === "failed" || tareaChat.status === "interrupted") && (
+                    <section className="tl-tarea-continuacion" aria-label="Continuar tarea detenida">
+                      <p role="status">Se conservaron los cambios parciales. Puedes continuar esta misma tarea en su carpeta de trabajo.</p>
+                      <button
+                        type="button"
+                        className="tl-boton"
+                        disabled={reanudarTareaChat.isPending}
+                        onClick={() => reanudarTareaChat.mutate({ taskId: tareaChat.id, conversationId: selectedId })}
+                      >
+                        {reanudarTareaChat.isPending ? "Reanudando…" : "Continuar donde quedó"}
+                      </button>
+                      {reanudarTareaChat.isError && <p className="tl-alerta" role="alert">{errorText(reanudarTareaChat.error)}</p>}
+                    </section>
+                  )}
                 </div>
               )}
               {selectedId && current?.project_id && !conversacionPadre && (
@@ -1654,6 +1680,7 @@ export function ChatPage() {
                   taskId={tareaChat?.id}
                   ultimoMensajeUsuarioId={[...lista].reverse().find((mensaje) => mensaje.role === "user")?.id ?? null}
                   terminada={!!tareaChat && ["done", "failed", "cancelled", "interrupted"].includes(tareaChat.status)}
+                  tareaCompletada={tareaChat?.status === "done"}
                 />
               )}
               {tareasChat.isError && current?.project_id && <p className="tl-alerta" role="alert">{errorText(tareasChat.error)}</p>}

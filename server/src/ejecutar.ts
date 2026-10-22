@@ -565,6 +565,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
 
   const inicio = Date.now();
   const varianteInicial = opts.variant ?? undefined;
+  const sesionUsada = sesion;
   try {
     const r = await ejecutarConRunner(opts.model, baseParaModelo(opts.model, varianteInicial));
     return terminar(r, opts.model, opts.variant ?? null);
@@ -575,6 +576,25 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     // Un modelo sin cuota se marca como tal (ver ErrorCuota); cualquier otro error sigue como antes.
     const comoCuota = (e: unknown, modelo: string): unknown =>
       esErrorDeCuota(e) ? new ErrorCuota(modelo, sesion) : limpiarError(e);
+
+    // OpenCode puede perder una sesión guardada (por limpieza local, cambio de perfil o estado
+    // desincronizado). El error ocurre antes de procesar el prompt: descarta solo esa sesión y
+    // reintenta una vez reconstruyendo el contexto desde los mensajes de esta conversación.
+    if (
+      sesionUsada !== null &&
+      !opts.model.startsWith("codex/") &&
+      err instanceof ErrorAgente &&
+      /session\s+not\s+found/i.test(err.message)
+    ) {
+      alSesion(null, null);
+      try {
+        const r = await ejecutarConRunner(opts.model, baseParaModelo(opts.model, varianteInicial));
+        return terminar(r, opts.model, opts.variant ?? null);
+      } catch (reintentoSesionErr) {
+        err = reintentoSesionErr;
+      }
+    }
+
     // Ante fallo transitorio del servidor (HTTP 5xx) o rate limit transitorio (429 por RPM/TPM),
     // intentamos un reintento breve con backoff antes de recurrir al respaldo o detener la tarea.
     const codigoHttp = codigoHttpDelProveedor(err);

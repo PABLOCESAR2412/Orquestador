@@ -176,13 +176,19 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     expect(fila(id).status).toBe("done");
     expect(JSON.parse(fila(id).reporte).pruebas[0].comando).toBe("git commit bloqueado");
     expect(readFileSync(join(clon, "permitido.txt"), "utf8")).toBe("trabajo conservado\n");
-    expect(
-      db
-        .query<{ model: string | null; effort: string | null }, [string]>(
-          "SELECT model, effort FROM messages WHERE conversation_id=? AND content LIKE 'Obrero aislado completado%'",
-        )
-        .get(conversacion),
-    ).toEqual({ model: "fixture/normal", effort: null });
+    const mensaje = db
+      .query<{ model: string | null; effort: string | null; content: string }, [string]>(
+        "SELECT model, effort, content FROM messages WHERE conversation_id=? AND role='assistant' ORDER BY rowid DESC LIMIT 1",
+      )
+      .get(conversacion);
+    expect(mensaje).toMatchObject({ model: "fixture/normal", effort: null });
+    expect(JSON.parse(mensaje!.content)).toMatchObject({
+      tipo: "telo_reporte_tarea",
+      estado: "completado",
+      resumen: "Obrero aislado completado",
+      cambios: [{ archivo: "permitido.txt", tipo: "crear" }],
+      pruebas: [{ comando: "git commit bloqueado", resultado: "ok" }],
+    });
   }, 15000);
 
   test("el worker procesa diez tareas independientes al mismo tiempo", async () => {

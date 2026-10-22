@@ -151,7 +151,8 @@ export function explicarErrorProveedor(evento: unknown): string {
   return `OpenCode informó un error del proveedor${status === null ? "" : ` (HTTP ${status})`}. Revisa «Ver proceso» y vuelve a intentarlo.`;
 }
 
-function failureDetail(stdout: string, stderr: string, events: OpenCodeEvent[]): string {
+function failureDetail(stdout: string, stderr: string, events: OpenCodeEvent[], code: number): string {
+  if (code === 143) return "OpenCode terminó con código 143 (SIGTERM) antes de completar la tarea.";
   const errorEvent = events.find((e) => e.type === "error");
   if (errorEvent) return explicarErrorProveedor(errorEvent);
   return (stderr || stdout).trim().slice(-800) || "sin salida";
@@ -502,7 +503,7 @@ async function ejecutarOpenCode(opts: {
 
   if (code !== 0) {
     throw new ErrorAgente(
-      `opencode salió con código ${code}: ${failureDetail(stdout, stderr, events)}`,
+      `opencode salió con código ${code}: ${failureDetail(stdout, stderr, events, code)}`,
       detalleDelProveedor(stdout, stderr, events),
     );
   }

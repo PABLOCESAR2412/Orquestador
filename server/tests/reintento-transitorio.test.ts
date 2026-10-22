@@ -44,6 +44,10 @@ if [ "$modelo" = "opencode/respaldo" ]; then
   echo '{"type":"text","sessionID":"retry-session-1","part":{"type":"text","text":"Respaldo completó lo pendiente."}}'
   exit 0
 fi
+if [ "$sesion" = "missing-session" ]; then
+  echo '{"type":"error","error":{"message":"Session not found"}}'
+  exit 1
+fi
 if [ "$intentos" -eq 1 ]; then
   echo '{"type":"step-start","sessionID":"retry-session-1"}'
   echo '{"type":"error","sessionID":"retry-session-1","error":{"statusCode":500,"data":{"statusCode":500,"message":"temporary server error"}}}'
@@ -87,6 +91,45 @@ test.skipIf(!Bun.which("setsid"))("reanuda la sesión después de 5xx en vez de 
   expect(prompt).toContain("Continúa donde te quedaste");
   expect(prompt).toContain("no repitas pasos completados");
   expect(prompt).toContain("Haz una acción sin duplicarla");
+});
+
+test.skipIf(!Bun.which("setsid"))("recupera una sesión OpenCode perdida y reconstruye el contexto del mismo chat", async () => {
+  savePreferences(DEFAULT_PREFERENCES);
+  rmSync(contador, { force: true });
+  const conversationId = crypto.randomUUID();
+  db.query("INSERT INTO conversations (id, title, model) VALUES (?, 'Sesión perdida', 'opencode/prueba')").run(conversationId);
+  const otherConversationId = crypto.randomUUID();
+  db.query("INSERT INTO conversations (id, title, model) VALUES (?, 'Otro chat del mismo modelo', 'opencode/prueba')").run(otherConversationId);
+  db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', 'HISTORIA-DE-OTRO-CHAT: no mezclar')")
+    .run(crypto.randomUUID(), otherConversationId);
+  db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', 'HISTORIA-ANTERIOR: consulta inicial')")
+    .run(crypto.randomUUID(), conversationId);
+  db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'assistant', 'Respuesta anterior del mismo chat')")
+    .run(crypto.randomUUID(), conversationId);
+  db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', 'Continúa con mi consulta actual')")
+    .run(crypto.randomUUID(), conversationId);
+  const sesiones: [string | null, string | null][] = [];
+
+  const resultado = await ejecutarAgente({
+    prompt: "Continúa con mi consulta actual",
+    model: "opencode/prueba",
+    cwd: raiz,
+    conversationId,
+    sessionId: "missing-session",
+    sessionModel: "opencode/prueba",
+    onSesion: (id, modelo) => sesiones.push([id, modelo]),
+  });
+
+  expect(resultado.textoFinal).toBe("Continué sin repetir.");
+  expect(readFileSync(contador, "utf8")).toBe("2\n");
+  expect(readFileSync(sesionRecibida, "utf8")).toBe("");
+  const prompt = readFileSync(promptRecibido, "utf8");
+  expect(prompt).toContain("HISTORIA-ANTERIOR: consulta inicial");
+  expect(prompt).not.toContain("HISTORIA-DE-OTRO-CHAT");
+  expect(prompt).toContain("Respuesta anterior del mismo chat");
+  expect(prompt).toContain("Instrucción actual de la tarea:\nContinúa con mi consulta actual");
+  expect(sesiones).toContainEqual([null, null]);
+  expect(sesiones).toContainEqual(["retry-session-1", "opencode/prueba"]);
 });
 
 test.skipIf(!Bun.which("setsid"))("el respaldo continúa el trabajo previo con una sesión y un prompt seguros", async () => {

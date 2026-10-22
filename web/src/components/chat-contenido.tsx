@@ -365,6 +365,57 @@ function textoDe(nodo: ReactNode): string {
   return "";
 }
 
+function EnlaceConVistaPrevia({ href, title, children }: { href?: string; title?: string; children?: ReactNode }) {
+  const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  let destino: URL | null = null;
+  try {
+    if (href) destino = new URL(href);
+  } catch {
+    // Los enlaces relativos y los destinos no HTTP conservan el enlace normal.
+  }
+  if (!href || !destino || (destino.protocol !== "https:" && destino.protocol !== "http:")) {
+    return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+  }
+
+  const dominio = destino.hostname.replace(/^www\./i, "");
+  const etiqueta = textoDe(children).trim() || dominio;
+  const descripcion = title?.trim();
+  return (
+    <span className="tl-enlace-preview">
+      <a
+        className="tl-enlace-preview-trigger"
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-describedby={`${id}-preview`}
+      >
+        {children}
+      </a>
+      <span id={`${id}-preview`} className="tl-enlace-preview-card" role="group" aria-label={`Vista previa de ${etiqueta}`}>
+        <span className="tl-enlace-preview-cabecera">
+          <span className="tl-enlace-preview-dominio">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+            </svg>
+            <span>{dominio}</span>
+          </span>
+          <a className="tl-enlace-preview-abrir" href={href} target="_blank" rel="noopener noreferrer">
+            Abrir
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M14 3h7v7M10 14 21 3" />
+              <path d="M19 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" />
+            </svg>
+          </a>
+        </span>
+        <strong>{etiqueta}</strong>
+        {descripcion && descripcion !== etiqueta && <span className="tl-enlace-preview-descripcion">{descripcion}</span>}
+        <code>{destino.origin}</code>
+      </span>
+    </span>
+  );
+}
+
 const crearComponentes = (
   onAbrirArchivo?: (referencia: ReferenciaArchivo, triggerId: string) => void,
   permitirAbrirArchivo?: (referencia: ReferenciaArchivo) => boolean,
@@ -394,7 +445,7 @@ const crearComponentes = (
     return <code className={className} {...props}>{children}</code>;
   },
   // Enlaces en pestaña nueva, y enlaces a archivos locales como pastilla
-  a({ href, children }: { href?: string; children?: ReactNode }) {
+  a({ href, title, children }: { href?: string; title?: string; children?: ReactNode }) {
     const textoHref = href ?? "";
     const textoHijo = textoDe(children).trim();
     const referenciaHref = separarReferenciaArchivo(textoHref);
@@ -406,11 +457,7 @@ const crearComponentes = (
       const referencia = esRutaArchivo(referenciaTexto.ruta) ? textoHijo : textoHref;
       return <PastillaArchivo ruta={rutaReal} referencia={referencia} onAbrir={onAbrirArchivo} permitirAbrir={permitirAbrirArchivo} />;
     }
-    return (
-      <a href={href} target="_blank" rel="noopener noreferrer">
-        {children}
-      </a>
-    );
+    return <EnlaceConVistaPrevia href={href} title={title}>{children}</EnlaceConVistaPrevia>;
   },
   // Las tablas anchas se desplazan dentro de su bloque, no en toda la página.
   table({ children }: { children?: ReactNode }) {

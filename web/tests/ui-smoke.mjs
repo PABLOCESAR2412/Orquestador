@@ -73,6 +73,7 @@ try {
       { id: "u-retry", role: "user", content: "Quiero una segunda versión de este PDF", created_at: now },
       { id: "s-retry", role: "system", content: "El agente superó el límite de 15 minutos y se detuvo. La sesión quedó guardada; reintenta para continuar donde se quedó.", created_at: now },
     ];
+    messages[3].content += '\n\nFuente: [Precios de Workers](https://developers.cloudflare.com/workers/platform/pricing/ "Tarifas de CPU y memoria")';
     const actions = [
       { id: "git-old", action: "push", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ mensaje: "Falló el intento anterior" }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
       { id: "git-conflict-antiguo", action: "merge", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ codigo: "merge_conflicts", mensaje: JSON.stringify({ codigo: "merge_conflicts", mensaje: "GitHub detectó conflictos entre telo/prueba y main.", pr_number: 9, pr_url: "https://github.com/ejemplo/pruebas/pull/9", rama_fuente: "telo/prueba", rama_base: "main", archivos: ["src/app.ts"], archivos_exactos: true, task_id: "t1", resoluble: true }) }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
@@ -85,6 +86,7 @@ try {
     let codexSesionEnPicker = false;
     let jevConfigurada = false;
     let approvals = 0;
+    let reanudaciones = 0;
     let reintentos = [];
     let skillInstallRequests = 0;
     let skillSaveRequests = 0;
@@ -106,7 +108,7 @@ try {
       if (path === "/api/login") { authenticated = true; data = { ok: true }; }
       else if (path === "/api/media/capacidades") data = {};
       else if (path === "/api/conversations") data = conversacionesDisponibles ? [
-        { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, created_at: now, subchats: [{ id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true }] },
+        { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, tiene_sesion: true, created_at: now, subchats: [{ id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true }] },
         { id: "c2", title: "Chat paralelo", model: "nvidia/nemotron-test", project_id: null, project_name: null, created_at: now },
         { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, pendiente_aprobacion: true, estado_tarea: "pendiente_aprobacion", estado_tarea_id: "review-c3", estado_tarea_version: "hash-c3", created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
         { id: "c4", title: "Chat anterior", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() },
@@ -218,6 +220,11 @@ try {
       ];
       else if (path === "/api/conversations/c1/acciones") data = actions;
       else if (path === "/api/conversations/c1/tasks" || path === "/api/tasks") data = [task];
+      else if (path === "/api/tasks/t1/reanudar" && route.request().method() === "POST") {
+        reanudaciones++;
+        task.status = "queued";
+        data = task;
+      }
       else if (path === "/api/tasks/t1/diff") {
         diffRequests++;
         data = diffRequests === 1
@@ -466,6 +473,16 @@ try {
     await vistaDocumento.getByRole("button", { name: "Cerrar", exact: true }).click();
     assert.equal(await page.locator(".tl-tabla-wrap table tbody tr").count(), 1);
     assert.ok((await page.locator(".tl-md pre code").allTextContents()).some(codigo => codigo.includes("└── src/")));
+    const enlaceFuente = page.locator(".tl-enlace-preview-trigger").filter({ hasText: "Precios de Workers" }).first();
+    assert.equal(await enlaceFuente.getAttribute("href"), "https://developers.cloudflare.com/workers/platform/pricing/");
+    await enlaceFuente.hover();
+    const vistaPreviaEnlace = page.locator(".tl-enlace-preview-card").filter({ hasText: "Precios de Workers" }).first();
+    await vistaPreviaEnlace.waitFor({ state: "visible" });
+    assert.match(await vistaPreviaEnlace.textContent(), /developers\.cloudflare\.com/);
+    assert.match(await vistaPreviaEnlace.textContent(), /Tarifas de CPU y memoria/);
+    assert.equal(await vistaPreviaEnlace.getByRole("link", { name: "Abrir" }).getAttribute("target"), "_blank");
+    await enlaceFuente.focus();
+    await vistaPreviaEnlace.waitFor({ state: "visible" });
     assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Llama Test" }).count(), 1);
     assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Nemotron Test" }).count(), 1);
     assert.equal(await page.locator(".tl-msg-esfuerzo").filter({ hasText: "Bajo" }).count(), 1);
@@ -487,7 +504,7 @@ try {
     await page.locator(".tl-modelo-boton").click();
     await selectorModelo.locator(".picker-item").filter({ hasText: "Google Test" }).click();
     await page.locator(".tl-modelo-boton .tl-modelo-nombre").filter({ hasText: "Google Test" }).waitFor();
-    const botonReintento = page.getByRole("button", { name: "Reintentar solicitud", exact: true });
+    const botonReintento = page.getByRole("button", { name: "Continuar donde quedó", exact: true });
     assert.equal(await botonReintento.count(), 1, "solo se puede reintentar el último aviso; los avisos antiguos no muestran la acción");
     const solicitudReintento = page.waitForRequest(request => request.url().endsWith("/api/conversations/c1/messages") && request.method() === "POST" && request.postDataJSON().retryOf === "u-retry");
     await botonReintento.click();
@@ -809,7 +826,7 @@ try {
     assert.notEqual(contrasteGrupo, contrasteChat);
     await page.getByText("Faltan dependencias", { exact: true }).waitFor();
     assert.equal(await page.getByRole("region", { name: "Acción actual del repositorio" }).count(), 1);
-    await page.getByText("Historial de acciones Git · 2", { exact: true }).waitFor();
+    assert.equal(await page.locator(".tl-git-intentos").count(), 0, "el historial Git antiguo no ocupa el hilo del chat");
     assert.equal(await page.getByRole("region", { name: "Resolución del PR #9" }).count(), 0, "un conflicto de un turno anterior no reaparece como acción actual");
     await page.locator(".tl-resumen-cambios").waitFor();
     const accionTrasSuRespuesta = await page.locator(".tl-hilo-columna").evaluate(root => {
@@ -825,6 +842,18 @@ try {
     assert.equal(await page.locator('section.tl-accion-git-actual').count(), 1, "la decisión actualiza la misma tarjeta dentro de su turno");
     assert.equal(approvals, 1);
     assert.equal(await page.locator('section.tl-accion-git-actual [role="alert"]').count(), 0);
+    task.status = "failed";
+    task.reanudable = true;
+    const continuarTarea = page.getByRole("button", { name: "Continuar donde quedó", exact: true });
+    await continuarTarea.waitFor();
+    assert.equal(await page.getByRole("button", { name: "Commit y subir (elige destino)", exact: true }).count(), 0, "no se permite publicar el diff de una tarea fallida");
+    const reanudacion = page.waitForRequest(request => request.url().endsWith("/api/tasks/t1/reanudar") && request.method() === "POST");
+    await continuarTarea.click();
+    await reanudacion;
+    assert.equal(reanudaciones, 1, "el botón retoma la misma tarea guardada");
+    task.status = "done";
+    task.reanudable = false;
+    await page.getByRole("button", { name: "Commit y subir (elige destino)", exact: true }).waitFor();
     actions.push({
       id: "git-pr-fallido",
       action: "pr",
@@ -845,12 +874,8 @@ try {
     });
     await page.waitForFunction(() => document.querySelector(".tl-accion-git-actual .approval-panel h2")?.textContent === "Commit y push");
     assert.equal(await page.locator(".tl-accion-git-actual .approval-panel").count(), 1, "un PR fallido de un turno anterior no sustituye la acción vigente");
-    const historialGit = page.locator(".tl-git-intentos");
-    await page.getByText("Historial de acciones Git · 3", { exact: true }).click();
-    assert.match(await historialGit.textContent(), /A pull request already exists/);
-    assert.match(await historialGit.textContent(), /GitHub detectó conflictos entre telo\/prueba y main/);
+    assert.equal(await page.locator(".tl-git-intentos").count(), 0, "los resultados Git antiguos no se repiten bajo los mensajes");
     await page.screenshot({ path: `scratch/capturas-ci/git-pr-fallido-${width}.png` });
-    await page.getByText("Historial de acciones Git · 3", { exact: true }).click();
     actions.pop();
     await page.waitForFunction(() => document.querySelector(".tl-accion-git-actual .approval-panel h2")?.textContent === "Commit y push");
     await hiloChat.evaluate(el => { el.scrollTop = 0; el.dispatchEvent(new Event("scroll")); });
@@ -872,7 +897,7 @@ try {
     await page.locator('.sidebar-conv[aria-label^="Prueba de flujo"]').click();
     await page.getByText("Respuesta del chat A", { exact: true }).waitFor();
     assert.equal(await page.locator('section.tl-accion-git-actual').count(), 0, "la acción aprobada deja de ocupar el chat al empezar un turno nuevo");
-    await page.getByText("Historial de acciones Git · 3", { exact: true }).waitFor();
+    assert.equal(await page.locator(".tl-git-intentos").count(), 0, "el historial Git permanece fuera del hilo");
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Prueba de mensaje");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByText("Mensaje recibido", { exact: true }).waitFor();
@@ -1068,6 +1093,10 @@ try {
     const interruptorNotificaciones = tarjetaNotificaciones.getByRole("switch", { name: "Notificaciones de escritorio" });
     await interruptorNotificaciones.click();
     await page.waitForFunction(() => document.querySelector('[aria-label="Notificaciones de escritorio"]')?.getAttribute("aria-checked") === "true");
+    const selectorSonido = tarjetaNotificaciones.getByLabel("Sonido de notificación");
+    assert.equal(await selectorSonido.locator("option").count(), 5);
+    await selectorSonido.selectOption("ascendente");
+    assert.equal(await page.evaluate(() => localStorage.getItem("telo:sonido-notificacion-tipo")), "ascendente");
     await tarjetaNotificaciones.getByRole("button", { name: "Probar sonido", exact: true }).click();
     await tarjetaNotificaciones.getByRole("status").filter({ hasText: "Sonido activado." }).waitFor();
     await interruptorNotificaciones.click();
