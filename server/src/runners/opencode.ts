@@ -332,6 +332,10 @@ export async function runOpenCode(opts: {
   sessionId?: string | null;
   cwd: string;
   timeoutMs?: number | null;
+  // Vigilante de actividad: si el agente no emite ni una línea en este tiempo, se cierra el
+  // grupo de procesos y la ejecución falla con un mensaje claro. Sin él, una sesión colgada
+  // retenía un slot de la cola para siempre (solo lo liberaban cancelar a mano o reiniciar).
+  tiempoSinActividadMs?: number | null;
   signal?: AbortSignal;
   onSesion?: (sessionId: string) => void;
   onLinea?: (linea: string) => void;
@@ -368,6 +372,8 @@ async function ejecutarOpenCode(opts: {
   sessionId?: string | null;
   cwd: string;
   timeoutMs?: number | null;
+  // Vigilante de actividad (ver nota en la firma externa). null lo desactiva.
+  tiempoSinActividadMs?: number | null;
   signal?: AbortSignal;
   // Se llama en cuanto el agente informa su sesión, aunque la ejecución siga en curso.
   onSesion?: (sessionId: string) => void;
@@ -435,6 +441,18 @@ async function ejecutarOpenCode(opts: {
   });
   const monitorSubagentes = vigilarSubagentes(opts.subagentesTracePath, opts.onSubagente);
   const timer = opts.timeoutMs === null ? null : setTimeout(() => terminarGrupo(proc.pid), opts.timeoutMs ?? 120_000);
+  // Vigilante de actividad: el reloj se reinicia con cada línea del agente. Si se cierra por
+  // silencio, la ejecución falla con un mensaje claro en vez de retener el slot para siempre.
+  let ultimaActividad = Date.now();
+  let muertoPorSilencio = false;
+  const vigilante =
+    opts.tiempoSinActividadMs && opts.tiempoSinActividadMs > 10_000
+      ? setInterval(() => {
+          if (Date.now() - ultimaActividad < (opts.tiempoSinActividadMs ?? 0)) return;
+          muertoPorSilencio = true;
+          terminarGrupo(proc.pid);
+        }, 15_000)
+      : null;
   // Al terminar el agente, se cierra lo que quedó de su grupo (procesos en segundo plano). Así nada
   // sigue escribiendo en la carpeta de trabajo después de la ejecución, y las tuberías se cierran.
   void proc.exited.then(() => terminarGrupo(proc.pid));
@@ -455,6 +473,7 @@ async function ejecutarOpenCode(opts: {
 
   let sesionAvisada: string | null = null;
   const alLeerLinea = (linea: string) => {
+    ultimaActividad = Date.now();
     let ev: OpenCodeEvent | undefined;
     try {
       ev = JSON.parse(linea) as OpenCodeEvent;
@@ -495,11 +514,19 @@ async function ejecutarOpenCode(opts: {
     ]);
   } finally {
     if (timer) clearTimeout(timer);
+    if (vigilante) clearInterval(vigilante);
     if (onAbort) opts.signal?.removeEventListener("abort", onAbort);
     monitorSubagentes.cerrar();
   }
 
   const events = parseEvents(stdout);
+
+  if (muertoPorSilencio) {
+    throw new ErrorAgente(
+      `El agente no emitió ninguna línea en ${Math.round(((opts.tiempoSinActividadMs as number) ?? 0) / 60_000)} minutos, así que se cerró para liberar la tarea. Puedes reanudarla para retomar la sesión o cancelarla en la tarjeta.`,
+      "",
+    );
+  }
 
   if (code !== 0) {
     throw new ErrorAgente(

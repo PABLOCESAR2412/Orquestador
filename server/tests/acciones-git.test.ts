@@ -916,6 +916,33 @@ test("reintegrarSobrePunta aborta, restaura la rama y explica cómo continuar al
   }
 });
 
+test("el escaneo de secretos ve el blob de un archivo marcado binario por .gitattributes", { timeout: 15000 }, async () => {
+  const p = proyecto();
+  await gitOk(["init", "-b", "main"], { cwd: p.cwd });
+  writeFileSync(join(p.cwd, "archivo.txt"), "base\n");
+  await gitOk(["add", "archivo.txt"], { cwd: p.cwd });
+  await gitOk(
+    ["-c", "user.name=Prueba", "-c", "user.email=prueba@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "Base"],
+    { cwd: p.cwd },
+  );
+  const taskId = randomUUID();
+  p.taskId = taskId;
+  db.query("INSERT INTO tasks(id,title,prompt,model,status,project_id) VALUES (?,'Binario con secreto','Prueba','prueba','done',?)").run(
+    taskId,
+    p.id,
+  );
+  const copia = await prepararCopia(taskId, p.cwd, p.id);
+  // El truco del agente: marcar el archivo binario. Con .gitattributes el diff no muestra
+  // el contenido; el escaneo debe leerlo del blob del índice y rechazar el commit.
+  writeFileSync(join(copia.cwd, "secreto.bin"), "AKIAXK7GJQM4N2PLR9Z8\n");
+  writeFileSync(join(copia.cwd, ".gitattributes"), "*.bin -diff\n");
+  const antes = await diffDeTarea(taskId);
+  expect(antes.hash).toBeTruthy();
+  await expect(aprobarTarea(taskId, { accion: "commit", hash: antes.hash!, mensaje: "Agrega un binario" })).rejects.toMatchObject({
+    code: "secreto_detectado",
+  });
+});
+
 test("un push fallido guarda el detalle claro para la tarjeta", { timeout: 20000 }, async () => {
   const p = await tareaConCommit();
   const accion = await (await pedir(`/projects/${p.id}/acciones`, { action: "push", taskId: p.taskId })).json() as any;

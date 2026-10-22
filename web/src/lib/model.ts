@@ -113,6 +113,7 @@ export const EVENT_LABEL: Record<TaskEventKind, string> = {
   clasificacion_jev: "Clasificación sugerida por Jev",
   memoria_evaluada: "Propuesta de memoria evaluada por Jev",
   memoria_propuesta: "Propuesta de memoria guardada para revisión",
+  conflictos_pr_preparados: "PR preparado: conflictos por resolver",
 };
 
 // Montos en dólares: centavos normales; cifras menores a un centavo con cuatro decimales.
@@ -154,6 +155,36 @@ export function sanearDetalle(texto: string, maximo = 160): string {
     .replace(/[A-Za-z]:\\[^\s'"]+/g, "[ruta]")
     .replace(/(^|[\s'"`(=])\/(?:[\w.@+-]+\/)+[\w.@+-]*/g, "$1[ruta]")
     .slice(0, maximo);
+}
+
+// Errores que el servidor guarda en tasks.error como código puro (ErrorTarea): los frases
+// en español en vez de mostrarlos crudos. Cualquier otro mensaje (del runtime o del agente)
+// pasa por sanearDetalle, que también deja su redacción segura.
+const CODIGO_TAREA_TEXTO: Record<string, string> = {
+  task_not_found: "La tarea ya no existe.",
+  task_running: "La tarea ya está en ejecución.",
+  task_without_repo: "El proyecto de esta tarea no tiene repositorio Git.",
+  proyecto_sin_git: "El proyecto no es un repositorio Git.",
+  rama_fuente_invalida: "La rama fuente del PR preparado ya no es válida.",
+  rama_base_invalida: "La rama base del PR ya no es válida.",
+  rama_fuente_no_preparable: "No se pudieron resolver los conflictos de la rama fuente.",
+  invalid_mensaje: "El mensaje de commit no es válido.",
+  sin_cambios: "El agente no dejó cambios que guardar.",
+  cambios_cambiaron: "Los cambios aprobados ya no son los mismos; revisa de nuevo el diff.",
+  archivo_sensible: "Un archivo modificado está marcado como sensible y no se puede guardar.",
+  secreto_detectado: "El agente intentó guardar un secreto conocido; el commit fue rechazado.",
+  sin_remoto: "No hay un remoto de GitHub configurado en el proyecto.",
+  remoto_no_permitido: "El remoto del proyecto no apunta a GitHub.",
+  credenciales_git_faltantes: "Faltan credenciales de GitHub para subir la rama.",
+  commit_requerido: "Para subir la rama hace falta un commit aprobado antes.",
+  push_fallido: "Falló la subida de la rama al remoto.",
+  merge_conflicts: "Al preparar el PR quedaron conflictos sin resolver.",
+};
+
+export function textoErrorTarea(error: string): string {
+  const codigo = error.trim().split("\n")[0];
+  if (CODIGO_TAREA_TEXTO[codigo]) return CODIGO_TAREA_TEXTO[codigo];
+  return sanearDetalle(error, 600);
 }
 
 // Motivos que el servidor devuelve dentro de una respuesta correcta (instalación y login), no como error HTTP.

@@ -25,7 +25,7 @@ import {
   prepararRepoSeguro,
   urlSinCredenciales,
 } from "./git";
-import { archivosConSecretos, redactar } from "./redaccion";
+import { archivosConSecretos, archivosConSecretosEnBlobs, redactar } from "./redaccion";
 import { valorSecreto, valoresDeProyecto } from "./secretos";
 import { tokenGithubGlobal } from "./github-auth";
 import { tokenGithubAppParaRepo } from "./github-app";
@@ -543,10 +543,14 @@ export async function detectarConflictosPullRequest(
 
 // Revisa la copia y calcula el estado contra base_commit. Deja los cambios en el índice.
 // `completo` es el diff sin truncar: solo lo usa el escaneo antes de commit, nunca sale del servidor.
+// `escaneo` añade a ese diff el contenido original de los archivos añadidos o modificados: con
+// `.gitattributes` el agente puede marcar un archivo binario y el diff no mostraría su contenido,
+// pero el blob del índice sí lo trae, y los secretos no se feascan sobre lo que el agente controle.
 async function estadoDelClon(ctx: Contexto): Promise<{
   archivos: ArchivoDiff[];
   diff: string;
   completo: string;
+  escaneo: string;
   truncado: boolean;
   hash: string | null;
 }> {
@@ -565,7 +569,7 @@ async function estadoDelClon(ctx: Contexto): Promise<{
     (a) => !a.ruta.startsWith(".opencode/") && !a.ruta.startsWith(".opencode"),
   );
   if (archivos.length === 0)
-    return { archivos, diff: "", completo: "", truncado: false, hash: null };
+    return { archivos, diff: "", completo: "", escaneo: "", truncado: false, hash: null };
 
   const texto = await gitOkSeguro(
     ["diff", "--cached", "-M", "--no-color", "--no-ext-diff", "--no-textconv", ctx.base, "--", ":!.opencode", ":!.opencode/*"],
@@ -581,7 +585,28 @@ async function estadoDelClon(ctx: Contexto): Promise<{
   const bytes = new TextEncoder().encode(texto);
   const truncado = bytes.length > TOPE_DIFF;
   const diff = truncado ? new TextDecoder().decode(bytes.subarray(0, TOPE_DIFF)) : texto;
-  return { archivos, diff, completo: texto, truncado, hash };
+
+  // Contenido original de los blobs añadidos o modificados (los borrados no traen nada que escanear),
+  // leído del índice: no pasa por los atributos del worktree que el agente puede escribir.
+  let escaneo = texto;
+  let total = escaneo.length;
+  for (const archivo of archivos.filter((a) => a.estado !== "borrado").slice(0, 400)) {
+    if (total > 8_000_000) break;
+    try {
+      const blob = await gitOkSeguro(["cat-file", "blob", `:0:${archivo.ruta}`], {
+        cwd: ctx.clon,
+        timeoutMs: TIEMPO_ESTADO_MS,
+      });
+      const conTope = blob.slice(0, 1_500_000);
+      // La etiqueta va en su propia línea: el escáner la ignora al completa, así que el
+      // contenido queda en líneas limpias (incluida su primera).
+      escaneo += `\n\0${archivo.ruta}\0\n${conTope}`;
+      total += conTope.length + archivo.ruta.length + 3;
+    } catch {
+      // Si el blob no se puede leer, el escaneo textual del diff sigue cubriendo lo visible.
+    }
+  }
+  return { archivos, diff, completo: texto, escaneo, truncado, hash };
 }
 
 // Valores de los secretos del proyecto de la tarea (incluido GITHUB_TOKEN), para ocultarlos.
@@ -763,7 +788,8 @@ async function commitInterno(
   if (estado.archivos.length === 0) throw new ErrorTarea("sin_cambios", 409);
   if (estado.hash !== hash) throw new ErrorTarea("cambios_cambiaron", 409);
   if (estado.archivos.some((a) => a.sensible)) throw new ErrorTarea("archivo_sensible", 409);
-  const conSecretos = archivosConSecretos(estado.completo, valoresDe(ctx.projectId));
+  const valores = valoresDe(ctx.projectId);
+  const conSecretos = [...new Set([...archivosConSecretos(estado.completo, valores), ...archivosConSecretosEnBlobs(estado.escaneo, valores)])];
   if (conSecretos.length > 0) {
     throw new ErrorTarea("secreto_detectado", 409, conSecretos.slice(0, 10).join(", "));
   }
@@ -1077,10 +1103,44 @@ export async function limpiarCopias(): Promise<void> {
 
 let temporizadorLimpieza: ReturnType<typeof setInterval> | null = null;
 
+// Días que se conservan los registros ligados a tareas terminadas (eventos, planes,
+// aprobaciones y solicitudes de repositorio). Las tareas mismas se conservan: son la
+// historia del usuario.TELO_RETENCION_DIAS lo ajusta; 0 desactiva la purga.
+const DIAS_RETENCION = Number(process.env.TELO_RETENCION_DIAS ?? 120);
+
+// Purga el historial de tareas terminadas hace mucho. Sin esto la base crece sin techo:
+// hoy (14 oct 2026) el VM suma 789 eventos y 65 solicitudes de acciones en 6 días.
+export async function purgarHistorial(): Promise<number> {
+  if (!Number.isFinite(DIAS_RETENCION) || DIAS_RETENCION <= 0) return 0;
+  const cortadas: string[] = [];
+  for (const [tabla, condicion] of [
+    ["task_events", ""],
+    ["task_plans", ""],
+    ["task_approvals", ""],
+    // Las solicitudes sin tarea siguen siendo bitácora de chats: se conservan.
+    ["repository_actions", "task_id IS NOT NULL"],
+  ] as const) {
+    const n = db
+      .query<{ n: number }, []>(
+        `WITH terminadas AS (
+           SELECT id FROM tasks WHERE status IN ('done', 'failed', 'cancelled')
+             AND finished_at IS NOT NULL AND finished_at < datetime('now', '-${DIAS_RETENCION} days')
+         )
+         DELETE FROM ${tabla} WHERE 1=1 ${condicion ? `AND ${condicion}` : ""}
+           AND task_id IN (SELECT id FROM terminadas) RETURNING rowid`,
+      )
+      .all().length;
+    if (n > 0) cortadas.push(`${tabla}: ${n}`);
+  }
+  if (cortadas.length > 0) console.info(`Purga de historial (anteriores a ${DIAS_RETENCION} días): ${cortadas.join(", ")}`);
+  return cortadas.reduce((total, linea) => total + Number(linea.split(": ")[1] ?? 0), 0);
+}
+
 // Limpia al arrancar y cada 6 horas. Llamarlo una sola vez desde el worker.
 export function iniciarLimpieza(): void {
   const correr = () => {
     limpiarCopias().catch((err) => console.error("Limpieza de copias:", mensajeSeguro(err)));
+    purgarHistorial().catch((err) => console.error("Purga de historial:", mensajeSeguro(err)));
   };
   correr();
   if (!temporizadorLimpieza) {

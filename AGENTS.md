@@ -10,7 +10,7 @@ Este archivo describe cómo trabajan los agentes que Orquestador lanza para cada
 4. **Obrero.** Ejecuta el plan aprobado dentro de su workspace, prueba lo que cambió y escribe un reporte.
 5. **Cierre.** La tarea queda `done`, `failed` o `cancelled`. Se guardan el reporte, el costo y el uso. Se notifica al usuario (fase 8 de `PLAN.md`).
 
-Estados (migración 019, ver `PLAN.md` fase 5):
+Estados (la migración 019 los introdujo; el esquema va por la 039, ver `PLAN.md` fase 5):
 
 ```
 queued → analyzing → waiting_approval → running → done | failed | cancelled
@@ -23,7 +23,7 @@ Si el plan no requiere aprobación (ningún commit, push o PR, y sin preguntas),
 ## Contexto que recibe cada agente
 
 - La tarea del usuario: texto, modelo y esfuerzo.
-- `AGENTS.md` y `CLAUDE.md` del proyecto, si existen en su repo.
+- `AGENTS.md` y `CLAUDE.md` del proyecto: en tareas con Git figurán en el clon; en tareas sin proyecto, Telo lee los documentos guía del workspace y los antepone al prompt.
 - Las skills del proyecto (`SKILL.md`), según la configuración del proyecto.
 - La memoria del proyecto, que el sistema actualiza.
 - Para "continuar": la sesión anterior de OpenCode (`-s <session>`) y el mismo workspace.
@@ -84,4 +84,4 @@ Si el plan no requiere aprobación (ningún commit, push o PR, y sin preguntas),
 
 ## Estado del código
 
-Existen la cola, el runner de OpenCode, el registro de costo, el analizador y el obrero (`server/src/worker.ts`, `server/src/plan.ts`), el plan y el reporte por tarea, y la aprobación del plan. Pendiente: probar con OpenCode real en el VM. Ver `PLAN.md` fase 5 y `TODO.md`.
+Existen la cola, el runner de OpenCode, el registro de costo, el analizador y el obrero (`server/src/worker.ts`, `server/src/plan.ts`), el plan y el reporte por tarea, y la aprobación del plan. El worker corre con OpenCode real en el VM, con trazas y sesiones (ver `PLAN.md` fase 5). Gobernanza en marcha: purga del historial vencido y índices de `repository_actions` (migración 039), vigilante de inactividad y escaneo de secretos sobre los blobs del índice. Queda fuera la notificación Web Push (fase 8). Ver `TODO.md`.

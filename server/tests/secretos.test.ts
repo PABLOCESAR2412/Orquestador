@@ -233,5 +233,22 @@ describe("detección y redacción de credenciales en diffs", () => {
     const textoRedactado = redactar('API_KEY="sk-1234567890abcdef1234567890abcdef"');
     expect(textoRedactado).toBe('API_KEY="***"');
   });
+
+  test("no toma por secreto un token de prueba marcado como tal", () => {
+    const diff = [
+      "diff --git a/tests/auditoria.test.ts b/tests/auditoria.test.ts",
+      '+const TOKEN = "github_pat_credencialficticiaparapruebas123456789";',
+      '+const AWS = "AKIAABCDEFGHIJKLMNOP";',
+    ].join("\n");
+    expect(archivosConSecretos(diff, [])).toEqual([]);
+  });
+
+  test("los valores guardados por el dueño cuentan aunque parezcan de prueba", () => {
+    const diff = [
+      "diff --git a/src/env.ts b/src/env.ts",
+      '+const clave = "prueba-ejemplo-marca";',
+    ].join("\n");
+    expect(archivosConSecretos(diff, ["prueba-ejemplo-marca"])).toEqual(["src/env.ts"]);
+  });
 });
 

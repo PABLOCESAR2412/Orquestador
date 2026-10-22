@@ -15,10 +15,10 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 const { db } = await import("../src/db");
 const { config } = await import("../src/config");
 const { gitOk } = await import("../src/git");
-const { limpiarCopias } = await import("../src/workspace");
+const { limpiarCopias, purgarHistorial } = await import("../src/workspace");
 const tareas: string[] = [];
 
-async function crearCopia() {
+async function crearCopia(diasTerminada = 30) {
   const id = crypto.randomUUID();
   tareas.push(id);
   const repo = join(resolve(config.dataDir), "tasks", id, "repo");
@@ -33,7 +33,7 @@ async function crearCopia() {
   const base = (await git(["rev-parse", "HEAD"])).trim();
   db.query(
     `INSERT INTO tasks (id, title, prompt, model, status, finished_at, rama, base_commit)
-    VALUES (?, 'Retención', 'Prueba', 'prueba', 'done', datetime('now', '-30 days'), ?, ?)`,
+    VALUES (?, 'Retención', 'Prueba', 'prueba', 'done', datetime('now', '-${diasTerminada} days'), ?, ?)`,
   ).run(id, `telo/${id.slice(0, 8)}`, base);
   return { id, repo, git };
 }
@@ -98,5 +98,46 @@ describe("retención de copias antiguas", () => {
     writeFileSync(join(repo, ".git", "HEAD"), "HEAD inválido\n");
     await limpiarCopias();
     expect(existsSync(repo)).toBe(true);
+  });
+});
+
+// La purga del historial: eventos, planes, aprobaciones y solicitudes ligadas a tareas
+// Terminadas hace más de TELO_RETENCION_DIAS (120 por defecto). Las tareas hacen de ancla.
+describe("purga del historial vencido", () => {
+  function filas(tabla: string, taskId: string): number {
+    return db.query<{ c: number }, [string]>(`SELECT COUNT(*) AS c FROM ${tabla} WHERE task_id = ?`).get(taskId)!.c;
+  }
+
+  test("borra el historial de una tarea vencida y conserva el de una reciente", async () => {
+    const { id: vieja } = await crearCopia(200);
+    const { id: nueva } = await crearCopia(10);
+    const proyecto = crypto.randomUUID();
+    db.query("INSERT INTO projects (id, name) VALUES (?, 'Purga')").run(proyecto);
+    for (const [taskId, estado] of [
+      [vieja, "pendiente"],
+      [nueva, "pendiente"],
+    ] as const) {
+      db.query("INSERT INTO task_events (task_id, kind) VALUES (?, 'observacion')").run(taskId);
+      db.query("INSERT INTO task_plans (task_id, plan, hash) VALUES (?, '{\"objetivo\":\"prueba\"}', 'hash')").run(taskId);
+      db.query("INSERT INTO task_approvals (id, task_id, accion) VALUES (?, ?, 'commit')").run(crypto.randomUUID(), taskId);
+      db.query(
+        "INSERT INTO repository_actions (id, project_id, task_id, action, payload, state) VALUES (?, ?, ?, 'push', '{}', ?)",
+      ).run(crypto.randomUUID(), proyecto, taskId, estado);
+    }
+
+    const borrados = await purgarHistorial();
+
+    expect(borrados).toBeGreaterThanOrEqual(4);
+    for (const tabla of ["task_events", "task_plans", "task_approvals", "repository_actions"]) {
+      expect(filas(tabla, vieja)).toBe(0);
+      expect(filas(tabla, nueva)).toBe(1);
+    }
+    db.query("DELETE FROM projects WHERE id = ?").run(proyecto);
+  });
+
+  test("no toca las tareas: la historia del usuario se queda", async () => {
+    const { id: vieja } = await crearCopia(200);
+    await purgarHistorial();
+    expect(db.query<{ c: number }, [string]>("SELECT COUNT(*) AS c FROM tasks WHERE id = ?").get(vieja)!.c).toBe(1);
   });
 });
