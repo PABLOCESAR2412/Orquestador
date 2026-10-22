@@ -43,6 +43,7 @@ import {
   prepararCopia,
   type RegistroSalida,
 } from "./workspace";
+import { avisarPush } from "./push";
 
 // Un worker coordina hasta diez tareas independientes en orden de llegada.
 // Corre dentro del mismo proceso que la API, así que sigue activo aunque
@@ -144,6 +145,15 @@ function finish(
   })();
   if (!terminado) return false;
   publicarEstado(id);
+  if (status === "done" || status === "failed") {
+    void avisarPush(
+      id,
+      status === "done" ? "terminada" : "fallada",
+      status === "done"
+        ? "La tarea terminó."
+        : `La tarea falló: ${(fields.error ?? "sin detalle").slice(0, 180)}`,
+    );
+  }
   // Una tarea cancelada sin cambios libera su copia; con cambios, queda para revisión.
   if (status === "cancelled") {
     limpiarCopiaCancelada(id).catch((err) => console.error("Limpieza de la copia cancelada:", mensajeSeguro(err)));
@@ -375,6 +385,7 @@ async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Pr
   db.query("UPDATE tasks SET status = 'waiting_approval' WHERE id = ?").run(task.id);
   registrarEvento(task.id, "plan_pendiente", "Esperando tu aprobación");
   publicarEstado(task.id);
+  void avisarPush(task.id, "revisar", "La tarea espera tu aprobación.");
   return "espera";
 }
 

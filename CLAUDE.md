@@ -6,7 +6,7 @@ Lee este archivo antes de tocar código. Complementos: `SEGUIMIENTO.md` (hoja de
 
 Orquestador es una app personal para lanzar tareas a agentes de IA (OpenCode hoy; Codex y Google/agy después) y dejarlas corriendo en un VM de Azure, para que sigan aunque la PC o el teléfono estén apagados. Tiene chat, cola de tareas en segundo plano, analíticas de costo y uso, y ajustes. Se instala como PWA.
 
-Es de uso personal, con un solo usuario y sin cuentas. Tiene login con `TELO_CLAVE`. El acceso remoto es por Tailscale, sin puertos públicos (fase 9 de `PLAN.md`).
+Es de uso personal, con un solo usuario y sin cuentas. Tiene login con `TELO_CLAVE`. El acceso remoto es por Tailscale, sin puertos públicos (fase 9 de `SEGUIMIENTO.md`).
 
 ## Stack
 
@@ -103,7 +103,7 @@ El servicio diario de respaldos puede leer credenciales separadas desde `/etc/or
 
 - Desde la PC: `ssh -L 3000:localhost:3000 -L 9090:localhost:9090 -i <tu_clave> orquestador@<IP>`. Luego abre `http://127.0.0.1:3000`. El puerto 9090 es Cockpit.
 - Actualizar el VM a mano: `cd ~/orquestador && git switch main && git pull --ff-only && (cd server && bun install --frozen-lockfile) && (cd web && bun install --frozen-lockfile && bun run build) && sudo systemctl restart orquestador`. Con el timer de `deploy/` esto ocurre solo; ver `deploy/README.md`.
-- No abras puertos en Azure. El acceso remoto es por Tailscale (fase 9 de `PLAN.md`).
+- No abras puertos en Azure. El acceso remoto es por Tailscale (fase 9 de `SEGUIMIENTO.md`).
 
 ## Seguridad
 

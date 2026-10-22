@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "orquestador-server",
   "private": true,
   "type": "module",
@@ -16,10 +16,12 @@
     "exceljs": "^4.4.0",
     "hono": "^4.13.13",
     "mammoth": "^1.13.0",
-    "marked": "^18.1.1"
+    "marked": "^18.1.1",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/bun": "^1.4.3",
+    "@types/web-push": "^3.6.4",
     "typescript": "^7.0.2"
   },
   "overrides": {
@@ -29,3 +31,4 @@
     "sprintf-js@1.0.3": "patches/sprintf-js@1.0.3.patch"
   }
 }
+

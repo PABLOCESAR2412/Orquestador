@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  cancelarWebPush,
   guardarNotificacionesActivas,
   guardarSonidoNotificacionSeleccionado,
   guardarSonidoNotificacionesActivo,
@@ -12,6 +13,9 @@ import {
   sonidoNotificacionSeleccionado,
   sonidoNotificacionesActivo,
   sonidoGestionadoPorAndroid,
+  suscribirWebPush,
+  webpushActivo,
+  webpushSoportado,
   type SonidoNotificacion,
 } from "../../lib/notificaciones";
 
@@ -24,6 +28,24 @@ export function NotificacionesPanel() {
     notificacionesSoportadas() ? Notification.permission : "no_soportado",
   );
   const [sonidoProbado, setSonidoProbado] = useState<string | null>(null);
+
+  // Avisos empujados (Web Push): estado por dispositivo.
+  const [push, setPush] = useState<"cargando" | "activa" | "inactiva">(() => (webpushSoportado() ? "cargando" : "inactiva"));
+  const [notaPush, setNotaPush] = useState<string>(() =>
+    webpushSoportado()
+      ? "El servidor envía el aviso directo al dispositivo, aunque la app esté cerrada."
+      : "Este navegador no admite Web Push.",
+  );
+  useEffect(() => {
+    if (!webpushSoportado()) return;
+    void webpushActivo().then((activa) => setPush(activa ? "activa" : "inactiva"));
+  }, []);
+
+  const alCambiarPush = async (activar: boolean) => {
+    const resultado = activar ? await suscribirWebPush() : await cancelarWebPush();
+    setPush(resultado.activa ? "activa" : "inactiva");
+    setNotaPush(resultado.mensaje);
+  };
 
   const alCambiar = async (valor: boolean) => {
     if (valor) {
@@ -104,6 +126,19 @@ export function NotificacionesPanel() {
           </div>}
         </div>
       )}
+      <div className="aj-interruptor" style={{ marginTop: "0.6rem" }}>
+        <span className="aj-tarjeta-titulo-simple">Avisos empujados en este dispositivo</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={push === "activa"}
+          aria-label="Avisos empujados en este dispositivo"
+          className="aj-switch"
+          disabled={!webpushSoportado() || push === "cargando"}
+          onClick={() => void alCambiarPush(push !== "activa")}
+        />
+      </div>
+      <p className="aj-nota">{notaPush}</p>
     </article>
   );
 }
