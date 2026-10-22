@@ -148,6 +148,9 @@ test("activa la guía global de movimiento al crear o corregir animaciones y vid
   const correccion = inyectarSkillsEnPrompt("Corrige los residuos en el video y verifica el GIF animado.");
   expect(correccion.skillsInvocadas).toContain("motion-design");
 
+  const movimiento = inyectarSkillsEnPrompt("Haz una imagen en movimiento para historias.");
+  expect(movimiento.skillsInvocadas).toContain("motion-design");
+
   const analisis = inyectarSkillsEnPrompt("Analiza este video adjunto y descríbelo.");
   expect(analisis.skillsInvocadas).not.toContain("motion-design");
 });
