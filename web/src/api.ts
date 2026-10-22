@@ -14,6 +14,7 @@ export type Conversation = {
   estado_tarea?: "en_proceso" | "pendiente_aprobacion" | "completada" | null;
   estado_tarea_id?: string | null;
   estado_tarea_version?: string | null;
+  tiene_sesion?: boolean;
   last_message_at?: string | null;
   // Modelo que se quedó sin cuota en el último turno: el chat espera a que se cambie de modelo y se siga.
   cuota_modelo?: string | null;

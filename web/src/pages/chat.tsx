@@ -1553,7 +1553,9 @@ export function ChatPage() {
                     <article className="tl-msg" aria-label="Aviso del sistema">
                       <p className="tl-alerta" role="status">{m.content}</p>
                       {!tareaChat?.reanudable && !agenteOcupado && i === lista.length - 1 && lista.slice(0, i).some(p => p.role === "user") && (
-                        <button type="button" className="tl-boton" onClick={() => reintentarAviso(m.id)}>Continuar donde quedó</button>
+                        <button type="button" className="tl-boton" onClick={() => reintentarAviso(m.id)}>
+                          {current?.tiene_sesion || /sesión quedó guardada/i.test(m.content) ? "Continuar donde quedó" : "Reintentar solicitud"}
+                        </button>
                       )}
                     </article>
                   ) : m.role === "user" ? (

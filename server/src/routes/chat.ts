@@ -75,6 +75,7 @@ type Subchat = {
   project_name?: string | null;
   created_at: string;
   last_message_at: string;
+  tiene_sesion?: boolean | number;
   ocupada?: boolean;
   en_proceso?: boolean;
 };
@@ -96,6 +97,7 @@ type Conversation = {
   estado_tarea?: "en_proceso" | "pendiente_aprobacion" | "completada" | null;
   estado_tarea_id?: string | null;
   estado_tarea_version?: string | null;
+  tiene_sesion?: boolean | number;
   subchats?: Subchat[];
 };
 type Message = {
@@ -131,6 +133,7 @@ chat.get("/conversations", (c) => {
       )
       SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name,
              c.pinned_at, c.cuota_modelo, c.created_at, m.last_msg_at,
+             c.runner_session_id IS NOT NULL AS tiene_sesion,
              t.id AS task_id, t.status AS task_status, t.finished_at AS task_finished_at,
              t.plan_hash AS task_plan_hash
         FROM conversations c
@@ -143,7 +146,7 @@ chat.get("/conversations", (c) => {
     .all();
 
   const hijos = db.query<Subchat, []>(`
-    SELECT c.id,c.title,c.model,c.effort,c.project_id,p.name AS project_name,c.parent_conversation_id,c.parent_turn_id,
+    SELECT c.id,c.title,c.model,c.effort,c.project_id,p.name AS project_name,c.runner_session_id IS NOT NULL AS tiene_sesion,c.parent_conversation_id,c.parent_turn_id,
            c.subagent_turn_id,c.subagent_agent,c.subagent_prompt,c.subagent_status,c.subagent_result,
            c.created_at,MAX(c.created_at,COALESCE((SELECT MAX(m.created_at) FROM messages m WHERE m.conversation_id=c.id),c.created_at)) AS last_message_at
       FROM conversations c
@@ -155,6 +158,7 @@ chat.get("/conversations", (c) => {
   for (const hijo of hijos) {
     hijo.ocupada = hijo.subagent_status === "running";
     hijo.en_proceso = hijo.ocupada;
+    hijo.tiene_sesion = Boolean(hijo.tiene_sesion);
     const lista = hijosPorPadre.get(hijo.parent_conversation_id) ?? [];
     lista.push(hijo);
     hijosPorPadre.set(hijo.parent_conversation_id, lista);
@@ -187,6 +191,7 @@ chat.get("/conversations", (c) => {
               : null,
         estado_tarea_id: tarea?.id ?? null,
         estado_tarea_version: tarea?.plan_hash ?? tarea?.finished_at ?? null,
+        tiene_sesion: Boolean(r.tiene_sesion),
       };
     }),
   );

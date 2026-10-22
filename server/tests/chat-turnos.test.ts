@@ -125,6 +125,7 @@ describe("lista de conversaciones", () => {
       estado_tarea_id: string | null;
       estado_tarea_version: string | null;
       pendiente_aprobacion: boolean;
+      tiene_sesion: boolean;
     }[];
     expect(response.status).toBe(200);
     expect(lista.find((conversation) => conversation.id === id)).toMatchObject({
@@ -132,7 +133,12 @@ describe("lista de conversaciones", () => {
       estado_tarea_id: ultima,
       estado_tarea_version: "hash-reciente",
       pendiente_aprobacion: false,
+      tiene_sesion: false,
     });
+
+    db.query("UPDATE conversations SET runner_session_id='sesion-prueba' WHERE id=?").run(id);
+    const conSesion = await (await app.request("/api/conversations")).json() as { id: string; tiene_sesion: boolean }[];
+    expect(conSesion.find((conversation) => conversation.id === id)?.tiene_sesion).toBe(true);
   });
 });
 
