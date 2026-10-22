@@ -465,6 +465,7 @@ export type TaskEventKind =
   | "clasificacion_jev"
   | "memoria_evaluada"
   | "memoria_propuesta"
+  | "conflictos_pr_preparados"
   | "seguida";
 
 // Evento en vivo del canal /api/eventos-vivos (SSE).

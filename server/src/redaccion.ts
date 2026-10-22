@@ -79,9 +79,40 @@ function esSecretoReal(valor: string): boolean {
   return true;
 }
 
+// Marcas que delatan un valor de prueba dentro del propio formato de credencial (fixtures de
+// auditoría, ejemplos de documentación, tokens canónicos de manual). Solo se aplican al
+// formato: un secreto guardado por el dueño del proyecto es real por definición y nunca pasa
+// por aquí. Insértar la marca rompe la credencial, así que no abre la puerta a valores reales.
+const MARCAS_DE_PRUEBA = [
+  "fictici",
+  "prueba",
+  "pru3ba",
+  "ejemplo",
+  "example",
+  "dummy",
+  "fake",
+  "falso",
+  "placeholder",
+  "redacted",
+  "ocult",
+  "sample",
+  "test",
+  "abcdefghijklmnop",
+];
+
+function esFormatoDePrueba(hallada: string | undefined): boolean {
+  if (!hallada) return false;
+  const minusculas = hallada.toLowerCase();
+  return MARCAS_DE_PRUEBA.some((marca) => minusculas.includes(marca));
+}
+
 function contieneSecreto(linea: string, valores: string[]): boolean {
   if (ENCABEZADO_CLAVE_PRIVADA.test(linea)) return true;
-  if (PATRONES_CREDENCIAL.some((patron) => patron.test(linea))) return true;
+  for (const patron of PATRONES_CREDENCIAL) {
+    // Un valor con formato de credencial cuenta, salvo que sea un ejemplo marcado como tal.
+    const hallada = patron.exec(linea)?.[0];
+    if (hallada && !esFormatoDePrueba(hallada)) return true;
+  }
   return valores.some((valor) => esSecretoReal(valor) && linea.includes(valor));
 }
 
@@ -99,6 +130,24 @@ export function archivosConSecretos(diff: string, valores: string[]): string[] {
     }
     if (!linea.startsWith("+") || linea.startsWith("+++")) continue;
     if (contieneSecreto(linea.slice(1), todos)) hallados.add(archivo);
+  }
+  return [...hallados];
+}
+
+// Igual que archivosConSecretos, pero sobre el contenido íntegro de los blobs del índice
+// (etiquetados por el llamador con "\0ruta\0" al empezar). Cubre los secretos que el diff
+// no muestra, por ejemplo un archivo marcado binario con `.gitattributes`. Devuelve
+// rutas, nunca el valor del secreto.
+export function archivosConSecretosEnBlobs(blobs: string, valores: string[]): string[] {
+  const todos = [...valores, ...valoresDeConfiguracion()];
+  const hallados = new Set<string>();
+  let archivo = "(desconocido)";
+  for (const linea of blobs.split("\n")) {
+    if (linea.startsWith("\0")) {
+      archivo = linea.slice(1, linea.indexOf("\0", 1));
+      continue;
+    }
+    if (contieneSecreto(linea, todos)) hallados.add(archivo);
   }
   return [...hallados];
 }

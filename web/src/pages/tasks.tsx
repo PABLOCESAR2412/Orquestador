@@ -14,7 +14,7 @@ import { TerminalCrudo } from "../components/tarea-terminal";
 import { RevisionCambios } from "../components/tarea-revision";
 import { cuando } from "../components/tarea-formato";
 import { useEventosVivos } from "../lib/eventos-vivos";
-import { effortLabel, errorText, sanearDetalle, STATUS_LABEL } from "../lib/model";
+import { effortLabel, errorText, textoErrorTarea, STATUS_LABEL } from "../lib/model";
 import { useShell } from "../components/shell-context";
 import "../styles-trabajo.css";
 import "../styles-tareas.css";
@@ -442,7 +442,7 @@ function DetalleTarea({ id }: { id: string }) {
               <div className="tarea-bloque">
                 <span className="tarea-etiqueta">Error</span>
                 <p className="error tarea-texto" role="alert">
-                  {sanearDetalle(t.error, 600)}
+                  {textoErrorTarea(t.error)}
                 </p>
               </div>
             )}

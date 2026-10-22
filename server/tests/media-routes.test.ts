@@ -9,7 +9,9 @@ const { db } = await import("../src/db");
 const { media, reanudarGeneracionesMedios } = await import("../src/routes/media");
 
 afterAll(() => {
-  rmSync(DATA_PRUEBA, { recursive: true, force: true });
+  // Se cierra la base primero: en Windows un archivo abierto hace que rmSync falle (EBUSY).
+  db.close();
+  rmSync(DATA_PRUEBA, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 describe("rutas de generaciones multimedia", () => {

@@ -51,6 +51,10 @@ import {
 // Una tarea pasa por dos fases: el analizador produce un plan y el obrero ejecuta el plan aprobado.
 // Entre ambas, si el plan necesita aprobación, la tarea espera en `waiting_approval` sin ocupar el worker.
 
+// Cero actividad del runner (ni una línea) durante este tiempo termina la ejecución con
+// un fallo claro y libera el slot de la cola. TELO_TIEMPO_INACTIVIDAD_MS lo ajusta; 0 lo apaga.
+const TIEMPO_SIN_ACTIVIDAD_MS = Number(process.env.TELO_TIEMPO_INACTIVIDAD_MS ?? 15 * 60_000);
+
 const MENSAJE_INTERRUMPIDA = "El servidor se reinició mientras la tarea corría. Puedes reanudarla o reintentarla.";
 // Tamaño máximo de cada línea de salida que viaja por el canal en vivo.
 const MAX_LINEA_EN_VIVO = 4096;
@@ -242,6 +246,8 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
       cwd: ctx.cwd,
       // Las tareas se cancelan desde la interfaz; no se interrumpen por duración.
       timeoutMs: null,
+      // Pero sí por silencio: una tarea sin actividad libera su slot con un fallo claro.
+      tiempoSinActividadMs: TIEMPO_SIN_ACTIVIDAD_MS,
       signal: controller.signal,
       taskId: task.id,
       conversationId: task.conversation_id,
