@@ -101,53 +101,94 @@ export async function avisarPush(
   tareaId: string,
   tipo: "fallada" | "revisar" | "terminada",
   cuerpo: string,
+  sello = "",
 ): Promise<void> {
   try {
     const claves = clavesVapid();
     if (!claves) return;
-    // Sin dispositivos a quién avisar no se sella el evento: cuando el usuario
+    // Sin dispositivos a quién avisar no se sella nada: cuando el usuario
     // suscriba un dispositivo, los avisos nuevos entran ya.
     const subscripciones = listarSubscripciones();
     if (subscripciones.length === 0) return;
-    const nuevo = db
-      .query("INSERT OR IGNORE INTO push_enviados (tarea_id, tipo) VALUES (?, ?)")
-      .run(tareaId, tipo);
-    if (nuevo.changes !== 1) return; // ya se avisó de este evento
+    // Replanificaciones traen su sello: cada versión del plan avisa una sola vez,
+    // sin bloquear el aviso de la siguiente versión con la clave de la primera.
+    const clave = sello ? `${tipo}#${sello}` : tipo;
     const titulo = `Telo · ${tituloTarea(tareaId)}`;
     const carga = JSON.stringify({ titulo, cuerpo, url: "/tasks" });
-    for (const s of subscripciones) {
-      try {
-        const detalle = webpush.generateRequestDetails(
-          { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-          carga,
-          {
-            vapidDetails: {
-              subject: ASUNTO,
-              publicKey: claves.publicKey,
-              privateKey: claves.privateKey,
-            },
-            TTL: 3600,
-            urgency: "normal",
-          },
-        );
-        const cabeceras: Record<string, string> = {};
-        for (const [llave, valor] of Object.entries(detalle.headers)) {
-          if (valor !== undefined) cabeceras[llave] = String(valor);
-        }
-        const res = await fetch(detalle.endpoint, {
-          method: "POST",
-          headers: cabeceras,
-          body: detalle.body ? Buffer.from(detalle.body) : undefined,
-        });
-        if (res.status === 404 || res.status === 410) {
-          db.query("DELETE FROM push_subscripciones WHERE endpoint = ?").run(s.endpoint);
-        }
-      } catch {
-        // Endpoint caído o red intermitente: la suscripción queda para el próximo aviso.
-      }
+    const opcionesVapid = {
+      vapidDetails: { subject: ASUNTO, publicKey: claves.publicKey, privateKey: claves.privateKey },
+      TTL: 3600,
+      urgency: "normal" as const,
+    };
+
+    // Un evento ya entregado nunca vuelve a sonar: se consulta antes de enviar.
+    const yaEnviado = db
+      .query<{ ok: number }, [string, string]>(
+        "SELECT 1 AS ok FROM push_enviados WHERE tarea_id = ? AND tipo = ?",
+      )
+      .get(tareaId, clave);
+    if (yaEnviado) return;
+
+    // El sello va DESPUÉS de la entrega: si ningún dispositivo confirma con 2xx, el evento no
+    // se marca como enviado (antes se sellaba al principio y un 503 lo perdía para siempre).
+    let entregado = false;
+    for (let intento = 0; intento < 3 && !entregado; intento++) {
+      if (intento > 0) await Bun.sleep(RETRASO_REINTENTO_MS[intento - 1]!);
+      const respuestas = await Promise.allSettled(subscripciones.map((s) => enviar(opcionesVapid, s, carga)));
+      entregado = respuestas.some((r) => r.status === "fulfilled" && r.value === "entregado");
+      const reintentable = respuestas.some((r) => r.status === "fulfilled" && r.value === "fallo");
+      // Si solo quedan endpoints muertos (404/410, retirados) no hay nada temporal que esperar.
+      if (!entregado && !reintentable) break;
+    }
+    if (entregado) {
+      db.query("INSERT OR IGNORE INTO push_enviados (tarea_id, tipo) VALUES (?, ?)").run(tareaId, clave);
     }
   } catch {
     // La notificación nunca debe romper el flujo de la tarea.
+  }
+}
+
+type ClavesEnvio = {
+  vapidDetails: { subject: string; publicKey: string; privateKey: string };
+  TTL: number;
+  urgency: "normal";
+};
+
+const TIEMPO_ENVIO_MS = 10_000;
+const RETRASO_REINTENTO_MS = [1_500, 4_000] as const;
+
+// Envía a una suscripción con tope de tiempo propio y clasifica el resultado: un endpoint caído
+// no retiene al resto, que viajan en paralelo (antes iban en serie sin tiempo límite).
+async function enviar(
+  clavesEnvio: ClavesEnvio,
+  s: Subscripcion,
+  carga: string,
+): Promise<"entregado" | "inactiva" | "fallo"> {
+  try {
+    const detalle = webpush.generateRequestDetails(
+      { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+      carga,
+      clavesEnvio,
+    );
+    const cabeceras: Record<string, string> = {};
+    for (const [llave, valor] of Object.entries(detalle.headers)) {
+      if (valor !== undefined) cabeceras[llave] = String(valor);
+    }
+    const res = await fetch(detalle.endpoint, {
+      method: "POST",
+      headers: cabeceras,
+      body: detalle.body ? Buffer.from(detalle.body) : undefined,
+      signal: AbortSignal.timeout(TIEMPO_ENVIO_MS),
+    });
+    if (res.status === 404 || res.status === 410) {
+      db.query("DELETE FROM push_subscripciones WHERE endpoint = ?").run(s.endpoint);
+      return "inactiva";
+    }
+    if (res.ok) return "entregado";
+    return "fallo";
+  } catch {
+    // Endpoint caído o red intermitente: el lote decide si reintenta.
+    return "fallo";
   }
 }
 

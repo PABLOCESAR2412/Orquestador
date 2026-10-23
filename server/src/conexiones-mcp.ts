@@ -234,3 +234,30 @@ export function configuracionMcpParaAgente(incluirContext7 = false): Configuraci
   }
   return { servidores, variables };
 }
+
+// Valores descifrados de los tokens de las conexiones MCP habilitadas: entran al escaneo Git y a la
+// redacción de salidas para que un agente no los suba a un commit ni los deje en la vista. Igual que
+// el configurador: sin clave maestra o con una credencial dañada, el valor se omite y nunca lanza.
+export function valoresTokensMcp(): string[] {
+  try {
+    const clave = claveMaestra();
+    if (!clave) return [];
+    const filas = db
+      .query<FilaMcp, []>(
+        "SELECT id, token_iv, token_tag, token_enc FROM mcp_connections WHERE token_enc IS NOT NULL AND enabled = 1",
+      )
+      .all();
+    const valores: string[] = [];
+    for (const fila of filas) {
+      const valor = descifrar(
+        clave,
+        { iv: fila.token_iv!, tag: fila.token_tag!, value_enc: fila.token_enc! },
+        AAD(fila.id),
+      );
+      if (valor) valores.push(valor);
+    }
+    return valores;
+  } catch {
+    return [];
+  }
+}

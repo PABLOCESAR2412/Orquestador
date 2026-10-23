@@ -34,10 +34,13 @@ function suscripcion(endpoint: string) {
 
 const envios: { url: string; init: RequestInit }[] = [];
 let estadoRespuesta = 201;
+// Estados en cola para simular fallos transitorios que vuelven en el reintento.
+const secuencia: number[] = [];
 const fetchOriginal = globalThis.fetch;
 globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
   envios.push({ url: String(url), init: init as RequestInit });
-  return new Response("", { status: estadoRespuesta });
+  const estado = secuencia.length > 0 ? (secuencia.shift() as number) : estadoRespuesta;
+  return new Response("", { status: estado });
 }) as typeof fetch;
 
 afterAll(() => {
@@ -142,4 +145,46 @@ test("sin dispositivos no envía ni sella el evento", async () => {
     .query<{ n: number }, []>("SELECT COUNT(*) AS n FROM push_enviados WHERE tarea_id = 't-push-3'")
     .get()!;
   expect(sello.n).toBe(0);
+});
+
+test("un fallo transitorio no sella el aviso y el reintento interno entrega", { timeout: 20000 }, async () => {
+  db.query("DELETE FROM push_subscripciones").run();
+  guardarSubscripcion(suscripcion("https://fcm.googleapis.com/fcm/send/cuenta-reintento"));
+  envios.length = 0;
+  secuencia.length = 0;
+  estadoRespuesta = 503;
+  // Envío + dos reintentos: todos fallan y el evento queda libre para volver a intentarse.
+  await avisarPush("t-push-4", "revisar", "La tarea espera tu aprobación.");
+  expect(envios.length).toBe(3);
+  const sellos = db
+    .query<{ n: number }, []>("SELECT COUNT(*) AS n FROM push_enviados WHERE tarea_id = 't-push-4'")
+    .get()!;
+  expect(sellos.n).toBe(0);
+  // Cuando el gateway vuelve a responder 2xx, el mismo evento sale otra vez y queda sellado.
+  estadoRespuesta = 201;
+  secuencia.length = 0;
+  await avisarPush("t-push-4", "revisar", "La tarea espera tu aprobación.");
+  expect(envios.length).toBe(4);
+  const selloFinal = db
+    .query<{ n: number }, []>("SELECT COUNT(*) AS n FROM push_enviados WHERE tarea_id = 't-push-4'")
+    .get()!;
+  expect(selloFinal.n).toBe(1);
+});
+
+test("cada versión del plan avisa una sola vez sin bloquear la siguiente", async () => {
+  db.query("DELETE FROM push_subscripciones").run();
+  guardarSubscripcion(suscripcion("https://fcm.googleapis.com/fcm/send/cuenta-versiones"));
+  envios.length = 0;
+  secuencia.length = 0;
+  estadoRespuesta = 201;
+  await avisarPush("t-push-5", "revisar", "Espera tu aprobación.", "1");
+  await avisarPush("t-push-5", "revisar", "Espera tu aprobación.", "1");
+  expect(envios.length).toBe(1);
+  await avisarPush("t-push-5", "revisar", "Espera tu aprobación.", "2");
+  expect(envios.length).toBe(2);
+  const sellos = db
+    .query<{ tipo: string }, []>("SELECT tipo FROM push_enviados WHERE tarea_id = 't-push-5' ORDER BY rowid")
+    .all()
+    .map((f) => f.tipo);
+  expect(sellos).toEqual(["revisar#1", "revisar#2"]);
 });

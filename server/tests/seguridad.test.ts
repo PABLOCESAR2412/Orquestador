@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,6 +22,8 @@ const { gitSeguro, prepararRepoSeguro, sanearConfiguracionRepo, tieneGitReal } =
 const { ArchivoError, leerArchivo } = await import("../src/archivos-proyecto");
 const { ejecutarVencidas, ultimaTareaActiva } = await import("../src/programadas");
 const { db } = await import("../src/db");
+const { crearConexionMcp, borrarConexionMcp } = await import("../src/conexiones-mcp");
+const { guardarClaveProveedor, borrarClaveProveedor } = await import("../src/claves-proveedor");
 
 describe("redacción de salida", () => {
   test("oculta valores de al menos 6 caracteres y deja los más cortos", () => {
@@ -96,6 +99,52 @@ describe("escaneo antes de commit", () => {
       "+.task-manager-running-state-value { display: block; }",
     ].join("\n");
     expect(archivosConSecretos(diff, [])).toEqual([]);
+  });
+
+  test("los tokens MCP guardados quedan fuera de la redacción y del escaneo", () => {
+    const anterior = process.env.TELO_CLAVE_CIFRADO;
+    process.env.TELO_CLAVE_CIFRADO = randomBytes(32).toString("base64");
+    let creada: string | null = null;
+    try {
+      const token = "mcp-" + "s".repeat(30);
+      const conexion = crearConexionMcp("Auditoría MCP", "https://mcp.ejemplo.test/mcp", token);
+      expect(conexion).not.toBeNull();
+      creada = conexion!.id;
+      expect(redactar(`autoriza ${token} ya`)).toBe("autoriza *** ya");
+      const diff = [
+        "diff --git a/mcp.env b/mcp.env",
+        "--- a/mcp.env",
+        "+++ b/mcp.env",
+        "+MCP_TOKEN=" + token,
+      ].join("\n");
+      // El valor ajeno no delata nada; el token MCP guardado sí, aunque el proyecto no lo declare.
+      expect(archivosConSecretos(diff, ["valor-ajeno-123456"])).toEqual(["mcp.env"]);
+    } finally {
+      if (creada) borrarConexionMcp(creada);
+      if (anterior === undefined) delete process.env.TELO_CLAVE_CIFRADO;
+      else process.env.TELO_CLAVE_CIFRADO = anterior;
+    }
+  });
+
+  test("las claves de proveedor guardadas entran al filtro aunque el proyecto no las declare", () => {
+    const anterior = process.env.TELO_CLAVE_CIFRADO;
+    process.env.TELO_CLAVE_CIFRADO = randomBytes(32).toString("base64");
+    try {
+      const clave = "llaveproveedor9012345678";
+      expect(guardarClaveProveedor("nvidia", clave)).toBeTruthy();
+      expect(redactar(`usa ${clave} al hablar`)).toBe("usa *** al hablar");
+      const diff = [
+        "diff --git a/config.json b/config.json",
+        "--- a/config.json",
+        "+++ b/config.json",
+        '+{"token": "' + clave + '"}',
+      ].join("\n");
+      expect(archivosConSecretos(diff, [])).toEqual(["config.json"]);
+    } finally {
+      borrarClaveProveedor("nvidia");
+      if (anterior === undefined) delete process.env.TELO_CLAVE_CIFRADO;
+      else process.env.TELO_CLAVE_CIFRADO = anterior;
+    }
   });
 });
 

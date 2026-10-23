@@ -385,7 +385,7 @@ async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Pr
   db.query("UPDATE tasks SET status = 'waiting_approval' WHERE id = ?").run(task.id);
   registrarEvento(task.id, "plan_pendiente", "Esperando tu aprobación");
   publicarEstado(task.id);
-  void avisarPush(task.id, "revisar", "La tarea espera tu aprobación.");
+  void avisarPush(task.id, "revisar", "La tarea espera tu aprobación.", String(numero));
   return "espera";
 }
 

@@ -15,7 +15,7 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 const { db } = await import("../src/db");
 const { config } = await import("../src/config");
 const { gitOk } = await import("../src/git");
-const { aprobarTarea, diffDeTarea, prepararCopia, reintegrarSobrePunta } = await import("../src/workspace");
+const { aprobarTarea, diffDeTarea, limpiarCopiaCancelada, prepararCopia, reintegrarSobrePunta } = await import("../src/workspace");
 const { repositoryActions } = await import("../src/routes/repository-actions");
 const { guardarSecreto, entornoDeProyecto } = await import("../src/secretos");
 const { fuenteAutenticacionGithub, githubApiPr } = await import("../src/routes/proyecto-config");
@@ -470,6 +470,98 @@ test("push_main ya no se acepta, y merge se puede preparar y autorizar directame
   expect(respuesta.status).toBe(200);
   expect(metodoLlamada).toBe("PUT");
   expect(urlLlamada).toContain("/repos/dueno/prueba/pulls/1/merge");
+  expect(
+    db.query<{ state: string }, [string]>("SELECT state FROM repository_actions WHERE id=?").get(accion.id)?.state,
+  ).toBe("approved");
+});
+
+test("un merge queda ligado al commit aprobado: otra punta del PR exige revisión nueva", { timeout: 20000 }, async () => {
+  const p = await tareaConCommit();
+  guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
+  const shaAprobado = "1".repeat(64);
+  db.query("INSERT INTO task_approvals (id,task_id,accion,diff_hash,commit_sha,rama) VALUES (?,?, 'push', 'hash', ?, 'telo/prueba')").run(
+    randomUUID(),
+    p.taskId,
+    shaAprobado,
+  );
+  const res = await pedir(`/projects/${p.id}/acciones`, {
+    action: "merge",
+    taskId: p.taskId,
+    pr_number: 2,
+    pr_url: "https://github.com/dueno/prueba/pull/2",
+  });
+  expect(res.status).toBe(201);
+  const accion = (await res.json()) as any;
+
+  let metodoPuesta = "";
+  globalThis.fetch = (async (url: any, init: any) => {
+    const destino = String(url);
+    if (destino === "https://api.github.com/repos/dueno/prueba")
+      return Response.json({ full_name: "dueno/prueba", permissions: { push: true } });
+    if (destino.endsWith("/pulls/2"))
+      return Response.json({
+        html_url: "https://github.com/dueno/prueba/pull/2",
+        mergeable: true,
+        head: { ref: "telo/prueba", sha: "2".repeat(64), repo: { full_name: "dueno/prueba" } },
+        base: { ref: "main", repo: { full_name: "dueno/prueba" } },
+      });
+    if (destino.endsWith("/pulls/2/merge")) {
+      metodoPuesta = init?.method ?? "";
+      return Response.json({ merged: true });
+    }
+    throw new Error(`Solicitud inesperada: ${destino}`);
+  }) as typeof fetch;
+
+  const resultado = await pedir(`/acciones/${accion.id}/decidir`, { approve: true });
+  expect(resultado.status).toBe(409);
+  expect((await resultado.json()) as any).toMatchObject({ error: "pr_cambiado" });
+  const fila = db.query<{ state: string; result: string }, [string]>("SELECT state,result FROM repository_actions WHERE id=?").get(accion.id)!;
+  expect(fila.state).toBe("failed");
+  expect(JSON.parse(fila.result)).toMatchObject({ codigo: "pr_cambiado" });
+  // Nunca llamó al PUT de merge: la punta del PR no era el commit revisado.
+  expect(metodoPuesta).toBe("");
+});
+
+test("la punta del PR coincide: el PUT de merge declara el SHA revisado", { timeout: 20000 }, async () => {
+  const p = await tareaConCommit();
+  guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
+  const shaAprobado = "3".repeat(64);
+  db.query("INSERT INTO task_approvals (id,task_id,accion,diff_hash,commit_sha,rama) VALUES (?,?, 'push', 'hash', ?, 'telo/prueba')").run(
+    randomUUID(),
+    p.taskId,
+    shaAprobado,
+  );
+  const res = await pedir(`/projects/${p.id}/acciones`, {
+    action: "merge",
+    taskId: p.taskId,
+    pr_number: 3,
+    pr_url: "https://github.com/dueno/prueba/pull/3",
+  });
+  expect(res.status).toBe(201);
+  const accion = (await res.json()) as any;
+
+  let putCuerpo = "";
+  globalThis.fetch = (async (url: any, init: any) => {
+    const destino = String(url);
+    if (destino === "https://api.github.com/repos/dueno/prueba")
+      return Response.json({ full_name: "dueno/prueba", permissions: { push: true } });
+    if (destino.endsWith("/pulls/3"))
+      return Response.json({
+        html_url: "https://github.com/dueno/prueba/pull/3",
+        mergeable: true,
+        head: { ref: "telo/prueba", sha: shaAprobado, repo: { full_name: "dueno/prueba" } },
+        base: { ref: "main", repo: { full_name: "dueno/prueba" } },
+      });
+    if (destino.endsWith("/pulls/3/merge")) {
+      putCuerpo = String(init?.body ?? "");
+      return Response.json({ merged: true, message: "Pull Request successfully merged" });
+    }
+    throw new Error(`Solicitud inesperada: ${destino}`);
+  }) as typeof fetch;
+
+  const resultado = await pedir(`/acciones/${accion.id}/decidir`, { approve: true });
+  expect(resultado.status).toBe(200);
+  expect(JSON.parse(putCuerpo)).toMatchObject({ sha: shaAprobado, merge_method: "squash" });
   expect(
     db.query<{ state: string }, [string]>("SELECT state FROM repository_actions WHERE id=?").get(accion.id)?.state,
   ).toBe("approved");
@@ -941,6 +1033,55 @@ test("el escaneo de secretos ve el blob de un archivo marcado binario por .gitat
   await expect(aprobarTarea(taskId, { accion: "commit", hash: antes.hash!, mensaje: "Agrega un binario" })).rejects.toMatchObject({
     code: "secreto_detectado",
   });
+});
+
+test("un archivo que el escaneo no puede verificar completo bloquea el commit", { timeout: 60000 }, async () => {
+  const p = proyecto();
+  await gitOk(["init", "-b", "main"], { cwd: p.cwd });
+  writeFileSync(join(p.cwd, "archivo.txt"), "base\n");
+  await gitOk(["add", "archivo.txt"], { cwd: p.cwd });
+  await gitOk(
+    ["-c", "user.name=Prueba", "-c", "user.email=prueba@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "Base"],
+    { cwd: p.cwd },
+  );
+  const taskId = randomUUID();
+  p.taskId = taskId;
+  db.query("INSERT INTO tasks(id,title,prompt,model,status,project_id) VALUES (?,'Archivo pesado','Prueba','prueba','done',?)").run(
+    taskId,
+    p.id,
+  );
+  const copia = await prepararCopia(taskId, p.cwd, p.id);
+  // Un blob mayor al tope por archivo no se recorta y se ignora: queda sin verificar y sin commit.
+  writeFileSync(join(copia.cwd, "pesado.txt"), "x".repeat(17_000_000));
+  const antes = await diffDeTarea(taskId);
+  expect(antes.hash).toBeTruthy();
+  await expect(aprobarTarea(taskId, { accion: "commit", hash: antes.hash!, mensaje: "Sube un archivo pesado" })).rejects.toMatchObject({
+    code: "escaneo_incompleto",
+  });
+});
+
+test("cancelar conserva la copia de la tarea mientras haya entregables ignorados", { timeout: 20000 }, async () => {
+  const p = proyecto();
+  await gitOk(["init", "-b", "main"], { cwd: p.cwd });
+  writeFileSync(join(p.cwd, "base.txt"), "base\n");
+  await gitOk(["add", "base.txt"], { cwd: p.cwd });
+  await gitOk(
+    ["-c", "user.name=Prueba", "-c", "user.email=prueba@example.test", "-c", "commit.gpgsign=false", "commit", "-m", "Base"],
+    { cwd: p.cwd },
+  );
+  const taskId = randomUUID();
+  p.taskId = taskId;
+  db.query("INSERT INTO tasks(id,title,prompt,model,status,project_id) VALUES (?,'Cancelada con ignorados','Prueba','prueba','cancelled',?)").run(
+    taskId,
+    p.id,
+  );
+  const copia = await prepararCopia(taskId, p.cwd, p.id);
+  writeFileSync(join(copia.cwd, ".gitignore"), "entregado*\n");
+  writeFileSync(join(copia.cwd, "entregado.bin"), "trabajo que .gitignore esconde\n");
+  await limpiarCopiaCancelada(taskId);
+  // Con el chequeo de siempre (sin --ignored) este clon parecía limpio y se borraba: el
+  // entregable ignorado desaparecía con él. Ahora los ignorados cuentan como algo que revisar.
+  expect(existsSync(copia.cwd)).toBe(true);
 });
 
 test("un push fallido guarda el detalle claro para la tarjeta", { timeout: 20000 }, async () => {

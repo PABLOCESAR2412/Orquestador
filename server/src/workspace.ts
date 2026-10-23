@@ -47,6 +47,10 @@ export { opcionesDeCredenciales } from "./git-credenciales";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA = /^([0-9a-f]{40}|[0-9a-f]{64})$/;
 const TOPE_DIFF = 400 * 1024;
+// Tope del escaneo de blobs antes del commit: por archivo y en total (caracteres). Un blob
+// que pasa el tope no se recorta y olvidar: queda en `sinVerificar` y bloquea el commit.
+const TOPE_ESCANEO_ARCHIVO = 16_000_000;
+const TOPE_ESCANEO_TOTAL = 64_000_000;
 const TIEMPO_CLON_MS = 10 * 60_000;
 const TIEMPO_ESTADO_MS = 5 * 60_000;
 const TIEMPO_PUSH_MS = 5 * 60_000;
@@ -551,6 +555,9 @@ async function estadoDelClon(ctx: Contexto): Promise<{
   diff: string;
   completo: string;
   escaneo: string;
+  // Archivos cuya captura no se pudo verificar completo (ilegible o sobre el tope):
+  // el commit no entra mientras quede alguno sin revisar.
+  sinVerificar: string[];
   truncado: boolean;
   hash: string | null;
 }> {
@@ -569,7 +576,7 @@ async function estadoDelClon(ctx: Contexto): Promise<{
     (a) => !a.ruta.startsWith(".opencode/") && !a.ruta.startsWith(".opencode"),
   );
   if (archivos.length === 0)
-    return { archivos, diff: "", completo: "", escaneo: "", truncado: false, hash: null };
+    return { archivos, diff: "", completo: "", escaneo: "", sinVerificar: [], truncado: false, hash: null };
 
   const texto = await gitOkSeguro(
     ["diff", "--cached", "-M", "--no-color", "--no-ext-diff", "--no-textconv", ctx.base, "--", ":!.opencode", ":!.opencode/*"],
@@ -586,27 +593,37 @@ async function estadoDelClon(ctx: Contexto): Promise<{
   const truncado = bytes.length > TOPE_DIFF;
   const diff = truncado ? new TextDecoder().decode(bytes.subarray(0, TOPE_DIFF)) : texto;
 
-  // Contenido original de los blobs añadidos o modificados (los borrados no traen nada que escanear),
-  // leído del índice: no pasa por los atributos del worktree que el agente puede escribir.
+  // Contenido original de los blobs añadidos o modificados (los borrados no traen nada que
+  // escanear), leído del índice: no pasa por los atributos del worktree que el agente puede
+  // escribir. Sin topes silenciosos: un blob ilegible o demasiado grande queda en `sinVerificar`
+  // y el commit se bloquea — nada entra a Git sin haberse revisado entero.
   let escaneo = texto;
   let total = escaneo.length;
-  for (const archivo of archivos.filter((a) => a.estado !== "borrado").slice(0, 400)) {
-    if (total > 8_000_000) break;
+  const sinVerificar: string[] = [];
+  for (const archivo of archivos.filter((a) => a.estado !== "borrado")) {
+    if (total > TOPE_ESCANEO_TOTAL) {
+      sinVerificar.push(archivo.ruta);
+      continue;
+    }
     try {
       const blob = await gitOkSeguro(["cat-file", "blob", `:0:${archivo.ruta}`], {
         cwd: ctx.clon,
         timeoutMs: TIEMPO_ESTADO_MS,
       });
-      const conTope = blob.slice(0, 1_500_000);
+      if (blob.length > TOPE_ESCANEO_ARCHIVO) {
+        sinVerificar.push(archivo.ruta);
+        continue;
+      }
       // La etiqueta va en su propia línea: el escáner la ignora al completa, así que el
       // contenido queda en líneas limpias (incluida su primera).
-      escaneo += `\n\0${archivo.ruta}\0\n${conTope}`;
-      total += conTope.length + archivo.ruta.length + 3;
+      escaneo += `\n\0${archivo.ruta}\0\n${blob}`;
+      total += blob.length + archivo.ruta.length + 3;
     } catch {
-      // Si el blob no se puede leer, el escaneo textual del diff sigue cubriendo lo visible.
+      // Si el blob no se puede leer, no es verificable: no entra hasta que se aclare.
+      sinVerificar.push(archivo.ruta);
     }
   }
-  return { archivos, diff, completo: texto, escaneo, truncado, hash };
+  return { archivos, diff, completo: texto, escaneo, sinVerificar, truncado, hash };
 }
 
 // Valores de los secretos del proyecto de la tarea (incluido GITHUB_TOKEN), para ocultarlos.
@@ -726,6 +743,9 @@ export function diffDeTarea(taskId: string) {
           apPush && apPush.commit_sha
             ? {
                 sha: apPush.commit_sha,
+                // Hash del diff aprobado: deja saber si EL TRABAJO de este diff ya está subido,
+                // aunque un rebase sobre la punta de la base cambie el SHA del commit.
+                hash: apPush.diff_hash ?? "",
                 remoto: apPush.remoto ?? "",
                 rama: apPush.rama ?? ctx.rama,
                 autenticacion: parsearFuenteCredencialGithub(apPush.autenticacion),
@@ -793,6 +813,13 @@ async function commitInterno(
   if (conSecretos.length > 0) {
     throw new ErrorTarea("secreto_detectado", 409, conSecretos.slice(0, 10).join(", "));
   }
+  // Un archivo que el escáner no pudo leer completo no entra: ni alto ni truncado por capas silenciosas.
+  if (estado.sinVerificar.length > 0)
+    throw new ErrorTarea(
+      "escaneo_incompleto",
+      409,
+      `No se pudo verificar el contenido completo de: ${estado.sinVerificar.slice(0, 8).join(", ")}`,
+    );
   const hayNuevo = await gitSeguro(["diff", "--cached", "--quiet", "HEAD"], { cwd: ctx.clon });
   if (hayNuevo.code === 0) {
     const shaActual = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: ctx.clon })).trim();
@@ -1036,9 +1063,11 @@ export function limpiarCopiaCancelada(taskId: string): Promise<void> {
     try {
       const ctx = await contextoGit(taskId);
       const pendientes = (
-        await gitOkSeguro(["status", "--porcelain", "--untracked-files=all"], { cwd: ctx.clon })
+        await gitOkSeguro(["status", "--porcelain", "--untracked-files=all", "--ignored"], { cwd: ctx.clon })
       ).trim();
       const head = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: ctx.clon })).trim();
+      // Con --ignored, un clon con entregables excluidos por .gitignore NO cuenta como limpio:
+      // cancelar deja la copia para que el trabajo ignorado sobreviva (igual criterio que limpiarCopias).
       limpio = pendientes === "" && head === ctx.base;
     } catch {
       limpio = false;

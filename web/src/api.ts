@@ -204,7 +204,7 @@ export type TaskDiff =
       remoto_url?: string | null;
       aprobaciones: {
         commit: { estado: "pendiente" | "aprobada"; sha: string; hash: string; decidida_en: string; mensaje: string } | null;
-        push: { sha: string; remoto: string; rama?: string; autenticacion?: FuenteAutenticacionGithub | null; decidida_en: string } | null;
+        push: { sha: string; hash: string; remoto: string; rama?: string; autenticacion?: FuenteAutenticacionGithub | null; decidida_en: string } | null;
       };
       identidad_git?: string;
     };

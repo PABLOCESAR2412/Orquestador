@@ -634,6 +634,11 @@ export function AccionesRepositorioChat({
     diff.aprobaciones.commit.sha === diff.commit,
   );
   const pushAprobacion = diff?.aprobaciones.push;
+  // El trabajo de ESTE diff ya está subido cuando hubo una subida con el mismo hash: vale para
+  // cualquier destino (rama de tarea o base) incluso si un rebase sobre la punta cambió el SHA.
+  const subidoYa = Boolean(
+    diff?.remoto && pushAprobacion && pushAprobacion.hash && pushAprobacion.hash === diff.hash,
+  );
   const pushVigente = Boolean(
     commitVigente &&
     diff?.remoto &&
@@ -769,7 +774,7 @@ export function AccionesRepositorioChat({
       )}
       {projectId && tareaCompletada && taskId && diff && !pendiente && !conflictoDeTareaActual && (
         <div className="approval-buttons" aria-label="Acciones del repositorio">
-          {tieneCambios && !pushVigente && (
+          {tieneCambios && !subidoYa && (
             <button
               type="button"
               className="primary"
@@ -824,9 +829,9 @@ export function AccionesRepositorioChat({
               )}
             </div>
           )}
-          {pushVigente && ramaSubida !== diff?.rama && (
+          {subidoYa && (
             <span className="approval-files" role="status">
-              Cambios subidos a {ramaSubida}.
+              Cambios subidos{ramaSubida && ramaSubida !== diff?.rama ? ` a ${ramaSubida}` : ""}.
             </span>
           )}
         </div>
