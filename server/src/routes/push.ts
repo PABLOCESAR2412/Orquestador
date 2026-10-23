@@ -21,7 +21,7 @@ push.get("/push/clave", (c) => {
 push.post("/push/suscripciones", async (c) => {
   const sub = validarSubscripcion(await c.req.json().catch(() => null));
   if (!sub) return c.json({ error: "suscripcion_invalida" }, 400);
-  guardarSubscripcion(sub);
+  if (!guardarSubscripcion(sub)) return c.json({ error: "limite_suscripciones" }, 429);
   return c.json({ ok: true });
 });
 

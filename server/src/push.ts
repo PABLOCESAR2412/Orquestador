@@ -18,6 +18,11 @@ export type Subscripcion = { endpoint: string; p256dh: string; auth: string };
 
 const CLAVE_VAPID = "vapid_global";
 const AAD_VAPID = "app_settings|vapid_global";
+const HOSTS_PUSH_PERMITIDOS = new Set([
+  "fcm.googleapis.com",
+  "web.push.apple.com",
+]);
+const MAX_SUSCRIPCIONES_PUSH = 20;
 type VapidGuardado = CifradoSecreto & { version: 1 };
 
 // Asunto del JWT VAPID (mailto: o https:); TELO_PUSH_ASUNTO lo ajusta el despliegue.
@@ -60,29 +65,48 @@ export function validarSubscripcion(cuerpo: unknown): Subscripcion | null {
   const c = cuerpo as { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } };
   if (
     typeof c.endpoint !== "string" ||
-    !/^https:\/\//i.test(c.endpoint) ||
     c.endpoint.length > 2048
   ) {
     return null;
   }
+  const endpoint = endpointPushSeguro(c.endpoint);
+  if (!endpoint) return null;
   const p256dh = c.keys?.p256dh;
   const auth = c.keys?.auth;
   if (typeof p256dh !== "string" || typeof auth !== "string") return null;
   if (!esBase64Url(p256dh) || !esBase64Url(auth)) return null;
   if (Buffer.from(p256dh, "base64url").length !== 65) return null;
   if (Buffer.from(auth, "base64url").length < 16) return null;
-  return { endpoint: c.endpoint, p256dh, auth };
+  return { endpoint, p256dh, auth };
+}
+
+function endpointPushSeguro(valor: string): string | null {
+  try {
+    const url = new URL(valor);
+    const hostPermitido = HOSTS_PUSH_PERMITIDOS.has(url.hostname)
+      || (url.hostname.endsWith(".push.services.mozilla.com") && url.hostname.length > ".push.services.mozilla.com".length)
+      || (url.hostname.endsWith(".notify.windows.com") && url.hostname.length > ".notify.windows.com".length);
+    if (url.protocol !== "https:" || !hostPermitido || url.port || url.username || url.password || url.hash) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
 }
 
 function esBase64Url(texto: string): boolean {
   return /^[A-Za-z0-9_-]+$/.test(texto) && texto.length % 4 !== 1;
 }
 
-export function guardarSubscripcion(s: Subscripcion): void {
-  db.query(
-    `INSERT INTO push_subscripciones (endpoint, p256dh, auth) VALUES (?, ?, ?)
-     ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth`,
-  ).run(s.endpoint, s.p256dh, s.auth);
+export function guardarSubscripcion(s: Subscripcion): boolean {
+  return db.transaction(() => {
+    const existente = db.query("SELECT 1 FROM push_subscripciones WHERE endpoint=?").get(s.endpoint);
+    if (!existente && db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM push_subscripciones").get()!.n >= MAX_SUSCRIPCIONES_PUSH) return false;
+    db.query(
+      `INSERT INTO push_subscripciones (endpoint, p256dh, auth) VALUES (?, ?, ?)
+       ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth`,
+    ).run(s.endpoint, s.p256dh, s.auth);
+    return true;
+  })();
 }
 
 export function quitarSubscripcion(endpoint: string): void {
@@ -196,9 +220,10 @@ export async function procesarColaPush(filtro?: { tareaId: string; tipo: string;
         }
         const resultado = await enviar(opciones, e, e.carga);
         const retraso = RETRASO_REINTENTO_MS[e.intentos] ?? Math.min(300_000, 30_000 * 2 ** Math.min(e.intentos - 2, 4));
+        const estado = resultado === "entregado" ? "entregada" : resultado === "inactiva" ? "descartada" : "pendiente";
         db.query(`UPDATE push_entregas SET estado=?,siguiente_ms=?,bloqueo_hasta_ms=0
-          WHERE tarea_id=? AND tipo=? AND endpoint=?`).run(resultado === "entregado" ? "entregada" : "pendiente", Date.now() + retraso, e.tarea_id, e.tipo, e.endpoint);
-        if (resultado === "entregado" && !db.query("SELECT 1 FROM push_entregas WHERE tarea_id=? AND tipo=? AND estado!='entregada'").get(e.tarea_id, e.tipo)) {
+          WHERE tarea_id=? AND tipo=? AND endpoint=?`).run(estado, Date.now() + retraso, e.tarea_id, e.tipo, e.endpoint);
+        if (resultado === "entregado" && !db.query("SELECT 1 FROM push_entregas WHERE tarea_id=? AND tipo=? AND estado IN ('pendiente','enviando')").get(e.tarea_id, e.tipo)) {
           db.query("INSERT OR IGNORE INTO push_enviados(tarea_id,tipo) VALUES (?,?)").run(e.tarea_id, e.tipo);
         }
       }));
@@ -232,8 +257,15 @@ async function enviar(
   carga: string,
 ): Promise<"entregado" | "inactiva" | "fallo"> {
   try {
+    // Validar también lo que ya estaba guardado: ninguna fila antigua puede convertir
+    // la cola en un proxy de peticiones a destinos arbitrarios.
+    const endpoint = endpointPushSeguro(s.endpoint);
+    if (!endpoint) {
+      db.query("DELETE FROM push_subscripciones WHERE endpoint = ?").run(s.endpoint);
+      return "inactiva";
+    }
     const detalle = webpush.generateRequestDetails(
-      { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+      { endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
       carga,
       clavesEnvio,
     );
@@ -245,9 +277,16 @@ async function enviar(
       method: "POST",
       headers: cabeceras,
       body: detalle.body ? Buffer.from(detalle.body) : undefined,
+      redirect: "manual",
       signal: AbortSignal.timeout(TIEMPO_ENVIO_MS),
     });
     await res.body?.cancel();
+    if (res.status >= 300 && res.status < 400) {
+      // No seguimos redirecciones desde un destino de Push: se elimina la suscripción
+      // para impedir reintentos y evitar que un tercero redirija al VPS a una URL privada.
+      db.query("DELETE FROM push_subscripciones WHERE endpoint = ?").run(s.endpoint);
+      return "inactiva";
+    }
     if (res.status === 404 || res.status === 410) {
       db.query("DELETE FROM push_subscripciones WHERE endpoint = ?").run(s.endpoint);
       return "inactiva";
