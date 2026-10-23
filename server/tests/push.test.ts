@@ -77,6 +77,23 @@ test("valida suscripciones tal como las entrega el navegador", () => {
   expect(
     validarSubscripcion({ endpoint: "http://inseguro.test/sin-tls", keys: { p256dh: buena.p256dh, auth: buena.auth } }),
   ).toBeNull();
+  for (const endpoint of [
+    "https://127.0.0.1/privado",
+    "https://localhost/privado",
+    "https://fcm.googleapis.com.evil.test/push",
+    "https://fcm.googleapis.com:8443/push",
+    "https://usuario@fcm.googleapis.com/push",
+  ]) {
+    expect(validarSubscripcion({ endpoint, keys: { p256dh: buena.p256dh, auth: buena.auth } })).toBeNull();
+  }
+  expect(validarSubscripcion({
+    endpoint: "https://worker.push.services.mozilla.com/wpush/v2/id",
+    keys: { p256dh: buena.p256dh, auth: buena.auth },
+  })?.endpoint).toBe("https://worker.push.services.mozilla.com/wpush/v2/id");
+  expect(validarSubscripcion({
+    endpoint: "https://web.push.apple.com/device/token",
+    keys: { p256dh: buena.p256dh, auth: buena.auth },
+  })?.endpoint).toBe("https://web.push.apple.com/device/token");
   expect(
     validarSubscripcion({
       endpoint: buena.endpoint,
@@ -95,6 +112,26 @@ test("valida suscripciones tal como las entrega el navegador", () => {
       keys: { p256dh: Buffer.from(buena.p256dh + "==").toString(), auth: buena.auth },
     }),
   ).toBeNull();
+});
+
+test("limita el número de dispositivos sin impedir renovar una suscripción existente", () => {
+  db.query("DELETE FROM push_subscripciones").run();
+  const subs = Array.from({ length: 21 }, (_, i) => suscripcion(`https://fcm.googleapis.com/fcm/send/dispositivo-${i}`));
+  for (const sub of subs.slice(0, 20)) expect(guardarSubscripcion(sub)).toBe(true);
+  expect(guardarSubscripcion(subs[20]!)).toBe(false);
+  expect(guardarSubscripcion({ ...subs[0]!, auth: randomBytes(16).toString("base64url") })).toBe(true);
+  expect(db.query("SELECT COUNT(*) AS n FROM push_subscripciones").get()).toEqual({ n: 20 });
+});
+
+test("elimina endpoints no confiables que ya existían en la base", async () => {
+  db.query("DELETE FROM push_subscripciones").run();
+  const sub = suscripcion("https://127.0.0.1/servicio-interno");
+  db.query("INSERT INTO push_subscripciones(endpoint,p256dh,auth) VALUES(?,?,?)").run(sub.endpoint, sub.p256dh, sub.auth);
+  envios.length = 0;
+  await avisarPush("t-push-endpoint-antiguo", "fallada", "La tarea falló.");
+  expect(envios).toHaveLength(0);
+  expect(db.query("SELECT 1 FROM push_subscripciones WHERE endpoint=?").get(sub.endpoint)).toBeNull();
+  expect(db.query("SELECT 1 FROM push_entregas WHERE tarea_id='t-push-endpoint-antiguo'").get()).toBeNull();
 });
 
 test("envía una sola vez por evento y firma el JWT VAPID contra el destino", async () => {
@@ -125,7 +162,7 @@ test("envía una sola vez por evento y firma el JWT VAPID contra el destino", as
 
 test("borra la suscripción vencida (410/404) y no vuelve a enviarla", async () => {
   db.query("DELETE FROM push_subscripciones").run();
-  const vencida = suscripcion("https://push.ejemplo.test/vencida");
+  const vencida = suscripcion("https://fcm.googleapis.com/fcm/send/vencida");
   guardarSubscripcion(vencida);
   envios.length = 0;
   estadoRespuesta = 410;
@@ -136,6 +173,22 @@ test("borra la suscripción vencida (410/404) y no vuelve a enviarla", async () 
     .query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM push_subscripciones WHERE endpoint = ?")
     .get(vencida.endpoint)!;
   expect(fila.n).toBe(0);
+  expect(db.query("SELECT 1 FROM push_entregas WHERE tarea_id='t-push-2'").get()).toBeNull();
+});
+
+test("no sigue redirecciones del servicio Push y descarta la suscripción", async () => {
+  db.query("DELETE FROM push_subscripciones").run();
+  const sub = suscripcion("https://fcm.googleapis.com/fcm/send/redirige");
+  guardarSubscripcion(sub);
+  envios.length = 0;
+  responder = () => 307;
+  try {
+    await avisarPush("t-push-redireccion", "fallada", "La tarea falló.");
+    expect(envios).toHaveLength(1);
+    expect(envios[0].init.redirect).toBe("manual");
+    expect(db.query("SELECT 1 FROM push_subscripciones WHERE endpoint=?").get(sub.endpoint)).toBeNull();
+    expect(db.query("SELECT 1 FROM push_entregas WHERE tarea_id='t-push-redireccion'").get()).toBeNull();
+  } finally { responder = null; }
 });
 
 test("sin dispositivos no envía ni sella el evento", async () => {
@@ -193,8 +246,8 @@ test("cada versión del plan avisa una sola vez sin bloquear la siguiente", asyn
 
 test("la PC entregada no silencia el móvil y la cola persistente recupera solo el pendiente", { timeout: 20000 }, async () => {
   db.query("DELETE FROM push_subscripciones").run();
-  const pc = suscripcion("https://push.ejemplo.test/pc");
-  const movil = suscripcion("https://push.ejemplo.test/movil");
+  const pc = suscripcion("https://fcm.googleapis.com/fcm/send/pc");
+  const movil = suscripcion("https://fcm.googleapis.com/fcm/send/movil");
   guardarSubscripcion(pc); guardarSubscripcion(movil);
   envios.length = 0;
   responder = (url) => url.endsWith("/movil") ? 503 : 201;
@@ -215,7 +268,7 @@ test("la PC entregada no silencia el móvil y la cola persistente recupera solo 
 
 test("reanudación y segundo fallo de una misma tarea son dos transiciones notificables", async () => {
   db.query("DELETE FROM push_subscripciones").run();
-  guardarSubscripcion(suscripcion("https://push.ejemplo.test/transiciones"));
+  guardarSubscripcion(suscripcion("https://fcm.googleapis.com/fcm/send/transiciones"));
   db.query("INSERT INTO tasks(id,title,prompt,model,status) VALUES ('t-push-reanudada','Prueba','Prueba','prueba','failed')").run();
   const evento = () => db.query("INSERT INTO task_events(task_id,kind,detail) VALUES ('t-push-reanudada','terminada','failed')").run();
   envios.length = 0;
@@ -233,7 +286,7 @@ test("reanudación y segundo fallo de una misma tarea son dos transiciones notif
 
 test("un lote limita la concurrencia y dos despachadores no repiten entregas", async () => {
   db.query("DELETE FROM push_subscripciones").run();
-  for (let i = 0; i < 9; i++) guardarSubscripcion(suscripcion(`https://push.ejemplo.test/paralelo-${i}`));
+  for (let i = 0; i < 9; i++) guardarSubscripcion(suscripcion(`https://fcm.googleapis.com/fcm/send/paralelo-${i}`));
   let activas = 0; let maximo = 0;
   responder = async () => { activas++; maximo = Math.max(maximo, activas); await Bun.sleep(5); activas--; return 201; };
   envios.length = 0;
@@ -247,7 +300,7 @@ test("un lote limita la concurrencia y dos despachadores no repiten entregas", a
 
 test("recupera leases vencidos sin repetir las entregas confirmadas", async () => {
   db.query("DELETE FROM push_subscripciones").run();
-  const sub = suscripcion("https://push.ejemplo.test/lease-vencido");
+  const sub = suscripcion("https://fcm.googleapis.com/fcm/send/lease-vencido");
   guardarSubscripcion(sub);
   db.query("INSERT INTO push_entregas(tarea_id,tipo,endpoint,carga,estado,bloqueo_hasta_ms,creado_ms) VALUES ('t-push-lease','fallada',?,'{}','enviando',1,?)").run(sub.endpoint, Date.now());
   envios.length = 0;
@@ -258,8 +311,8 @@ test("recupera leases vencidos sin repetir las entregas confirmadas", async () =
 
 test("aprobar un plan retira el aviso pendiente del móvil y conserva la entrega de la PC", { timeout: 10000 }, async () => {
   db.query("DELETE FROM push_subscripciones").run();
-  guardarSubscripcion(suscripcion("https://push.ejemplo.test/plan-pc"));
-  guardarSubscripcion(suscripcion("https://push.ejemplo.test/plan-movil"));
+  guardarSubscripcion(suscripcion("https://fcm.googleapis.com/fcm/send/plan-pc"));
+  guardarSubscripcion(suscripcion("https://fcm.googleapis.com/fcm/send/plan-movil"));
   db.query("INSERT INTO tasks(id,title,prompt,model,status,plan_hash) VALUES ('t-plan-aprobado','Prueba','Prueba','prueba','waiting_approval','hash-1')").run();
   db.query("INSERT INTO task_events(task_id,kind) VALUES ('t-plan-aprobado','plan_creado')").run();
   envios.length = 0;
@@ -281,7 +334,7 @@ test("aprobar un plan retira el aviso pendiente del móvil y conserva la entrega
 
 test("replanificar invalida el aviso anterior incluso si el hash y estado no cambian", { timeout: 10000 }, async () => {
   db.query("DELETE FROM push_subscripciones").run();
-  guardarSubscripcion(suscripcion("https://push.ejemplo.test/replanificada"));
+  guardarSubscripcion(suscripcion("https://fcm.googleapis.com/fcm/send/replanificada"));
   db.query("INSERT INTO tasks(id,title,prompt,model,status,plan_hash) VALUES ('t-plan-renovado','Prueba','Prueba','prueba','waiting_approval','mismo-hash')").run();
   db.query("INSERT INTO task_events(task_id,kind) VALUES ('t-plan-renovado','plan_creado')").run();
   envios.length = 0;
@@ -299,7 +352,7 @@ test("replanificar invalida el aviso anterior incluso si el hash y estado no cam
 
 test("reanudar un fallo cancela su aviso pendiente y un fallo posterior sigue notificando", { timeout: 10000 }, async () => {
   db.query("DELETE FROM push_subscripciones").run();
-  guardarSubscripcion(suscripcion("https://push.ejemplo.test/fallo-reanudado"));
+  guardarSubscripcion(suscripcion("https://fcm.googleapis.com/fcm/send/fallo-reanudado"));
   db.query("INSERT INTO tasks(id,title,prompt,model,status) VALUES ('t-fallo-viejo','Prueba','Prueba','prueba','failed')").run();
   db.query("INSERT INTO task_events(task_id,kind) VALUES ('t-fallo-viejo','terminada')").run();
   envios.length = 0;

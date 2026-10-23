@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Seguridad de notificaciones: restringe endpoints Push a proveedores conocidos, bloquea redirecciones y limita las suscripciones por dispositivo", "pr": 123 },
     { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Auditoría: cierra fallos de secretos, alcance, sesiones, streaming y Git; páginas de mensajes, previews HTML aisladas, avisos por dispositivo y respaldos con drenado seguro", "pr": 122 },
     { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Despliegue: mientras haya ejecuciones en curso la interfaz nueva no se recompila, para que interfaz y servidor avancen juntos", "pr": 121 },
     { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Historial: el shell aguanta el array plano de un servidor anterior al paginado, sin caer con «Cannot read properties of undefined»", "pr": 120 },
