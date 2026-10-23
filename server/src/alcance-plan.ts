@@ -96,33 +96,25 @@ function esRuido(ruta: string): boolean {
 }
 
 // Hash de los archivos ignorados que merecen vigilancia (mismo tope de archivos que el listado
-// del proyecto). Un archivo que no se puede leer o pesa demasiado queda fuera del mapa.
+// del proyecto). Una comprobación incompleta detiene la tarea sin retirar sus cambios.
 async function mapaIgnorados(cwd: string): Promise<Map<string, string>> {
   const resultado = new Map<string, string>();
-  let listado: string[];
-  try {
-    listado = (await git(cwd, ["ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--", "."]))
+  const listado = (await git(cwd, ["ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--", "."]))
       .split("\0")
       .filter(Boolean);
-  } catch {
-    // Sin listado de ignorados no hay comparación posible; el resto del alcance sigue.
-    return resultado;
-  }
   let considerados = 0;
   for (const ruta of listado) {
-    if (considerados >= TOPE_IGNORADOS) break;
-    if (esRuido(ruta)) continue;
+    if (esRuido(ruta) || ruta === ".opencode" || ruta.startsWith(".opencode/")) continue;
+    if (considerados >= TOPE_IGNORADOS)
+      throw new Error("No se pudo comprobar todo el alcance: demasiados archivos ignorados. Los cambios se conservan.");
     try {
       const stat = lstatSync(join(cwd, ruta));
-      if (!stat.isFile() || stat.size > TOPE_TAMANO_IGNORADO) continue;
-    } catch {
-      continue;
-    }
-    try {
-      resultado.set(ruta, hashDeArchivo(join(cwd, ruta)));
+      if (stat.isSymbolicLink()) resultado.set(ruta, "enlace:" + readlinkSync(join(cwd, ruta)));
+      else if (stat.isFile() && stat.size <= TOPE_TAMANO_IGNORADO) resultado.set(ruta, hashDeArchivo(join(cwd, ruta)));
+      else throw new Error("Archivo ignorado no verificable");
       considerados += 1;
     } catch {
-      // El archivo ya no se puede leer: se omite del mapa.
+      throw new Error("No se pudo comprobar un archivo ignorado del alcance. Los cambios se conservan.");
     }
   }
   return resultado;
@@ -184,8 +176,8 @@ export async function comprobarAlcance(snapshot: AlcancePlan): Promise<string[]>
   // detecte un archivo ignorado creado durante la tarea (no estaba en el mapa inicial).
   if (snapshot.ignorados) {
     const despues = await mapaIgnorados(snapshot.cwd);
-    for (const [ruta, ahora] of despues) {
-      if (snapshot.ignorados.get(ruta) !== ahora) cambiados.push(ruta);
+    for (const ruta of new Set([...snapshot.ignorados.keys(), ...despues.keys()])) {
+      if (snapshot.ignorados.get(ruta) !== despues.get(ruta)) cambiados.push(ruta);
     }
   }
   return cambiados.filter((ruta) => {

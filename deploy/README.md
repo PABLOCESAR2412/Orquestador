@@ -14,7 +14,11 @@ Repositorio de prueba autorizado: `PABLOCESAR2412/Test` (privado). Si está vac�
 
 Desde Telo: clona Test, pide un cambio mínimo en un archivo de prueba, revisa el diff y autoriza commit/push y PR. Comprueba que aparecen el commit y el PR en Test y registra URL, SHA y método de autenticación. No tomes una subida mediante credenciales heredadas como prueba de la App. La prueba no requiere fusionar el PR ni modificar Cubo.
 
-Un timer de systemd revisa `main` cada 5 minutos. Si hay commits nuevos, el script `actualizar.sh` trae el código, compila la interfaz y reinicia `orquestador` solo cuando cambió `server/`.
+Un timer de systemd revisa `main` cada 5 minutos. Si hay commits nuevos, `actualizar.sh` obtiene un `flock` compartido con el respaldo y crea una marca de mantenimiento. La API rechaza escrituras nuevas y el worker deja de tomar tareas; espera a que terminen los trabajos admitidos. Si siguen activos, el ciclo se pospone sin detenerlos. Una vez drenado, para el servicio, avanza `main`, instala dependencias congeladas y compila la interfaz. Después arranca y comprueba `/api/health`; ante un build o arranque fallido, restaura el código anterior, reinstala, recompila y verifica. La base conserva las migraciones aditivas.
+
+La primera instalación de este protocolo requiere una actualización manual con agentes terminados y servicio parado: un servidor anterior no expone el contador de trabajos. Verifica que no quedan procesos OpenCode/Codex externos y pausa también el timer de respaldo durante ese primer cambio. No modifiques el checkout de un servicio activo.
+
+El respaldo usa la misma pausa y no publica una copia parcial. Si un proceso termina con SIGKILL, puede quedar `.git/telo-mantenimiento`: la API deja de bloquear a los 30 minutos, pero las herramientas conservan la marca y posponen operaciones. Para recuperarlo, un administrador debe comprobar que los servicios de despliegue/respaldo están inactivos y que `flock -n .git/telo-operacion.lock true` obtiene el candado; solo entonces retirar el directorio vacío con `rmdir .git/telo-mantenimiento` y repetir la operación. No se roba una marca existente.
 
 ## Respaldos en Cloudflare R2
 
@@ -57,7 +61,7 @@ Para desactivar R2, borra o renombra `/etc/orquestador/r2-backups.env`, recarga 
 ## Reglas
 
 - **No reinicia con ejecuciones en curso.** Un reinicio marca como fallidas las tareas activas (`worker.ts`). Si hay un `opencode run` o `codex exec` vivo, espera al siguiente ciclo.
-- **`web/` no reinicia nada.** El servidor lee `web/dist` en cada petición. Los clientes ven la versión nueva con el aviso de "Recargar ahora".
+- **Servidor e interfaz coherentes.** Se instala y compila con el servicio parado; los clientes reciben el aviso de "Recargar ahora" después del arranque verificado.
 - **`bun install --frozen-lockfile` en cada ciclo** que cambie dependencias.
 - **Si falla el build o el servidor no responde**, vuelve a la versión anterior y no reintenta ese mismo commit hasta que llegue uno nuevo.
 
@@ -75,10 +79,13 @@ Usuario `orquestador`, repo en `/home/orquestador/orquestador`.
 
    ```bash
    cd ~/orquestador
+   # Esperar trabajos y pausar el timer de respaldo antes de la primera instalación.
+   sudo systemctl stop orquestador
    git switch main && git pull --ff-only
    (cd server && bun install --frozen-lockfile)
    (cd web && bun install --frozen-lockfile && bun run build)
-   sudo systemctl restart orquestador
+   sudo systemctl start orquestador
+   curl -fsS http://127.0.0.1:3000/api/health
    ```
 
 2. Revisa la ruta de `bun` y de `systemctl`:
@@ -88,12 +95,12 @@ Usuario `orquestador`, repo en `/home/orquestador/orquestador`.
    which systemctl  # si no es /usr/bin/systemctl, ajusta la regla de sudoers
    ```
 
-3. Instala el script, las unidades y la regla de sudo, que solo permite reiniciar `orquestador`:
+3. Instala el script, las unidades y la regla de sudo, que solo permite parar, arrancar y reiniciar `orquestador`. Requiere `flock` (util-linux), curl y pgrep:
 
    ```bash
    chmod +x deploy/actualizar.sh
    sudo cp deploy/orquestador-deploy.service deploy/orquestador-deploy.timer /etc/systemd/system/
-   echo 'orquestador ALL=(root) NOPASSWD: /usr/bin/systemctl restart orquestador' | sudo tee /etc/sudoers.d/orquestador-deploy >/dev/null
+   echo 'orquestador ALL=(root) NOPASSWD: /usr/bin/systemctl stop orquestador, /usr/bin/systemctl start orquestador, /usr/bin/systemctl restart orquestador' | sudo tee /etc/sudoers.d/orquestador-deploy >/dev/null
    sudo chmod 440 /etc/sudoers.d/orquestador-deploy
    sudo visudo -cf /etc/sudoers.d/orquestador-deploy
    sudo systemctl daemon-reload

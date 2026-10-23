@@ -387,6 +387,35 @@ describe("métricas de la lista de proyectos", () => {
 });
 
 describe("borrar proyecto con ejecuciones activas", () => {
+  test("rechaza analizadores, planes pendientes y reservas Git sin conversación", async () => {
+    const { db } = await import("../src/db");
+    const { reservarProyecto, soltarProyecto } = await import("../src/ocupacion");
+    const id = crypto.randomUUID();
+    const carpeta = join(process.env.TELO_PROYECTOS_DIR!, `ocupado-${id}`);
+    mkdirSync(carpeta);
+    writeFileSync(join(carpeta, "trabajo.txt"), "conservar");
+    db.query("INSERT INTO projects (id,name,repo_path) VALUES (?,'Ocupado',?)").run(id, carpeta);
+    const taskId = crypto.randomUUID();
+    try {
+      for (const status of ["queued", "analyzing", "waiting_approval", "running"]) {
+        db.query("INSERT OR REPLACE INTO tasks (id,title,prompt,model,status,project_id) VALUES (?,'Prueba','Prueba','prueba',?,?)").run(taskId, status, id);
+        expect((await projects.request(`/projects/${id}?borrar_carpeta=true`, { method: "DELETE" })).status).toBe(409);
+        expect(await Bun.file(join(carpeta, "trabajo.txt")).text()).toBe("conservar");
+      }
+      db.query("DELETE FROM tasks WHERE id=?").run(taskId);
+      expect(reservarProyecto(id)).toBe(true);
+      expect((await projects.request(`/projects/${id}?borrar_carpeta=true`, { method: "DELETE" })).status).toBe(409);
+      soltarProyecto(id);
+      db.query("INSERT INTO repository_actions (id,project_id,action,payload,state) VALUES (?,?,'push','{}','executing')").run(crypto.randomUUID(), id);
+      expect((await projects.request(`/projects/${id}?borrar_carpeta=true`, { method: "DELETE" })).status).toBe(409);
+    } finally {
+      soltarProyecto(id);
+      db.query("DELETE FROM repository_actions WHERE project_id=?").run(id);
+      db.query("DELETE FROM tasks WHERE id=?").run(taskId);
+      db.query("DELETE FROM projects WHERE id=?").run(id);
+      rmSync(carpeta, { recursive: true, force: true });
+    }
+  });
   test("responde 409 con tarea en marcha y no borra el registro", async () => {
     const { db } = await import("../src/db");
     const id = crypto.randomUUID();

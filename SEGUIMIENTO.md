@@ -1,8 +1,33 @@
 # Seguimiento de Telo
 
-Registro central de fases, revisiones y hallazgos. Actualizado: 22 de octubre de 2026.
+Registro central de fases, revisiones y hallazgos. Actualizado: 23 de octubre de 2026.
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
+
+## Reauditoría del 23 de octubre de 2026 — cierre de hallazgos
+
+Base revisada: `cc653a6` (main, PR #117). Este lote comprueba de nuevo el comportamiento corregido; los registros anteriores conservan su valor histórico. Entrega y resultado global de CI se incorporan al publicar el PR.
+
+- [~] **R01 · Secretos ocultables en el índice (ALTA).** Exclusión exacta de `.opencode`; se examinan todas las coincidencias aunque la primera sea de ejemplo y cada blob se pasa como registro estructurado, sin etiquetas falsificables con NUL. Evidencia prevista: `escaneo-estructurado.test.ts`, `acciones-git.test.ts` y `secretos.test.ts`.
+- [~] **R02 · Cambio de archivo entre validación y streaming (ALTA).** PDF, imagen y video leen el descriptor ya validado, sin reabrir la ruta; se cierra al terminar, cancelar o fallar, también en consultas de metadatos y rangos inválidos. Evidencia: `binarios-descriptor.test.ts` y `media-routes.test.ts`.
+- [~] **R03 · Merge sin tarea no ligado a revisión (ALTA).** Toda tarjeta guarda el SHA aprobado y lo exige en el PUT; las tarjetas anteriores sin SHA requieren nueva revisión. Evidencia: `acciones-git.test.ts`.
+- [~] **R04 · Proyecto borrable durante trabajo pendiente (ALTA).** Se bloquea el borrado durante analyzing, waiting_approval, queued, running, reservas de chat y acciones Git ejecutándose. Evidencia: `proyectos.test.ts`.
+- [~] **R05 · Línea de Codex sin límite de memoria (ALTA).** Tope de 2 MiB aplicado antes de parsear o propagar stdout; descarta la línea excesiva y permite procesar los eventos válidos siguientes. Evidencia: `codex-tokens-registro.test.ts`, `proteccion.test.ts`.
+- [~] **R06 · Respaldo incompleto de sesiones y proyectos (ALTA).** Incluye perfiles de OpenCode/subagentes y proyectos registrados, con inventario de restauración; fotografía bases SQLite con WAL mediante VACUUM INTO. Los archivos normales se enlazan durante la preparación para evitar otra copia completa en disco. Evidencia: `respaldo-integral.test.ts` recupera código y sesión desde el archivo generado.
+- [~] **R07 · Respuestas asíncronas modificaban otro chat (ALTA).** Adjuntos, dictado y aprobación capturan conversación y revisión del borrador; conservan el texto del chat abierto y las ediciones posteriores. Evidencia: Playwright `ui-smoke.mjs` en 390/1440 px y pruebas del borrador/dictado.
+- [~] **R08 · Alcance omitía eliminaciones o excedía sus límites silenciosamente (ALTA).** Compara unión del inventario inicial/final de ignorados; ante más de 400 archivos, tamaño excesivo o lectura fallida detiene la comprobación conservando el trabajo. Evidencia: `alcance-ignorados.test.ts`.
+- [~] **R09 · Un dispositivo sellaba entregas fallidas de los demás (MEDIA).** Migración aditiva 042: cola persistente por evento/dispositivo, leases recuperables y reintentos limitados en paralelo. Descarta avisos de planes/fallos ya resueltos sin borrar entregas previas. Evidencia: `push.test.ts`.
+- [~] **R10 · Historial completo descargado y renderizado cada cuatro segundos (MEDIA).** Páginas SQL de 40 mensajes, cursores incrementales, reconciliación de mensajes retirados y ventana residente de 120; navegación a anteriores y exportación completa explícita. Evidencia: `chat-paginacion-preview.test.ts`, `chat-mensajes.test.ts` y Playwright.
+- [~] **R11 · Primera cuenta acumulada de Codex descontada indebidamente (MEDIA).** Sesión nueva parte de cero; resume recupera línea base real y no factura historia desconocida. Evidencia: `codex-tokens-registro.test.ts`, `tokens-codex.test.ts`.
+- [~] **R12 · Descendientes retenían tuberías tras terminar Codex (MEDIA).** Cierre del grupo y drenado acotado a cuatro segundos, conservando eventos de uso ya recibidos. Evidencia: `codex-tokens-registro.test.ts` y `codex-reintento.test.ts`.
+- [~] **R13 · Tiempo de conexión sin servidor Bun efectivo (MEDIA).** El contexto HTTP enlaza el socket y `server.timeout` con la petición real. Evidencia: `conexion.test.ts`.
+- [~] **R14 · Despliegue y respaldo podían competir con agentes y limpiezas (ALTA).** Candado flock común, pausa de admisión y contador de ejecuciones, clonados, instalación/login y limpieza; se incluyen las lecturas que preparan Git. Parada antes de modificar dependencias/build y rollback también al fallar el arranque. Una marca ajena se conserva. Evidencia: `despliegue.test.ts`, `despliegue-script.test.ts`, `respaldo-pausa.test.ts`, `mantenimiento-disco.test.ts`. La recuperación de una marca tras SIGKILL y el primer despliegue se documentan en `deploy/README.md`.
+- [~] **R15 · HTML aislado no cargaba sus recursos relativos (MEDIA).** Acceso inicial autenticado; capacidad aleatoria temporal, revocable y ligada a sesión/chat/carpeta para CSS, módulos e imágenes. CSP sin conexiones a API, origen opaco y lectura por descriptor. Evidencia: `chat-paginacion-preview.test.ts` y `html-preview.mjs`, con cookie SameSite=Strict, CSS importado, módulos relativos e imagen en 390/1440 px.
+- [~] **R16 · Aviso visible suprimido sin respetar preferencia y destino incorrecto (MEDIA).** Service worker espera confirmación explícita de la página; al faltar usa aviso del sistema. Etiqueta común evita duplicados y el destino usa `/tareas/:id`. Evidencia: `push-serviceworker.test.ts`, pruebas web de notificaciones y `push.test.ts`.
+- [~] **R17 · R2 con cero copias locales terminaba en falso error (MEDIA).** Tamaños capturados antes de podar; solo se publican conjuntos DB+tar completos. Evidencia: `respaldo-integral.test.ts` ejecuta el CLI con almacenamiento simulado y retención local cero.
+- [~] **R18 · Runtime OpenCode redirigible por enlace simbólico (ALTA).** Rechaza `.opencode` enlazado/junction; analizador usa runtime temporal tmpfs y no obtiene escritura en su workspace. Evidencia: `aislamiento.test.ts` y recorrido Linux en CI.
+
+Pendientes operativos de este cierre (no sustituidos por mocks): instalar la regla sudoers de stop/start del despliegue y hacer la primera actualización con el servicio parado; probar respaldo/restauración completa en Linux sobre una copia; confirmar entrega en dispositivos reales. No se modificó la VM ni se usaron proveedores facturables para estas pruebas.
 
 ## Hallazgos — auditoría del 21 de octubre de 2026
 

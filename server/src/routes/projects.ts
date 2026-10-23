@@ -6,7 +6,7 @@ import { db } from "../db";
 import { gitOk, gitSeguro, esRepositorio, GitError, prepararRepoSeguro, tieneGitReal } from "../git";
 import { ArchivoError, buscarArchivosPorNombre, leerArchivo, listarCarpeta, medirCarpeta, normalizarRuta } from "../archivos-proyecto";
 import { redactar } from "../redaccion";
-import { conProyectoRevisado, conversacionEnCurso } from "../ocupacion";
+import { conProyectoRevisado, conversacionEnCurso, proyectoOcupado } from "../ocupacion";
 import { ARCHIVOS_GUIA, MAX_MEMORIA, componerInstrucciones, guardarMemoria, memoriaDelProyecto, aprobarMemoriaPropuesta, descartarMemoriaPropuesta } from "../memoria";
 import { ErrorClonado, urlGithubNormalizada } from "../clonado";
 import { iniciarClonadoEnChat } from "../clonado-chat";
@@ -462,9 +462,10 @@ projects.delete("/projects/:id", (c) => {
   // Con una ejecución activa la carpeta está en uso: el agente trabaja dentro y borrarla
   // castra el trabajo en marcha. Se pide cancelar y esperar el cierre antes de seguir.
   const enEjecucion = db
-    .query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM tasks WHERE project_id = ? AND status IN ('queued','running')")
+    .query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM tasks WHERE project_id = ? AND status IN ('queued','analyzing','waiting_approval','running')")
     .get(id)!.n;
-  if (enEjecucion > 0)
+  const accionGit = db.query("SELECT 1 FROM repository_actions WHERE project_id=? AND state='executing' LIMIT 1").get(id);
+  if (enEjecucion > 0 || proyectoOcupado(id) || accionGit)
     return c.json(
       { error: "proyecto_en_curso", detalle: "Hay una tarea corriendo en este proyecto. Cancela la tarea y espera su cierre antes de borrar el proyecto." },
       409,

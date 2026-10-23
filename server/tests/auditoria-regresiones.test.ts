@@ -9,6 +9,7 @@ import { db } from "../src/db";
 import { sesionValida, crearSesionDispositivo, cerrarSesionPorToken } from "../src/auth";
 import { settings } from "../src/routes/settings";
 import { chat } from "../src/routes/chat";
+import { Hono } from "hono";
 import { capturarAlcance, comprobarAlcance } from "../src/alcance-plan";
 import { actividadDelGrupo } from "../src/runners/actividad-grupo";
 
@@ -44,11 +45,16 @@ test("un PATCH rechazado no cambia título ni anclado", async () => {
 test("preview HTML sirve scripts con sandbox y rechaza rutas ajenas", async () => {
  const id=conversacion();const carpeta=join(config.dataDir,"chat-workspace",id);mkdirSync(carpeta,{recursive:true});
  writeFileSync(join(carpeta,"demo.html"),"<h1>Demo</h1><script>document.body.dataset.activo='si'</script>");
- const respuesta=await chat.request(`/conversations/${id}/archivo-html?ruta=demo.html`);
+ const app=new Hono().route("/api",chat);
+ const sesion=crearSesionDispositivo({});
+ const inicial=await app.request(`/api/conversations/${id}/archivo-html?ruta=demo.html`,{headers:{Cookie:`telo_sesion=${sesion.token}`}});
+ expect(inicial.status).toBe(302);
+ const respuesta=await app.request(inicial.headers.get("Location")!);
  expect(respuesta.status).toBe(200);
  expect(respuesta.headers.get("Content-Security-Policy")).toContain("sandbox allow-scripts");
  expect(respuesta.headers.get("Content-Security-Policy")).toContain("connect-src 'none'");
  expect(await respuesta.text()).toContain("<script>");
+ cerrarSesionPorToken(sesion.token);
  expect((await chat.request(`/conversations/${id}/archivo-html?ruta=../demo.html`)).status).toBe(400);
 });
 test("el alcance funciona sin Git y no excluye prefijos .opencode parecidos", async () => {
@@ -77,7 +83,7 @@ test("el respaldo restaura documentos entregables con su contenido", async () =>
  const origen=new Database(join(datos,"orquestador.db"));origen.exec("CREATE TABLE ejemplo(id INTEGER)");origen.close();
  mkdirSync(join(datos,"chat-attachments"),{recursive:true});writeFileSync(join(datos,"chat-attachments","adjunto.txt"),"Adjunto conservado");
  writeFileSync(join(datos,"entregables","workspace","reporte.html"),"<h1>Contenido recuperable</h1>");
- const proceso=Bun.spawn([process.execPath,"--no-env-file",resolve(import.meta.dir,"../scripts/respaldo.ts")],{env:{PATH:process.env.PATH,SystemRoot:process.env.SystemRoot,DATA_DIR:datos,TELO_RESPALDOS_DIR:copias},stdout:"pipe",stderr:"pipe"});
+ const proceso=Bun.spawn([process.execPath,"--no-env-file",resolve(import.meta.dir,"../scripts/respaldo.ts")],{env:{PATH:process.env.PATH,SystemRoot:process.env.SystemRoot,DATA_DIR:datos,TELO_RESPALDOS_DIR:copias,TELO_RESPALDO_PRUEBA_AISLADA:"1"},stdout:"pipe",stderr:"pipe"});
  const error=await new Response(proceso.stderr).text();expect(await proceso.exited,error).toBe(0);
  const tar=readdirSync(copias).find(n=>n.endsWith(".tar.gz"))!;
  expect(Bun.spawnSync(["tar","-xzf",join(copias,tar),"-C",restaurado]).exitCode).toBe(0);

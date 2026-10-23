@@ -5,6 +5,7 @@ import { db } from "./db";
 import { conTarea } from "./workspace";
 import { conversacionEnCurso, proyectoOcupado } from "./ocupacion";
 import { dependenciasRetirables, retirarDependencias } from "./dependencias-disco";
+import { enMantenimiento, registrarTrabajo } from "./despliegue";
 
 export type PoliticaDisco = { automatica: boolean; umbral: number; intervaloHoras: number; antiguedadDias: number };
 export type ResultadoDisco = { fecha: string; modo: "analizar" | "limpiar"; carpetas: number; ocupadas: number; errores: number; libreAntes: number | null; libreDespues: number | null };
@@ -44,8 +45,9 @@ export function correspondeLimpieza(p: PoliticaDisco, ultima: string | null, uso
   return p.automatica && transcurrido >= 3600_000 && (uso >= p.umbral || transcurrido >= p.intervaloHoras * 3600_000);
 }
 export async function mantenerDisco(modo: "analizar" | "limpiar"): Promise<ResultadoDisco | null> {
-  if (enCurso) return null;
+  if (enCurso || enMantenimiento()) return null;
   enCurso = true;
+  const finalizar = registrarTrabajo();
   const r: ResultadoDisco = { fecha: new Date().toISOString(), modo, carpetas: 0, ocupadas: 0, errores: 0, libreAntes: capacidad().libre, libreDespues: null };
   try {
     const p = estadoMantenimiento().politica;
@@ -80,7 +82,7 @@ export async function mantenerDisco(modo: "analizar" | "limpiar"): Promise<Resul
     try {
       guardar("disco:ultimo", r);
       if (modo === "limpiar") guardar("disco:ultimaLimpieza", r.fecha);
-    } finally { enCurso = false; }
+    } finally { enCurso = false; finalizar(); }
   }
 }
 let reloj: ReturnType<typeof setInterval> | null = null;

@@ -1,10 +1,10 @@
 import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
 import { hallarEjecutable } from "../ejecutable";
 import { entornoDelAgente, estimarUso, type RunResult, type Usage } from "./opencode";
-import { iniciarVigilante, leerConTope } from "./proteccion";
+import { iniciarVigilante, leerConTope, leerLineasAcotadas } from "./proteccion";
 import type { ImagenAgente } from "../chat-adjuntos";
 import { argumentosConfigMcpCodex, type ServidorMcpAgente } from "../conexiones-mcp";
-import { deltaNoRegistrada, sumarTotales, totalesDelEventoTokenCount, type TotalesCodex } from "./tokens-codex";
+import { deltaNoRegistrada, guardarTotalesSesion, leerTotalesSesion, sumarTotales, totalesDelEventoTokenCount, type TotalesCodex } from "./tokens-codex";
 
 // El texto que devuelve Codex rara vez pasa de 1 MB; si pasa, se conserva la cola.
 const TOPE_TEXTO_AGENTE = 1024 * 1024;
@@ -81,11 +81,15 @@ async function intentoCodex(opts: OpcionesCodex & {
   rutasImagenes: string[];
   ajustesMcp: string[];
 }): Promise<RunResult> {
+  const sesionPrevia = opts.sessionId && /^[0-9a-fA-F-]{1,128}$/.test(opts.sessionId) ? opts.sessionId : null;
+  const cero: TotalesCodex = { input: 0, cached: 0, output: 0, reasoning: 0 };
+  const base = sesionPrevia ? await leerTotalesSesion(sesionPrevia) : cero;
+  if (opts.signal?.aborted) throw new Error("Ejecución cancelada");
   const args: string[] = ["codex", ...opts.ajustesMcp];
   // El nivel de esfuerzo del modelo va como ajuste puntual del CLI, igual que los MCP.
   if (opts.variant) args.push("-c", `model_reasoning_effort="${opts.variant}"`);
-  if (opts.sessionId && /^[0-9a-fA-F-]+$/.test(opts.sessionId)) {
-    args.push("exec", "resume", "--json", ...opts.rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", opts.modeloCodex, opts.sessionId, opts.prompt);
+  if (sesionPrevia) {
+    args.push("exec", "resume", "--json", ...opts.rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", opts.modeloCodex, sesionPrevia, opts.prompt);
   } else {
     args.push("exec", "--json", ...opts.rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", opts.modeloCodex, "-C", opts.cwd, "--", opts.prompt);
   }
@@ -123,13 +127,19 @@ async function intentoCodex(opts: OpcionesCodex & {
   // sesión; los `turn.completed` ya se registran como deltas. Al acabar (éxito, fallo o
   // cancelación) se registra solo lo que ningún turno completado haya contado ya.
   const porTurno: TotalesCodex = { input: 0, cached: 0, output: 0, reasoning: 0 };
-  let base: TotalesCodex | null = null;
   let ultimo: TotalesCodex | null = null;
   let pendienteRegistrado = false;
   const registrarPendiente = () => {
     if (pendienteRegistrado) return;
     pendienteRegistrado = true;
-    const faltante = deltaNoRegistrada(base, ultimo, porTurno);
+    // Sin base verificable de una sesión antigua no se factura su historial como gasto nuevo.
+    const faltante = base ? deltaNoRegistrada(base, ultimo, porTurno) : null;
+    const completados = base ? sumarTotales(base, porTurno) : cero;
+    if (ultimo) guardarTotalesSesion(sessionId, {
+      input: Math.max(ultimo.input, completados.input), cached: Math.max(ultimo.cached, completados.cached),
+      output: Math.max(ultimo.output, completados.output), reasoning: Math.max(ultimo.reasoning, completados.reasoning),
+    });
+    else if (base) guardarTotalesSesion(sessionId, completados);
     if (faltante && (faltante.input > 0 || faltante.output > 0 || faltante.reasoning > 0)) {
       const pendiente: Usage = {
         input: faltante.input,
@@ -148,24 +158,10 @@ async function intentoCodex(opts: OpcionesCodex & {
     }
   };
 
-  const lector = async () => {
-    const reader = proc.stdout.getReader();
-    const decoder = new TextDecoder();
-    let remanente = "";
-
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        remanente += decoder.decode(value, { stream: true });
-        const lineas = remanente.split("\n");
-        remanente = lineas.pop() ?? "";
-
-        for (const linea of lineas) {
-          const l = linea.trim();
-          if (!l) continue;
+  const drenaje = new AbortController();
+  const lectura = leerLineasAcotadas(proc.stdout, 2 * 1024 * 1024, (l) => {
           vigilante.patada();
-          opts.onLinea?.(l);
+          try { opts.onLinea?.(l); } catch { /* La actividad no interrumpe la lectura de uso. */ }
 
           try {
             const ev = JSON.parse(l);
@@ -197,7 +193,6 @@ async function intentoCodex(opts: OpcionesCodex & {
             } else {
               const totales = totalesDelEventoTokenCount(ev);
               if (totales) {
-                if (!base) base = totales;
                 ultimo = totales;
               }
             }
@@ -215,23 +210,28 @@ async function intentoCodex(opts: OpcionesCodex & {
           } catch {
             // Línea no JSON
           }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
+  }, drenaje.signal);
+
+  // Un descendiente que conserve stdout abierto no puede retener el slot tras morir el padre.
+  // Se drena primero para conservar los últimos tokens y después se cierran las tuberías.
+  let relojDrenaje: ReturnType<typeof setTimeout> | undefined;
+  const cerrarGrupo = () => {
+    if (relojDrenaje) return;
+    terminarGrupo(proc);
+    relojDrenaje = setTimeout(() => drenaje.abort(), 4_000);
   };
+  const finalizado = proc.exited.then((codigo) => { cerrarGrupo(); return codigo; });
 
   const salidaPromesa = Promise.all([
-    lector(),
-    leerConTope(proc.stderr, TOPE_STDERR_AGENTE),
-    proc.exited,
+    lectura,
+    leerConTope(proc.stderr, TOPE_STDERR_AGENTE, drenaje.signal),
+    finalizado,
   ]);
 
   let onAbort: (() => void) | undefined;
   const abortado = new Promise<never>((_, reject) => {
     onAbort = () => {
-      terminarGrupo(proc);
+      cerrarGrupo();
       reject(new Error("Ejecución cancelada"));
     };
     if (opts.signal?.aborted) onAbort();
@@ -257,7 +257,10 @@ async function intentoCodex(opts: OpcionesCodex & {
     }
 
     let usoFinal = usage as Usage | null;
-    if (!usoFinal || (usoFinal.input === 0 && usoFinal.output === 0)) {
+    const medidoPendiente = base ? deltaNoRegistrada(base, ultimo, porTurno) : null;
+    if ((!usoFinal || (usoFinal.input === 0 && usoFinal.output === 0)) && medidoPendiente) {
+      usoFinal = { input: medidoPendiente.input, output: medidoPendiente.output, reasoning: medidoPendiente.reasoning, cacheRead: medidoPendiente.cached, cost: 0, tokensMedidos: true, costeDisponible: false };
+    } else if (!usoFinal || (usoFinal.input === 0 && usoFinal.output === 0)) {
       usoFinal = estimarUso(opts.prompt, text.trim());
       opts.onUso?.(usoFinal);
     }
@@ -270,6 +273,11 @@ async function intentoCodex(opts: OpcionesCodex & {
       usage: usoFinal,
     };
   } finally {
+    cerrarGrupo();
+    // También al cancelar se conservan los eventos que ya estaban en las tuberías.
+    await Promise.allSettled([lectura]);
+    drenaje.abort();
+    if (relojDrenaje) clearTimeout(relojDrenaje);
     if (timer) clearTimeout(timer);
     vigilante.detener();
     if (onAbort) opts.signal?.removeEventListener("abort", onAbort);

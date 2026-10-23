@@ -6,8 +6,8 @@
 // maestra (igual que las credenciales globales de GitHub): nunca se imprimen ni salen en
 // texto claro. El cifrado de la carga sigue la librería de referencia (web-push, RFC 8291).
 //
-// Un mismo evento de una tarea notifica una sola vez: el sello (tarea, tipo) vive en
-// push_enviados y el INSERT OR IGNORE hace de dedupe, incluso entre reinicios del servidor.
+// Cada transición tiene una entrega por dispositivo en una cola persistente. El éxito
+// de la PC no sella el móvil; los leases permiten recuperar envíos tras un reinicio.
 
 import * as webpush from "web-push";
 import { db } from "./db";
@@ -104,48 +104,115 @@ export async function avisarPush(
   sello = "",
 ): Promise<void> {
   try {
-    const claves = clavesVapid();
-    if (!claves) return;
+    if (!clavesVapid()) return;
     // Sin dispositivos a quién avisar no se sella nada: cuando el usuario
     // suscriba un dispositivo, los avisos nuevos entran ya.
     const subscripciones = listarSubscripciones();
     if (subscripciones.length === 0) return;
     // Replanificaciones traen su sello: cada versión del plan avisa una sola vez,
     // sin bloquear el aviso de la siguiente versión con la clave de la primera.
-    const clave = sello ? `${tipo}#${sello}` : tipo;
+    const transicion = sello || db.query<{ id: number }, [string, string]>(
+      "SELECT id FROM task_events WHERE task_id=? AND kind=? ORDER BY id DESC LIMIT 1",
+    ).get(tareaId, tipo === "revisar" ? "plan_pendiente" : "terminada")?.id;
+    const clave = transicion ? `${tipo}#${transicion}` : tipo;
     const titulo = `Telo · ${tituloTarea(tareaId)}`;
-    const carga = JSON.stringify({ titulo, cuerpo, url: "/tasks" });
-    const opcionesVapid = {
-      vapidDetails: { subject: ASUNTO, publicKey: claves.publicKey, privateKey: claves.privateKey },
-      TTL: 3600,
-      urgency: "normal" as const,
-    };
-
-    // Un evento ya entregado nunca vuelve a sonar: se consulta antes de enviar.
-    const yaEnviado = db
-      .query<{ ok: number }, [string, string]>(
-        "SELECT 1 AS ok FROM push_enviados WHERE tarea_id = ? AND tipo = ?",
-      )
-      .get(tareaId, clave);
-    if (yaEnviado) return;
-
-    // El sello va DESPUÉS de la entrega: si ningún dispositivo confirma con 2xx, el evento no
-    // se marca como enviado (antes se sellaba al principio y un 503 lo perdía para siempre).
-    let entregado = false;
-    for (let intento = 0; intento < 3 && !entregado; intento++) {
+    const vigencia = vigenciaTarea(tareaId, tipo);
+    const carga = JSON.stringify({ titulo, cuerpo, url: `/tareas/${encodeURIComponent(tareaId)}`, etiqueta: `tarea-${tareaId}`, evento: `${tareaId}:${clave}`, vigencia });
+    // Los sellos antiguos no se reproducen al migrar. Un evento con outbox ya existente
+    // conserva los dispositivos a los que iba destinado, sin añadir suscripciones futuras.
+    db.transaction(() => {
+      if (db.query("SELECT 1 FROM push_enviados WHERE tarea_id=? AND tipo=?").get(tareaId, clave)) return;
+      if (db.query("SELECT 1 FROM push_entregas WHERE tarea_id=? AND tipo=?").get(tareaId, clave)) return;
+      for (const s of subscripciones) db.query(
+        "INSERT OR IGNORE INTO push_entregas(tarea_id,tipo,endpoint,carga,creado_ms) VALUES (?,?,?,?,?)",
+      ).run(tareaId, clave, s.endpoint, carga, Date.now());
+    })();
+    for (let intento = 0; intento < 3; intento++) {
       if (intento > 0) await Bun.sleep(RETRASO_REINTENTO_MS[intento - 1]!);
-      const respuestas = await Promise.allSettled(subscripciones.map((s) => enviar(opcionesVapid, s, carga)));
-      entregado = respuestas.some((r) => r.status === "fulfilled" && r.value === "entregado");
-      const reintentable = respuestas.some((r) => r.status === "fulfilled" && r.value === "fallo");
-      // Si solo quedan endpoints muertos (404/410, retirados) no hay nada temporal que esperar.
-      if (!entregado && !reintentable) break;
-    }
-    if (entregado) {
-      db.query("INSERT OR IGNORE INTO push_enviados (tarea_id, tipo) VALUES (?, ?)").run(tareaId, clave);
+      await procesarColaPush({ tareaId, tipo: clave, forzar: true });
+      if (!db.query("SELECT 1 FROM push_entregas WHERE tarea_id=? AND tipo=? AND estado='pendiente'").get(tareaId, clave)) break;
     }
   } catch {
-    // La notificación nunca debe romper el flujo de la tarea.
+    console.error("No se pudo registrar la notificación para su reintento.");
   }
+}
+
+type EntregaPush = Subscripcion & { tarea_id: string; tipo: string; carga: string; intentos: number };
+type VigenciaPush = { estado: string; planHash: string | null; eventoId: number | null };
+
+function vigenciaTarea(tareaId: string, tipo: string): VigenciaPush | null {
+  const fila = db.query<{ status: string; plan_hash: string | null }, [string]>("SELECT status,plan_hash FROM tasks WHERE id=?").get(tareaId);
+  if (!fila) return null;
+  const kind = tipo.startsWith("revisar") ? "plan_creado" : "terminada";
+  const evento = db.query<{ id: number }, [string, string]>("SELECT id FROM task_events WHERE task_id=? AND kind=? ORDER BY id DESC LIMIT 1").get(tareaId, kind);
+  return { estado: fila.status, planHash: tipo.startsWith("revisar") ? fila.plan_hash : null, eventoId: evento?.id ?? null };
+}
+
+function entregaVigente(e: EntregaPush): boolean {
+  try {
+    const anterior = JSON.parse(e.carga).vigencia as VigenciaPush | null | undefined;
+    // Compatibilidad con cargas ya persistidas sin fotografía de la transición.
+    if (!anterior) return true;
+    const actual = vigenciaTarea(e.tarea_id, e.tipo);
+    return actual !== null && actual.estado === anterior.estado && actual.planHash === anterior.planHash && actual.eventoId === anterior.eventoId;
+  } catch { return false; }
+}
+const CONCURRENCIA_PUSH = 4;
+const DURACION_LEASE_MS = 60_000;
+let procesando = false;
+
+// El claim se confirma en SQLite antes del await. Un segundo dispatcher no puede tomar
+// la misma entrega y un proceso muerto libera su lease automáticamente al vencer.
+export async function procesarColaPush(filtro?: { tareaId: string; tipo: string; forzar?: boolean }): Promise<void> {
+  if (procesando) return;
+  procesando = true;
+  try {
+    const claves = clavesVapid();
+    if (!claves) return;
+    const ahora = Date.now();
+    db.query("DELETE FROM push_entregas WHERE creado_ms < ?").run(ahora - 30 * 86_400_000);
+    const opciones: ClavesEnvio = {
+      vapidDetails: { subject: ASUNTO, publicKey: claves.publicKey, privateKey: claves.privateKey },
+      TTL: 3600, urgency: "normal",
+    };
+    const entregas = db.transaction(() => {
+      db.query("UPDATE push_entregas SET estado='pendiente' WHERE estado='enviando' AND bloqueo_hasta_ms<=?").run(ahora);
+      const filas = db.query<EntregaPush, [number, string | null, string | null, string | null]>(`
+        SELECT e.*,s.p256dh,s.auth FROM push_entregas e JOIN push_subscripciones s USING(endpoint)
+        WHERE e.estado='pendiente' AND e.siguiente_ms<=? AND (? IS NULL OR (e.tarea_id=? AND e.tipo=?))
+        ORDER BY e.creado_ms LIMIT 16
+      `).all(filtro?.forzar ? Number.MAX_SAFE_INTEGER : ahora, filtro?.tareaId ?? null, filtro?.tareaId ?? null, filtro?.tipo ?? null);
+      for (const e of filas) db.query(`UPDATE push_entregas SET estado='enviando',bloqueo_hasta_ms=?,intentos=intentos+1
+        WHERE tarea_id=? AND tipo=? AND endpoint=?`).run(ahora + DURACION_LEASE_MS, e.tarea_id, e.tipo, e.endpoint);
+      return filas;
+    })();
+    for (let inicio = 0; inicio < entregas.length; inicio += CONCURRENCIA_PUSH) {
+      await Promise.all(entregas.slice(inicio, inicio + CONCURRENCIA_PUSH).map(async (e) => {
+        if (!entregaVigente(e)) {
+          // Se conserva el registro para que un aviso resuelto no se vuelva a encolar.
+          db.query("UPDATE push_entregas SET estado='descartada',bloqueo_hasta_ms=0 WHERE tarea_id=? AND tipo=? AND endpoint=?")
+            .run(e.tarea_id, e.tipo, e.endpoint);
+          return;
+        }
+        const resultado = await enviar(opciones, e, e.carga);
+        const retraso = RETRASO_REINTENTO_MS[e.intentos] ?? Math.min(300_000, 30_000 * 2 ** Math.min(e.intentos - 2, 4));
+        db.query(`UPDATE push_entregas SET estado=?,siguiente_ms=?,bloqueo_hasta_ms=0
+          WHERE tarea_id=? AND tipo=? AND endpoint=?`).run(resultado === "entregado" ? "entregada" : "pendiente", Date.now() + retraso, e.tarea_id, e.tipo, e.endpoint);
+        if (resultado === "entregado" && !db.query("SELECT 1 FROM push_entregas WHERE tarea_id=? AND tipo=? AND estado!='entregada'").get(e.tarea_id, e.tipo)) {
+          db.query("INSERT OR IGNORE INTO push_enviados(tarea_id,tipo) VALUES (?,?)").run(e.tarea_id, e.tipo);
+        }
+      }));
+    }
+  } finally { procesando = false; }
+}
+
+let relojCola: ReturnType<typeof setInterval> | null = null;
+export function iniciarColaPush(): void {
+  if (relojCola) return;
+  const ejecutar = () => { void procesarColaPush().catch(() => console.error("No se pudo procesar la cola de notificaciones.")); };
+  relojCola = setInterval(ejecutar, 15_000);
+  relojCola.unref();
+  ejecutar();
 }
 
 type ClavesEnvio = {
@@ -180,6 +247,7 @@ async function enviar(
       body: detalle.body ? Buffer.from(detalle.body) : undefined,
       signal: AbortSignal.timeout(TIEMPO_ENVIO_MS),
     });
+    await res.body?.cancel();
     if (res.status === 404 || res.status === 410) {
       db.query("DELETE FROM push_subscripciones WHERE endpoint = ?").run(s.endpoint);
       return "inactiva";

@@ -166,6 +166,7 @@ test("fusionar PR por número desde el chat no crea otra tarea ni otra rama", as
   db.query("INSERT INTO project_git(project_id,remote) VALUES (?,?)").run(p.id, REMOTO);
   process.env.TELO_CLAVE_CIFRADO = randomBytes(32).toString("base64");
   guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
+  globalThis.fetch = (async () => Response.json({ head: { sha: "4".repeat(40) } })) as unknown as typeof fetch;
   const conversationId = randomUUID();
   db.query("INSERT INTO conversations(id,title,project_id) VALUES (?,'Git',?)").run(conversationId, p.id);
   const { chat, numeroPullRequestParaFusionar } = await import("../src/routes/chat");
@@ -463,6 +464,7 @@ test("push_main ya no se acepta, y merge se puede preparar y autorizar directame
     if (String(url) === "https://api.github.com/repos/dueno/prueba") {
       return Response.json({ full_name: "dueno/prueba", permissions: { push: true } });
     }
+    if (String(url).endsWith("/pulls/1")) return Response.json({ head: { sha: p.diff.commit }, mergeable: true });
     return Response.json({ merged: true, message: "Pull Request successfully merged" });
   }) as typeof fetch;
 
@@ -599,7 +601,7 @@ test("un merge con conflictos lista archivos y crea tarea sobre la rama del PR",
         html_url: "https://github.com/dueno/prueba/pull/9",
         mergeable: false,
         mergeable_state: "dirty",
-        head: { ref: p.diff.rama, repo: { full_name: "dueno/prueba" } },
+        head: { ref: p.diff.rama, sha: p.diff.commit, repo: { full_name: "dueno/prueba" } },
         base: { ref: "main", repo: { full_name: "dueno/prueba" } },
       });
     }
@@ -1026,13 +1028,49 @@ test("el escaneo de secretos ve el blob de un archivo marcado binario por .gitat
   const copia = await prepararCopia(taskId, p.cwd, p.id);
   // El truco del agente: marcar el archivo binario. Con .gitattributes el diff no muestra
   // el contenido; el escaneo debe leerlo del blob del índice y rechazar el commit.
-  writeFileSync(join(copia.cwd, "secreto.bin"), "AKIAXK7GJQM4N2PLR9Z8\n");
+  writeFileSync(join(copia.cwd, ".opencode-datos.bin"), "\0etiqueta-falsa\0AKIAXK7GJQM4N2PLR9Z8\n");
   writeFileSync(join(copia.cwd, ".gitattributes"), "*.bin -diff\n");
   const antes = await diffDeTarea(taskId);
   expect(antes.hash).toBeTruthy();
+  expect(antes.archivos.some((archivo) => archivo.ruta === ".opencode-datos.bin")).toBe(true);
   await expect(aprobarTarea(taskId, { accion: "commit", hash: antes.hash!, mensaje: "Agrega un binario" })).rejects.toMatchObject({
     code: "secreto_detectado",
   });
+});
+
+test("merge sin tarea captura el SHA, rechaza punta cambiada y bloquea tarjetas antiguas", async () => {
+  const p = proyecto();
+  db.query("INSERT INTO project_git(project_id,remote) VALUES (?,?)").run(p.id, REMOTO);
+  guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
+  const conversationId = randomUUID();
+  db.query("INSERT INTO conversations(id,title,project_id) VALUES (?,'Merge sin tarea',?)").run(conversationId, p.id);
+  const sha = "a".repeat(40);
+  let punta = sha;
+  let puts = 0;
+  globalThis.fetch = (async (url: any, init: any) => {
+    if (String(url) === "https://api.github.com/repos/dueno/prueba")
+      return Response.json({ permissions: { push: true } });
+    if (init?.method === "PUT") { puts++; expect(JSON.parse(init.body).sha).toBe(sha); return Response.json({ merged: true }); }
+    return Response.json({ head: { sha: punta }, mergeable: true });
+  }) as typeof fetch;
+  try {
+    const preparar = () => pedir(`/projects/${p.id}/acciones`, { action: "merge", conversationId, pr_number: 55 });
+    const primera = await preparar(); expect(primera.status).toBe(201);
+    const accion = await primera.json() as { id: string; payload: string };
+    expect(JSON.parse(accion.payload).sha_revision).toBe(sha);
+    punta = "b".repeat(40);
+    const resultado = await pedir(`/acciones/${accion.id}/decidir`, { approve: true });
+    expect(resultado.status).toBe(409); expect(puts).toBe(0);
+    punta = sha;
+    const segunda = await (await preparar()).json() as { id: string; payload: string };
+    const antiguo = JSON.parse(segunda.payload); delete antiguo.sha_revision;
+    db.query("UPDATE repository_actions SET payload=? WHERE id=?").run(JSON.stringify(antiguo), segunda.id);
+    expect((await pedir(`/acciones/${segunda.id}/decidir`, { approve: true })).status).toBe(409);
+    expect(puts).toBe(0);
+    const tercera = await (await preparar()).json() as { id: string };
+    expect((await pedir(`/acciones/${tercera.id}/decidir`, { approve: true })).status).toBe(200);
+    expect(puts).toBe(1);
+  } finally { db.query("DELETE FROM conversations WHERE id=?").run(conversationId); }
 });
 
 test("un archivo que el escaneo no puede verificar completo bloquea el commit", { timeout: 60000 }, async () => {

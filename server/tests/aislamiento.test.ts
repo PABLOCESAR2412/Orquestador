@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -21,7 +21,15 @@ mkdirSync(proyectos, { recursive: true });
 writeFileSync(join(home, ".local", "share", "opencode", "auth.json"), '{"openai":{"key":"credencial-local"}}');
 
 const { config } = await import("../src/config");
-const { eliminarPerfilOpenCode, prepararPerfilOpenCode, prefijoAislamiento } = await import("../src/runners/aislamiento");
+const { eliminarPerfilOpenCode, prepararPerfilOpenCode, prefijoAislamiento, prepararDirectorioOpenCode } = await import("../src/runners/aislamiento");
+
+test("rechaza .opencode enlazado antes de permitir su runtime", () => {
+  const carpeta = join(proyectos, "enlace-opencode");
+  const destino = join(raiz, "fuera");
+  mkdirSync(carpeta, { recursive: true }); mkdirSync(destino);
+  symlinkSync(destino, join(carpeta, ".opencode"), process.platform === "win32" ? "junction" : "dir");
+  expect(() => prepararDirectorioOpenCode(carpeta)).toThrow("no es segura");
+});
 
 afterAll(() => {
   for (const [clave, valor] of Object.entries(originales)) {

@@ -1,9 +1,10 @@
 import { Hono } from "hono";
+import { estadoDespliegue, puertaDespliegue } from "./despliegue";
 import { iniciarMantenimientoDisco } from "./mantenimiento-disco";
 import { join, resolve, sep, extname } from "node:path";
 import { config } from "./config";
 import { db } from "./db";
-import { chat, avisarTurnosInterrumpidos } from "./routes/chat";
+import { chat, avisarTurnosInterrumpidos, previewHtmlAutorizada } from "./routes/chat";
 import { documentos } from "./routes/documentos";
 import { modelsRoute } from "./routes/models";
 import { settings } from "./routes/settings";
@@ -32,6 +33,8 @@ import { media, reanudarGeneracionesMedios } from "./routes/media";
 import { jevRoute } from "./routes/jev";
 import { conexiones } from "./routes/conexiones";
 import { push } from "./routes/push";
+import { iniciarColaPush } from "./push";
+import { entornoConexion } from "./conexion";
 import { startScheduler } from "./programadas";
 import { startWorker } from "./worker";
 import { auth } from "./routes/auth";
@@ -96,6 +99,7 @@ const cabecerasSeguras = secureHeaders({
 app.use("*", (c, next) =>
   /^\/api\/documentos\/[^/]+\/vista$/.test(c.req.path) ||
   /^\/api\/conversations\/[^/]+\/archivo-(?:pdf|html)$/.test(c.req.path)
+    || /^\/api\/conversations\/[^/]+\/preview-html\/[a-f0-9]{64}\//.test(c.req.path)
     ? next()
     : cabecerasSeguras(c, next),
 );
@@ -117,7 +121,7 @@ app.use("/api/*", (c, next) =>
 
 app.get("/api/health", (c) => {
   const row = db.query<{ ok: number }, []>("SELECT 1 AS ok").get();
-  return c.json({ ok: row?.ok === 1, time: new Date().toISOString() });
+  return c.json({ ok: row?.ok === 1, time: new Date().toISOString(), despliegue: estadoDespliegue() });
 });
 
 // Todo /api exige sesión, salvo el estado del servidor y las rutas de entrada y salida.
@@ -129,10 +133,12 @@ const PUBLICAS = new Set([
 ]);
 app.use("/api/*", async (c, next) => {
   if (PUBLICAS.has(c.req.path)) return next();
+  if (previewHtmlAutorizada(c.req.raw)) return next();
   if (!sesionValida(getCookie(c, COOKIE_SESION))) return c.json({ error: "login_required" }, 401);
   return next();
 });
 
+app.use("/api/*", puertaDespliegue);
 app.route("/api", auth);
 app.route("/api", chat);
 app.route("/api", documentos);
@@ -180,6 +186,7 @@ let arranqueColgado: ReturnType<typeof setTimeout> | null = setTimeout(() => {
 startWorker();
 startScheduler();
 iniciarMantenimientoDisco();
+iniciarColaPush();
 reanudarGeneracionesMedios();
 limpiarSesionesAntiguas();
 // El arranque llegó a la escucha: el tope ya no aplica.
@@ -212,6 +219,6 @@ export default {
   port: config.port,
   hostname: config.hostname,
   fetch(request: Request, server: Bun.Server<unknown>) {
-    return app.fetch(request, { clientIp: server.requestIP(request)?.address });
+    return app.fetch(request, entornoConexion(request, server));
   },
 };

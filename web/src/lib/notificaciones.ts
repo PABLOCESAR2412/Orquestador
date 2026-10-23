@@ -149,16 +149,16 @@ export async function probarSonidoNotificaciones(id = sonidoNotificacionSeleccio
 }
 
 // La API Notification entrega el aviso al sistema operativo incluso con Telo en primer plano.
-async function mostrar(titulo: string, cuerpo: string, etiqueta: string, conversationId?: string): Promise<void> {
-  if (!notificacionesActivas() || !notificacionesSoportadas() || Notification.permission !== "granted") return;
-  const url = conversationId ? `/chat?conversacion=${encodeURIComponent(conversationId)}` : "/tareas";
+async function mostrar(titulo: string, cuerpo: string, etiqueta: string, conversationId?: string, destino?: string): Promise<boolean> {
+  if (!notificacionesActivas() || !notificacionesSoportadas() || Notification.permission !== "granted") return false;
+  const url = destino ?? (conversationId ? `/chat?conversacion=${encodeURIComponent(conversationId)}` : "/tareas");
   const opciones: NotificationOptions = { body: cuerpo, tag: etiqueta, icon: "/notification-icon.png", badge: "/notification-badge.png", silent: !sonidoGestionadoPorAndroid() || !sonidoNotificacionesActivo(), data: { url } };
   // En el teléfono, las notificaciones salen por el service worker de la PWA.
   try {
     const registro = await navigator.serviceWorker?.getRegistration();
     if (registro) {
       await registro.showNotification(titulo, opciones);
-      return;
+      return true;
     }
   } catch {
     // Sin service worker disponible, se usa la API directa.
@@ -166,13 +166,27 @@ async function mostrar(titulo: string, cuerpo: string, etiqueta: string, convers
   try {
     const aviso = new Notification(titulo, opciones);
     aviso.onclick = () => { window.focus(); window.location.assign(url); aviso.close(); };
+    return true;
   } catch {
     // Algunos navegadores móviles solo muestran avisos desde el service worker.
+    return false;
   }
 }
 
 // Avisa cuando una tarea termina, falla o pide una decisión. Sin permiso, no hace nada.
 export function useNotificacionesDeTareas(): void {
+  useEffect(() => {
+    const recibir = (evento: MessageEvent) => {
+      if (evento.data?.tipo !== "telo-push" || !evento.ports[0]) return;
+      const carga = evento.data.carga ?? {};
+      const url = typeof carga.url === "string" && carga.url.startsWith("/") && !carga.url.startsWith("//") ? carga.url : "/tareas";
+      void mostrar(carga.titulo || "Telo", carga.cuerpo || "", carga.etiqueta || "telo-push", undefined, url)
+        .then((mostrada) => evento.ports[0].postMessage({ mostrada }))
+        .catch(() => evento.ports[0].postMessage({ mostrada: false }));
+    };
+    navigator.serviceWorker?.addEventListener("message", recibir);
+    return () => navigator.serviceWorker?.removeEventListener("message", recibir);
+  }, []);
   const qc = useQueryClient();
   const avisadas = useRef(new Map<string, string>());
   const anteriores = useRef(new Map<string, string>());

@@ -6,6 +6,7 @@ import {
   openSync,
   readlinkSync,
   readSync,
+  read,
   readdirSync,
   realpathSync,
   statSync,
@@ -236,13 +237,71 @@ export function leerArchivo(
 // Valida un binario del proyecto (extensión permitida, archivo real sin enlaces, dentro del
 // proyecto y bajo el límite) SIN cargarlo completo: devuelve la ruta real para servirlo en
 // streaming y solo la cabecera necesaria para verificar la firma.
+export type BinarioAbierto = {
+  ruta: string;
+  tamano: number;
+  real: string;
+  cerrar: () => void;
+  stream: (inicio?: number, fin?: number) => ReadableStream<Uint8Array>;
+};
+
+function recursoBinario(fd: number, ruta: string, tamano: number, real: string): BinarioAbierto {
+  let cerrado = false;
+  let leyendo = false;
+  let fdCerrado = false;
+  let usado = false;
+  const cerrarFd = () => {
+    if (cerrado && !leyendo && !fdCerrado) {
+      fdCerrado = true;
+      closeSync(fd);
+    }
+  };
+  const cerrar = () => { cerrado = true; cerrarFd(); };
+  return {
+    ruta, tamano, real, cerrar,
+    stream(inicio = 0, fin = tamano - 1) {
+      if (cerrado || usado) throw new Error("El archivo ya fue cerrado o transmitido.");
+      if (!Number.isSafeInteger(inicio) || !Number.isSafeInteger(fin) || inicio < 0 || fin >= tamano || (fin < inicio && tamano !== 0)) {
+        cerrar();
+        throw new ArchivoError("rango_invalido", 400);
+      }
+      usado = true;
+      let posicion = inicio;
+      return new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          if (cerrado) return;
+          if (posicion > fin) { cerrar(); controller.close(); return; }
+          const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, fin - posicion + 1));
+          leyendo = true;
+          try {
+            const bytes = await new Promise<number>((resolve, reject) => {
+              read(fd, buffer, 0, buffer.length, posicion, (error, n) => error ? reject(error) : resolve(n));
+            });
+            if (cerrado) return;
+            if (bytes === 0) { cerrar(); controller.close(); return; }
+            posicion += bytes;
+            controller.enqueue(buffer.subarray(0, bytes));
+            if (posicion > fin) { cerrar(); controller.close(); }
+          } catch (error) {
+            if (!cerrado) { cerrar(); controller.error(error); }
+          } finally {
+            leyendo = false;
+            cerrarFd();
+          }
+        },
+        cancel() { cerrar(); },
+      });
+    },
+  };
+}
+
 function validarBinario(
   raizProyecto: string,
   segmentos: string[],
   extensiones: readonly string[],
   limite: number,
   errorFormato: string,
-): { ruta: string; tamano: number; real: string; cabeza: Buffer } {
+): BinarioAbierto & { cabeza: Buffer } {
   const extension = segmentos.at(-1)?.split(".").at(-1)?.toLowerCase();
   if (!extension || !extensiones.includes(extension)) {
     throw new ArchivoError(errorFormato, 415);
@@ -275,24 +334,26 @@ function validarBinario(
       leidos += n;
     }
     cabeza = cabeza.subarray(0, leidos);
-  } finally {
+  } catch (error) {
     closeSync(fd);
+    throw error;
   }
 
-  return { ruta: segmentos.join("/"), tamano, real, cabeza };
+  return { ...recursoBinario(fd, segmentos.join("/"), tamano, real), cabeza };
 }
 
 // Verifica la firma de un PDF del workspace del chat y devuelve la ruta para el servido.
 export function leerPdf(
   raizProyecto: string,
   segmentos: string[],
-): { ruta: string; tamano: number; real: string } {
+): BinarioAbierto {
   const archivo = validarBinario(raizProyecto, segmentos, ["pdf"], LIMITE_PDF, "formato_pdf_invalido");
   // La cabecera PDF puede aparecer dentro de los primeros 1024 bytes según la especificación.
   if (archivo.cabeza.indexOf(Buffer.from("%PDF-", "ascii")) < 0) {
+    archivo.cerrar();
     throw new ArchivoError("formato_pdf_invalido", 415);
   }
-  return { ruta: archivo.ruta, tamano: archivo.tamano, real: archivo.real };
+  return archivo;
 }
 
 const MIME_IMAGEN: Record<string, string> = {
@@ -307,7 +368,7 @@ const MIME_IMAGEN: Record<string, string> = {
 export function leerImagen(
   raizProyecto: string,
   segmentos: string[],
-): { ruta: string; nombre: string; mime: string; tamano: number; real: string } {
+): BinarioAbierto & { nombre: string; mime: string } {
   const archivo = validarBinario(raizProyecto, segmentos, Object.keys(MIME_IMAGEN), LIMITE_IMAGEN, "formato_imagen_invalido");
   const nombre = archivo.ruta.split("/").at(-1)!;
   const extension = nombre.split(".").at(-1)!.toLowerCase();
@@ -319,20 +380,35 @@ export function leerImagen(
       : extension === "webp"
         ? bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP"
         : bytes.toString("ascii", 0, 6) === "GIF87a" || bytes.toString("ascii", 0, 6) === "GIF89a";
-  if (!valida) throw new ArchivoError("formato_imagen_invalido", 415);
-  return { ruta: archivo.ruta, nombre, mime: MIME_IMAGEN[extension]!, tamano: archivo.tamano, real: archivo.real };
+  if (!valida) { archivo.cerrar(); throw new ArchivoError("formato_imagen_invalido", 415); }
+  return { ...archivo, nombre, mime: MIME_IMAGEN[extension]! };
 }
 
 // Verifica la cabecera ISO-BMFF de un MP4 del workspace y devuelve la ruta para el servido.
 export function leerVideo(
   raizProyecto: string,
   segmentos: string[],
-): { ruta: string; nombre: string; mime: string; tamano: number; real: string } {
+): BinarioAbierto & { nombre: string; mime: string } {
   const archivo = validarBinario(raizProyecto, segmentos, ["mp4"], LIMITE_VIDEO, "formato_video_invalido");
   if (archivo.cabeza.length < 12 || archivo.cabeza.toString("ascii", 4, 8) !== "ftyp") {
+    archivo.cerrar();
     throw new ArchivoError("formato_video_invalido", 415);
   }
-  return { ruta: archivo.ruta, nombre: archivo.ruta.split("/").at(-1)!, mime: "video/mp4", tamano: archivo.tamano, real: archivo.real };
+  return { ...archivo, nombre: archivo.ruta.split("/").at(-1)!, mime: "video/mp4" };
+}
+
+const MIME_RECURSO_HTML: Record<string, string> = {
+  css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8", mjs: "text/javascript; charset=utf-8",
+  json: "application/json; charset=utf-8", woff: "font/woff", woff2: "font/woff2", ttf: "font/ttf", otf: "font/otf",
+  ...MIME_IMAGEN, svg: "image/svg+xml", mp4: "video/mp4", webm: "video/webm",
+};
+
+// Solo recursos estáticos de una preview: no expone fuentes, configuración o archivos de texto.
+export function leerRecursoHtml(raizProyecto: string, segmentos: string[]): BinarioAbierto & { mime: string } {
+  const extension = segmentos.at(-1)?.split(".").at(-1)?.toLowerCase() ?? "";
+  const archivo = validarBinario(raizProyecto, segmentos, Object.keys(MIME_RECURSO_HTML),
+    extension === "mp4" || extension === "webm" ? LIMITE_VIDEO : 16 * 1024 * 1024, "formato_recurso_invalido");
+  return { ...archivo, mime: MIME_RECURSO_HTML[extension]! };
 }
 
 // Busca una referencia sin carpeta dentro del proyecto cuando el modelo solo citó el nombre.

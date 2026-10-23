@@ -36,6 +36,15 @@ export type PaginaConversaciones = {
   siguiente: string | null;
 };
 
+export type PaginaMensajes = {
+  messages: (Message & { cursor: number })[];
+  anterior: number | null;
+  ultimo: number;
+  mas: boolean;
+  vigentes: { id: string; sesion_compactada: number }[];
+  reiniciar: boolean;
+};
+
 export type SubagentChat = Pick<Conversation,
   "id" | "title" | "model" | "effort" | "project_id" | "parent_conversation_id" | "parent_turn_id" |
   "project_name" | "ocupada" | "en_proceso" | "subagent_turn_id" | "subagent_agent" | "subagent_prompt" |
@@ -306,6 +315,8 @@ export type Message = {
   effort: string | null;
   // 1 cuando el proceso de ese turno compactó el contexto: el hilo dibuja el hito de compactación.
   sesion_compactada?: number;
+  turno_id?: string | null;
+  turno_created_at?: string | null;
 };
 
 export type ContextoConversacion = {
@@ -780,6 +791,21 @@ export const api = {
       body: JSON.stringify({ projectId: projectId ?? null, title }),
     }),
   listMessages: (id: string) => request<Message[]>(`/api/conversations/${id}/messages`),
+  message: (id: string, mensajeId: string) => request<Message>(`/api/conversations/${id}/messages/${encodeURIComponent(mensajeId)}`),
+  messagePage: (id: string, opciones: { antes?: number; despues?: number; desde?: number; ultimoId?: string } = {}) => {
+    const parametros = new URLSearchParams({ pagina: "1", limite: "40" });
+    for (const [nombre, valor] of Object.entries(opciones)) if (valor !== undefined) parametros.set(nombre, String(valor));
+    return request<PaginaMensajes>(`/api/conversations/${id}/messages?${parametros}`);
+  },
+  allMessages: async (id: string): Promise<Message[]> => {
+    let pagina = await api.messagePage(id);
+    const paginas = [pagina.messages];
+    while (pagina.anterior !== null) {
+      pagina = await api.messagePage(id, { antes: pagina.anterior });
+      paginas.unshift(pagina.messages);
+    }
+    return paginas.flat();
+  },
   conversationContext: (id: string) => request<ContextoConversacion>(`/api/conversations/${id}/contexto`),
   uploadChatImage: (id: string, archivo: File) => {
     const body = new FormData();
