@@ -123,6 +123,15 @@ Entrega: [PR #104](https://github.com/PABLOCESAR2412/Orquestador/pull/104). Fusi
 
 Commit a06b9bf: 55 suites (425 aprobadas, 1 fallo por base compartida, 61 omisiones). Suite aislada: 8 aprobadas. Web: 30 casos, build y Playwright 390/1440 px. Se reprodujeron sesión heredada tras logout, PATCH parcial, omisión de prefijos .opencode y bloqueo CSP del HTML. El respaldo omitía entregables. A07/A08 se detectaron por lectura de código. La suite defectuosa escribió fixtures en la base local: no se tocó el VPS ni se restauraron filas automáticamente.
 
+## Rediseño del historial — paginación (tramo 3)
+
+Entrega: [PR #116](https://github.com/PABLOCESAR2412/Orquestador/pull/116). Un PR por ítem del tramo 3; este es el primero (paginación del historial).
+
+- [x] **Servidor.** `GET /api/conversations?limite=&antes=` responde `{ conversations, siguiente }` con el mismo orden del listado completo (anclados por `pinned_at` primero; luego `created_at` DESC con `rowid` como desempate; el corte se hace sobre la lista ya ordenada en JS con `conversations.conv_rowid` añadido a la consulta). El cursor codifica `anclado;pinned_at;created_at;rowid` de la ÚLTIMA fila entregada y la página siguiente empieza después de ella, así no se pierde ni se repite ninguna conversación entre tandas; cuando no queda nada detrás no se anuncia `siguiente`. Sin `limite` la respuesta sigue siendo el array completo: chat, notificaciones y selectores no cambian de contrato. Cursor inválido u hora malformada vuelve a la primera página en lugar de romper.
+- [x] **Muelle web.** La consulta del sidebar pasa a la primera tanda de 50 (`["conversations","historial"]`, refresco de 5 s sin cambios) y acumula tandas con «Cargar anteriores»; la lista combinada quita ids repetidos (la primera tanda manda, para que un recién anclado que estaba en una tanda vieja no se vea dos veces), eliminar purga la conversación de las tandas cargadas y la búsqueda con filtro pide la lista completa por separado (`["conversations","buscar"]`), mientras llega muestra lo ya cargado para no parpadear. El chat (`chat.tsx`) y las notificaciones mantienen la lista completa y sus updates optimistas intactos.
+- Pruebas: `server/tests/conversations-paginado.test.ts` (+6): lista heredada intacta, reparto con anclados y empates de fecha, resto con cursor y `siguiente` nulo, cursor inválido, `limite=0` heredado y cadenas completas sin perder ni repetir. TypeScript de servidor y web aprobado.
+- Pendiente propio anotado: las tandas antiguas cargadas a mano no se refrescan al renombrar/anclar elementos que viven fuera de la primera tanda (solo se purgan al eliminar); refrescarlas por cursor queda para un ajuste posterior si se nota en uso.
+
 ## Hoja de ruta
 
 Fuente histórica: PLAN.md.
