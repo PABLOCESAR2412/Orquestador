@@ -302,6 +302,21 @@ describe("archivos de texto de chats sin proyecto", () => {
   });
 });
 
+// La liberación de una ocupación huérfana no lanza procesos: no depende de setsid.
+test("detener libera una ocupación huérfana para que el chat no quede bloqueado", async () => {
+  const { ocuparConversacion, liberarConversacion } = await import("../src/ocupacion");
+  const id = conversacion();
+  ocuparConversacion(id);
+  try {
+    const respuesta = await app.request(`/api/conversations/${id}/detener`, { method: "POST" });
+    expect(respuesta.status).toBe(200);
+    expect(await respuesta.json()).toEqual({ outcome: "liberado" });
+    expect(conversacionEnCurso(id)).toBe(false);
+  } finally {
+    liberarConversacion(id);
+  }
+});
+
 // Estas pruebas lanzan grupos de procesos con `setsid`, igual que el servidor Linux.
 describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
   test("detener aborta el turno libre y conserva el mensaje para continuar", async () => {

@@ -416,7 +416,7 @@ description: Diseña y verifica animaciones, videos y piezas audiovisuales con e
 - Revisa una hoja de contacto con fotogramas del inicio, mitad, final y cada transición. Comprueba texto, residuos, solapamientos, safe areas y que el primer plano no quede negro durante más tiempo del previsto; corrige y vuelve a revisar los defectos.
 - Para MP4 de distribución, prioriza H.264, píxeles yuv420p y la opción faststart; añade audio AAC solo si hay una pista intencional. Mantén GIF y WebP animado como formatos auxiliares, y explica cuando una aplicación de escritorio no admita WebP animado.
 - Verifica el archivo final y reporta su ruta, códec, dimensiones, duración, frecuencia de fotogramas y pista de audio solo cuando una herramienta disponible lo confirme. No afirmes que el reproductor o el formato se validaron si no pudiste abrirlos.
-- Si se solicita narración, prepara un guion breve en español y usa una herramienta de voz disponible; si no existe, dilo y entrega el video sin fingir que tiene audio.
+- Si se solicita narración, prepara un guion breve en español; antes de prometerla, verifica que una herramienta de voz esté disponible y responda; si no existe, dilo en la primera respuesta y entrega el video sin fingir que tiene audio.
 - Prioriza un TTS local ya instalado o un servidor MCP local, como VoiceStudio (herramienta generate_speech). No llames servicios externos de voz que puedan cobrar. Si no hay TTS configurado o accesible desde el agente, entrega el video sin audio y deja clara esa limitación.
 - Si el usuario menciona una plataforma como Instagram Stories, TikTok o Facebook, adapta directamente proporción, resolución y zonas seguras a ese destino. Si pide cámara lenta, aplícala al render final y comprueba la duración resultante.
 `;
