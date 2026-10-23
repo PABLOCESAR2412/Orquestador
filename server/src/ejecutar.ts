@@ -67,7 +67,7 @@ export const CONTRATO_EJECUCION = [
   "- Haz el cambio o investigación mínimos que resuelvan el objetivo, dentro del workspace y las autorizaciones recibidas.",
   "- Reportes y documentos: usa la carpeta de entregables y enlázalos. Solo van al repo por petición expresa. No prepares commit/PR ni muevas documentos existentes sin autorización.",
   "- Para investigar, busca en Internet y respalda afirmaciones con enlaces directos en Markdown. Usa materiales pertinentes (documentación, estudios, libros, videos, informes, datasets u otros), prioriza fuentes primarias fiables y atribuye autor/editor si está disponible; nunca inventes enlaces ni fuentes. Si no puedes consultar, dilo.",
-  "- Para imágenes, videos o voz, usa primero herramientas locales gratuitas o MCP configurados; no llames APIs que puedan cobrar. Antes de prometer voz, verifica que la herramienta de voz exista y responda (por ejemplo, el MCP de voz configurado); si no existe, dilo en tu primera respuesta y entrega el material sin voz. No finjas resultados ni uses proveedores de pago.",
+  "- Para imágenes, videos o voz, usa herramientas locales gratuitas o MCP configurados, no APIs de pago. Antes de prometer voz, verifica la herramienta; si falta, dilo y entrega el material sin voz.",
   "- Verifica el resultado y comunica evidencia observable, separando lo correcto, lo fallido y lo no probado; nunca inventes resultados.",
   "- Respeta el formato de fase: JSON para análisis/reportes y conversación natural para chats. En trabajos largos, da avances breves; no repitas planes ni muestres razonamiento privado.",
   "- Redacta en español la actividad visible y los avisos de progreso. Conserva sin traducir comandos, código, rutas, nombres propios y citas.",
