@@ -2,6 +2,7 @@ import { stripVTControlCharacters } from "node:util";
 import { carpetaHome } from "./hogar";
 import { redactar, valoresDeConfiguracion } from "./redaccion";
 import { hallarEjecutable, lanzarEnGrupo, matarGrupo } from "./ejecutable";
+import { registrarTrabajo } from "./despliegue";
 
 
 // Inicio de sesión de Codex con la cuenta de ChatGPT, por código de dispositivo, ejecutado en el servidor.
@@ -137,7 +138,8 @@ export async function iniciarLoginCodex(): Promise<LoginCodex> {
     cancelada: false,
   };
   sesion = actual;
-  void seguir(actual, proc);
+  const finalizar = registrarTrabajo();
+  void seguir(actual, proc).catch(() => console.error("No se pudo registrar el resultado del acceso a Codex")).finally(finalizar);
   return estadoLoginCodex();
 }
 

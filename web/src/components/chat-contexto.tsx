@@ -23,6 +23,8 @@ export function ChatContexto({ conversationId, messages, models, onClose, dispar
   const ref = useRef<HTMLDivElement>(null);
   const previo = useRef(document.activeElement as HTMLElement | null);
   const [todosLosMensajes, setTodosLosMensajes] = useState(false);
+  const [exportando, setExportando] = useState(false);
+  const [errorExportar, setErrorExportar] = useState<string | null>(null);
   const cerrar = () => {
     (disparador?.current ?? previo.current)?.focus();
     onClose();
@@ -35,15 +37,20 @@ export function ChatContexto({ conversationId, messages, models, onClose, dispar
     refetchInterval: 5000,
   });
 
-  const exportar = () => {
-    if (!contexto.data) return;
-    const blob = new Blob([JSON.stringify({ ...contexto.data, messages }, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${nombreArchivo(contexto.data.conversation.title)}-contexto.json`;
-    link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const exportar = async () => {
+    if (!contexto.data || exportando) return;
+    setExportando(true); setErrorExportar(null);
+    try {
+      const completos = await api.allMessages(conversationId);
+      const blob = new Blob([JSON.stringify({ ...contexto.data, messages: completos }, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${nombreArchivo(contexto.data.conversation.title)}-contexto.json`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { setErrorExportar(errorText(error)); }
+    finally { setExportando(false); }
   };
 
   return (
@@ -57,14 +64,15 @@ export function ChatContexto({ conversationId, messages, models, onClose, dispar
             <p>Uso registrado y mensajes guardados de esta conversación.</p>
           </div>
           <div className="tl-chat-contexto-acciones">
-            <button type="button" className="tl-boton" onClick={exportar} disabled={!contexto.data}>
-              Exportar sesión
+            <button type="button" className="tl-boton" onClick={() => void exportar()} disabled={!contexto.data || exportando}>
+              {exportando ? "Preparando exportación…" : "Exportar sesión"}
             </button>
             <button type="button" className="tl-boton tl-chat-contexto-cerrar" onClick={cerrar} aria-label="Cerrar contexto">×</button>
           </div>
         </header>
 
         <div className="tl-chat-contexto-cuerpo">
+          {errorExportar && <p className="tl-alerta" role="alert">No se pudo exportar la sesión: {errorExportar}</p>}
           {contexto.isPending && !contexto.data && <LoadingSkeleton tipo="tarjetas" cantidad={3} />}
           {contexto.isError && (
             <div className="tl-chat-contexto-error" role="alert">
@@ -182,9 +190,9 @@ function DetalleContexto({
       <section className="tl-chat-contexto-bloque" aria-label="Mensajes guardados">
         <div className="tl-chat-contexto-seccion-titulo">
           <h3>Mensajes guardados</h3>
-          <span>{entero(messages.length)}</span>
+          <span>{entero(messages.length)} de {entero(data.messages.total)}</span>
         </div>
-        <p className="tl-chat-contexto-nota">Es la conversación almacenada por Telo; puede diferir del prompt exacto enviado al proveedor.</p>
+        <p className="tl-chat-contexto-nota">Mensajes de la página abierta. Usa «Ver mensajes anteriores» en el chat para recorrer el historial. La exportación incluye la conversación completa, que puede diferir del prompt enviado al proveedor.</p>
         <div className="tl-chat-contexto-mensajes">
           {messages.length === 0 && <p className="tl-nota">Aún no hay mensajes.</p>}
           {mostrados.map((message) => (

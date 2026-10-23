@@ -1,7 +1,10 @@
 import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
+import { COOKIE_SESION, sesionValida } from "../auth";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../config";
+import { registrarTrabajo } from "../despliegue";
 import { db } from "../db";
 import { publicar } from "../bus";
 import { AislamientoError, eliminarPerfilOpenCode } from "../runners/aislamiento";
@@ -24,7 +27,7 @@ import {
 } from "../ocupacion";
 import { eliminarPerfilSubagentes, prepararSubagentes } from "../subagentes";
 import { cerrarSubagentesDelTurno, registrarEventoSubagente } from "../subagentes-chat";
-import { ArchivoError, buscarArchivosPorNombre, leerArchivo, leerImagen, leerPdf, leerVideo, normalizarRuta } from "../archivos-proyecto";
+import { ArchivoError, buscarArchivosPorNombre, leerArchivo, leerImagen, leerPdf, leerVideo, leerRecursoHtml, normalizarRuta } from "../archivos-proyecto";
 import { contarImagenesMarcadas, eliminarImagenesConversacion, guardarImagenAdjunta, idsImagenesMarcadas, leerImagenAdjunta, MAX_IMAGENES_MENSAJE } from "../chat-adjuntos";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
@@ -34,6 +37,21 @@ const MAX_CONTENIDO = 30_000;
 const MAX_DETALLE_ERROR = 300;
 const chatWorkspace = join(config.dataDir, "chat-workspace");
 mkdirSync(chatWorkspace, { recursive: true });
+
+type PermisoPreview = { conversacion: string; raiz: string; sesion: string | undefined; vence: number };
+const permisosPreview = new Map<string, PermisoPreview>();
+const DURACION_PREVIEW_MS = 10 * 60_000;
+function permisoPreview(request: Request): PermisoPreview | null {
+  if (request.method !== "GET") return null;
+  const coincidencia = /^\/api\/conversations\/([^/]+)\/preview-html\/([a-f0-9]{64})\//.exec(new URL(request.url).pathname);
+  if (!coincidencia) return null;
+  const permiso = permisosPreview.get(coincidencia[2]!);
+  if (!permiso || permiso.conversacion !== coincidencia[1] || permiso.vence <= Date.now() || !sesionValida(permiso.sesion) || !db.query("SELECT 1 FROM conversations WHERE id=?").get(permiso.conversacion)) return null;
+  return permiso;
+}
+// Los recursos de un iframe opaco no envían la cookie Strict. Esta capacidad breve
+// solo abre archivos estáticos del workspace autorizado y caduca al revocar la sesión.
+export function previewHtmlAutorizada(request: Request): boolean { return permisoPreview(request) !== null; }
 
 export function numeroPullRequestParaFusionar(texto: string): number | null {
   const inicio = texto.trim().replace(/^[¿¡]+/, "");
@@ -312,12 +330,60 @@ chat.get("/conversations/:id/turnos/:turno/subagentes", (c) => {
 });
 
 chat.get("/conversations/:id/messages", (c) => {
-  const messages = db
-    .query<Message, [string]>(
-      "SELECT id, conversation_id, role, content, created_at, model, effort, sesion_compactada FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC",
-    )
-    .all(c.req.param("id"));
-  return c.json(messages);
+  const id = c.req.param("id");
+  const numero = (nombre: string) => {
+    const valor = c.req.query(nombre);
+    if (valor === undefined) return null;
+    if (!/^\d+$/.test(valor) || !Number.isSafeInteger(Number(valor))) throw new Error("invalid_cursor");
+    return Number(valor);
+  };
+  try {
+    const antes = numero("antes"), desde = numero("desde");
+    let despues = numero("despues");
+    const ultimoId = c.req.query("ultimoId");
+    const limite = Math.min(100, Math.max(1, numero("limite") ?? 40));
+    if (antes !== null && despues !== null) return c.json({ error: "invalid_cursor" }, 400);
+    // SQLite puede reutilizar el último rowid tras borrar un aviso de reintento.
+    // Si desapareció el ancla, reconstruimos la página reciente en vez de saltar filas.
+    const clave = (cursor: number) => db.query<{ created_at: string; cursor: number }, [string, number]>("SELECT created_at,rowid AS cursor FROM messages WHERE conversation_id=? AND rowid=?").get(id, cursor);
+    const inicio = desde !== null ? clave(desde) : null;
+    const reiniciar = despues !== null && ((desde !== null && !inicio) || (ultimoId !== undefined && !db.query("SELECT 1 FROM messages WHERE conversation_id=? AND rowid=? AND id=?").get(id, despues, ultimoId)));
+    if (reiniciar) despues = null;
+    const ancla = despues !== null || antes !== null ? clave(despues ?? antes!) : { created_at: "\uffff", cursor: Number.MAX_SAFE_INTEGER };
+    if (!ancla) return c.json({ error: "invalid_cursor" }, 400);
+    const columnas = "rowid AS cursor,id,conversation_id,role,content,created_at,model,effort,sesion_compactada";
+    const filas = db.query<Message & { cursor: number }, [string, string, number, number]>(
+      `SELECT ${columnas} FROM messages WHERE conversation_id=? AND (created_at,rowid) ${despues !== null ? ">=" : "<"} (?,?) ORDER BY created_at ${despues !== null ? "ASC" : "DESC"},rowid ${despues !== null ? "ASC" : "DESC"} LIMIT ?`,
+    ).all(id, ancla.created_at, ancla.cursor, limite);
+    if (despues === null) filas.reverse();
+    let turnoAnterior = filas[0] ? db.query<{ id: string; created_at: string }, [string, string, number]>(
+      "SELECT id,created_at FROM messages WHERE conversation_id=? AND role='user' AND (created_at,rowid)<(?,?) ORDER BY created_at DESC,rowid DESC LIMIT 1",
+    ).get(id, filas[0].created_at, filas[0].cursor) : null;
+    const messages = filas.map((mensaje) => {
+      if (mensaje.role === "user") turnoAnterior = mensaje;
+      return { ...mensaje, turno_id: mensaje.role === "user" ? null : turnoAnterior?.id ?? null, turno_created_at: mensaje.role === "user" ? null : turnoAnterior?.created_at ?? null };
+    });
+    // Compatibilidad: los consumidores antiguos reciben una lista, también acotada.
+    if (c.req.query("pagina") !== "1") return c.json(messages);
+    const primero = filas[0] ?? ancla;
+    const ultimo = filas.at(-1) ?? ancla;
+    const anterior = db.query("SELECT 1 FROM messages WHERE conversation_id=? AND (created_at,rowid)<(?,?) LIMIT 1").get(id, primero.created_at, primero.cursor) ? primero.cursor : null;
+    const mas = Boolean(db.query("SELECT 1 FROM messages WHERE conversation_id=? AND (created_at,rowid)>(?,?) LIMIT 1").get(id, ultimo.created_at, ultimo.cursor));
+    // Solo metadatos de la ventana residente: reconciliamos avisos borrados y compactación
+    // sin retransmitir su contenido en cada sondeo.
+    const vigentes = inicio && !reiniciar ? db.query<{ id: string; sesion_compactada: number }, [string, string, number, string, number]>(
+      "SELECT id,sesion_compactada FROM messages WHERE conversation_id=? AND (created_at,rowid)>=(?,?) AND (created_at,rowid)<=(?,?) ORDER BY created_at,rowid LIMIT 201",
+    ).all(id, inicio.created_at, inicio.cursor, ultimo.created_at, ultimo.cursor) : [];
+    return c.json({ messages, anterior, ultimo: ultimo.cursor, mas, vigentes, reiniciar: reiniciar || vigentes.length > 200 });
+  } catch (error) {
+    if (error instanceof Error && error.message === "invalid_cursor") return c.json({ error: "invalid_cursor" }, 400);
+    throw error;
+  }
+});
+
+chat.get("/conversations/:id/messages/:mensaje", (c) => {
+  const mensaje = db.query<Message, [string, string]>("SELECT id,conversation_id,role,content,created_at,model,effort,sesion_compactada FROM messages WHERE conversation_id=? AND id=?").get(c.req.param("id"), c.req.param("mensaje"));
+  return mensaje ? c.json(mensaje) : c.json({ error: "message_not_found" }, 404);
 });
 
 // Métricas verificables del contexto de un chat; los tokens acumulados no equivalen a la ventana activa.
@@ -483,19 +549,48 @@ chat.get("/conversations/:id/archivo-html", (c) => {
   try {
     const ruta = normalizarRuta(c.req.query("ruta"));
     if (!/\.html?$/i.test(ruta.join("/"))) return c.json({ error: "unsupported_file_type" }, 400);
-    const archivo = leerEnRaices(raicesArchivosConversacion(conversacion), raiz => leerArchivo(raiz, ruta));
+    const archivo = leerEnRaices(raicesArchivosConversacion(conversacion), raiz => ({ ...leerArchivo(raiz, ruta), raiz }));
     if (archivo.truncado) return c.json({ error: "file_too_large" }, 413);
-    return new Response(archivo.texto, { headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "private, no-store",
-      "X-Content-Type-Options": "nosniff",
-      "Referrer-Policy": "no-referrer",
-      "X-Frame-Options": "SAMEORIGIN",
-      "Content-Security-Policy": "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' https:; style-src 'unsafe-inline' https:; img-src data: blob: https:; font-src data: https:; media-src data: blob: https:; connect-src 'none'; frame-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'",
-    }});
+    for (const [token, permiso] of permisosPreview) if (permiso.vence <= Date.now()) permisosPreview.delete(token);
+    while (permisosPreview.size >= 32) permisosPreview.delete(permisosPreview.keys().next().value!);
+    const token = `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
+    permisosPreview.set(token, { conversacion: conversacion.id, raiz: archivo.raiz, sesion: getCookie(c, COOKIE_SESION), vence: Date.now() + DURACION_PREVIEW_MS });
+    return c.redirect(`/api/conversations/${encodeURIComponent(conversacion.id)}/preview-html/${token}/${ruta.map(encodeURIComponent).join("/")}`, 302);
   } catch (err) {
     if (err instanceof ArchivoError) return c.json({ error: err.code }, err.status);
     throw err;
+  }
+});
+
+chat.get("/conversations/:id/preview-html/:token/*", (c) => {
+  const permiso = permisoPreview(c.req.raw);
+  if (!permiso) return c.json({ error: "preview_expired" }, 401);
+  try {
+    const prefijo = `/api/conversations/${encodeURIComponent(permiso.conversacion)}/preview-html/${c.req.param("token")}/`;
+    const ruta = normalizarRuta(decodeURIComponent(new URL(c.req.url).pathname.slice(prefijo.length)));
+    const cabeceras = {
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "Access-Control-Allow-Origin": "*",
+      "Cross-Origin-Resource-Policy": "cross-origin",
+      "X-Frame-Options": "SAMEORIGIN",
+    };
+    if (/\.html?$/i.test(ruta.at(-1) ?? "")) {
+      const archivo = leerArchivo(permiso.raiz, ruta);
+      if (archivo.truncado) return c.json({ error: "file_too_large" }, 413);
+      const recursos = `${new URL(c.req.url).origin}${prefijo}`;
+      return new Response(archivo.texto, { headers: { ...cabeceras,
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy": `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' ${recursos}; style-src 'unsafe-inline' ${recursos}; img-src data: blob: ${recursos}; font-src data: ${recursos}; media-src data: blob: ${recursos}; connect-src 'none'; frame-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'`,
+      } });
+    }
+    const archivo = leerRecursoHtml(permiso.raiz, ruta);
+    return new Response(archivo.stream(), { headers: { ...cabeceras, "Content-Type": archivo.mime, "Content-Length": String(archivo.tamano), "Content-Security-Policy": "sandbox; default-src 'none'; frame-ancestors 'none'" } });
+  } catch (error) {
+    if (error instanceof ArchivoError) return c.json({ error: error.code }, error.status);
+    if (error instanceof URIError) return c.json({ error: "invalid_project_path" }, 400);
+    throw error;
   }
 });
 
@@ -525,6 +620,7 @@ chat.get("/conversations/:id/archivo-pdf", (c) => {
     };
 
     if (c.req.query("meta") === "1") {
+      archivo.cerrar();
       return new Response(JSON.stringify({ ruta: archivo.ruta, nombre, tamano: archivo.tamano }), {
         headers: { ...cabeceras, "Content-Type": "application/json; charset=utf-8" },
       });
@@ -533,13 +629,14 @@ chat.get("/conversations/:id/archivo-pdf", (c) => {
     const rango = c.req.header("range");
     if (!rango) {
       // El archivo se sirve por streaming desde el disco, sin cargarlo en RAM.
-      return new Response(Bun.file(archivo.real), {
+      return new Response(archivo.stream(), {
         headers: { ...cabeceras, "Content-Length": String(archivo.tamano) },
       });
     }
 
     const coincide = /^bytes=(\d+)-(\d*)$/.exec(rango);
     if (!coincide) {
+      archivo.cerrar();
       return new Response(null, {
         status: 416,
         headers: { ...cabeceras, "Content-Range": `bytes */${archivo.tamano}` },
@@ -547,13 +644,14 @@ chat.get("/conversations/:id/archivo-pdf", (c) => {
     }
     const inicio = Number(coincide[1]);
     const fin = coincide[2] ? Math.min(Number(coincide[2]), archivo.tamano - 1) : archivo.tamano - 1;
-    if (inicio >= archivo.tamano || fin < inicio) {
+    if (!Number.isSafeInteger(inicio) || !Number.isSafeInteger(fin) || inicio >= archivo.tamano || fin < inicio) {
+      archivo.cerrar();
       return new Response(null, {
         status: 416,
         headers: { ...cabeceras, "Content-Range": `bytes */${archivo.tamano}` },
       });
     }
-    return new Response(Bun.file(archivo.real).slice(inicio, fin + 1), {
+    return new Response(archivo.stream(inicio, fin), {
       status: 206,
       headers: {
         ...cabeceras,
@@ -594,11 +692,12 @@ chat.get("/conversations/:id/archivo-imagen", (c) => {
     };
 
     if (c.req.query("meta") === "1") {
+      archivo.cerrar();
       return new Response(JSON.stringify({ ruta: archivo.ruta, nombre: archivo.nombre, mime: archivo.mime, tamano: archivo.tamano }), {
         headers: { ...cabeceras, "Content-Type": "application/json; charset=utf-8" },
       });
     }
-    return new Response(Bun.file(archivo.real), {
+    return new Response(archivo.stream(), {
       headers: { ...cabeceras, "Content-Length": String(archivo.tamano) },
     });
   } catch (err) {
@@ -671,6 +770,7 @@ chat.get("/conversations/:id/archivo-video", async (c) => {
     };
 
     if (c.req.query("meta") === "1") {
+      archivo.cerrar();
       return new Response(JSON.stringify({ ruta: archivo.ruta, nombre: archivo.nombre, mime: archivo.mime, tamano: archivo.tamano }), {
         headers: { ...cabeceras, "Content-Type": "application/json; charset=utf-8" },
       });
@@ -679,21 +779,23 @@ chat.get("/conversations/:id/archivo-video", async (c) => {
     const rango = c.req.header("range");
     if (!rango) {
       // El video se sirve por streaming desde el disco; la RAM no carga nunca el archivo entero.
-      return new Response(Bun.file(archivo.real), {
+      return new Response(archivo.stream(), {
         headers: { ...cabeceras, "Content-Length": String(archivo.tamano) },
       });
     }
 
     const coincide = /^bytes=(\d+)-(\d*)$/.exec(rango);
     if (!coincide) {
+      archivo.cerrar();
       return new Response(null, { status: 416, headers: { ...cabeceras, "Content-Range": `bytes */${archivo.tamano}` } });
     }
     const inicio = Number(coincide[1]);
     const fin = coincide[2] ? Math.min(Number(coincide[2]), archivo.tamano - 1) : archivo.tamano - 1;
-    if (inicio >= archivo.tamano || fin < inicio) {
+    if (!Number.isSafeInteger(inicio) || !Number.isSafeInteger(fin) || inicio >= archivo.tamano || fin < inicio) {
+      archivo.cerrar();
       return new Response(null, { status: 416, headers: { ...cabeceras, "Content-Range": `bytes */${archivo.tamano}` } });
     }
-    return new Response(Bun.file(archivo.real).slice(inicio, fin + 1), {
+    return new Response(archivo.stream(inicio, fin), {
       status: 206,
       headers: {
         ...cabeceras,
@@ -1014,6 +1116,7 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
 // El turno corre en segundo plano, no dentro de la petición HTTP. Así, si el móvil se duerme, cambia
 // de app o pierde la red, el agente termina igual, la respuesta queda guardada y se ve al volver.
 function iniciarTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: string, model: string): void {
+  const finalizarTrabajo = registrarTrabajo();
   const control = new AbortController();
   controlesTurno.set(conv.id, control);
   ocuparConversacion(conv.id);
@@ -1025,6 +1128,7 @@ function iniciarTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: string
       guardarAviso(conv.id, "No se pudo guardar la respuesta. Intenta de nuevo.");
     })
     .finally(() => {
+      finalizarTrabajo();
       controlesTurno.delete(conv.id);
       liberarConversacion(conv.id);
       publicarChat(conv.id, "terminado");

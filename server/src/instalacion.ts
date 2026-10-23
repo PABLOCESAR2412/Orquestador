@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { carpetaHome } from "./hogar";
 import { redactar, valoresDeConfiguracion } from "./redaccion";
 import { hallarEjecutable, lanzarEnGrupo, matarGrupo } from "./ejecutable";
+import { registrarTrabajo } from "./despliegue";
 
 
 // Instalación de herramientas desde la app. La API recibe solo un identificador de esta lista, nunca un
@@ -154,7 +155,8 @@ export function iniciarInstalacion(id: string): InstalacionPublica {
     estado: "instalando",
     iniciada: new Date().toISOString(),
   });
-  void seguir(id, proc);
+  const finalizar = registrarTrabajo();
+  void seguir(id, proc).catch(() => console.error("No se pudo registrar el resultado de la instalación")).finally(finalizar);
   return publica(id);
 }
 

@@ -59,6 +59,20 @@ function rutaPerfilOpenCode(id: string): string {
   return join(config.dataDir, "perfiles-opencode", sello);
 }
 
+export function prepararDirectorioOpenCode(carpeta: string): string {
+  const destino = join(carpeta, ".opencode");
+  try {
+    const info = lstatSync(destino);
+    if (info.isSymbolicLink() || !info.isDirectory() || realpathSync(destino) !== destino)
+      throw new Error("Directorio no seguro");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+      throw new AislamientoError("carpeta_no_permitida", "La carpeta .opencode del workspace no es segura.");
+    mkdirSync(destino, { mode: 0o700 });
+  }
+  return destino;
+}
+
 // Una sesión por conversación permite reanudarla sin compartir las sesiones entre chats.
 // Las tareas sin chat usan su propio ID y la limpieza de tareas purga el perfil tras la retención.
 export function prepararPerfilOpenCode(id: string): string {
@@ -277,13 +291,11 @@ export function prefijoAislamiento(
   args.push("--dir", entregables, soloLectura ? "--ro-bind" : "--bind", entregables, entregables);
   // Si la ejecución es en solo lectura (como el analizador), OpenCode aún necesita escribir
   // su configuración runtime, sesión y su .opencode/.gitignore dentro del workspace.
-  // Montamos .opencode con permisos de escritura superpuestos para evitar fallos de EROFS.
-  const opencodeEnCwd = join(carpeta, ".opencode");
-  try {
-    mkdirSync(opencodeEnCwd, { recursive: true });
-  } catch {}
+  // El runtime del analizador es temporal: nunca se vuelve escribible una fuente del
+  // workspace después de montar el proyecto en solo lectura.
+  const opencodeEnCwd = prepararDirectorioOpenCode(carpeta);
   if (soloLectura && existsSync(opencodeEnCwd)) {
-    args.push("--bind-try", opencodeEnCwd, opencodeEnCwd);
+    args.push("--tmpfs", opencodeEnCwd);
   }
   // El servidor es el único que escribe Git: commit y push pasan por aprobación.
   const git = join(carpeta, ".git");

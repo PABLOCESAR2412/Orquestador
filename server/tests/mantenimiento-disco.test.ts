@@ -65,6 +65,16 @@ test("rutas rechazan configuración inválida y limpieza no confirmada", async (
   const get = await servidor.request("http://localhost/servidor/limpieza");
   expect(get.status).toBe(200); expect((await get.json() as { enCurso: boolean }).enCurso).toBe(false);
 });
+test("el respaldo suspende el mantenimiento sin retirar archivos", async () => {
+  const marca = join(config.dataDir, "respaldo-en-curso");
+  const anterior = process.env.TELO_MARCA_DESPLIEGUE;
+  writeFileSync(marca, "respaldo"); process.env.TELO_MARCA_DESPLIEGUE = marca;
+  try { expect(await mantenerDisco("limpiar")).toBeNull(); }
+  finally {
+    if (anterior === undefined) delete process.env.TELO_MARCA_DESPLIEGUE; else process.env.TELO_MARCA_DESPLIEGUE = anterior;
+    rmSync(marca);
+  }
+});
 test("diagnóstico incluye sesiones, adjuntos y entregables sin exponer rutas", async () => {
   const res = await servidor.request("http://localhost/servidor");
   expect(res.status).toBe(200);

@@ -784,6 +784,24 @@ const migrations: Migration[] = [
       ALTER TABLE messages ADD COLUMN sesion_compactada INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    name: "042_push_entregas",
+    sql: `
+      CREATE TABLE push_entregas (
+        tarea_id TEXT NOT NULL,
+        tipo TEXT NOT NULL,
+        endpoint TEXT NOT NULL REFERENCES push_subscripciones(endpoint) ON DELETE CASCADE,
+        carga TEXT NOT NULL,
+        estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente','enviando','entregada','descartada')),
+        intentos INTEGER NOT NULL DEFAULT 0,
+        siguiente_ms INTEGER NOT NULL DEFAULT 0,
+        bloqueo_hasta_ms INTEGER NOT NULL DEFAULT 0,
+        creado_ms INTEGER NOT NULL,
+        PRIMARY KEY (tarea_id,tipo,endpoint)
+      );
+      CREATE INDEX push_entregas_pendientes ON push_entregas(estado,siguiente_ms,bloqueo_hasta_ms);
+    `,
+  },
 ];
 
 function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {

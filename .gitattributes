@@ -1,0 +1,2 @@
+# Los scripts de despliegue deben ejecutarse también al hacer checkout desde Windows.
+deploy/*.sh text eol=lf

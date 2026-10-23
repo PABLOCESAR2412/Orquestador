@@ -10,12 +10,18 @@
 //   TELO_R2_*                   credenciales y retención del bucket privado de Cloudflare R2
 
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { sincronizarRespaldosR2, type ConjuntoRespaldo } from "../src/respaldo-r2";
 import { crearAlmacenR2Respaldos, leerConfiguracionR2Respaldos } from "../src/respaldo-r2-s3";
 import { dependenciasRetirables } from "../src/dependencias-disco";
+import { prepararEspacioRespaldo } from "../src/respaldo-espacio";
+import { candadoRespaldo, pausarParaRespaldo, respaldoAislado } from "../src/respaldo-pausa";
+
+// Los perfiles incluyen sesiones y credenciales del proveedor. Solo el usuario del
+// servicio puede leer los nuevos conjuntos, aunque el destino ya exista con 0755.
+process.umask(0o077);
 
 const dataDir = resolve(process.env.DATA_DIR ?? "./data");
 const destino = resolve(process.env.TELO_RESPALDOS_DIR ?? join(homedir(), "respaldos"));
@@ -35,7 +41,8 @@ function conjuntosLocales(): ConjuntoRespaldo[] {
     porSello.set(sello, conjunto);
   }
   return [...porSello.values()]
-    .filter((conjunto) => conjunto.archivos.some((archivo) => PATRON_DB.test(archivo.nombre)))
+    .filter((conjunto) => conjunto.archivos.some((archivo) => PATRON_DB.test(archivo.nombre))
+      && conjunto.archivos.some((archivo) => PATRON_ESPACIO.test(archivo.nombre)))
     .sort((a, b) => a.sello.localeCompare(b.sello));
 }
 
@@ -60,7 +67,7 @@ function podarLocales(conservar: number): number {
   return retirados;
 }
 
-async function main(): Promise<void> {
+async function main(liberar = () => {}): Promise<void> {
   if (!existsSync(origenDb)) throw new Error(`no existe la base ${origenDb}`);
   mkdirSync(destino, { recursive: true });
 
@@ -92,7 +99,11 @@ async function main(): Promise<void> {
   // Carpetas de trabajo de chats y tareas: se archivan juntas.
   const carpetas = ["chat-workspace", "tasks", "entregables", "chat-attachments"].filter((carpeta) => existsSync(join(dataDir, carpeta)));
   let archivo: string | null = null;
-  if (carpetas.length > 0) {
+  // Los perfiles y proyectos van bajo un inventario estable. Solo las bases de
+  // sesiones necesitan espacio adicional; el resto se enlaza durante el archivado.
+  const temporal = mkdtempSync(join(destino, ".espacio-"));
+  try {
+    const extras = await prepararEspacioRespaldo(dataDir, process.env.TELO_PROYECTOS_DIR ?? null, temporal, copiaDb);
     archivo = join(destino, `espacio-${sello}.tar.gz`);
     const exclusiones: string[] = [];
     if (carpetas.includes("tasks")) {
@@ -109,17 +120,24 @@ async function main(): Promise<void> {
         }
       }
     }
-    const tar = Bun.spawnSync(["tar", ...exclusiones, "-czf", archivo, "-C", dataDir, ...carpetas]);
-    if (tar.exitCode !== 0) {
+    const tar = Bun.spawn(["tar", ...exclusiones, "-czf", archivo, "-C", dataDir, ...carpetas, "-C", temporal, ...extras], { stdout: "ignore", stderr: "pipe" });
+    const [codigoTar, errorTar] = await Promise.all([tar.exited, new Response(tar.stderr).text()]);
+    if (codigoTar !== 0) {
       rmSync(archivo, { force: true });
-      rmSync(copiaDb, { force: true });
-      throw new Error(`no se pudo archivar el espacio de trabajo: ${tar.stderr.toString().slice(0, 200)}`);
+      // Conserva la foto SQLite válida aunque el archivo de trabajo no se complete.
+      throw new Error(`no se pudo archivar el espacio de trabajo: ${errorTar.slice(0, 200)}`);
     }
+  } finally {
+    if (dirname(resolve(temporal)) !== destino) throw new Error("Directorio temporal de respaldo no válido");
+    rmSync(temporal, { recursive: true, force: true });
   }
 
+  // La subida puede tardar: el conjunto ya es inmutable y la app puede volver a trabajar.
+  liberar();
   // Se valida la configuración después de crear la copia local: un error de R2 nunca deja al día sin respaldo.
   const configuracionR2 = leerConfiguracionR2Respaldos(process.env);
   const kb = (ruta: string) => Math.round(statSync(ruta).size / 1024);
+  const baseKb = kb(copiaDb), espacioKb = archivo ? kb(archivo) : null;
   if (configuracionR2) {
     const candidatos = conjuntosLocales().slice(-configuracionR2.conservar);
     const { almacen, cerrar } = crearAlmacenR2Respaldos(configuracionR2);
@@ -141,8 +159,8 @@ async function main(): Promise<void> {
     }
 
     console.log(`Respaldo verificado en Cloudflare R2 (${resultado.conjuntosCompletos} conjuntos conservados).`);
-    console.log(`  base local creada y validada: ${kb(copiaDb)} KB, integridad ok, ${tablas} tablas`);
-    if (archivo) console.log(`  espacio de trabajo local creado: ${kb(archivo)} KB`);
+    console.log(`  base local creada y validada: ${baseKb} KB, integridad ok, ${tablas} tablas`);
+    if (archivo) console.log(`  espacio de trabajo local creado: ${espacioKb} KB`);
     console.log(`  objetos subidos y comprobados: ${resultado.subidos}; conjuntos remotos retirados: ${resultado.retirados}`);
     console.log(`  archivos locales retirados tras verificar R2: ${archivosLocalesRetirados}; copias locales conservadas: ${configuracionR2.conservarLocal}`);
     return;
@@ -155,7 +173,22 @@ async function main(): Promise<void> {
   console.log(`  copias antiguas retiradas: ${retirados}`);
 }
 
-main().catch((error: unknown) => {
+async function ejecutar(): Promise<void> {
+  if (respaldoAislado(dataDir)) return main();
+  if (process.platform !== "linux") throw new Error("El respaldo operativo requiere Linux; los fixtures aislados no usan datos reales");
+  if (process.env.TELO_RESPALDO_BLOQUEADO !== "1") {
+    const proceso = Bun.spawn(["flock", "--nonblock", candadoRespaldo(), process.execPath, "--no-env-file", resolve(import.meta.path)], {
+      env: { ...process.env, TELO_RESPALDO_BLOQUEADO: "1" }, stdout: "inherit", stderr: "inherit",
+    });
+    const codigo = await proceso.exited;
+    if (codigo !== 0) process.exitCode = codigo;
+    return;
+  }
+  const liberar = await pausarParaRespaldo();
+  try { await main(liberar); } finally { liberar(); }
+}
+
+ejecutar().catch((error: unknown) => {
   let mensaje = error instanceof Error ? error.message : "error desconocido";
   for (const nombre of ["TELO_R2_ACCESS_KEY_ID", "TELO_R2_SECRET_ACCESS_KEY"]) {
     const secreto = process.env[nombre];

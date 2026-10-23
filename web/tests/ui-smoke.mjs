@@ -57,6 +57,11 @@ try {
         { id: "q3", texto: "Tercer mensaje reservado", creado: Date.now() + 2 },
       ]));
       localStorage.setItem("telo:cola-activa:c1", "false");
+      window.SpeechRecognition = class {
+        constructor() { window.__reconocimientoPrueba = this; }
+        start() {}
+        stop() { window.__dictadosDetenidos = (window.__dictadosDetenidos ?? 0) + 1; }
+      };
     });
     page.setDefaultTimeout(10_000);
     const errors = [];
@@ -74,6 +79,8 @@ try {
       { id: "s-retry", role: "system", content: "El agente superó el límite de 15 minutos y se detuvo. La sesión quedó guardada; reintenta para continuar donde se quedó.", created_at: now },
     ];
     messages[3].content += '\n\nFuente: [Precios de Workers](https://developers.cloudflare.com/workers/platform/pricing/ "Tarifas de CPU y memoria")';
+    const cursoresMensajes = new Map();
+    let ultimoCursorMensaje = 0;
     const actions = [
       { id: "git-old", action: "push", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ mensaje: "Falló el intento anterior" }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
       { id: "git-conflict-antiguo", action: "merge", task_id: "t1", message_id: "u2", state: "failed", result: JSON.stringify({ codigo: "merge_conflicts", mensaje: JSON.stringify({ codigo: "merge_conflicts", mensaje: "GitHub detectó conflictos entre telo/prueba y main.", pr_number: 9, pr_url: "https://github.com/ejemplo/pruebas/pull/9", rama_fuente: "telo/prueba", rama_base: "main", archivos: ["src/app.ts"], archivos_exactos: true, task_id: "t1", resoluble: true }) }), payload: JSON.stringify({ remote: "https://github.com/ejemplo/pruebas", rama: "telo/prueba", messageId: "u2" }) },
@@ -104,9 +111,14 @@ try {
     let sinDatos = false;
     let anunciarEnvioA;
     let liberarEnvioA;
+    let esperarAdjunto = null;
+    let esperarPlan = null;
+    let mostrarHistorialExtenso = false;
+    const historialExtenso = Array.from({ length: 165 }, (_, n) => ({ id: `historial-${n + 1}`, role: n % 2 === 0 ? "user" : "assistant", content: `Historial numerado ${n + 1}`, created_at: now }));
     const envioAIniciado = new Promise(resolve => { anunciarEnvioA = resolve; });
     await page.route("**/api/**", async route => {
       const path = new URL(route.request().url()).pathname;
+      const params = new URL(route.request().url()).searchParams;
       if (path === "/api/conversations/c1/detener") {
         chatDetenido = true;
         return route.fulfill({ status: 202, json: { outcome: "cancelling" } });
@@ -134,6 +146,7 @@ try {
         { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, pendiente_aprobacion: true, estado_tarea: "pendiente_aprobacion", estado_tarea_id: "review-c3", estado_tarea_version: "hash-c3", created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
         { id: "c4", title: "Chat anterior", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() },
         { id: "c5", title: "Chat libre", model: "google/prueba", project_id: null, project_name: null, created_at: now },
+        ...(mostrarHistorialExtenso ? [{ id: "c6", title: "Historial extenso", model: "google/prueba", project_id: null, created_at: now }] : []),
       ] : [];
         // Con paginación por servidor, la primera tanda (?limite=) es un objeto; sin limite sigue siendo array.
         data = new URL(route.request().url()).searchParams.has("limite") ? { conversations: lista, siguiente: null } : lista;
@@ -195,6 +208,7 @@ try {
         } else data = messages;
       }
       else if (path === "/api/conversations/c1/adjuntos" && route.request().method() === "POST") {
+        if (esperarAdjunto) await esperarAdjunto;
         adjuntosChatSubidos += 1;
         return route.fulfill({
           status: 201,
@@ -242,8 +256,14 @@ try {
       else if (path === "/api/conversations/c2/messages") data = [
         { id: "a-c2-pdf", role: "assistant", content: "PDF libre generado: `libre.pdf`. Imagen lista: `infografía final.png`.", model: "nvidia/nemotron-test", created_at: now },
       ];
+      else if (path === "/api/conversations/c6/messages") data = historialExtenso;
       else if (path === "/api/conversations/c1/acciones") data = actions;
       else if (path === "/api/conversations/c1/tasks" || path === "/api/tasks") data = [task];
+      else if (path === "/api/tasks/t1/plan" && route.request().method() === "POST") {
+        if (esperarPlan) await esperarPlan;
+        task.status = "done";
+        data = task;
+      }
       else if (path === "/api/tasks/t1/reanudar" && route.request().method() === "POST") {
         reanudaciones++;
         task.status = "queued";
@@ -346,6 +366,20 @@ try {
         data = { cursor: 0, eventos: [] };
       }
       else if (path.includes("eventos-vivos")) return route.fulfill({ contentType: "text/event-stream", body: ": alive\n\n" });
+      if (/\/conversations\/[^/]+\/messages$/.test(path) && route.request().method() === "GET" && params.get("pagina") === "1" && Array.isArray(data)) {
+        let turnoPrevio = null;
+        const todas = data.map((mensaje) => {
+          if (!cursoresMensajes.has(mensaje.id)) cursoresMensajes.set(mensaje.id, ++ultimoCursorMensaje);
+          if (mensaje.role === "user") turnoPrevio = mensaje;
+          return { ...mensaje, cursor: cursoresMensajes.get(mensaje.id), turno_id: mensaje.role === "user" ? null : turnoPrevio?.id ?? null, turno_created_at: mensaje.role === "user" ? null : turnoPrevio?.created_at ?? null };
+        });
+        const despues = Number(params.get("despues") ?? 0);
+        const antes = Number(params.get("antes") ?? Number.MAX_SAFE_INTEGER);
+        const pagina = despues ? todas.filter(m => m.cursor >= despues).slice(0, 40) : todas.filter(m => m.cursor < antes).slice(-40);
+        const ultimo = pagina.at(-1)?.cursor ?? despues;
+        data = { messages: pagina, anterior: todas.some(m => m.cursor < (pagina[0]?.cursor ?? 0)) ? pagina[0].cursor : null, ultimo, mas: todas.some(m => m.cursor > ultimo), reiniciar: false,
+          vigentes: todas.filter(m => m.cursor >= Number(params.get("desde") ?? Number.MAX_SAFE_INTEGER) && m.cursor <= ultimo).map(m => ({ id: m.id, sesion_compactada: m.sesion_compactada ?? 0 })) };
+      }
       return route.fulfill({ json: data });
     });
     const respuestaDiffTransitoria = page.waitForResponse(response => response.url().endsWith("/api/tasks/t1/diff"));
@@ -449,7 +483,7 @@ try {
       assert.ok(diagramaInicial);
       await Promise.all([
         page.waitForResponse(response => response.url().endsWith("/api/conversations") && response.request().method() === "GET"),
-        page.waitForResponse(response => response.url().endsWith("/api/conversations/c1/messages") && response.request().method() === "GET"),
+        page.waitForResponse(response => response.url().includes("/api/conversations/c1/messages") && response.request().method() === "GET"),
       ]);
       assert.equal(await diagramaInicial.evaluate(elemento => elemento.isConnected), true,
         "actualizar el chat por sondeo no debe desmontar y volver a generar el diagrama");
@@ -935,6 +969,56 @@ try {
     await page.getByText("Respuesta del chat A", { exact: true }).waitFor();
     assert.equal(await page.locator('section.tl-accion-git-actual').count(), 0, "la acción aprobada deja de ocupar el chat al empezar un turno nuevo");
     assert.equal(await page.locator(".tl-git-intentos").count(), 0, "el historial Git permanece fuera del hilo");
+    // La subida pertenece a A aunque B esté abierto cuando termine.
+    let liberarAdjunto;
+    esperarAdjunto = new Promise(resolve => { liberarAdjunto = resolve; });
+    await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Adjunto del chat A");
+    await page.locator('input[type="file"]').setInputFiles({ name: "muestra.png", mimeType: "image/png", buffer: pngPrueba });
+    await page.locator('.tl-adjuntos-pendientes').waitFor();
+    const subidaA = page.waitForRequest(request => request.url().endsWith("/api/conversations/c1/adjuntos"));
+    await page.getByRole("button", { name: "Enviar", exact: true }).click();
+    await subidaA;
+    if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
+    await page.getByRole("button", { name: "Chat paralelo", exact: true }).click();
+    await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Borrador nuevo de B");
+    const envioAdjunto = page.waitForResponse(response => response.url().endsWith("/api/conversations/c1/messages") && response.request().method() === "POST");
+    liberarAdjunto(); esperarAdjunto = null;
+    await envioAdjunto;
+    assert.equal(await page.getByRole("textbox", { name: "Mensaje", exact: true }).inputValue(), "Borrador nuevo de B");
+    assert.equal(await page.locator('.tl-adjuntos-pendientes').count(), 0);
+    if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
+    await page.locator('.sidebar-conv[aria-label^="Prueba de flujo"]').click();
+    await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Base A");
+    await page.getByRole("button", { name: "Dictar mensaje", exact: true }).click();
+    await page.evaluate(() => window.__reconocimientoPrueba.onresult({ resultIndex: 0, results: [{ 0: { transcript: "dictado A" }, isFinal: true, length: 1 }] }));
+    await page.waitForFunction(() => localStorage.getItem("telo:borrador:c1") === "Base A dictado A"
+      && document.querySelector('textarea[aria-label="Mensaje"]')?.value === "Base A dictado A");
+    assert.equal(await page.getByRole("textbox", { name: "Mensaje", exact: true }).inputValue(), "Base A dictado A");
+    if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
+    await page.getByRole("button", { name: "Chat paralelo", exact: true }).click();
+    await page.waitForFunction(() => window.__reconocimientoPrueba.onresult === null);
+    assert.equal(await page.evaluate(() => window.__reconocimientoPrueba.onresult), null);
+    await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Base B");
+    await page.getByRole("button", { name: "Dictar mensaje", exact: true }).click();
+    await page.evaluate(() => window.__reconocimientoPrueba.onresult({ resultIndex: 0, results: [{ 0: { transcript: "dictado B" }, isFinal: true, length: 1 }] }));
+    await page.waitForFunction(() => localStorage.getItem("telo:borrador:c2") === "Base B dictado B"
+      && document.querySelector('textarea[aria-label="Mensaje"]')?.value === "Base B dictado B");
+    assert.equal(await page.evaluate(() => localStorage.getItem("telo:borrador:c2")), "Base B dictado B");
+    assert.equal(await page.evaluate(() => localStorage.getItem("telo:borrador:c1")), "Base A dictado A");
+    mostrarHistorialExtenso = true;
+    await page.getByRole("button", { name: "Terminar dictado", exact: true }).click();
+    await page.getByRole("button", { name: "Historial extenso", exact: true }).waitFor({ state: "attached" });
+    if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
+    await page.getByRole("button", { name: "Historial extenso", exact: true }).click();
+    await page.getByText("Historial numerado 165", { exact: true }).waitFor();
+    assert.equal(await page.locator('.tl-hilo-evento').count(), 40, "solo se representa una página del historial extenso");
+    await page.getByRole("button", { name: "Ver mensajes anteriores", exact: true }).click();
+    await page.getByText("Historial numerado 125", { exact: true }).waitFor();
+    assert.equal(await page.getByText("Historial numerado 165", { exact: true }).count(), 0);
+    await page.getByRole("button", { name: "Volver a recientes", exact: true }).click();
+    await page.getByText("Historial numerado 165", { exact: true }).waitFor();
+    if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
+    await page.locator('.sidebar-conv[aria-label^="Prueba de flujo"]').click();
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Prueba de mensaje");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.getByText("Mensaje recibido", { exact: true }).waitFor();
@@ -959,7 +1043,7 @@ try {
         throw new Error(`el video no llegó al endpoint de adjuntos: ${errorVideo}`);
       }
       await solicitudVideo;
-      assert.equal(adjuntosChatSubidos, 1, "la hoja de fotogramas se sube antes de enviar el mensaje");
+      assert.equal(adjuntosChatSubidos, 2, "la hoja de fotogramas se sube antes de enviar el mensaje");
       const hojaEnviada = page.locator(".tl-msg-usuario img[alt]").last();
       await hojaEnviada.waitFor({ state: "attached" });
       assert.equal(await hojaEnviada.getAttribute("alt"), nombreHojaPrueba);
@@ -1026,6 +1110,20 @@ try {
     assert.ok(await page.locator(".tl-composer-barra").evaluate(el => el.scrollWidth <= el.clientWidth + 1), "la barra del compositor no debe desbordarse");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/chat-respuesta-plan-${width}.png` });
+    let liberarPlan;
+    esperarPlan = new Promise(resolve => { liberarPlan = resolve; });
+    const solicitudPlan = page.waitForRequest(request => request.url().endsWith("/api/tasks/t1/plan") && request.method() === "POST");
+    await page.getByRole("button", { name: "Re-analizar plan", exact: true }).click();
+    await solicitudPlan;
+    if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
+    await page.getByRole("button", { name: "Chat paralelo", exact: true }).click();
+    await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Borrador B mientras se aprueba A");
+    const respuestaAprobada = page.waitForResponse(response => response.url().endsWith("/api/tasks/t1/plan"));
+    liberarPlan(); esperarPlan = null;
+    await respuestaAprobada;
+    assert.equal(await page.getByRole("textbox", { name: "Mensaje", exact: true }).inputValue(), "Borrador B mientras se aprueba A");
+    if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
+    await page.locator('.sidebar-conv[aria-label^="Prueba de flujo"]').click();
     task.plan = null;
     task.plan_hash = null;
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);

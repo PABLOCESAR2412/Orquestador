@@ -50,8 +50,11 @@ export function iniciarVigilante(opciones: {
 // Lee un flujo de bytes completo y lo devuelve como texto con tope: si pasa el tope conserva
 // el arranque y la cola con un marcador en medio (en el arranque viven eventos de sesión y en
 // la cola el detalle del fallo; el medio es la paja de trabajo del agente).
-export async function leerConTope(flujo: ReadableStream<Uint8Array>, tope: number): Promise<string> {
+export async function leerConTope(flujo: ReadableStream<Uint8Array>, tope: number, signal?: AbortSignal): Promise<string> {
   const lector = flujo.getReader();
+  const cancelar = () => { void lector.cancel().catch(() => {}); };
+  if (signal?.aborted) cancelar();
+  else signal?.addEventListener("abort", cancelar, { once: true });
   const decodificador = new TextDecoder();
   let todo = "";
   try {
@@ -66,7 +69,54 @@ export async function leerConTope(flujo: ReadableStream<Uint8Array>, tope: numbe
       }
     }
   } finally {
+    signal?.removeEventListener("abort", cancelar);
     lector.releaseLock();
   }
   return `${todo}${decodificador.decode()}`;
+}
+
+// El límite se comprueba antes de concatenar o publicar: una línea NDJSON hostil nunca
+// llega a JSON.parse ni al canal de actividad. El siguiente evento válido sigue disponible.
+export async function leerLineasAcotadas(
+  flujo: ReadableStream<Uint8Array>,
+  tope: number,
+  alLeer: (linea: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const lector = flujo.getReader();
+  const cancelar = () => { void lector.cancel().catch(() => {}); };
+  if (signal?.aborted) cancelar();
+  else signal?.addEventListener("abort", cancelar, { once: true });
+  const decoder = new TextDecoder();
+  let pendiente = "";
+  let excedida = false;
+  const consumir = (trozo: string) => {
+    let inicio = 0;
+    while (inicio < trozo.length) {
+      const fin = trozo.indexOf("\n", inicio);
+      const fragmento = trozo.slice(inicio, fin < 0 ? undefined : fin);
+      if (!excedida && pendiente.length + fragmento.length > tope) {
+        pendiente = "";
+        excedida = true;
+      }
+      if (!excedida) pendiente += fragmento;
+      if (fin < 0) break;
+      if (!excedida && pendiente.trim()) alLeer(pendiente.trim());
+      pendiente = "";
+      excedida = false;
+      inicio = fin + 1;
+    }
+  };
+  try {
+    for (;;) {
+      const { done, value } = await lector.read();
+      if (done) break;
+      consumir(decoder.decode(value, { stream: true }));
+    }
+    consumir(decoder.decode());
+    if (!excedida && pendiente.trim()) alLeer(pendiente.trim());
+  } finally {
+    signal?.removeEventListener("abort", cancelar);
+    lector.releaseLock();
+  }
 }

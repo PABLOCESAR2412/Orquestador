@@ -44,6 +44,7 @@ import { leerHitos, guardarHitos } from "../lib/chat-hitos";
 import { leerBorrador, guardarBorrador, leerEnvio, guardarEnvio, borrarEnvio } from "../lib/chat-borrador";
 import { crearDictador, ctorVoz, type Dictador } from "../lib/chat-dictado";
 import { PLANTILLAS_GAUNTLET } from "../lib/plantillas-gauntlet";
+import { actualizarVentanaMensajes } from "../lib/chat-mensajes";
 import "../styles-chat.css";
 import "../styles-flujo.css";
 
@@ -111,6 +112,8 @@ export function ChatPage() {
     setActiveProjectName,
   } = useShell();
   const selectedId = selectedConversationId;
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
   const setSelectedId = setSelectedConversationId;
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("conversacion");
@@ -150,18 +153,26 @@ export function ChatPage() {
   useEffect(() => {
     if (selectedId) setDraft(leerBorrador(selectedId));
   }, [selectedId]);
-  const cambiarBorrador = (texto: string) => {
+  const cambiarBorradorChat = (id: string, texto: string) => {
+    guardarBorrador(id, texto);
+    if (selectedIdRef.current !== id) return;
     setDraft(texto);
     setSugerenciaOculta(false);
     setSlashActivo(0);
     setSlashOculto(false);
-    if (selectedId) guardarBorrador(selectedId, texto);
   };
+  const cambiarBorrador = (texto: string) => { if (selectedId) cambiarBorradorChat(selectedId, texto); };
   const [pickerOpen, setPickerOpen] = useState(false);
   const [usoAbierto, setUsoAbierto] = useState(false);
   const [contextoAbierto, setContextoAbierto] = useState(false);
   const [mediosAbierto, setMediosAbierto] = useState(false);
   const [pendientes, setPendientes] = useState<Pendiente[]>([]);
+  const pendientesPorChatRef = useRef<Record<string, Pendiente[]>>({});
+  const cambiarPendientes = (id: string, transformar: (anteriores: Pendiente[]) => Pendiente[]) => {
+    const nuevos = transformar(pendientesPorChatRef.current[id] ?? []);
+    pendientesPorChatRef.current[id] = nuevos;
+    if (selectedIdRef.current === id) setPendientes(nuevos);
+  };
   const [subiendoAdjuntos, setSubiendoAdjuntos] = useState(false);
   const subiendoAdjuntosRef = useRef(false);
   const [arrastrando, setArrastrando] = useState(false);
@@ -361,13 +372,17 @@ export function ChatPage() {
 
   // Los adjuntos son del chat en el que se escribieron.
   useEffect(() => {
-    setPendientes([]);
+    setPendientes(selectedId ? pendientesPorChatRef.current[selectedId] ?? [] : []);
     setArchivoAbierto(null);
     setContextoAbierto(false);
   }, [selectedId]);
 
   // Al salir del chat se corta el dictado.
-  useEffect(() => () => dictadorRef.current?.detener(), []);
+  useEffect(() => {
+    dictadorRef.current?.detener();
+    dictadorRef.current = null;
+    return () => { dictadorRef.current?.detener(); dictadorRef.current = null; };
+  }, [selectedId]);
 
   const conversations = useQuery({
     queryKey: ["conversations"],
@@ -389,13 +404,69 @@ export function ChatPage() {
     staleTime: 5 * 60_000,
   });
 
-  // Cada 4 s mientras la pestaña está visible: los mensajes que llegan desde otro dispositivo aparecen solos.
+  const paginasMensajesRef = useRef<Record<string, { anterior: number | null; antes?: number }>>({});
+  const [, actualizarPaginaMensajes] = useState(0);
+  const [cargandoAnteriores, setCargandoAnteriores] = useState(false);
+  // El primer acceso trae una página. Los sondeos siguientes solo traen mensajes nuevos
+  // y metadatos de la ventana para reconciliar reintentos y compactaciones.
   const messages = useQuery({
     queryKey: ["messages", selectedId],
-    queryFn: () => api.listMessages(selectedId!),
+    queryFn: async () => {
+      const id = selectedId!;
+      const anteriores = qc.getQueryData<Message[]>(["messages", id]);
+      const posicion = paginasMensajesRef.current[id];
+      if (posicion?.antes !== undefined) {
+        const pagina = await api.messagePage(id, { antes: posicion.antes });
+        paginasMensajesRef.current[id] = { ...posicion, anterior: pagina.anterior };
+        return pagina.messages;
+      }
+      const primero = anteriores?.[0] as (Message & { cursor?: number }) | undefined;
+      const ultimo = anteriores?.at(-1) as (Message & { cursor?: number }) | undefined;
+      const incremental = primero?.cursor !== undefined && ultimo?.cursor !== undefined;
+      const pagina = await api.messagePage(id, incremental ? { despues: ultimo.cursor, desde: primero.cursor, ultimoId: ultimo.id } : {});
+      const ventana = incremental && !pagina.reiniciar && pagina.vigentes.length <= 200
+        ? actualizarVentanaMensajes(anteriores!, pagina)
+        : pagina.messages;
+      const primera = (ventana[0] as (Message & { cursor?: number }) | undefined)?.cursor;
+      paginasMensajesRef.current[id] = { anterior: incremental && !pagina.reiniciar
+        ? primera !== primero?.cursor ? primera ?? null : posicion?.anterior ?? null
+        : pagina.anterior };
+      return ventana;
+    },
     enabled: !!selectedId,
-    refetchInterval: 4_000,
+    refetchInterval: selectedId && paginasMensajesRef.current[selectedId]?.antes !== undefined ? false : 4_000,
   });
+  const paginaMensajes = selectedId ? paginasMensajesRef.current[selectedId] : undefined;
+  const cargarAnteriores = async () => {
+    const id = selectedId;
+    const antes = id ? paginasMensajesRef.current[id]?.anterior : null;
+    if (!id || !antes || cargandoAnteriores) return;
+    setCargandoAnteriores(true);
+    const previa = paginasMensajesRef.current[id];
+    paginasMensajesRef.current[id] = { anterior: antes, antes };
+    try {
+      await qc.cancelQueries({ queryKey: ["messages", id], exact: true });
+      const pagina = await api.messagePage(id, { antes });
+      paginasMensajesRef.current[id] = { anterior: pagina.anterior, antes };
+      qc.setQueryData(["messages", id], pagina.messages);
+      actualizarPaginaMensajes((n) => n + 1);
+      if (selectedIdRef.current === id) { seguirHiloAlFinalRef.current = false; hiloRef.current?.scrollTo({ top: 0 }); }
+    } catch (error) {
+      if (previa) paginasMensajesRef.current[id] = previa;
+      setErroresEnvio((prev) => ({ ...prev, [id]: errorText(error) }));
+    }
+    finally { setCargandoAnteriores(false); }
+  };
+  const volverARecientes = async () => {
+    if (!selectedId) return;
+    const id = selectedId;
+    await qc.cancelQueries({ queryKey: ["messages", id], exact: true });
+    delete paginasMensajesRef.current[id];
+    qc.setQueryData<Message[]>(["messages", id], []);
+    if (selectedIdRef.current === id) seguirHiloAlFinalRef.current = true;
+    actualizarPaginaMensajes((n) => n + 1);
+    await qc.invalidateQueries({ queryKey: ["messages", id] });
+  };
 
   const current: Conversation | null =
     conversacionesDisponibles.find((c) => c.id === selectedId) ?? null;
@@ -516,17 +587,13 @@ export function ChatPage() {
     });
   });
 
-  // Cuántos mensajes del usuario con este texto hay en la lista: sirve para saber si un envío llegó al servidor.
-  const contarEnvios = (lista: Message[] | undefined, texto: string) =>
-    (lista ?? []).filter((m) => m.role === "user" && m.content.trim() === texto.trim()).length;
-
   // El compositor se vacía al enviar: el agente puede tardar, y el texto no debe quedarse esperando.
   // Un ApiError es una respuesta del servidor: el mensaje no se guardó y lo escrito vuelve al compositor.
   // Sin respuesta (red caída, móvil dormido) el servidor puede haberlo guardado igual: se mira la lista
   // y, si el mensaje ya está, el envío se da por bueno. Así no se duplica ni se pierde.
   const send = useMutation({
     mutationFn: async ({ id, content, retryOf }: { id: string; content: string; restaurar?: Restaurar; colaId?: string; retryOf?: string }) => {
-      const previos = contarEnvios(qc.getQueryData<Message[]>(["messages", id]), content);
+      const previos = new Set((qc.getQueryData<Message[]>(["messages", id]) ?? []).map((mensaje) => mensaje.id));
       try {
         return await api.sendMessage(id, content, retryOf);
       } catch (err) {
@@ -539,7 +606,7 @@ export function ChatPage() {
             .some((mensaje) => mensaje.role === "system");
           if (original && !avisoPendiente) return { messages: [] };
         }
-        if (ahora && contarEnvios(ahora, content) > previos) return { messages: [] };
+        if (ahora?.some((mensaje) => mensaje.role === "user" && mensaje.content.trim() === content.trim() && !previos.has(mensaje.id))) return { messages: [] };
         throw err;
       }
     },
@@ -564,14 +631,9 @@ export function ChatPage() {
       if (colaId) setFalloCola({ conversacionId: id, mensajeId: colaId });
       else setErroresEnvio((prev) => ({ ...prev, [id]: errorText(err) }));
       if (!restaurar) return;
-      if (id === selectedId) {
-        const nuevo = restaurar.texto && draft.trim() ? `${restaurar.texto}\n${draft}` : restaurar.texto || draft;
-        cambiarBorrador(nuevo);
-        setPendientes((prev) => [...restaurar.pendientes, ...prev]);
-      } else {
-        const previo = leerBorrador(id);
-        guardarBorrador(id, restaurar.texto && previo.trim() ? `${restaurar.texto}\n${previo}` : restaurar.texto || previo);
-      }
+      const previo = leerBorrador(id);
+      cambiarBorradorChat(id, restaurar.texto && previo.trim() ? `${restaurar.texto}\n${previo}` : restaurar.texto || previo);
+      cambiarPendientes(id, (prev) => [...restaurar.pendientes, ...prev]);
     },
     onSettled: (_data, _error, { id }) => {
       const siguientes = { ...enviosPorChatRef.current };
@@ -587,7 +649,8 @@ export function ChatPage() {
 
   const iniciarEnvio = (variables: { id: string; content: string; restaurar?: Restaurar; colaId?: string; retryOf?: string }) => {
     if (enviosPorChatRef.current[variables.id]) return false;
-    if (variables.id === selectedId) {
+    if (variables.id === selectedIdRef.current) {
+      if (paginasMensajesRef.current[variables.id]?.antes !== undefined) void volverARecientes();
       seguirHiloAlFinalRef.current = true;
       setMostrarIrAlFinal(false);
     }
@@ -623,21 +686,24 @@ export function ChatPage() {
   });
 
   const decidirPlanMutation = useMutation({
-    mutationFn: ({ decision, feedback }: { decision: "approve" | "revise"; feedback?: string }) => {
-      if (!tareaChat?.id || !tareaChat?.plan_hash) throw new Error("No hay plan pendiente de aprobación");
-      return api.decidePlan(tareaChat.id, {
+    mutationFn: ({ decision, feedback, taskId, planHash }: { decision: "approve" | "revise"; feedback?: string; id: string; texto: string; taskId: string; planHash: string }) => {
+      return api.decidePlan(taskId, {
         decision,
-        plan_hash: tareaChat.plan_hash,
+        plan_hash: planHash,
         feedback: feedback?.trim() || undefined,
       });
     },
-    onSuccess: () => {
-      cambiarBorrador("");
+    onSuccess: (_respuesta, { id, texto, taskId }) => {
+      if (leerBorrador(id) === texto) cambiarBorradorChat(id, "");
       void qc.invalidateQueries({ queryKey: ["tasks"] });
       void qc.invalidateQueries({ queryKey: ["conversation-tasks"] });
-      if (tareaChat?.id) void qc.invalidateQueries({ queryKey: ["task", tareaChat.id] });
+      void qc.invalidateQueries({ queryKey: ["task", taskId] });
     },
   });
+  const decidirPlan = (decision: "approve" | "revise", feedback?: string) => {
+    if (!selectedId || !tareaChat?.id || !tareaChat.plan_hash) return;
+    decidirPlanMutation.mutate({ decision, feedback, id: selectedId, texto: draft, taskId: tareaChat.id, planHash: tareaChat.plan_hash });
+  };
 
   const cancelarPlanMutation = useMutation({
     mutationFn: (taskId: string) => api.cancelTask(taskId),
@@ -691,12 +757,21 @@ export function ChatPage() {
     if (planPendiente) {
       const feedback = draft.trim();
       if (feedback) {
-        decidirPlanMutation.mutate({ decision: "revise", feedback });
-        cambiarBorrador("");
+        decidirPlan("revise", feedback);
       }
       return;
     }
     if (!puedeEnviar || !selectedId || subiendoAdjuntosRef.current) return;
+    const idEnvio = selectedId;
+    const textoEnvio = draft;
+    const pendientesEnvio = pendientes;
+    // Las operaciones asíncronas conservan su chat y su revisión del compositor.
+    // Si el usuario escribe o adjunta algo mientras sube, ese contenido permanece.
+    const limpiarEnviado = () => {
+      if (leerBorrador(idEnvio) === textoEnvio) cambiarBorradorChat(idEnvio, "");
+      const claves = new Set(pendientesEnvio.map((pendiente) => pendiente.key));
+      cambiarPendientes(idEnvio, (prev) => prev.filter((pendiente) => !claves.has(pendiente.key)));
+    };
     if (imagenesPendientes.length + videosPendientes.length > 4) {
       setErroresEnvio((prev) => ({ ...prev, [selectedId]: "Adjunta hasta 4 imágenes o videos por mensaje." }));
       return;
@@ -711,22 +786,22 @@ export function ChatPage() {
           ...await Promise.all(videosPendientes.map(async (video) => ({ archivo: await crearHojaFotogramas(video.archivo), nombre: video.nombre }))),
         ];
         imagenesSubidas = await Promise.all(visuales.map(async (visual) => {
-          const subida = await api.uploadChatImage(selectedId, visual.archivo);
+          const subida = await api.uploadChatImage(idEnvio, visual.archivo);
           return { id: subida.id, nombre: subida.nombre };
         }));
       } catch (err) {
-        setErroresEnvio((prev) => ({ ...prev, [selectedId]: errorText(err) }));
+        setErroresEnvio((prev) => ({ ...prev, [idEnvio]: errorText(err) }));
         return;
       } finally {
         subiendoAdjuntosRef.current = false;
         setSubiendoAdjuntos(false);
       }
     }
-    const content = componerMensaje(draft, adjuntosListos, imagenesSubidas);
+    const content = componerMensaje(textoEnvio, adjuntosListos, imagenesSubidas);
     if (!content) return;
     if (agenteOcupado || cola.length > 0) {
       if (!colaActiva) return;
-      cambiarCola(selectedId, (mensajes) => [
+      cambiarCola(idEnvio, (mensajes) => [
         ...mensajes,
         {
           id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -734,22 +809,21 @@ export function ChatPage() {
           creado: Date.now(),
         },
       ]);
-      cambiarBorrador("");
-      setPendientes([]);
-      seguirHiloAlFinalRef.current = true;
-      requestAnimationFrame(irAlFinal);
+      limpiarEnviado();
+      if (selectedIdRef.current === idEnvio) {
+        seguirHiloAlFinalRef.current = true;
+        requestAnimationFrame(() => { if (selectedIdRef.current === idEnvio) irAlFinal(); });
+      }
       return;
     }
-    const restaurar: Restaurar = { texto: draft, pendientes };
+    const restaurar: Restaurar = { texto: leerBorrador(idEnvio) === textoEnvio ? textoEnvio : "", pendientes: pendientesEnvio };
     // El dictado se corta del todo: sus resultados tardíos no deben volver a llenar el compositor.
-    dictadorRef.current?.detener();
+    if (selectedIdRef.current === idEnvio) dictadorRef.current?.detener();
     // Marcador de envío en vuelo: si la app muere antes de que el servidor confirme,
     // el borrador se reconstruye al reabrir el chat (ver los efectos tras el drenaje de cola).
-    guardarEnvio(selectedId, draft, content);
-    cambiarBorrador("");
-    setPendientes([]);
-    seguirHiloAlFinalRef.current = true;
-    iniciarEnvio({ id: selectedId, content, restaurar });
+    guardarEnvio(idEnvio, restaurar.texto, content);
+    limpiarEnviado();
+    iniciarEnvio({ id: idEnvio, content, restaurar });
   };
 
   const redirigirMensajeCola = (item: MensajeEnCola) => {
@@ -860,20 +934,26 @@ export function ChatPage() {
   }, [selectedId, messages.data, enviandoActual]);
 
   // Vuelve a enviar el mensaje del usuario que precede a una respuesta.
-  const reintentar = (mensajeId: string) => {
+  const reintentar = async (mensajeId: string) => {
+    const id = selectedId;
     const i = lista.findIndex((m) => m.id === mensajeId);
-    const previo = lista.slice(0, i).reverse().find((m) => m.role === "user");
-    if (previo && selectedId && !enviandoActual && !current?.ocupada) {
-      iniciarEnvio({ id: selectedId, content: previo.content });
-    }
+    if (!id || i < 0 || enviandoActual || current?.ocupada) return;
+    try {
+      const previo = lista.slice(0, i).reverse().find((m) => m.role === "user")
+        ?? (lista[i].turno_id ? await api.message(id, lista[i].turno_id!) : null);
+      if (previo) iniciarEnvio({ id, content: previo.content });
+    } catch (error) { setErroresEnvio((prev) => ({ ...prev, [id]: errorText(error) })); }
   };
 
-  const reintentarAviso = (mensajeId: string) => {
+  const reintentarAviso = async (mensajeId: string) => {
+    const id = selectedId;
     const i = lista.findIndex((m) => m.id === mensajeId);
-    const previo = lista.slice(0, i).reverse().find((m) => m.role === "user");
-    if (i === lista.length - 1 && previo && selectedId && !enviandoActual && !current?.ocupada) {
-      iniciarEnvio({ id: selectedId, content: previo.content, retryOf: previo.id });
-    }
+    if (!id || i < 0 || i !== lista.length - 1 || enviandoActual || current?.ocupada) return;
+    try {
+      const previo = lista.slice(0, i).reverse().find((m) => m.role === "user")
+        ?? (lista[i].turno_id ? await api.message(id, lista[i].turno_id!) : null);
+      if (previo) iniciarEnvio({ id, content: previo.content, retryOf: previo.id });
+    } catch (error) { setErroresEnvio((prev) => ({ ...prev, [id]: errorText(error) })); }
   };
 
   const avisar = (texto: string) => {
@@ -883,9 +963,10 @@ export function ChatPage() {
 
   // Lee archivos y los añade al compositor. Un mensaje no puede pasar del tope de texto de adjuntos.
   const agregarArchivos = async (archivos: File[]) => {
-    if (archivos.length === 0) return;
+    const id = selectedId;
+    if (archivos.length === 0 || !id) return;
     const leidos = await Promise.all(archivos.map(leerArchivo));
-    setPendientes((prev) => {
+    cambiarPendientes(id, (prev) => {
       let usados = prev.reduce(
         (n, p) => n + (p.lectura.tipo === "texto" ? p.lectura.adjunto.contenido.length : 0),
         0,
@@ -932,14 +1013,16 @@ export function ChatPage() {
   };
 
   const dictar = () => {
+    if (!selectedId) return;
     if (!dictadorRef.current) {
+      const id = selectedId;
       dictadorRef.current = crearDictador({
         construir: () => {
           const Ctor = ctorVoz();
           return Ctor ? new Ctor() : null;
         },
         lenguaje: navigator.language || "es-ES",
-        componer: cambiarBorrador,
+        componer: (texto) => { if (selectedIdRef.current === id) cambiarBorradorChat(id, texto); },
         avisar,
         alCambiar: setDictando,
       });
@@ -1030,10 +1113,12 @@ export function ChatPage() {
 
   // Turno de una respuesta: el mensaje del usuario que la precede. Sus pasos se piden al abrir "Ver proceso".
   const turnoDeRespuesta = (indice: number): string | null => {
+    if (lista[indice]?.turno_id) return lista[indice].turno_id!;
     for (let j = indice - 1; j >= 0; j--) if (lista[j].role === "user") return lista[j].id;
     return null;
   };
   const duracionDeRespuesta = (indice: number): string | null => {
+    if (lista[indice]?.turno_created_at) return duracionEntre(lista[indice].turno_created_at!, lista[indice].created_at);
     for (let j = indice - 1; j >= 0; j--) {
       if (lista[j].role === "user") return duracionEntre(lista[j].created_at, lista[indice].created_at);
     }
@@ -1062,9 +1147,13 @@ export function ChatPage() {
   const hayMensajes = lista.length > 0;
 
   // Conversación completa en Markdown: para compartir o exportar.
-  const transcripcion = () => {
+  const transcripcion = async () => {
     const titulo = current?.title ?? "Chat";
-    const partes = lista.map((m) => {
+    if (!selectedId) return "";
+    // La exportación es explícita: recorre páginas sin dejar el historial completo
+    // en la caché ni representarlo en el hilo.
+    const completos = await api.allMessages(selectedId);
+    const partes = completos.map((m) => {
       const autor = m.role === "user" ? "Tú" : nombreAgente;
       const { texto, adjuntos } = partirMensaje(m.content);
       const anexos = adjuntos.map((a) => `\n\n**Adjunto: ${a.nombre}**\n\n~~~~\n${a.contenido}\n~~~~`).join("");
@@ -1074,7 +1163,9 @@ export function ChatPage() {
   };
 
   const compartir = async () => {
-    const texto = transcripcion();
+    let texto: string;
+    try { texto = await transcripcion(); }
+    catch (error) { avisar(errorText(error)); return; }
     if (typeof navigator.share === "function") {
       try {
         await navigator.share({ title: current?.title ?? "Chat", text: texto });
@@ -1087,8 +1178,11 @@ export function ChatPage() {
     avisar(ok ? "Conversación copiada al portapapeles" : "No se pudo copiar la conversación");
   };
 
-  const exportar = () => {
-    const url = URL.createObjectURL(new Blob([transcripcion()], { type: "text/markdown;charset=utf-8" }));
+  const exportar = async () => {
+    let texto: string;
+    try { texto = await transcripcion(); }
+    catch (error) { avisar(errorText(error)); return; }
+    const url = URL.createObjectURL(new Blob([texto], { type: "text/markdown;charset=utf-8" }));
     const enlace = document.createElement("a");
     const base = (current?.title ?? "chat").replace(/[\\/:*?"<>|\r\n]/g, " ").trim().slice(0, 60) || "chat";
     enlace.href = url;
@@ -1573,6 +1667,14 @@ export function ChatPage() {
           >
             <div className="tl-hilo-columna">
               {messages.isPending && <LoadingSkeleton tipo="contenido" cantidad={4} className="tl-carga-mensajes" />}
+              {(paginaMensajes?.anterior || paginaMensajes?.antes !== undefined) && (
+                <div className="tl-reporte-acciones" aria-label="Páginas del historial">
+                  {paginaMensajes?.anterior && <button type="button" className="tl-boton" disabled={cargandoAnteriores} onClick={() => void cargarAnteriores()}>
+                    {cargandoAnteriores ? "Cargando anteriores…" : "Ver mensajes anteriores"}
+                  </button>}
+                  {paginaMensajes?.antes !== undefined && <button type="button" className="tl-boton" onClick={() => void volverARecientes()}>Volver a recientes</button>}
+                </div>
+              )}
               {messages.isError && (
                 <div className="tl-estado-linea">
                   <p className="tl-alerta" role="alert">
@@ -1587,7 +1689,7 @@ export function ChatPage() {
                 <p className="tl-nota">Aún no hay mensajes. Escribe una instrucción para el agente o pulsa Ctrl+K para comandos.</p>
               )}
               {lista.map((m, i) => {
-                const turnoId = m.role === "assistant" ? turnoDeRespuesta(i) : null;
+                const turnoId = m.role !== "user" ? turnoDeRespuesta(i) : null;
                 const subagentes = turnoId
                   ? conversacionSupervisora?.subchats?.filter((hijo) => hijo.parent_turn_id === turnoId)
                   : undefined;
@@ -1609,8 +1711,8 @@ export function ChatPage() {
                   {m.role === "system" ? (
                     <article className="tl-msg" aria-label="Aviso del sistema">
                       <p className="tl-alerta" role="status">{m.content}</p>
-                      {!conversacionPadre && !tareaChat?.reanudable && !agenteOcupado && i === lista.length - 1 && lista.slice(0, i).some(p => p.role === "user") && (
-                        <button type="button" className="tl-boton" onClick={() => reintentarAviso(m.id)}>
+                      {!conversacionPadre && paginaMensajes?.antes === undefined && !tareaChat?.reanudable && !agenteOcupado && i === lista.length - 1 && turnoId && (
+                        <button type="button" className="tl-boton" onClick={() => void reintentarAviso(m.id)}>
                           {current?.tiene_sesion || /sesión quedó guardada/i.test(m.content) ? "Continuar donde quedó" : "Reintentar solicitud"}
                         </button>
                       )}
@@ -1654,8 +1756,8 @@ export function ChatPage() {
                         abrirProcesoInicial={Boolean(conversacionPadre && m.role === "assistant" && i === lista.length - 1)}
                         onAbrirSubchat={setSelectedId}
                         onReintentar={
-                          !conversacionPadre && lista.slice(0, i).some((p) => p.role === "user") && !enviandoActual
-                            ? () => reintentar(m.id)
+                          !conversacionPadre && turnoId && !enviandoActual
+                            ? () => void reintentar(m.id)
                             : undefined
                         }
                         onGuardar={(formato) => crearDoc.mutate({ mensajeId: m.id, formato })}
@@ -2056,7 +2158,7 @@ export function ChatPage() {
                           type="button"
                           className="tl-accion-icono"
                           aria-label={`Quitar ${nombre}`}
-                          onClick={() => setPendientes((prev) => prev.filter((x) => x.key !== p.key))}
+                          onClick={() => selectedId && cambiarPendientes(selectedId, (prev) => prev.filter((x) => x.key !== p.key))}
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                             <line x1="18" y1="6" x2="6" y2="18" />
@@ -2308,7 +2410,7 @@ export function ChatPage() {
                           className="ghost tl-boton-plan-reanalizar"
                           disabled={decidirPlanMutation.isPending}
                           onClick={() => {
-                            decidirPlanMutation.mutate({ decision: "revise", feedback: draft.trim() });
+                            decidirPlan("revise", draft.trim());
                           }}
                           title="Solicitar al analizador que elabore un nuevo plan con estas aclaraciones"
                         >
@@ -2320,7 +2422,7 @@ export function ChatPage() {
                         className="primary tl-boton-plan-aprobar"
                         disabled={decidirPlanMutation.isPending}
                         onClick={() => {
-                          decidirPlanMutation.mutate({ decision: "approve", feedback: draft.trim() || undefined });
+                          decidirPlan("approve", draft.trim() || undefined);
                         }}
                         title={draft.trim() ? "Aprobar el plan incluyendo tus notas" : "Aprobar el plan"}
                       >

@@ -91,7 +91,7 @@ test("respaldo omite dependencias reconstruibles y conserva entregables y códig
   const db = new Database(join(datos, "orquestador.db"));
   db.exec("CREATE TABLE prueba (id INTEGER PRIMARY KEY)");
   db.close();
-  const env = { ...process.env, DATA_DIR: datos, TELO_RESPALDOS_DIR: destino };
+  const env = { ...process.env, DATA_DIR: datos, TELO_RESPALDOS_DIR: destino, TELO_RESPALDO_PRUEBA_AISLADA: "1" };
   for (const clave of Object.keys(env)) if (clave.startsWith("TELO_R2_")) delete (env as Record<string, string | undefined>)[clave];
   const proceso = Bun.spawn([process.execPath, "--no-env-file", "scripts/respaldo.ts"], { env, stdout: "pipe", stderr: "pipe" });
   const salida = await new Response(proceso.stderr).text();

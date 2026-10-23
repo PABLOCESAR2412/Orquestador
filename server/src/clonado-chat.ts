@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { registrarTrabajo } from "./despliegue";
 import { describirAccion, registrarActividad, type ItemActividad } from "./actividad";
 import {
   ErrorClonado,
@@ -134,7 +135,8 @@ export function iniciarClonadoEnChat(projectId: string): ClonadoIniciado {
 
   // Ocupar antes de responder: otro chat o una tarea no puede empezar en esta carpeta mientras tanto.
   ocuparConversacion(conversacionId);
-  void ejecutarClonado(proyecto, repo, conversacionId, turnoId).catch(() => undefined);
+  const finalizar = registrarTrabajo();
+  void ejecutarClonado(proyecto, repo, conversacionId, turnoId).catch(() => undefined).finally(finalizar);
   return { conversacion_id: conversacionId, turno_id: turnoId };
 }
 

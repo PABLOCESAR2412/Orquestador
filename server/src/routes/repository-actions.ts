@@ -187,6 +187,22 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
         detail: "Vincula la GitHub App o revisa las credenciales anteriores antes de preparar esta autorización.",
       }, 409);
     }
+    let shaRevision: string | null = null;
+    if (b.action === "merge") {
+      shaRevision = tarea ? db.query<{ commit_sha: string }, [string]>(
+        "SELECT commit_sha FROM task_approvals WHERE task_id=? AND accion='push' AND commit_sha IS NOT NULL ORDER BY rowid DESC LIMIT 1",
+      ).get(tarea.id)?.commit_sha ?? null : null;
+      if (!shaRevision) {
+        const remoto = remotoDestino ? urlGithubPermitida(remotoDestino) : null;
+        if (!remoto) throw new Error("Falta un remoto permitido.");
+        const pull = await githubApiPr(projectId,
+          "/repos/" + remoto.replace("https://github.com/", "") + `/pulls/${b.pr_number ?? numeroPrUrlNumerico}`,
+          autenticacion, undefined, undefined, "merge") as { head?: { sha?: string } };
+        shaRevision = pull.head?.sha ?? null;
+      }
+      if (!shaRevision || !/^[a-f0-9]{40,64}$/i.test(shaRevision))
+        throw new Error("No se pudo identificar el commit del Pull Request. Vuelve a preparar la autorización.");
+    }
     const payload = {
       autenticacion,
       autorGit: cfg.author_name,
@@ -195,6 +211,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
       diff: diff?.diff ?? "",
       rama: diff?.rama ?? null,
       commit: diff?.commit ?? null,
+      sha_revision: shaRevision,
       archivos: diff?.archivos.map((a) => a.ruta) ?? [],
       truncado: diff?.truncado ?? false,
       remote: remotoDestino,
@@ -223,7 +240,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
         const previo = JSON.parse(anterior.payload) as typeof payload;
         return b.action === "pr"
           ? previo.commit === payload.commit && previo.rama === payload.rama && previo.base === payload.base && previo.remote === payload.remote
-          : previo.pr_number === payload.pr_number && previo.remote === payload.remote;
+          : previo.pr_number === payload.pr_number && previo.remote === payload.remote && previo.sha_revision === payload.sha_revision;
       });
       if (existente) {
         const payloadExistente = JSON.parse(existente.payload) as typeof payload;
@@ -447,6 +464,8 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         },
       );
     } else if (row.action === "merge") {
+      if (typeof p.sha_revision !== "string" || !/^[a-f0-9]{40,64}$/i.test(p.sha_revision))
+        throw new ErrorTarea("pr_revision_requerida", 409, "Esta autorización no identifica el commit revisado. Solicita una autorización nueva.");
       const cfg = configGit(row.project_id);
       const remoto = urlGithubPermitida(p.remote || cfg.remote || "");
       if (!remoto) throw new Error("Falta un remoto permitido.");
@@ -475,14 +494,8 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
       // El merge queda ligado al SHA revisado: la punta del PR debe seguir siendo el commit
       // cuya subida se aprobó para la tarea. Un push posterior (o un amend) invalida la
       // autorización y exige revisión nueva, y el PUT lo declara con el campo sha.
-      const puntaAprobada = row.task_id
-        ? db
-            .query<{ commit_sha: string }, [string]>(
-              "SELECT commit_sha FROM task_approvals WHERE task_id=? AND accion='push' AND commit_sha IS NOT NULL ORDER BY rowid DESC LIMIT 1",
-            )
-            .get(row.task_id)?.commit_sha ?? null
-        : null;
-      if (puntaAprobada && pull.head?.sha && pull.head.sha !== puntaAprobada)
+      const puntaAprobada = p.sha_revision;
+      if (pull.head?.sha !== puntaAprobada)
         throw new ErrorTarea(
           "pr_cambiado",
           409,
@@ -547,7 +560,7 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         {
           commit_title: p.title || `Merge pull request #${numeroPull} desde Telo`,
           merge_method: "squash",
-          ...(puntaAprobada ? { sha: puntaAprobada } : {}),
+          sha: puntaAprobada,
         },
         "PUT",
         "merge",

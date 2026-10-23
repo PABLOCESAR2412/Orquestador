@@ -5,6 +5,11 @@
 // (acumulado observado − acumulado al empezar − deltas ya contados) para no perder
 // el gasto real ni contar dos veces algo ya registrado.
 
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { db } from "../db";
+import { leerLineasAcotadas } from "./proteccion";
+
 export type TotalesCodex = { input: number; cached: number; output: number; reasoning: number };
 
 const CERO: TotalesCodex = { input: 0, cached: 0, output: 0, reasoning: 0 };
@@ -13,9 +18,13 @@ const CERO: TotalesCodex = { input: 0, cached: 0, output: 0, reasoning: 0 };
 // también se aceptan los campos planos por si el CLI los envía en otra forma.
 export function totalesDelEventoTokenCount(evento: unknown): TotalesCodex | null {
   if (evento === null || typeof evento !== "object") return null;
-  const ev = evento as { type?: unknown; info?: unknown };
+  const original = evento as { type?: unknown; payload?: unknown };
+  const ev = (original.type === "event_msg" && original.payload && typeof original.payload === "object"
+    ? original.payload : original) as { type?: unknown; info?: unknown };
   if (ev.type !== "token_count") return null;
-  const fuente = (ev.info && typeof ev.info === "object" ? ev.info : ev) as Record<string, unknown>;
+  const info = (ev.info && typeof ev.info === "object" ? ev.info : ev) as Record<string, unknown>;
+  const fuente = (info.total_token_usage && typeof info.total_token_usage === "object"
+    ? info.total_token_usage : info) as Record<string, unknown>;
   const numero = (n: unknown) => (typeof n === "number" && Number.isFinite(n) && n >= 0 ? Math.round(n) : 0);
   const input = numero(fuente.input_tokens);
   const cached = numero(fuente.cached_input_tokens);
@@ -23,6 +32,40 @@ export function totalesDelEventoTokenCount(evento: unknown): TotalesCodex | null
   const reasoning = numero(fuente.reasoning_output_tokens);
   if (input === 0 && cached === 0 && output === 0 && reasoning === 0) return null;
   return { input, cached, output, reasoning };
+}
+
+const claveSesion = (id: string) => `codex_uso:${id}`;
+
+export function guardarTotalesSesion(id: string | null, totales: TotalesCodex): void {
+  if (!id || !/^[0-9a-fA-F-]{1,128}$/.test(id)) return;
+  db.query(`INSERT INTO app_settings(key,value,updated_at) VALUES (?,?,datetime('now'))
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`)
+    .run(claveSesion(id), JSON.stringify(totales));
+}
+
+// Se toma ANTES de lanzar resume. La primera medición de stdout ya incluye gasto nuevo.
+// Para sesiones anteriores a este registro se recupera el último acumulado del rollout.
+export async function leerTotalesSesion(id: string): Promise<TotalesCodex | null> {
+  if (!/^[0-9a-fA-F-]{1,128}$/.test(id)) return null;
+  let ultimo: TotalesCodex | null = null;
+  try {
+    const carpeta = join(homedir(), ".codex", "sessions");
+    const patron = new Bun.Glob(`**/*${id}.jsonl`);
+    for await (const archivo of patron.scan({ cwd: carpeta, absolute: true, onlyFiles: true, followSymlinks: false })) {
+      await leerLineasAcotadas(Bun.file(archivo).stream(), 2 * 1024 * 1024, (linea) => {
+        try { ultimo = totalesDelEventoTokenCount(JSON.parse(linea)) ?? ultimo; } catch { /* NDJSON ajeno. */ }
+      });
+    }
+  } catch { /* Sin historial legible no se inventa un acumulado previo. */ }
+  if (ultimo) return ultimo;
+  const fila = db.query<{ value: string }, [string]>("SELECT value FROM app_settings WHERE key=?").get(claveSesion(id));
+  if (fila) {
+    try {
+      const valor = JSON.parse(fila.value);
+      if ([valor.input, valor.cached, valor.output, valor.reasoning].every((n) => Number.isFinite(n) && n >= 0)) return valor;
+    } catch { /* Sin historial legible no se factura un acumulado desconocido. */ }
+  }
+  return ultimo;
 }
 
 export function sumarTotales(a: TotalesCodex, b: TotalesCodex): TotalesCodex {

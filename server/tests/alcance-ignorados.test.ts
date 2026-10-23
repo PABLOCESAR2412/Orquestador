@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { capturarAlcance, comprobarAlcance } from "../src/alcance-plan";
@@ -40,4 +40,21 @@ test("un ignorado que cambia de contenido se vuelve a detectar", async () => {
   const antes = await capturarAlcance(cwd, ["nota.md"]);
   writeFileSync(join(cwd, "salida.txt"), "v2");
   expect(await comprobarAlcance(antes)).toEqual(["salida.txt"]);
+});
+
+test("un ignorado borrado fuera del plan también es desviación", async () => {
+  const cwd = await repoIgnorado();
+  writeFileSync(join(cwd, "salida.txt"), "conservar");
+  const antes = await capturarAlcance(cwd, ["nota.md"]);
+  rmSync(join(cwd, "salida.txt"));
+  expect(await comprobarAlcance(antes)).toEqual(["salida.txt"]);
+});
+
+test("superar el límite de ignorados detiene la comprobación sin borrar trabajo", async () => {
+  const cwd = await repoIgnorado();
+  const antes = await capturarAlcance(cwd, ["nota.md"]);
+  writeFileSync(join(cwd, ".gitignore"), "*.txt\n");
+  for (let i = 0; i < 401; i++) writeFileSync(join(cwd, `${i}.txt`), "conservar");
+  await expect(comprobarAlcance(antes)).rejects.toThrow("demasiados archivos ignorados");
+  expect(await Bun.file(join(cwd, "400.txt")).text()).toBe("conservar");
 });

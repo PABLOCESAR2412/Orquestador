@@ -33,6 +33,7 @@ import { tokenGithubGlobal } from "./github-auth";
 import { tokenGithubAppParaRepo } from "./github-app";
 import { opcionesDeCredenciales } from "./git-credenciales";
 import { eliminarPerfilOpenCode } from "./runners/aislamiento";
+import { enMantenimiento, registrarTrabajo } from "./despliegue";
 export { opcionesDeCredenciales } from "./git-credenciales";
 
 // Copias de trabajo de las tareas de proyecto con Git. Cada tarea trabaja en su clon
@@ -572,14 +573,14 @@ export async function detectarConflictosPullRequest(
 
 // Revisa la copia y calcula el estado contra base_commit. Deja los cambios en el índice.
 // `completo` es el diff sin truncar: solo lo usa el escaneo antes de commit, nunca sale del servidor.
-// `escaneo` añade a ese diff el contenido original de los archivos añadidos o modificados: con
+// `escaneo` conserva por separado el contenido original de los archivos añadidos o modificados: con
 // `.gitattributes` el agente puede marcar un archivo binario y el diff no mostraría su contenido,
 // pero el blob del índice sí lo trae, y los secretos no se feascan sobre lo que el agente controle.
 async function estadoDelClon(ctx: Contexto): Promise<{
   archivos: ArchivoDiff[];
   diff: string;
   completo: string;
-  escaneo: string;
+  escaneo: { ruta: string; contenido: string }[];
   // Archivos cuya captura no se pudo verificar completo (ilegible o sobre el tope):
   // el commit no entra mientras quede alguno sin revisar.
   sinVerificar: string[];
@@ -598,10 +599,10 @@ async function estadoDelClon(ctx: Contexto): Promise<{
     { cwd: ctx.clon },
   );
   const archivos = combinar(nombres, numeros).filter(
-    (a) => !a.ruta.startsWith(".opencode/") && !a.ruta.startsWith(".opencode"),
+    (a) => !a.ruta.startsWith(".opencode/") && a.ruta !== ".opencode",
   );
   if (archivos.length === 0)
-    return { archivos, diff: "", completo: "", escaneo: "", sinVerificar: [], truncado: false, hash: null };
+    return { archivos, diff: "", completo: "", escaneo: [], sinVerificar: [], truncado: false, hash: null };
 
   const texto = await gitOkSeguro(
     ["diff", "--cached", "-M", "--no-color", "--no-ext-diff", "--no-textconv", ctx.base, "--", ":!.opencode", ":!.opencode/*"],
@@ -622,8 +623,8 @@ async function estadoDelClon(ctx: Contexto): Promise<{
   // escanear), leído del índice: no pasa por los atributos del worktree que el agente puede
   // escribir. Sin topes silenciosos: un blob ilegible o demasiado grande queda en `sinVerificar`
   // y el commit se bloquea — nada entra a Git sin haberse revisado entero.
-  let escaneo = texto;
-  let total = escaneo.length;
+  const escaneo: { ruta: string; contenido: string }[] = [];
+  let total = texto.length;
   const sinVerificar: string[] = [];
   for (const archivo of archivos.filter((a) => a.estado !== "borrado")) {
     if (total > TOPE_ESCANEO_TOTAL) {
@@ -635,13 +636,11 @@ async function estadoDelClon(ctx: Contexto): Promise<{
         cwd: ctx.clon,
         timeoutMs: TIEMPO_ESTADO_MS,
       });
-      if (blob.length > TOPE_ESCANEO_ARCHIVO) {
+      if (blob.length > TOPE_ESCANEO_ARCHIVO || total + blob.length > TOPE_ESCANEO_TOTAL) {
         sinVerificar.push(archivo.ruta);
         continue;
       }
-      // La etiqueta va en su propia línea: el escáner la ignora al completa, así que el
-      // contenido queda en líneas limpias (incluida su primera).
-      escaneo += `\n\0${archivo.ruta}\0\n${blob}`;
+      escaneo.push({ ruta: archivo.ruta, contenido: blob });
       total += blob.length + archivo.ruta.length + 3;
     } catch {
       // Si el blob no se puede leer, no es verificable: no entra hasta que se aclare.
@@ -1081,8 +1080,10 @@ export async function reintegrarSobrePunta(
 
 // Al cancelar: el clon se borra solo si no tiene nada que revisar (ni cambios ni commits nuevos).
 export function limpiarCopiaCancelada(taskId: string): Promise<void> {
-  if (!UUID.test(taskId)) return Promise.resolve();
+  if (!UUID.test(taskId) || enMantenimiento()) return Promise.resolve();
+  const finalizar = registrarTrabajo();
   return conTarea(taskId, async () => {
+    if (enMantenimiento()) return;
     if (!existsSync(rutaClon(taskId))) return;
     let limpio = false;
     try {
@@ -1098,11 +1099,14 @@ export function limpiarCopiaCancelada(taskId: string): Promise<void> {
       limpio = false;
     }
     if (limpio) rmSync(rutaClon(taskId), { recursive: true, force: true });
-  });
+  }).finally(finalizar);
 }
 
 // La antigüedad no descarta trabajo: solo borra copias limpias sin commits pendientes de subir.
 export async function limpiarCopias(): Promise<void> {
+  if (enMantenimiento()) return;
+  const finalizar = registrarTrabajo();
+  try {
   const filas = db
     .query<{ id: string }, []>(
       `SELECT id FROM tasks WHERE status IN ('done', 'failed', 'cancelled') AND finished_at IS NOT NULL
@@ -1153,6 +1157,7 @@ export async function limpiarCopias(): Promise<void> {
       }
     });
   }
+  } finally { finalizar(); }
 }
 
 let temporizadorLimpieza: ReturnType<typeof setInterval> | null = null;

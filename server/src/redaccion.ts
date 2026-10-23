@@ -125,8 +125,9 @@ function contieneSecreto(linea: string, valores: string[]): boolean {
   if (ENCABEZADO_CLAVE_PRIVADA.test(linea)) return true;
   for (const patron of PATRONES_CREDENCIAL) {
     // Un valor con formato de credencial cuenta, salvo que sea un ejemplo marcado como tal.
-    const hallada = patron.exec(linea)?.[0];
-    if (hallada && !esFormatoDePrueba(hallada)) return true;
+    for (const [hallada] of linea.matchAll(new RegExp(patron.source, "g"))) {
+      if (!esFormatoDePrueba(hallada)) return true;
+    }
   }
   return valores.some((valor) => esSecretoReal(valor) && linea.includes(valor));
 }
@@ -149,13 +150,22 @@ export function archivosConSecretos(diff: string, valores: string[]): string[] {
   return [...hallados];
 }
 
-// Igual que archivosConSecretos, pero sobre el contenido íntegro de los blobs del índice
-// (etiquetados por el llamador con "\0ruta\0" al empezar). Cubre los secretos que el diff
+// Igual que archivosConSecretos, pero sobre registros del contenido íntegro del índice.
+// Cubre los secretos que el diff
 // no muestra, por ejemplo un archivo marcado binario con `.gitattributes`. Devuelve
 // rutas, nunca el valor del secreto.
-export function archivosConSecretosEnBlobs(blobs: string, valores: string[]): string[] {
+export type BlobEscaneo = { ruta: string; contenido: string };
+export function archivosConSecretosEnBlobs(blobs: readonly BlobEscaneo[] | string, valores: string[]): string[] {
   const todos = [...valores, ...valoresDeConfiguracion(), ...valoresSecretosServidor()];
   const hallados = new Set<string>();
+  if (typeof blobs !== "string") {
+    for (const { ruta, contenido } of blobs) {
+      if (contieneSecreto(contenido, todos)) hallados.add(ruta);
+    }
+    return [...hallados];
+  }
+  // Compatibilidad con capturas antiguas. Las lecturas nuevas usan registros estructurados:
+  // los NUL o las líneas de un binario nunca pueden convertirse en etiquetas de archivo.
   let archivo = "(desconocido)";
   for (const linea of blobs.split("\n")) {
     if (linea.startsWith("\0")) {
