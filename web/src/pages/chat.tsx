@@ -42,7 +42,7 @@ import {
 } from "../lib/chat-cola";
 import { leerHitos, guardarHitos } from "../lib/chat-hitos";
 import { leerBorrador, guardarBorrador } from "../lib/chat-borrador";
-import { type ReconocimientoVoz, ctorVoz, mensajeVoz } from "../lib/chat-dictado";
+import { crearDictador, ctorVoz, type Dictador } from "../lib/chat-dictado";
 import { PLANTILLAS_GAUNTLET } from "../lib/plantillas-gauntlet";
 import "../styles-chat.css";
 import "../styles-flujo.css";
@@ -294,7 +294,7 @@ export function ChatPage() {
     hiloToqueYRef.current = null;
   }, []);
   const fileRef = useRef<HTMLInputElement>(null);
-  const recRef = useRef<ReconocimientoVoz | null>(null);
+  const dictadorRef = useRef<Dictador | null>(null);
   // Botones que abren el selector y el panel de uso: reciben el foco al cerrar.
   const chipRef = useRef<HTMLButtonElement>(null);
   const usoRef = useRef<HTMLButtonElement>(null);
@@ -367,7 +367,7 @@ export function ChatPage() {
   }, [selectedId]);
 
   // Al salir del chat se corta el dictado.
-  useEffect(() => () => recRef.current?.stop(), []);
+  useEffect(() => () => dictadorRef.current?.detener(), []);
 
   const conversations = useQuery({
     queryKey: ["conversations"],
@@ -738,13 +738,7 @@ export function ChatPage() {
     }
     const restaurar: Restaurar = { texto: draft, pendientes };
     // El dictado se corta del todo: sus resultados tardíos no deben volver a llenar el compositor.
-    const rec = recRef.current;
-    if (rec) {
-      rec.onresult = null;
-      rec.stop();
-      recRef.current = null;
-      setDictando(false);
-    }
+    dictadorRef.current?.detener();
     cambiarBorrador("");
     setPendientes([]);
     seguirHiloAlFinalRef.current = true;
@@ -911,31 +905,19 @@ export function ChatPage() {
   };
 
   const dictar = () => {
-    if (dictando) {
-      recRef.current?.stop();
-      return;
+    if (!dictadorRef.current) {
+      dictadorRef.current = crearDictador({
+        construir: () => {
+          const Ctor = ctorVoz();
+          return Ctor ? new Ctor() : null;
+        },
+        lenguaje: navigator.language || "es-ES",
+        componer: cambiarBorrador,
+        avisar,
+        alCambiar: setDictando,
+      });
     }
-    const Ctor = ctorVoz();
-    if (!Ctor) return;
-    const base = draft;
-    const rec = new Ctor();
-    rec.lang = navigator.language || "es";
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.onresult = (e) => {
-      let dicho = "";
-      for (let i = 0; i < e.results.length; i++) dicho += e.results[i][0].transcript;
-      const sep = base && !/\s$/.test(base) ? " " : "";
-      cambiarBorrador(`${base}${sep}${dicho.trim()}`);
-    };
-    rec.onerror = (e) => avisar(mensajeVoz(e.error));
-    rec.onend = () => {
-      recRef.current = null;
-      setDictando(false);
-    };
-    recRef.current = rec;
-    setDictando(true);
-    rec.start();
+    dictadorRef.current.alternar(draft);
   };
 
   // El campo crece con el texto hasta un máximo.
@@ -1090,8 +1072,6 @@ export function ChatPage() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     avisar("Chat exportado en Markdown");
   };
-
-  const dictadoDisponible = ctorVoz() !== null;
 
   // Prompts enviados en este chat, del más reciente al más antiguo: alimentan el historial.
   const prompts: PromptEnviado[] = lista
@@ -1285,16 +1265,12 @@ export function ChatPage() {
       descripcion: "Archivos de texto, código o documentos",
       ejecutar: () => fileRef.current?.click(),
     },
-    ...(dictadoDisponible
-      ? [
-          {
-            id: "dictar",
-            etiqueta: "Dictar mensaje",
-            descripcion: "La voz se convierte en texto",
-            ejecutar: dictar,
-          },
-        ]
-      : []),
+    {
+      id: "dictar",
+      etiqueta: "Dictar mensaje",
+      descripcion: "La voz se convierte en texto",
+      ejecutar: dictar,
+    },
     {
       id: "modelo",
       etiqueta: "Cambiar modelo",
@@ -2201,22 +2177,20 @@ export function ChatPage() {
                       <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
                     </svg>
                   </button>
-                  {dictadoDisponible && (
-                    <button
-                      type="button"
-                      className={`tl-accion-icono${dictando ? " is-activo" : ""}`}
-                      aria-label={dictando ? "Terminar dictado" : "Dictar mensaje"}
-                      aria-pressed={dictando}
-                      title={dictando ? "Terminar dictado" : "Dictar: la voz se convierte en texto"}
-                      onClick={dictar}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <rect x="9" y="2" width="6" height="12" rx="3" />
-                        <path d="M19 10a7 7 0 0 1-14 0" />
-                        <line x1="12" y1="19" x2="12" y2="22" />
-                      </svg>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className={`tl-accion-icono${dictando ? " is-activo" : ""}`}
+                    aria-label={dictando ? "Terminar dictado" : "Dictar mensaje"}
+                    aria-pressed={dictando}
+                    title={dictando ? "Terminar dictado" : "Dictar: la voz se convierte en texto"}
+                    onClick={dictar}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <rect x="9" y="2" width="6" height="12" rx="3" />
+                      <path d="M19 10a7 7 0 0 1-14 0" />
+                      <line x1="12" y1="19" x2="12" y2="22" />
+                    </svg>
+                  </button>
 
                   <button
                     ref={chipRef}
