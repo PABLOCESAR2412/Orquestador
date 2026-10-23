@@ -991,13 +991,18 @@ try {
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Base A");
     await page.getByRole("button", { name: "Dictar mensaje", exact: true }).click();
     await page.evaluate(() => window.__reconocimientoPrueba.onresult({ resultIndex: 0, results: [{ 0: { transcript: "dictado A" }, isFinal: true, length: 1 }] }));
+    await page.waitForFunction(() => localStorage.getItem("telo:borrador:c1") === "Base A dictado A"
+      && document.querySelector('textarea[aria-label="Mensaje"]')?.value === "Base A dictado A");
     assert.equal(await page.getByRole("textbox", { name: "Mensaje", exact: true }).inputValue(), "Base A dictado A");
     if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
     await page.getByRole("button", { name: "Chat paralelo", exact: true }).click();
+    await page.waitForFunction(() => window.__reconocimientoPrueba.onresult === null);
     assert.equal(await page.evaluate(() => window.__reconocimientoPrueba.onresult), null);
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Base B");
     await page.getByRole("button", { name: "Dictar mensaje", exact: true }).click();
     await page.evaluate(() => window.__reconocimientoPrueba.onresult({ resultIndex: 0, results: [{ 0: { transcript: "dictado B" }, isFinal: true, length: 1 }] }));
+    await page.waitForFunction(() => localStorage.getItem("telo:borrador:c2") === "Base B dictado B"
+      && document.querySelector('textarea[aria-label="Mensaje"]')?.value === "Base B dictado B");
     assert.equal(await page.evaluate(() => localStorage.getItem("telo:borrador:c2")), "Base B dictado B");
     assert.equal(await page.evaluate(() => localStorage.getItem("telo:borrador:c1")), "Base A dictado A");
     mostrarHistorialExtenso = true;

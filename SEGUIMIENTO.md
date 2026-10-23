@@ -27,7 +27,9 @@ Entrega: [PR #122](https://github.com/PABLOCESAR2412/Orquestador/pull/122). Base
 - [x] **R17 · R2 con cero copias locales terminaba en falso error (MEDIA).** Tamaños capturados antes de podar; solo se publican conjuntos DB+tar completos. Evidencia: `respaldo-integral.test.ts` ejecuta el CLI con almacenamiento simulado y retención local cero.
 - [x] **R18 · Runtime OpenCode redirigible por enlace simbólico (ALTA).** Rechaza `.opencode` enlazado/junction; analizador usa runtime temporal tmpfs y no obtiene escritura en su workspace. Evidencia: `aislamiento.test.ts` y recorrido Linux en CI.
 
-Pendientes operativos de este cierre (no sustituidos por mocks): instalar la regla sudoers de stop/start del despliegue y hacer la primera actualización con el servicio parado; probar respaldo/restauración completa en Linux sobre una copia; confirmar entrega en dispositivos reales. No se modificó la VM ni se usaron proveedores facturables para estas pruebas.
+Evidencia Linux: [servidor del PR #122](https://github.com/PABLOCESAR2412/Orquestador/actions/runs/39970505720/job/120472073686), 593 ejecuciones aprobadas, 0 fallos; incluye worker con bubblewrap, los casos POSIX omitidos en Windows y restauración del fixture SQLite con WAL. El primer recorrido UI en CI encontró una aserción que leía el campo antes del commit asíncrono de React: la prueba espera ahora texto y persistencia observables, sin pausas de tiempo arbitrarias.
+
+Pendientes operativos de este cierre (no sustituidos por mocks): instalar la regla sudoers de stop/start del despliegue y hacer la primera actualización con el servicio parado; probar respaldo/restauración completa de la VM sobre una copia; confirmar entrega en dispositivos reales. No se modificó la VM ni se usaron proveedores facturables para estas pruebas.
 
 ## Hallazgos — auditoría del 21 de octubre de 2026
 
