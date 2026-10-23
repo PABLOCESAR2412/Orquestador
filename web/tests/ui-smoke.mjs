@@ -1021,7 +1021,9 @@ try {
     await page.locator('.sidebar-conv[aria-label^="Prueba de flujo"]').click();
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Prueba de mensaje");
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
-    await page.getByText("Mensaje recibido", { exact: true }).waitFor();
+    // El fixture acumula en el historial dos respuestas idénticas («Mensaje recibido»). La espera
+    // solo necesita ver que existe la primera; sin first(), el modo estricto revienta al segundo.
+    await page.getByText("Mensaje recibido", { exact: true }).first().waitFor();
     assert.equal(await page.locator('section.tl-accion-git-actual').count(), 0, "las acciones de turnos previos quedan en el historial plegado");
     if (videoPathPrueba) {
       await page.locator('input[type="file"]').setInputFiles(videoPathPrueba);
