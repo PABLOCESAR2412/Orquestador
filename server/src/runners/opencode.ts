@@ -5,9 +5,16 @@ import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
 import { esVariableReservada, SECRETOS_SOLO_SERVIDOR } from "../secretos";
 import type { ImagenAgente } from "../chat-adjuntos";
 import { config } from "../config";
-import { actividadDelGrupo } from "./actividad-grupo";
+import { iniciarVigilante, leerConTope } from "./proteccion";
 import type { ServidorMcpAgente } from "../conexiones-mcp";
 import { configuracionOpenCodeMcp } from "../conexiones-mcp";
+
+// Tope de memoria para la salida del agente: 16 MB en total (arranque de 1 MB con los eventos
+// de sesión, cola de 15 MB con el detalle del fallo; el medio se recorta).
+const TOPE_SALIDA_AGENTE = 16 * 1024 * 1024;
+const CABEZA_SALIDA_AGENTE = 1 * 1024 * 1024;
+const MARCA_SALIDA_AGENTE = "\n[… salida recortada para no crecer en RAM — se conserva arranque y cola …]\n";
+const TOPE_STDERR_AGENTE = 1024 * 1024;
 
 // Id de sesión de OpenCode. Empieza por letra o cifra: así nunca se lee como una opción de la CLI.
 const PATRON_SESION = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
@@ -249,7 +256,7 @@ function terminarGrupo(pgid: number) {
 }
 
 // Lee una tubería línea a línea mientras el proceso sigue corriendo.
-// Devuelve todo el contenido al terminar.
+// Devuelve todo el contenido al terminar, con un tope de RAM que conserva el arranque y la cola.
 async function leerLineas(
   flujo: ReadableStream<Uint8Array>,
   alLeerLinea: (linea: string) => void,
@@ -263,7 +270,14 @@ async function leerLineas(
     if (done) break;
     const texto = decodificador.decode(value, { stream: true });
     todo += texto;
+    if (todo.length > TOPE_SALIDA_AGENTE) {
+      todo = todo.slice(0, CABEZA_SALIDA_AGENTE) + MARCA_SALIDA_AGENTE + todo.slice(-(TOPE_SALIDA_AGENTE - CABEZA_SALIDA_AGENTE));
+    }
     pendiente += texto;
+    // Una línea sin fin (un JSON gigante) tampoco puede crecer sin tope.
+    if (pendiente.length > TOPE_STDERR_AGENTE) {
+      pendiente = MARCA_SALIDA_AGENTE + pendiente.slice(-TOPE_STDERR_AGENTE);
+    }
     let corte = pendiente.indexOf("\n");
     while (corte !== -1) {
       alLeerLinea(pendiente.slice(0, corte));
@@ -442,22 +456,13 @@ async function ejecutarOpenCode(opts: {
   });
   const monitorSubagentes = vigilarSubagentes(opts.subagentesTracePath, opts.onSubagente);
   const timer = opts.timeoutMs === null ? null : setTimeout(() => terminarGrupo(proc.pid), opts.timeoutMs ?? 120_000);
-  // Vigilante de actividad: el reloj se reinicia con cada línea del agente. Si se cierra por
-  // silencio, la ejecución falla con un mensaje claro en vez de retener el slot para siempre.
-  let ultimaActividad = Date.now();
-  let muertoPorSilencio = false;
-  let actividadAnterior = actividadDelGrupo(proc.pid);
-  const vigilante =
-    opts.tiempoSinActividadMs && opts.tiempoSinActividadMs > 10_000
-      ? setInterval(() => {
-          const actividad = actividadDelGrupo(proc.pid);
-          if (actividad !== null && actividad !== actividadAnterior) ultimaActividad = Date.now();
-          actividadAnterior = actividad;
-          if (Date.now() - ultimaActividad < (opts.tiempoSinActividadMs ?? 0)) return;
-          muertoPorSilencio = true;
-          terminarGrupo(proc.pid);
-        }, 15_000)
-      : null;
+  // Vigilante de actividad compartido con codex: el reloj se reinicia con cada línea del agente.
+  // Si se corta por silencio, la ejecución falla con un mensaje claro en vez de retener el slot.
+  const vigilante = iniciarVigilante({
+    pid: proc.pid,
+    tiempoSinActividadMs: opts.tiempoSinActividadMs,
+    cortar: () => terminarGrupo(proc.pid),
+  });
   // Al terminar el agente, se cierra lo que quedó de su grupo (procesos en segundo plano). Así nada
   // sigue escribiendo en la carpeta de trabajo después de la ejecución, y las tuberías se cierran.
   void proc.exited.then(() => terminarGrupo(proc.pid));
@@ -478,7 +483,7 @@ async function ejecutarOpenCode(opts: {
 
   let sesionAvisada: string | null = null;
   const alLeerLinea = (linea: string) => {
-    ultimaActividad = Date.now();
+    vigilante.patada();
     let ev: OpenCodeEvent | undefined;
     try {
       ev = JSON.parse(linea) as OpenCodeEvent;
@@ -512,21 +517,21 @@ async function ejecutarOpenCode(opts: {
     [stdout, stderr, code] = await Promise.race([
       Promise.all([
         leerLineas(proc.stdout, alLeerLinea),
-        new Response(proc.stderr).text(),
+        leerConTope(proc.stderr, TOPE_STDERR_AGENTE),
         proc.exited,
       ]),
       aborted,
     ]);
   } finally {
     if (timer) clearTimeout(timer);
-    if (vigilante) clearInterval(vigilante);
+    vigilante.detener();
     if (onAbort) opts.signal?.removeEventListener("abort", onAbort);
     monitorSubagentes.cerrar();
   }
 
   const events = parseEvents(stdout);
 
-  if (muertoPorSilencio) {
+  if (vigilante.silenciado()) {
     throw new ErrorAgente(
       `El agente no emitió ninguna línea en ${Math.round(((opts.tiempoSinActividadMs as number) ?? 0) / 60_000)} minutos, así que se cerró para liberar la tarea. Puedes reanudarla para retomar la sesión o cancelarla en la tarjeta.`,
       "",
