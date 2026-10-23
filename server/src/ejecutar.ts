@@ -639,8 +639,11 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     if (esErrorServidor || esRateLimitTransitorio) {
       // Las esperas suben con cada intento: un corte de segundos se resuelve con la primera;
       // una saturación más larga con las siguientes. En total el proveedor tiene ~1,5 min de
-      // margen antes de que el fallo llegue al usuario.
-      const esperas = esRateLimitTransitorio ? [2_500, 15_000, 45_000] : [1_200, 10_000, 30_000];
+      // margen antes de que el fallo llegue al usuario. TELO_REINTENTO_ESPERAS_MS (lista separada
+      // por comas, en ms) permite a las pruebas acortarlas sin tocar el comportamiento real.
+      const esperas = process.env.TELO_REINTENTO_ESPERAS_MS
+        ? process.env.TELO_REINTENTO_ESPERAS_MS.split(",").map(Number).filter((n) => Number.isFinite(n) && n >= 0)
+        : esRateLimitTransitorio ? [2_500, 15_000, 45_000] : [1_200, 10_000, 30_000];
       let transitorio = true;
       for (const espera of esperas) {
         await Bun.sleep(espera);
