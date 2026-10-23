@@ -20,7 +20,7 @@ La primera instalación de este protocolo requiere una actualización manual con
 
 El respaldo usa la misma pausa y no publica una copia parcial. Si un proceso termina con SIGKILL, puede quedar `.git/telo-mantenimiento`: la API deja de bloquear a los 30 minutos, pero las herramientas conservan la marca y posponen operaciones. Para recuperarlo, un administrador debe comprobar que los servicios de despliegue/respaldo están inactivos y que `flock -n .git/telo-operacion.lock true` obtiene el candado; solo entonces retirar el directorio vacío con `rmdir .git/telo-mantenimiento` y repetir la operación. No se roba una marca existente.
 
-Cuando cambió `server/` y hay ejecuciones en curso, el reinicio queda para el primer ciclo libre y ese mismo ciclo la interfaz no se recompila: interfaz y servidor avanzan juntos, de modo que el navegador nunca habla con un servidor anterior a la interfaz (la mezcla produjo el fallo del historial «Cannot read properties of undefined (reading 'find')»). Los cambios que solo tocan `web/` se despliegan en el acto, sin reiniciar el servicio.
+Servidor e interfaz avanzan juntos tras el drenado, también en cambios que solo tocan `web/`. No se cambia el checkout ni se instala mientras haya trabajos en curso. Esto amplía la protección de #121 con una pausa efectiva de admisión y un único candado para despliegue y respaldo.
 
 ## Respaldos en Cloudflare R2
 
