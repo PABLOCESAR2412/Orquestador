@@ -10,3 +10,4 @@ web/test-visual-runner.mjs
 server/tests/.test-data-*
 .codex-pr-prep/
 .codex-remote-attachments/
+*.tsbuildinfo

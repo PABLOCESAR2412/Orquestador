@@ -3,6 +3,8 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Resiliencia del cliente: las peticiones GET reintentan ante 502/503/504 o conexión caída mientras el servicio se reinicia, sin duplicar mutaciones; los tests del guard de bases ya no dependen de dónde viva el repositorio", "pr": 126 },
+    { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Seguimiento: cierra el pendiente del parche sprintf-js (no hay versión oficial corregida y el advisory se retiró), sincroniza el bullet de avisos a PR 118 e ignora tsbuildinfo", "pr": 125 },
     { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Humo: la espera de la respuesta del asistente admite que el historial acumule dos respuestas idénticas, sin strict mode", "pr": 124 },
     { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Seguridad de notificaciones: restringe endpoints Push a proveedores conocidos, bloquea redirecciones y limita las suscripciones por dispositivo", "pr": 123 },
     { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Auditoría: cierra fallos de secretos, alcance, sesiones, streaming y Git; páginas de mensajes, previews HTML aisladas, avisos por dispositivo y respaldos con drenado seguro", "pr": 122 },
