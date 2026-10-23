@@ -123,6 +123,15 @@ Entrega: [PR #104](https://github.com/PABLOCESAR2412/Orquestador/pull/104). Fusi
 
 Commit a06b9bf: 55 suites (425 aprobadas, 1 fallo por base compartida, 61 omisiones). Suite aislada: 8 aprobadas. Web: 30 casos, build y Playwright 390/1440 px. Se reprodujeron sesión heredada tras logout, PATCH parcial, omisión de prefijos .opencode y bloqueo CSP del HTML. El respaldo omitía entregables. A07/A08 se detectaron por lectura de código. La suite defectuosa escribió fixtures en la base local: no se tocó el VPS ni se restauraron filas automáticamente.
 
+## Detener en caliente — correcciones de uso reportadas (PR #118)
+
+- [x] Un microcorte del proveedor ya no rinde la tarea a mitad del trabajo. El 5xx/429 tenía un solo reintento a los 1,2 s: «Unexpected server error» repetido dejaba la tarea en «Requiere corrección» y el usuario tenía que decir «siga». Ahora hay hasta 3 reintentos con esperas crecientes (5xx: 1,2/10/30 s; 429: 2,5/15/45 s) y cada intento retoma la sesión ya abierta para continuar donde quedó; si se agota, el mensaje final lo dice («Telo lo reintentó automáticamente…») y remite a «Seguir» u otro modelo. La mejora cubre tareas y turnos de chat porque comparten motor de ejecución.
+- [x] «Detener» recupera una ocupación huérfana. Si el chat figuraba respondiendo sin turno ni tarea viva (cierre raro del runner), la ruta devolvía «not_running» sin efecto; ahora libera la ocupación y publica el estado terminado. El botón sigue accesible mientras la petición está en curso. El abort del runner revisado línea a línea era correcto (grupo `setsid` por proceso); lo que faltaba era este estado.
+- [x] Los avisos de archivos y adjuntos ausentes dicen qué pasó. Por la vía de mutaciones caían al mensaje genérico de 404 que empuja a recargar la página; ahora nombran el elemento (el agente pudo mover o borrar el entregable) y el texto genérico deja de culpar a la página. PR #115.
+- [x] La voz se promete solo si la herramienta responde. La instrucción del chat y la skill de video piden verificar el TTS/MCP de voz antes de ofrecer narración; si no existe, se anuncia en la primera respuesta que irá sin voz, sin fingir resultados ni llamar servicios de pago.
+- [x] Verificación: typechecks de servidor y web (exit 0); `cuota.test.ts` +1 (el envoltorio de reintentos no rompe la clasificación transitoria), `chat-turnos.test.ts` +1 (libera ocupación huérfana sin procesos, corre en cualquier entorno); par de ficheros 42 pass/0 fail; suite completa del servidor en el CI del PR.
+- [ ] Si el aviso genérico de 404 vuelve a aparecer, anotar qué botón lo produjo (abrir un MP4/PDF, enviar mensaje…): el diagnóstico no identificó la ruta exacta y con ese dato se cierra el caso.
+
 ## Rediseño de borradores — sobrevivir a envíos interrumpidos (tramo 3)
 
 Entrega: [PR #117](https://github.com/PABLOCESAR2412/Orquestador/pull/117). Segundo PR del tramo 3; alcance acordado con el usuario: el borrador de envío no se pierde aunque la app muera (recarga o cierre) entre vaciar el compositor y que el servidor confirme el mensaje.
@@ -979,3 +988,5 @@ Implementación: PR #107 https://github.com/PABLOCESAR2412/Orquestador/pull/107.
 - [x] Ajustes: retirada la etiqueta Datos del servidor y la hora junto a las pestañas, con sus estilos sin uso. Sin cambios en las métricas. Validación: compilación web. PR #107.
 
 - [x] Ejecuciones recientes: ancho fijo de columnas, nombres/encabezados con salto de línea y proveedor separado; contención del desplazamiento horizontal en tablas. Playwright con nombre de modelo largo confirma tabla dentro del panel y página sin desborde a 390/1440 px; build web aprobado. Datos y cálculos sin cambios. PR #107.
+
+
