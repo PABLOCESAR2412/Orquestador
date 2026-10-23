@@ -973,6 +973,13 @@ chat.post("/conversations/:id/detener", c => {
     const outcome = cancelTask(tarea.id);
     return c.json({ outcome }, outcome === "cancelling" ? 202 : 200);
   }
+  // Nada activo registrado, pero el chat figura ocupado: la ocupación quedó huérfana (p. ej. el
+  // runner terminó sin avisar). Se libera para que el chat no aparezca respondiendo para siempre.
+  if (conversacionEnCurso(conv.id)) {
+    liberarConversacion(conv.id);
+    publicarChat(conv.id, "terminado");
+    return c.json({ outcome: "liberado" });
+  }
   return c.json({ outcome: "not_running" });
 });
 

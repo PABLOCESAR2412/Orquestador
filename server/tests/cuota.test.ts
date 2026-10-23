@@ -114,6 +114,22 @@ describe("clasificación de cuota agotada", () => {
     expect(esErrorTransitorioDelProveedor(new Error("fallo local 503"))).toBe(false);
   });
 
+  test("el mensaje envuelto de reintentos agotados no rompe la clasificación", () => {
+    const envuelto = (statusCode: number) => {
+      const base = new ErrorAgente(
+        "opencode salió con código 1",
+        JSON.stringify({ type: "error", error: { data: { statusCode, message: `Error ${statusCode}` } } }),
+      );
+      return new ErrorAgente(
+        `${base.message} Telo lo reintentó automáticamente 3 veces con esperas de hasta 30 s y siguió fallando. Puedes usar «Seguir» (o responder «siga») para retomar la misma sesión.`,
+        base.detalleProveedor,
+      );
+    };
+    expect(esErrorTransitorioDelProveedor(envuelto(503))).toBe(true);
+    expect(esErrorTransitorioDelProveedor(envuelto(429))).toBe(true);
+    expect(esErrorTransitorioDelProveedor(envuelto(401))).toBe(false);
+  });
+
   test("conserva el estado HTTP aunque el evento del proveedor tenga metadatos extensos", () => {
     const evento = {
       type: "error",

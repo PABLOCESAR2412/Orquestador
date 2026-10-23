@@ -148,6 +148,39 @@ Entrega: [PR #104](https://github.com/PABLOCESAR2412/Orquestador/pull/104). Fusi
 
 Commit a06b9bf: 55 suites (425 aprobadas, 1 fallo por base compartida, 61 omisiones). Suite aislada: 8 aprobadas. Web: 30 casos, build y Playwright 390/1440 px. Se reprodujeron sesión heredada tras logout, PATCH parcial, omisión de prefijos .opencode y bloqueo CSP del HTML. El respaldo omitía entregables. A07/A08 se detectaron por lectura de código. La suite defectuosa escribió fixtures en la base local: no se tocó el VPS ni se restauraron filas automáticamente.
 
+## Despliegue que no separa interfaz y servidor — tramo 3
+
+Entrega: [PR #121](https://github.com/PABLOCESAR2412/Orquestador/pull/121).
+
+- [x] **Los cinco minutos no rompen el contrato.** Mientras haya ejecuciones en curso, `actualizar.sh` pospone el reinicio del servidor ciclo tras ciclo; antes la interfaz nueva quedaba igual servida ante un servidor anterior y el shell nuevo rompía con «Cannot read properties of undefined (reading 'find')». Ahora el script decide antes de compilar: si cambió `server/` y hay ejecuciones, trae el código pero no recompila la interfaz; las dos partes avanzan en el primer ciclo libre.
+- [x] Los cambios que solo tocan la interfaz se siguen despliegando al instante (no tocan el contrato del servidor); el health check y la vuelta atrás quedan como estaban. Nota actualizada en `deploy/README.md`.
+- Pruebas: `bash -n` válido y revisión de los cuatro casos (sin cambios, solo web, web+server con ejecuciones, web+server libres). La verificación final es operativa en el VM: al fusionar, el siguiente ciclo libre despliega server+web juntos.
+
+## Historial que aguanta un servidor desactualizado — tramo 3
+
+Entrega: [PR #120](https://github.com/PABLOCESAR2412/Orquestador/pull/120).
+
+- [x] **Blinda el shell ante la mezcla de versiones.** El fallo de producción «Cannot read properties of undefined (reading 'find')» venía de pedir al shell la página del historial a un servidor anterior al paginado: el servidor viejo ignora `?limite=` y contesta el array plano, y el shell nuevo leía `.conversations` sobre él. `normalizaPaginaConversaciones` envuelve el array con `siguiente=null` para que ambas formen vistas; el error desaparece aunque el despliegue renueve interfaz y servidor en momentos distintos (el reinicio se pospone mientras haya agentes en curso).
+- Pruebas: `web/tests/pagina-conversaciones.test.ts` (+3: página intacta, array plano envuelto, array vacío). Verificación local: `tsc` exit 0; web 51 pass/0 fail; build y humo PASS.
+
+## Selector de modelos con buscador — tramo 3
+
+Entrega: [PR #119](https://github.com/PABLOCESAR2412/Orquestador/pull/119).
+
+- [x] **Buscador dentro de la lista.** El selector de modelos estrena la fila de búsqueda del mock (lupa + campo `type="search"` que ya estaba en los estilos sin uso): escribes y el catálogo se filtra en vivo por nombre, identificador, familia o nombre visible del proveedor, sin tildes ni mayúsculas de por medio («config» halla «Configuración»). Los resultados se agrupan por proveedor; «Tus modelos», «Predeterminado» y el aviso de inteligencia se esconden mientras escribes, y la sección Codex también filtra.
+- [x] **Proveedor visible en cada fila.** Todas las filas, incluidas las de Codex, llevan un chip con el proveedor. El catálogo grande queda con tope de 120 resultados y una nota lo avisa cuando se trunca.
+- [x] **Limpieza y estado vacío.** El botón ✕ restaura la vista completa y cuando nada coincide se dice «Sin resultados para «…»» en lugar de dejar la lista sin explicar.
+- Pruebas: `web/tests/busca-modelos.test.ts` (+8: normalización sin tildes, coincidencia por campo y agrupado que conserva el orden). Humo: escribir «other» deja solo «Other Test» (chip «Groq API», contador «1 modelo disponible»), «inexistente» muestra el estado vacío y el ✕ restaura «Tus modelos». Web 48 pass/0 fail; `tsc` exit 0; build y humo PASS.
+
+## Detener en caliente — correcciones de uso reportadas (PR #118)
+
+- [x] Un microcorte del proveedor ya no rinde la tarea a mitad del trabajo. El 5xx/429 tenía un solo reintento a los 1,2 s: «Unexpected server error» repetido dejaba la tarea en «Requiere corrección» y el usuario tenía que decir «siga». Ahora hay hasta 3 reintentos con esperas crecientes (5xx: 1,2/10/30 s; 429: 2,5/15/45 s) y cada intento retoma la sesión ya abierta para continuar donde quedó; si se agota, el mensaje final lo dice («Telo lo reintentó automáticamente…») y remite a «Seguir» u otro modelo. La mejora cubre tareas y turnos de chat porque comparten motor de ejecución.
+- [x] «Detener» recupera una ocupación huérfana. Si el chat figuraba respondiendo sin turno ni tarea viva (cierre raro del runner), la ruta devolvía «not_running» sin efecto; ahora libera la ocupación y publica el estado terminado. El botón sigue accesible mientras la petición está en curso. El abort del runner revisado línea a línea era correcto (grupo `setsid` por proceso); lo que faltaba era este estado.
+- [x] Los avisos de archivos y adjuntos ausentes dicen qué pasó. Por la vía de mutaciones caían al mensaje genérico de 404 que empuja a recargar la página; ahora nombran el elemento (el agente pudo mover o borrar el entregable) y el texto genérico deja de culpar a la página. PR #115.
+- [x] La voz se promete solo si la herramienta responde. La instrucción del chat y la skill de video piden verificar el TTS/MCP de voz antes de ofrecer narración; si no existe, se anuncia en la primera respuesta que irá sin voz, sin fingir resultados ni llamar servicios de pago.
+- [x] Verificación: typechecks de servidor y web (exit 0); `cuota.test.ts` +1 (el envoltorio de reintentos no rompe la clasificación transitoria), `chat-turnos.test.ts` +1 (libera ocupación huérfana sin procesos, corre en cualquier entorno); par de ficheros 42 pass/0 fail; suite completa del servidor en el CI del PR.
+- [ ] Si el aviso genérico de 404 vuelve a aparecer, anotar qué botón lo produjo (abrir un MP4/PDF, enviar mensaje…): el diagnóstico no identificó la ruta exacta y con ese dato se cierra el caso.
+
 ## Rediseño de borradores — sobrevivir a envíos interrumpidos (tramo 3)
 
 Entrega: [PR #117](https://github.com/PABLOCESAR2412/Orquestador/pull/117). Segundo PR del tramo 3; alcance acordado con el usuario: el borrador de envío no se pierde aunque la app muera (recarga o cierre) entre vaciar el compositor y que el servidor confirme el mensaje.
@@ -1004,3 +1037,5 @@ Implementación: PR #107 https://github.com/PABLOCESAR2412/Orquestador/pull/107.
 - [x] Ajustes: retirada la etiqueta Datos del servidor y la hora junto a las pestañas, con sus estilos sin uso. Sin cambios en las métricas. Validación: compilación web. PR #107.
 
 - [x] Ejecuciones recientes: ancho fijo de columnas, nombres/encabezados con salto de línea y proveedor separado; contención del desplazamiento horizontal en tablas. Playwright con nombre de modelo largo confirma tabla dentro del panel y página sin desborde a 390/1440 px; build web aprobado. Datos y cálculos sin cambios. PR #107.
+
+

@@ -1,3 +1,5 @@
+import { normalizaPaginaConversaciones } from "./lib/pagina-conversaciones";
+
 export type Conversation = {
   ultimo_rol?: string | null;
   requiere_continuar?: boolean;
@@ -781,9 +783,11 @@ export const api = {
   listConversations: () => request<Conversation[]>("/api/conversations"),
   // Historial paginado: la primera tanda (o ?antes= con el cursor de la previa) devuelve
   // limite conversaciones por la clave de orden del servidor; siguiente=null cuando no hay más.
-  listConversationsPaginadas: (limite: number, antes: string | null) =>
-    request<PaginaConversaciones>(
-      `/api/conversations?limite=${limite}${antes ? `&antes=${antes}` : ""}`,
+  listConversationsPaginadas: async (limite: number, antes: string | null) =>
+    normalizaPaginaConversaciones(
+      await request<PaginaConversaciones | Conversation[]>(
+        `/api/conversations?limite=${limite}${antes ? `&antes=${antes}` : ""}`,
+      ),
     ),
   createConversation: (projectId?: string | null, title?: string) =>
     request<Conversation>("/api/conversations", {

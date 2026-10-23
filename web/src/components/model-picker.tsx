@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from "reac
 import { useQuery } from "@tanstack/react-query";
 import { api, type ModeloCodex, type ModelInfo } from "../api";
 import { formatPrice, nombreProveedor } from "../lib/model";
+import { coincideModelo, agruparPorProveedor, normalizaBusca } from "../lib/busca-modelos";
 import { guardarPreferenciasSelector, leerPreferenciasSelector, normalizarIdAnalisis, type PreferenciasSelectorModelos } from "../lib/model-picker-preferencias";
 import { CostMeter, EffortControl, useDialogo } from "./controls";
 import "../styles-picker.css";
@@ -71,6 +72,8 @@ export function ModelPicker({
     retry: false,
   });
   const [onlyFree, setOnlyFree] = useState(false);
+  const [textoBusca, setTextoBusca] = useState("");
+  const buscando = textoBusca.trim().length > 0;
   const [preferencias, setPreferencias] = useState<PreferenciasSelectorModelos>(leerPreferenciasSelector);
   const [draftId, setDraftId] = useState(currentId);
   const [draftEffort, setDraftEffort] = useState(currentEffort);
@@ -179,6 +182,28 @@ export function ModelPicker({
     [groups, destacados],
   );
 
+  // Resultados del buscador: coinciden por nombre, id, familia o proveedor visible;
+  // con tope MAX_RESULTS para no montar miles de filas en un catálogo grande.
+  const hallazgos = useMemo(() => {
+    if (!buscando) return null;
+    const lista = candidatos.filter((m) => coincideModelo(m, textoBusca));
+    return { total: lista.length, visibles: lista.slice(0, MAX_RESULTS) };
+  }, [candidatos, textoBusca, buscando]);
+  const gruposBusca = useMemo(
+    () => (hallazgos ? agruparPorProveedor(hallazgos.visibles) : []),
+    [hallazgos],
+  );
+  const ocultos = hallazgos ? hallazgos.total - hallazgos.visibles.length : 0;
+  const listadosVisibles = hallazgos ? hallazgos.visibles.length : listados;
+
+  // La sección Codex también responde al buscador: sus filas se filtran mientras escribes.
+  const codexVisibles = useMemo(() => {
+    if (!buscando || !catalogoCodex.data) return catalogoCodex.data?.models ?? [];
+    return catalogoCodex.data.models.filter((modelo) =>
+      coincideModelo({ name: modelo.name, id: `codex/${modelo.id}`, group: "Codex", provider: "codex" }, textoBusca),
+    );
+  }, [buscando, catalogoCodex.data, textoBusca]);
+
   // Fila de un modelo: nombre con "✓ Activo" si es el actual; precio arriba y costo abajo.
   const fila = (m: ModelInfo) => {
     const fijado = preferencias.fijados.includes(m.id);
@@ -189,6 +214,7 @@ export function ModelPicker({
           <span className="picker-main">
             <span className="picker-nombre-linea">
               <span className="picker-name">{m.name}</span>
+              <span className="picker-proveedor-chip">{nombreProveedor(m.provider)}</span>
               {esActual(m) && <span className="picker-activo">✓ Activo</span>}
             </span>
             <span className="picker-id">{m.id}</span>
@@ -226,10 +252,35 @@ export function ModelPicker({
     <>
       <div className="scrim" onClick={cerrar} />
       <div className={`picker${conEsfuerzo ? " picker-con-esfuerzo" : ""}`} role="dialog" aria-modal="true" aria-label="Elegir modelo" ref={dialogRef}>
-        <div className="picker-barra">
-          <span className="picker-conteo" aria-live="polite">
-            {!cargando && !error && (listados === 1 ? "1 modelo disponible" : `${listados} modelos disponibles`)}
-          </span>
+        <div className="picker-head">
+          <label className="picker-buscar">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input
+              className="picker-search"
+              type="search"
+              placeholder="Buscar modelos…"
+              aria-label="Buscar modelos por nombre o proveedor"
+              autoComplete="off"
+              value={textoBusca}
+              onChange={(e) => setTextoBusca(e.target.value)}
+            />
+            {buscando && (
+              <button
+                type="button"
+                className="picker-limpiar"
+                aria-label="Limpiar búsqueda"
+                title="Limpiar búsqueda"
+                onClick={() => setTextoBusca("")}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6 6 18" />
+                </svg>
+              </button>
+            )}
+          </label>
           <button
             type="button"
             className={`pill${onlyFree ? " on" : ""}`}
@@ -238,6 +289,12 @@ export function ModelPicker({
           >
             Solo gratis
           </button>
+        </div>
+
+        <div className="picker-barra">
+          <span className="picker-conteo" aria-live="polite">
+            {!cargando && !error && (listadosVisibles === 1 ? "1 modelo disponible" : `${listadosVisibles} modelos disponibles`)}
+          </span>
         </div>
 
         <div className="picker-list">
@@ -255,25 +312,27 @@ export function ModelPicker({
           {!cargando && inteligencia.data?.configurado && !inteligencia.data.disponible && (
             <p className="picker-proveedor-nota picker-aa-nota">Artificial Analysis no respondió. Puedes seguir eligiendo modelos sin esa puntuación.</p>
           )}
-          {destacados.length > 0 && (
+          {destacados.length > 0 && !buscando && (
             <section className="picker-proveedor picker-tus-modelos" aria-labelledby="picker-tus-modelos">
               <h3 className="group-title" id="picker-tus-modelos">Tus modelos</h3>
               {preferencias.fijados.some((id) => candidatos.some((m) => m.id === id)) && <p className="picker-proveedor-nota">Anclados y más usados</p>}
               {destacados.map((m) => <div key={m.id} className="picker-modelo">{fila(m)}</div>)}
             </section>
           )}
-          <button
-            type="button"
-            className="picker-item"
-            aria-current={currentId === null || undefined}
-            aria-pressed={conEsfuerzo ? draftId === null : undefined}
-            onClick={() => seleccionar(null)}
-          >
-            <span className="picker-main">
-              <span className="picker-name">Predeterminado</span>
-              <span className="picker-id">Lo que elija el servidor</span>
-            </span>
-          </button>
+          {!buscando && (
+            <button
+              type="button"
+              className="picker-item"
+              aria-current={currentId === null || undefined}
+              aria-pressed={conEsfuerzo ? draftId === null : undefined}
+              onClick={() => seleccionar(null)}
+            >
+              <span className="picker-main">
+                <span className="picker-name">Predeterminado</span>
+                <span className="picker-id">Lo que elija el servidor</span>
+              </span>
+            </button>
+          )}
 
           {cargando && (
             <p className="picker-cargando" role="status">
@@ -295,13 +354,26 @@ export function ModelPicker({
             </div>
           )}
 
-          {!cargando && !error && groups.length === 0 && (
+          {!cargando && !error && buscando && hallazgos && hallazgos.total === 0 && codexVisibles.length === 0 && (
+            <p className="muted-note pad">
+              Sin resultados para «{textoBusca.trim()}». Prueba con otro nombre de modelo o de proveedor.
+            </p>
+          )}
+
+          {!cargando && !error && !buscando && groups.length === 0 && (
             <p className="muted-note pad">Ningún modelo disponible en este momento.</p>
           )}
 
           {!cargando &&
             !error &&
-            groups.map(([proveedor, familias]) => (
+            (buscando
+              ? gruposBusca.map(([proveedor, items]) => (
+                  <section key={proveedor} className="picker-proveedor">
+                    <h3 className="group-title">{nombreProveedor(proveedor)}</h3>
+                    {items.map((m) => <div key={m.id} className="picker-modelo">{fila(m)}</div>)}
+                  </section>
+                ))
+              : groups.map(([proveedor, familias]) => (
               <section key={proveedor} className="picker-proveedor">
                 <h3 className="group-title">{nombreProveedor(proveedor)}</h3>
                 {familias.map(([familia, items]) => (
@@ -314,9 +386,15 @@ export function ModelPicker({
                   </div>
                 ))}
               </section>
-            ))}
+            )))}
 
-          {!cargando && !error && codexConectado && (
+          {!cargando && !error && buscando && ocultos > 0 && hallazgos && (
+            <p className="picker-busca-ocultos">
+              Se muestran {hallazgos.visibles.length} de {hallazgos.total}. Escribe más para afinar la lista.
+            </p>
+          )}
+
+          {!cargando && !error && codexConectado && (!buscando || codexVisibles.length > 0) && (
             <section className="picker-proveedor" aria-labelledby="picker-codex-titulo">
               <h3 id="picker-codex-titulo" className="group-title">Cuenta Codex</h3>
               <p className="picker-proveedor-nota">
@@ -327,7 +405,7 @@ export function ModelPicker({
                     : "Modelos de tu sesión. Telo todavía ejecuta agentes con OpenCode; esta lista es informativa."}
               </p>
               {catalogoCodex.isPending && <p className="picker-cargando" role="status">Consultando modelos de Codex…</p>}
-              {catalogoCodex.data?.models.map((modelo) => (
+              {codexVisibles.map((modelo) => (
                 <FilaCodex
                   key={modelo.id}
                   modelo={modelo}
@@ -401,6 +479,7 @@ function FilaCodex({
       <span className="picker-main">
         <span className="picker-nombre-linea">
           <span className="picker-name">{modelo.name}</span>
+          <span className="picker-proveedor-chip">Codex</span>
           {esActual && <span className="picker-activo">✓ Activo</span>}
         </span>
         <span className="picker-id">{modelInfo.id}</span>

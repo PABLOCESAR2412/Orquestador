@@ -551,6 +551,18 @@ try {
     assert.match(await selectorModelo.locator(".picker-tus-modelos").innerText(), /Llama Test/);
     assert.match(await selectorModelo.locator(".picker-tus-modelos").innerText(), /Google Test/);
     assert.equal(await selectorModelo.locator(".picker-intelligence").filter({ hasText: "AA 42,5" }).count(), 1);
+    // El buscador filtra el catálogo en vivo, esconde "Tus modelos" y marca el proveedor en cada fila.
+    const campoBusca = selectorModelo.locator(".picker-search");
+    await campoBusca.fill("other");
+    await selectorModelo.locator(".picker-item").filter({ hasText: "Other Test" }).waitFor();
+    assert.match(await selectorModelo.locator(".picker-conteo").innerText(), /1 modelo/);
+    assert.equal(await selectorModelo.locator(".picker-item").filter({ hasText: "Llama Test" }).count(), 0);
+    assert.equal(await selectorModelo.locator(".picker-proveedor-chip").filter({ hasText: "Groq API" }).count(), 1);
+    await campoBusca.fill("inexistente");
+    assert.equal(await selectorModelo.locator(".picker-item").count(), 0);
+    assert.match(await selectorModelo.locator(".muted-note").innerText(), /Sin resultados/);
+    await selectorModelo.locator(".picker-limpiar").click();
+    await selectorModelo.locator(".picker-tus-modelos").waitFor();
     const anclarGoogle = selectorModelo.getByRole("button", { name: "Anclar Google Test en favoritos", exact: true });
     await anclarGoogle.click();
     assert.equal(await selectorModelo.getByRole("button", { name: "Quitar Google Test de favoritos", exact: true }).getAttribute("aria-pressed"), "true");

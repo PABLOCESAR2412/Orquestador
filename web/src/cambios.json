@@ -4,6 +4,10 @@
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
     { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Auditoría: cierra fallos de secretos, alcance, sesiones, streaming y Git; páginas de mensajes, previews HTML aisladas, avisos por dispositivo y respaldos con drenado seguro", "pr": null },
+    { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Despliegue: mientras haya ejecuciones en curso la interfaz nueva no se recompila, para que interfaz y servidor avancen juntos", "pr": 121 },
+    { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Historial: el shell aguanta el array plano de un servidor anterior al paginado, sin caer con «Cannot read properties of undefined»", "pr": 120 },
+    { "fecha": "2026-10-23", "tipo": "mediano", "titulo": "Selector de modelos: buscador en la lista que filtra por nombre, familia o proveedor, agrupa resultados y muestra el proveedor en cada fila", "pr": 119 },
+    { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Chat en caliente: reintentos automáticos ante microcortes del proveedor, detener recupera ocupaciones huérfanas y avisos de archivos ausentes sin empujar a recargar", "pr": 118 },
     { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Borradores: el texto vuelve al compositor si la app muere justo tras enviar y el mensaje no llegó a guardarse", "pr": 117 },
     { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Historial: paginación en el servidor con cursor (?limite=&antes=) y «Cargar anteriores» en el muelle; la búsqueda cubre todo el historial", "pr": 116 },
     { "fecha": "2026-10-22", "tipo": "grande", "titulo": "Estabilidad del servidor: salida del agente con tope de RAM, streaming de pdf/imagen/video, skills sin enlaces simbólicos, vigilante y esfuerzo también en Codex, tope de arranque, alcance con archivos ignorados y reporte honesto con pruebas en fallo", "pr": 114 },

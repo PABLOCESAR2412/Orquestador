@@ -67,7 +67,7 @@ export const CONTRATO_EJECUCION = [
   "- Haz el cambio o investigación mínimos que resuelvan el objetivo, dentro del workspace y las autorizaciones recibidas.",
   "- Reportes y documentos: usa la carpeta de entregables y enlázalos. Solo van al repo por petición expresa. No prepares commit/PR ni muevas documentos existentes sin autorización.",
   "- Para investigar, busca en Internet y respalda afirmaciones con enlaces directos en Markdown. Usa materiales pertinentes (documentación, estudios, libros, videos, informes, datasets u otros), prioriza fuentes primarias fiables y atribuye autor/editor si está disponible; nunca inventes enlaces ni fuentes. Si no puedes consultar, dilo.",
-  "- Para imágenes, videos o voz, usa primero herramientas locales gratuitas o MCP configurados; no llames APIs que puedan cobrar. Si no puedes producir el formato, explica el límite sin fingir resultados ni usar proveedores de pago.",
+  "- Para imágenes, videos o voz, usa herramientas locales gratuitas o MCP configurados, no APIs de pago. Antes de prometer voz, verifica la herramienta; si falta, dilo y entrega el material sin voz.",
   "- Verifica el resultado y comunica evidencia observable, separando lo correcto, lo fallido y lo no probado; nunca inventes resultados.",
   "- Respeta el formato de fase: JSON para análisis/reportes y conversación natural para chats. En trabajos largos, da avances breves; no repitas planes ni muestres razonamiento privado.",
   "- Redacta en español la actividad visible y los avisos de progreso. Conserva sin traducir comandos, código, rutas, nombres propios y citas.",
@@ -629,24 +629,49 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     }
 
     // Ante fallo transitorio del servidor (HTTP 5xx) o rate limit transitorio (429 por RPM/TPM),
-    // intentamos un reintento breve con backoff antes de recurrir al respaldo o detener la tarea.
+    // reintentamos varias veces con esperas crecientes: los microcortes del proveedor no deben
+    // matar una tarea que va por la mitad. Cada intento retoma la sesión ya abierta para
+    // continuar desde donde quedó en lugar de repetir el trabajo hecho.
     const codigoHttp = codigoHttpDelProveedor(err);
     const esErrorServidor = codigoHttp !== null && codigoHttp >= 500 && codigoHttp <= 599;
     const esRateLimitTransitorio = codigoHttp === 429 && !esErrorDeCuota(err);
 
     if (esErrorServidor || esRateLimitTransitorio) {
-      await Bun.sleep(esRateLimitTransitorio ? 2500 : 1200);
-      if (!opts.signal?.aborted) {
+      // Las esperas suben con cada intento: un corte de segundos se resuelve con la primera;
+      // una saturación más larga con las siguientes. En total el proveedor tiene ~1,5 min de
+      // margen antes de que el fallo llegue al usuario. TELO_REINTENTO_ESPERAS_MS (lista separada
+      // por comas, en ms) permite a las pruebas acortarlas sin tocar el comportamiento real.
+      const esperas = process.env.TELO_REINTENTO_ESPERAS_MS
+        ? process.env.TELO_REINTENTO_ESPERAS_MS.split(",").map(Number).filter((n) => Number.isFinite(n) && n >= 0)
+        : esRateLimitTransitorio ? [2_500, 15_000, 45_000] : [1_200, 10_000, 30_000];
+      let transitorio = true;
+      for (const espera of esperas) {
+        await Bun.sleep(espera);
+        if (opts.signal?.aborted) { transitorio = false; break; }
         try {
           const parametros = baseParaModelo(opts.model, varianteInicial);
-          // El primer intento puede haber completado acciones antes del 429/5xx. Si el runner ya
+          // El intento anterior puede haber completado acciones antes del fallo. Si el runner ya
           // abrió una sesión, retómala y pide continuar desde el estado actual en vez de repetir.
           parametros.prompt = promptContinuacion(parametros.prompt, sesion !== null);
           const r = await ejecutarConRunner(opts.model, parametros);
           return terminar(r, opts.model, opts.variant ?? null);
         } catch (reintentoErr) {
           err = reintentoErr;
+          const codigo = codigoHttpDelProveedor(reintentoErr);
+          const sigueTransitorio = (codigo !== null && codigo >= 500 && codigo <= 599)
+            || (codigo === 429 && !esErrorDeCuota(reintentoErr));
+          if (!sigueTransitorio) { transitorio = false; break; }
         }
+      }
+      // Si se agotaron los reintentos y el fallo sigue siendo transitorio, el mensaje final debe
+      // decirlo: el usuario sabe que ya se esperó y decide entre «Seguir» (retoma la sesión) u
+      // otro modelo, en lugar de creer que la primera falla cerró el turno sin ninguna espera.
+      if (transitorio) {
+        const detalle = err instanceof ErrorAgente ? err.detalleProveedor : "";
+        err = new ErrorAgente(
+          `${err instanceof Error ? err.message : String(err)} Telo lo reintentó automáticamente ${esperas.length} veces con esperas de hasta ${Math.round(esperas[esperas.length - 1] / 1000)} s y siguió fallando. Puedes usar «Seguir» (o responder «siga») para retomar la misma sesión, o elegir otro modelo.`,
+          detalle,
+        );
       }
     }
 

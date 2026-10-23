@@ -245,7 +245,7 @@ function explicacionHttp(status: number): { causa: string; siguientePaso: string
     case 403:
       return { causa: "La cuenta conectada no tiene permiso para esta acción.", siguientePaso: "comprueba la cuenta, el repositorio y los permisos necesarios." };
     case 404:
-      return { causa: "La pantalla o el elemento solicitado ya no existe.", siguientePaso: "recarga la página y vuelve a abrir el elemento." };
+      return { causa: "Lo que pediste ya no está disponible en el servidor: pudo moverse, borrarse o haber terminado.", siguientePaso: "vuelve a abrir el elemento desde la lista de chats o tareas; si era un archivo del chat, pide al agente que lo genere otra vez." };
     case 409:
       return { causa: "El estado cambió y la acción ya no coincide con lo que está pendiente.", siguientePaso: "recarga la pantalla y revisa si la tarea o autorización ya se resolvió." };
     case 413:
@@ -654,6 +654,26 @@ export function errorText(err: unknown): string {
         return "Demasiados intentos. Espera 15 minutos antes de volver a intentar.";
       case "login_required":
         return "Tu sesión terminó. Vuelve a entrar.";
+    }
+    // Los códigos de archivos y adjuntos pueden llegar por mutaciones (abrir adjuntos, revisar
+    // entregables); sin su caso esta vista cae al aviso genérico de 404 que empuja a recargar sin motivo.
+    switch (err.code) {
+      case "attachment_not_found":
+        return "La imagen adjunta ya no está disponible (pudo limpiarse con el chat). Vuelve a adjuntarla si la necesitas.";
+      case "project_path_not_found":
+        return "No encontramos esa ruta en la versión actual del proyecto. Puede haberse movido, cambiado de nombre o eliminado.";
+      case "archivo_chat_no_encontrado":
+        return "Este archivo ya no está en el espacio de trabajo del chat. Puede haberse movido o eliminado; vuelve a generarlo para abrirlo.";
+      case "project_path_ambiguous":
+        return "Hay varios archivos con ese nombre. Elige la ruta correcta para abrirlo.";
+      case "project_search_incomplete":
+        return "No pudimos revisar todas las carpetas del proyecto. Abre el archivo desde la ruta completa o vuelve a intentarlo más tarde.";
+      case "formato_pdf_invalido":
+        return "El archivo no contiene un PDF válido o está dañado. Comprueba que el agente terminó de generarlo e inténtalo de nuevo.";
+      case "formato_imagen_invalido":
+        return "El archivo no contiene una imagen compatible o está dañada. Comprueba que el agente terminó de generarla e inténtalo de nuevo.";
+      case "archivo_muy_grande":
+        return "El archivo supera el límite de vista previa de 50 MB. Pide al agente una versión más pequeña para abrirlo.";
     }
     const { causa, siguientePaso } = explicacionHttp(err.status);
     const siguientePasoConDetalle = siguientePasoProveedor(err.detail) ?? siguientePaso;
