@@ -743,6 +743,9 @@ export function diffDeTarea(taskId: string) {
           apPush && apPush.commit_sha
             ? {
                 sha: apPush.commit_sha,
+                // Hash del diff aprobado: deja saber si EL TRABAJO de este diff ya está subido,
+                // aunque un rebase sobre la punta de la base cambie el SHA del commit.
+                hash: apPush.diff_hash ?? "",
                 remoto: apPush.remoto ?? "",
                 rama: apPush.rama ?? ctx.rama,
                 autenticacion: parsearFuenteCredencialGithub(apPush.autenticacion),

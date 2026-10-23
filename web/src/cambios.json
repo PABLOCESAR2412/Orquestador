@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Git: el botón de subir cambios desaparece tras un push exitoso, a la rama de tarea o a la base, y queda el destino en la tarjeta", "pr": 112 },
     { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Interfaz: barras de scroll con el tema activo y hito visible de sesión compactada en chat suelto y de proyecto", "pr": 111 },
     { "fecha": "2026-10-22", "tipo": "grande", "titulo": "Git y secretos: escaneo completo de blobs con bloqueo, tokens MCP y de proveedor en el filtro central, merge ligado al SHA aprobado y push que confirma antes de sellar", "pr": 112 },
     { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Notificaciones: al abrir la app ya no suenan los avisos del pasado; suenan los nuevos con la app abierta y los empujados al dispositivo", "pr": 110 },
