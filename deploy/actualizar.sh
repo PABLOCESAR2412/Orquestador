@@ -4,7 +4,11 @@
 #
 # Reglas:
 # - Nunca reinicia con tareas o chats en curso: un reinicio marca como fallidas las tareas activas.
-# - Solo reinicia si cambió server/. web/ se sirve desde web/dist sin reiniciar.
+# - Si cambió server/, la interfaz y el servidor se actualizan JUNTOS en el primer ciclo sin
+#   ejecuciones: mientras el reinicio está pendiente no se recompila la interfaz, para no desplegar
+#   una versión que hable con un servidor anterior (el fallo «Cannot read properties of undefined
+#   (reading 'find')» del historial vino de esa mezcla).
+# - Si solo cambió web/, la interfaz se recompila y se sirve de inmediato, sin reiniciar.
 # - Si el build falla o el servidor no responde, vuelve a la versión anterior y no reintenta esa misma versión.
 set -euo pipefail
 
@@ -46,29 +50,45 @@ if [ -f "$FALLIDA" ] && [ "$(cat "$FALLIDA")" = "$NUEVA" ]; then
   exit 0   # esta versión ya falló; se espera un commit nuevo
 fi
 
-# 1) Traer el código y compilar la interfaz. No reinicia nada.
+# 1) ¿Cambió server/ respecto a la versión con la que arrancó el servidor?
+if git diff --quiet "$ARRANQUE" "$NUEVA" -- server; then
+  CAMBIO_SERVER=no
+else
+  CAMBIO_SERVER=sí
+fi
+
+# 2) Traer el código. El reinicio pendiente no avanza con ejecuciones en curso:
+#    la interfaz tampoco se recompila en ese ciclo, para no desplegarla junto a un servidor anterior.
 if [ "$ANTES" != "$NUEVA" ]; then
   log "Nueva versión ${NUEVA:0:7} (antes ${ANTES:0:7})."
   git merge --ff-only --quiet origin/main || { log "No avanza: hay cambios locales en el VM."; exit 1; }
-  if ! compilar; then
-    log "Falló el build. Vuelvo a ${ANTES:0:7}."
-    echo "$NUEVA" > "$FALLIDA"
-    git reset --quiet --hard "$ANTES"
-    exit 1
+  if [ "$CAMBIO_SERVER" = "sí" ] && hay_ejecuciones; then
+    log "Hay ejecuciones en curso y cambió server/: interfaz y servidor se actualizan juntos en el primer ciclo libre."
+    exit 0
   fi
-  log "Interfaz compilada."
 fi
 
-# 2) ¿El servidor que corre tiene el código actual de server/?
-if git diff --quiet "$ARRANQUE" HEAD -- server; then
+# 3) Solo cambió la interfaz (o no hay cambios): recompilarla y servirla sin reiniciar.
+if [ "$CAMBIO_SERVER" = "no" ]; then
+  if [ "$ANTES" != "$NUEVA" ]; then
+    if ! compilar; then
+      log "Falló el build. Vuelvo a ${ANTES:0:7}."
+      echo "$NUEVA" > "$FALLIDA"
+      git reset --quiet --hard "$ANTES"
+      exit 1
+    fi
+    log "Interfaz compilada."
+  fi
   git rev-parse HEAD > "$MARCA"
   exit 0
 fi
 
-# 3) Cambió server/: reiniciar solo si no hay ejecuciones en curso.
-if hay_ejecuciones; then
-  log "Hay ejecuciones en curso. El servidor se reinicia en el siguiente ciclo."
-  exit 0
+# 4) Cambió server/ y no hay ejecuciones: build e instalación, reinicio y verificación.
+if ! compilar; then
+  log "Falló el build. Vuelvo a ${ANTES:0:7}."
+  echo "$NUEVA" > "$FALLIDA"
+  git reset --quiet --hard "$ANTES"
+  exit 1
 fi
 (cd server && bun install --frozen-lockfile)
 reiniciar
