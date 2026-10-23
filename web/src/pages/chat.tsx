@@ -2277,7 +2277,7 @@ export function ChatPage() {
                 </div>
 
                 <div className="tl-composer-der">
-                  {(agenteOcupado || current?.en_proceso) && !planPendiente && !conversacionPadre && (
+                  {(agenteOcupado || current?.en_proceso || detenerChatMutation.isPending) && !planPendiente && !conversacionPadre && (
                     <button type="button" className="ghost tl-detener" disabled={detenerChatMutation.isPending}
                       onClick={() => {
                         if (!selectedId) return;
