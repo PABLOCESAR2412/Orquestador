@@ -4,6 +4,14 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 23 de octubre de
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Lote de correcciones — 23 de octubre de 2026
+
+Entrega: [PR #126](https://github.com/PABLOCESAR2412/Orquestador/pull/126). Incluye el contenido de [PR #125](https://github.com/PABLOCESAR2412/Orquestador/pull/125) (cierre de pendientes del seguimiento), que se retira al fusionar este.
+
+- [x] **El 502 puntual en `/api/servidor` era la ventana de reinicio del servicio, y el cliente ahora la atraviesa.** El handler del servidor ya estaba defendido (cachés compartidos entre solicitudes simultáneas, mediciones con tiempos de espera, `statSync` acotado a dos ficheros conocidos, nada que lance), así que la falla del usuario coincidió con el breve reinicio del proceso (despliegue o mantenimiento) y la puerta respondió 502. En `web/src/api.ts` las peticiones GET idempotentes reintentan ante 502/503/504 y ante una conexión caída: 2 reintentos con esperas de 400/800 ms. Las mutaciones jamás reintentan (no se duplica un envío real) y los códigos definitivos (4xx, 500) fallan al primer intento. Este reintento por petición complementa el que las consultas TanStack ya tenían (`reintentarConsultaTransitoria`) y cubre las rutas que no pasan por ellas (entrar, llamadas manuales). Nuevas pruebas: `web/tests/peticiones.test.ts` (dos 502 y éxito en el tercero; POST con 502 sin reintento; GET con 500 sin reintento; conexión caída con 3 intentos).
+- [x] **Los dos tests del guard de bases dejan de depender de dónde viva el repositorio.** Fallaban al correr la suite en un worktree dentro de `%TEMP%`: el guard permite cualquier directorio estrictamente debajo del temporal del sistema, así que el `server/data` propio del clon parecía permitido y nada lanzaba (artefacto de ubicación; el guard no tenía regresión y no hubo fixtures en la base real: sondeo de la base del usuario con 0 filas de hoy). Los dos tests ahora rechazan `tmpdir()` en seco — la raíz misma queda fuera del permitido por diseño del guard — y pasan igual en local, CI y clones dentro o fuera del temporal.
+- Verificación fiel al CI: servidor `typecheck` ok y **76/76 suites** verdes ejecutando cada una en proceso propio (`bun test` por suite, como hace el workflow; la corrida monoproceso era la que revelaba los dos fallos del guard); web: `tsc -b` limpio, 58 unitarios pass, build ok, humo `test:ui` PASS y preview HTML aislada PASS en 390/1440 px.
+
 ## Humo que aguanta el historial del fixture — revisión del 23 de octubre
 
 Entrega: [PR #124](https://github.com/PABLOCESAR2412/Orquestador/pull/124).
