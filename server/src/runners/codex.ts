@@ -1,9 +1,14 @@
 import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
 import { hallarEjecutable } from "../ejecutable";
 import { entornoDelAgente, estimarUso, type RunResult, type Usage } from "./opencode";
+import { iniciarVigilante, leerConTope } from "./proteccion";
 import type { ImagenAgente } from "../chat-adjuntos";
 import { argumentosConfigMcpCodex, type ServidorMcpAgente } from "../conexiones-mcp";
 import { deltaNoRegistrada, sumarTotales, totalesDelEventoTokenCount, type TotalesCodex } from "./tokens-codex";
+
+// El texto que devuelve Codex rara vez pasa de 1 MB; si pasa, se conserva la cola.
+const TOPE_TEXTO_AGENTE = 1024 * 1024;
+const TOPE_STDERR_AGENTE = 1024 * 1024;
 
 // Termina el grupo de procesos para que herramientas e hijos no queden como zombies huérfanos.
 function terminarGrupo(proc: { pid: number; kill: () => void }) {
@@ -33,9 +38,11 @@ interface OpcionesCodex {
   sessionId?: string | null;
   cwd: string;
   timeoutMs?: number | null;
-  // El vigilante de actividad es propio de OpenCode; aquí se declara para pasar el mismo
-  // paquete de opciones sin error de tipo y se ignora.
+  // Vigilante de inactividad: corta el grupo del proceso si lleva sin emitir nada más del
+  // tope (misma protección que el runner de OpenCode, ver proteccion.ts).
   tiempoSinActividadMs?: number | null;
+  // Nivel de esfuerzo del modelo (variant); en Codex es el reasoning del modelo.
+  variant?: string | null;
   signal?: AbortSignal;
   onSesion?: (sessionId: string) => void;
   onLinea?: (linea: string) => void;
@@ -75,6 +82,8 @@ async function intentoCodex(opts: OpcionesCodex & {
   ajustesMcp: string[];
 }): Promise<RunResult> {
   const args: string[] = ["codex", ...opts.ajustesMcp];
+  // El nivel de esfuerzo del modelo va como ajuste puntual del CLI, igual que los MCP.
+  if (opts.variant) args.push("-c", `model_reasoning_effort="${opts.variant}"`);
   if (opts.sessionId && /^[0-9a-fA-F-]+$/.test(opts.sessionId)) {
     args.push("exec", "resume", "--json", ...opts.rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", opts.modeloCodex, opts.sessionId, opts.prompt);
   } else {
@@ -92,6 +101,13 @@ async function intentoCodex(opts: OpcionesCodex & {
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
+  });
+  // Vigilante de inactividad compartido con OpenCode (proteccion.ts): corta el grupo si el
+  // CLI lleva más del tope sin emitir una línea.
+  const vigilante = iniciarVigilante({
+    pid: proc.pid,
+    tiempoSinActividadMs: opts.tiempoSinActividadMs,
+    cortar: () => terminarGrupo(proc),
   });
 
   const timer = opts.timeoutMs === null ? null : setTimeout(() => {
@@ -148,6 +164,7 @@ async function intentoCodex(opts: OpcionesCodex & {
         for (const linea of lineas) {
           const l = linea.trim();
           if (!l) continue;
+          vigilante.patada();
           opts.onLinea?.(l);
 
           try {
@@ -156,7 +173,9 @@ async function intentoCodex(opts: OpcionesCodex & {
               sessionId = ev.thread_id;
               opts.onSesion?.(ev.thread_id);
             } else if (ev.item?.type === "agent_message" && typeof ev.item.text === "string") {
-              text += (text ? "\n\n" : "") + ev.item.text;
+              // Tope de RAM para la respuesta: si pasa, se conserva la cola.
+              const siguiente = text + (text ? "\n\n" : "") + ev.item.text;
+              text = siguiente.length > TOPE_TEXTO_AGENTE ? siguiente.slice(-TOPE_TEXTO_AGENTE) : siguiente;
             } else if (ev.item?.type === "error" && typeof ev.item.message === "string") {
               ultimoError = ev.item.message;
             } else if (ev.type === "turn.completed" && ev.usage) {
@@ -205,7 +224,7 @@ async function intentoCodex(opts: OpcionesCodex & {
 
   const salidaPromesa = Promise.all([
     lector(),
-    new Response(proc.stderr).text(),
+    leerConTope(proc.stderr, TOPE_STDERR_AGENTE),
     proc.exited,
   ]);
 
@@ -229,7 +248,11 @@ async function intentoCodex(opts: OpcionesCodex & {
     code = res[2];
 
     if (code !== 0) {
-      const detalle = ultimoError || stderr.trim() || `Codex terminó con código ${code}`;
+      const detalle = ultimoError
+        || stderr.trim()
+        || (vigilante.silenciado()
+          ? `El proceso de Codex no emitió nada durante ${Math.round(((opts.tiempoSinActividadMs as number) ?? 0) / 60_000)} minutos y se cortó por silencio`
+          : `Codex terminó con código ${code}`);
       throw new Error(`Codex falló: ${detalle}`);
     }
 
@@ -248,6 +271,7 @@ async function intentoCodex(opts: OpcionesCodex & {
     };
   } finally {
     if (timer) clearTimeout(timer);
+    vigilante.detener();
     if (onAbort) opts.signal?.removeEventListener("abort", onAbort);
     registrarPendiente();
   }

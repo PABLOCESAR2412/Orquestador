@@ -181,13 +181,17 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
         return comando ? [{ comando, resultado: texto(d.resultado, 20) ?? "no_aplica" }] : [];
       })
     : [];
+  // Una prueba que declara "fallo" no convive con un reporte exitoso: el servidor no ejecuta
+  // las pruebas, así que lo que el agente dice de ellas es la única verdad disponible.
+  const pruebaEnFallo =
+    estado === "completado" && pruebas.some((p) => p.resultado.trim().toLowerCase().startsWith("fallo"));
 
   const pendientes = listaDeTextos(valor.pendientes);
   const resumen = texto(valor.resumen, 4000);
   // Los pendientes describen trabajo sin terminar; no cuentan como evidencia de éxito.
   const hayDetalles = cambios.length > 0 || pruebas.length > 0;
   const sinResumenComprobable = estado === "completado" && !resumen && !hayDetalles;
-  const estadoFinal = sinResumenComprobable ? "fallo" : estado;
+  const estadoFinal = sinResumenComprobable || pruebaEnFallo ? "fallo" : estado;
   const resumenFinal = resumen
     ?? (estadoFinal === "fallo"
       ? sinResumenComprobable
@@ -199,7 +203,9 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
 
   return {
     estado: estadoFinal,
-    resumen: resumenFinal,
+    resumen: pruebaEnFallo
+      ? `${resumenFinal} (Marcado como fallo por el servidor: el propio reporte declaró una prueba en fallo.)`
+      : resumenFinal,
     cambios: cambios.slice(0, MAX_LISTA),
     pruebas: pruebas.slice(0, MAX_LISTA),
     pendientes,

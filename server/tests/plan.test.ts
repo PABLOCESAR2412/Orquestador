@@ -152,6 +152,31 @@ describe("validarReporte", () => {
     expect(r.pruebas).toEqual([{ comando: "bun test", resultado: "fallo" }]);
     expect(r.pendientes).toEqual(["Revisar"]);
   });
+
+  test("un reporte exitoso con una prueba en fallo termina como fallo", () => {
+    const r = validarReporte(
+      {
+        estado: "completado",
+        resumen: "Todo listo.",
+        cambios: [{ archivo: "src/app.ts", tipo: "editar" }],
+        pruebas: [{ comando: "bun test", resultado: "ok" }, { comando: "bun run build", resultado: "fallo" }],
+        pendientes: [],
+      },
+      "",
+    );
+    expect(r.estado).toBe("fallo");
+    expect(r.resumen).toContain("Todo listo.");
+    expect(r.resumen).toContain("Marcado como fallo por el servidor");
+  });
+
+  test("una prueba en fallo no toca una desviación ya declarada", () => {
+    const r = validarReporte(
+      { estado: "completado", resumen: "Me faltó permiso.", desviacion: "Falta la API key", pruebas: [{ comando: "bun test", resultado: "fallo" }] },
+      "",
+    );
+    expect(r.estado).toBe("desviacion");
+    expect(r.resumen).not.toContain("Marcado como fallo");
+  });
 });
 
 describe("serializarRespuestaTarea", () => {

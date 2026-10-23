@@ -497,8 +497,9 @@ chat.get("/conversations/:id/archivo-pdf", (c) => {
 
     const rango = c.req.header("range");
     if (!rango) {
-      return new Response(archivo.contenido, {
-        headers: { ...cabeceras, "Content-Length": String(archivo.contenido.byteLength) },
+      // El archivo se sirve por streaming desde el disco, sin cargarlo en RAM.
+      return new Response(Bun.file(archivo.real), {
+        headers: { ...cabeceras, "Content-Length": String(archivo.tamano) },
       });
     }
 
@@ -517,12 +518,11 @@ chat.get("/conversations/:id/archivo-pdf", (c) => {
         headers: { ...cabeceras, "Content-Range": `bytes */${archivo.tamano}` },
       });
     }
-    const fragmento = archivo.contenido.subarray(inicio, fin + 1);
-    return new Response(fragmento, {
+    return new Response(Bun.file(archivo.real).slice(inicio, fin + 1), {
       status: 206,
       headers: {
         ...cabeceras,
-        "Content-Length": String(fragmento.byteLength),
+        "Content-Length": String(fin - inicio + 1),
         "Content-Range": `bytes ${inicio}-${fin}/${archivo.tamano}`,
       },
     });
@@ -563,8 +563,8 @@ chat.get("/conversations/:id/archivo-imagen", (c) => {
         headers: { ...cabeceras, "Content-Type": "application/json; charset=utf-8" },
       });
     }
-    return new Response(archivo.contenido, {
-      headers: { ...cabeceras, "Content-Length": String(archivo.contenido.byteLength) },
+    return new Response(Bun.file(archivo.real), {
+      headers: { ...cabeceras, "Content-Length": String(archivo.tamano) },
     });
   } catch (err) {
     if (err instanceof ArchivoError) {
@@ -643,8 +643,9 @@ chat.get("/conversations/:id/archivo-video", async (c) => {
 
     const rango = c.req.header("range");
     if (!rango) {
-      return new Response(archivo.contenido, {
-        headers: { ...cabeceras, "Content-Length": String(archivo.contenido.byteLength) },
+      // El video se sirve por streaming desde el disco; la RAM no carga nunca el archivo entero.
+      return new Response(Bun.file(archivo.real), {
+        headers: { ...cabeceras, "Content-Length": String(archivo.tamano) },
       });
     }
 
@@ -657,12 +658,11 @@ chat.get("/conversations/:id/archivo-video", async (c) => {
     if (inicio >= archivo.tamano || fin < inicio) {
       return new Response(null, { status: 416, headers: { ...cabeceras, "Content-Range": `bytes */${archivo.tamano}` } });
     }
-    const fragmento = archivo.contenido.subarray(inicio, fin + 1);
-    return new Response(fragmento, {
+    return new Response(Bun.file(archivo.real).slice(inicio, fin + 1), {
       status: 206,
       headers: {
         ...cabeceras,
-        "Content-Length": String(fragmento.byteLength),
+        "Content-Length": String(fin - inicio + 1),
         "Content-Range": `bytes ${inicio}-${fin}/${archivo.tamano}`,
       },
     });
@@ -819,8 +819,10 @@ function limpiarAvisosReintentados(conversationId: string, rowid: number | undef
   db.query("DELETE FROM messages WHERE conversation_id=? AND role='system' AND rowid>?").run(conversationId, rowid);
 }
 
-// La duración no cancela el trabajo: el usuario conserva la cancelación explícita.
+// La duración no cancela el trabajo: el usuario conserva la cancelación explícita. Lo que sí
+// corta es la inactividad: un turno que no emite nada durante el tope se cierra para liberar.
 const TIEMPO_TURNO_MS = null;
+const TIEMPO_SIN_ACTIVIDAD_MS = Number(process.env.TELO_TIEMPO_INACTIVIDAD_MS ?? 15 * 60_000);
 const controlesTurno = new Map<string, AbortController>();
 
 chat.post("/conversations/:id/detener", c => {
@@ -866,6 +868,7 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       sessionModel: conv.runner_session_model,
       cwd,
       timeoutMs: TIEMPO_TURNO_MS,
+      tiempoSinActividadMs: TIEMPO_SIN_ACTIVIDAD_MS,
       signal,
       projectId: conv.project_id,
       conversationId,

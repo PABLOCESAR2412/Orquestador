@@ -170,11 +170,23 @@ prepararCarpetaGlobal();
 
 // Un turno del chat que quedó sin respuesta por un reinicio se avisa antes de atender a nadie.
 avisarTurnosInterrumpidos();
+// Tope de arranque: el primer acceso a la base dispara migraciones y respaldo al vuelo; si el
+// arranque cuelga ahí, el proceso sale con un diagnóstico claro en vez de quedarse mudo.
+const TOPE_ARRANQUE_MS = Number(process.env.TELO_TOPE_ARRANQUE_MS ?? 120_000);
+let arranqueColgado: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+  console.error(`[arranque] El proceso no terminó de arrancar en ${Math.round(TOPE_ARRANQUE_MS / 1000)} s (migraciones, respaldo o tareas iniciales atascadas). La base puede tomarlo desde TELO_TOPE_ARRANQUE_MS; se corta con código 2.`);
+  process.exit(2);
+}, TOPE_ARRANQUE_MS);
 startWorker();
 startScheduler();
 iniciarMantenimientoDisco();
 reanudarGeneracionesMedios();
 limpiarSesionesAntiguas();
+// El arranque llegó a la escucha: el tope ya no aplica.
+if (arranqueColgado) {
+  clearTimeout(arranqueColgado);
+  arranqueColgado = null;
+}
 
 app.get("*", async (c) => {
   const path = c.req.path === "/" ? "/index.html" : c.req.path;
