@@ -4,6 +4,12 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 23 de octubre de
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Humo que aguanta el historial del fixture — revisión del 23 de octubre
+
+Entrega: [PR #124](https://github.com/PABLOCESAR2412/Orquestador/pull/124).
+
+- [x] Devuelve a verde el `interfaz` de `main` (el merge de la reauditoría quedó con el humo rojo). En la verificación tras «Enviar», `getByText('Mensaje recibido', { exact: true })` resolvía 2 elementos: el fixture acumula el historial de la conversación y ya hay dos respuestas idénticas (la del segmento previo y la nueva). La espera ahora usa `.first()`; no hay bug de la app: son las dos burbujas legítimas que el fixture dejó y la burbuja del usuario aparece una sola vez.
+- Pruebas: `tsc` limpio; unitarios 54 pass/0 fail; build ok; `test:ui` PASS en 390/1440 px con el cambio final; la condición del doble reproduce de forma intermitente en local (1 de 3 pasadas) y esa fue la causa del rojo en CI (`run 39972167683`).
 ## Revisión adicional — 23 de octubre de 2026
 
 Entrega: [PR #123](https://github.com/PABLOCESAR2412/Orquestador/pull/123).
