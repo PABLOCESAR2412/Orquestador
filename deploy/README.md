@@ -16,6 +16,8 @@ Desde Telo: clona Test, pide un cambio mínimo en un archivo de prueba, revisa e
 
 Un timer de systemd revisa `main` cada 5 minutos. Si hay commits nuevos, el script `actualizar.sh` trae el código, compila la interfaz y reinicia `orquestador` solo cuando cambió `server/`.
 
+Cuando cambió `server/` y hay ejecuciones en curso, el reinicio queda para el primer ciclo libre y ese mismo ciclo la interfaz no se recompila: interfaz y servidor avanzan juntos, de modo que el navegador nunca habla con un servidor anterior a la interfaz (la mezcla produjo el fallo del historial «Cannot read properties of undefined (reading 'find')»). Los cambios que solo tocan `web/` se despliegan en el acto, sin reiniciar el servicio.
+
 ## Respaldos en Cloudflare R2
 
 El timer diario crea una copia SQLite verificada y un archivo del espacio de trabajo. R2 es opcional y usa la API S3 con un bucket privado. Telo sube el conjunto local más reciente por defecto, revisa el tamaño y la etiqueta de cada objeto, publica un manifiesto de conjunto completo y solo entonces poda los respaldos remotos. Conserva un conjunto completo en R2 y una copia local por defecto. Si la subida o la validación fallan, no borra copias locales.
