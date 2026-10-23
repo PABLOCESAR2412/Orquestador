@@ -25,6 +25,9 @@ import "../styles-shell.css";
 const ES_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent);
 const ATAJO_NUEVO = ES_MAC ? "⌘N" : "Ctrl+N";
 
+// Cuántas conversaciones trae cada tanda del historial (paginación del servidor).
+const CANTIDAD_HISTORIAL = 50;
+
 export function Shell({ children }: { children: ReactNode }) {
   const {
     drawerOpen,
@@ -48,12 +51,32 @@ export function Shell({ children }: { children: ReactNode }) {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
-  // Cada 5 s para ver al instante los chats y proyectos actualizados desde cualquier dispositivo.
+  // Cada 5 s refresca la primera tanda del historial; las más antiguas se cargan con «Cargar anteriores».
   const conversations = useQuery({
-    queryKey: ["conversations"],
-    queryFn: api.listConversations,
+    queryKey: ["conversations", "historial"],
+    queryFn: () => api.listConversationsPaginadas(CANTIDAD_HISTORIAL, null),
     refetchInterval: 5_000,
   });
+  // Tandas más antiguas ya cargadas, cada una con el cursor con que se pidió:
+  // así el refresco de la primera (o otra tanda) no duplica ni desordena lo ya mostrado.
+  const [anteriores, setAnteriores] = useState<{ desde: string; items: Conversation[]; siguiente: string | null }[]>([]);
+  const [cargandoAnteriores, setCargandoAnteriores] = useState(false);
+  const siguientePendiente = anteriores.length
+    ? anteriores[anteriores.length - 1].siguiente
+    : conversations.data?.siguiente ?? null;
+  const cargarAnteriores = async () => {
+    const desde = siguientePendiente;
+    if (!desde || cargandoAnteriores) return;
+    setCargandoAnteriores(true);
+    try {
+      const pagina = await api.listConversationsPaginadas(CANTIDAD_HISTORIAL, desde);
+      setAnteriores((prev) => [...prev, { desde, items: pagina.conversations, siguiente: pagina.siguiente }]);
+    } catch {
+      // El usuario reintenta con el mismo botón; la tanda anterior no se toca.
+    } finally {
+      setCargandoAnteriores(false);
+    }
+  };
 
   const projects = useQuery({
     queryKey: ["projects"],
@@ -80,6 +103,7 @@ export function Shell({ children }: { children: ReactNode }) {
     mutationFn: (id: string) => api.deleteConversation(id),
     onSuccess: (_data, id) => {
       qc.removeQueries({ queryKey: ["messages", id] });
+      setAnteriores((prev) => prev.map((t) => ({ ...t, items: t.items.filter((c) => c.id !== id) })));
       if (selectedConversationId === id) setSelectedConversationId(null);
     },
     onSettled: () => void invalidarChats(),
@@ -128,7 +152,10 @@ export function Shell({ children }: { children: ReactNode }) {
     },
   });
 
-  const conversacionActiva = conversations.data?.find((c) => c.id === selectedConversationId);
+  const conversacionActiva =
+    conversations.data?.conversations.find((c) => c.id === selectedConversationId) ??
+    anteriores.flatMap((t) => t.items).find((c) => c.id === selectedConversationId) ??
+    null;
   const proyectoActivoId = conversacionActiva?.project_id ?? null;
   const proyectoActivoNombre = conversacionActiva?.project_name ?? null;
 
@@ -185,11 +212,31 @@ export function Shell({ children }: { children: ReactNode }) {
   const [mostrarFiltro, setMostrarFiltro] = useState(false);
   const q = filtroTexto.trim().toLowerCase();
 
+  // La búsqueda con filtro pide el historial COMPLETO aparte (la paginación solo marca el paseo).
+  const busqueda = useQuery({
+    queryKey: ["conversations", "buscar"],
+    queryFn: api.listConversations,
+    enabled: q.length > 0,
+  });
+
+  // Lo que ve el muelle: la primera tanda + las tandas antiguas cargadas, sin repetir ids
+  // (una conversación recién anclada sube a la primera tanda y su copia vieja deja de verse).
+  const listadoConversaciones = useMemo<Conversation[]>(() => {
+    const cargadas = [...(conversations.data?.conversations ?? []), ...anteriores.flatMap((t) => t.items)];
+    if (!q) {
+      const porId = new Map<string, Conversation>();
+      for (const c of cargadas) porId.set(c.id, c);
+      return [...porId.values()];
+    }
+    if (busqueda.data) return busqueda.data;
+    // Mientras llega el listado completo, se busca en lo ya cargado para no parpadear.
+    return cargadas.filter((c) => c.title.toLowerCase().includes(q));
+  }, [q, busqueda.data, conversations.data, anteriores]);
+
   // Chats organizados por proyecto y chats libres (sin proyecto)
   const chatsPorProyecto = useMemo(() => {
     const map = new Map<string, Conversation[]>();
-    if (!conversations.data) return map;
-    for (const c of conversations.data) {
+    for (const c of listadoConversaciones) {
       if (c.project_id) {
         const arr = map.get(c.project_id) || [];
         arr.push(c);
@@ -207,11 +254,10 @@ export function Shell({ children }: { children: ReactNode }) {
       });
     }
     return map;
-  }, [conversations.data]);
+  }, [listadoConversaciones]);
 
   const chatsLibres = useMemo(() => {
-    if (!conversations.data) return [];
-    const list = conversations.data.filter((c) => !c.project_id);
+    const list = listadoConversaciones.filter((c) => !c.project_id);
     list.sort((a, b) => {
       if (Boolean(a.pinned_at) !== Boolean(b.pinned_at)) {
         return a.pinned_at ? -1 : 1;
@@ -221,7 +267,7 @@ export function Shell({ children }: { children: ReactNode }) {
       return timeB - timeA;
     });
     return list;
-  }, [conversations.data]);
+  }, [listadoConversaciones]);
 
   const proyectosFiltrados = useMemo(() => {
     if (!projects.data) return [];
@@ -637,6 +683,16 @@ export function Shell({ children }: { children: ReactNode }) {
                       onDelete={(id) => eliminar.mutate(id)}
                     />
                   ))
+                )}
+                {siguientePendiente && !q && (
+                  <button
+                    type="button"
+                    className="tl-ver-anteriores"
+                    onClick={() => void cargarAnteriores()}
+                    disabled={cargandoAnteriores}
+                  >
+                    {cargandoAnteriores ? "Cargando anteriores…" : "Cargar anteriores"}
+                  </button>
                 )}
               </div>
             </div>

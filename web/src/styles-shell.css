@@ -392,6 +392,27 @@
   color: var(--ink-3);
 }
 
+/* Cargar más conversaciones del historial (paginación) */
+.tl-ver-anteriores {
+  margin: 4px 10px 6px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+}
+.tl-ver-anteriores:hover:not(:disabled) {
+  color: var(--ink-2);
+  background: var(--ink-5-alpha, rgba(128, 128, 128, 0.12));
+}
+.tl-ver-anteriores:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* Árbol de proyectos */
 .tl-proyectos-arbol {
   display: flex;

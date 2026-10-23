@@ -31,6 +31,11 @@ export type Conversation = {
   subchats?: Conversation[];
 };
 
+export type PaginaConversaciones = {
+  conversations: Conversation[];
+  siguiente: string | null;
+};
+
 export type SubagentChat = Pick<Conversation,
   "id" | "title" | "model" | "effort" | "project_id" | "parent_conversation_id" | "parent_turn_id" |
   "project_name" | "ocupada" | "en_proceso" | "subagent_turn_id" | "subagent_agent" | "subagent_prompt" |
@@ -763,6 +768,12 @@ export const api = {
     request<{ ok: boolean }>("/api/login", { method: "POST", body: JSON.stringify({ clave }) }),
   logout: () => request<{ ok: boolean }>("/api/logout", { method: "POST", body: "{}" }),
   listConversations: () => request<Conversation[]>("/api/conversations"),
+  // Historial paginado: la primera tanda (o ?antes= con el cursor de la previa) devuelve
+  // limite conversaciones por la clave de orden del servidor; siguiente=null cuando no hay más.
+  listConversationsPaginadas: (limite: number, antes: string | null) =>
+    request<PaginaConversaciones>(
+      `/api/conversations?limite=${limite}${antes ? `&antes=${antes}` : ""}`,
+    ),
   createConversation: (projectId?: string | null, title?: string) =>
     request<Conversation>("/api/conversations", {
       method: "POST",

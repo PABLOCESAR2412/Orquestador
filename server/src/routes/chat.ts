@@ -120,6 +120,7 @@ chat.get("/conversations", (c) => {
   const rows = db
     .query<Conversation & {
       last_msg_at: string | null;
+      conv_rowid: number;
       task_id: string | null;
       task_status: string | null;
       task_finished_at: string | null;
@@ -136,7 +137,7 @@ chat.get("/conversations", (c) => {
           FROM tasks WHERE conversation_id IS NOT NULL
       )
       SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name,
-             c.pinned_at, c.cuota_modelo, c.created_at, m.last_msg_at,
+             c.pinned_at, c.cuota_modelo, c.created_at, m.last_msg_at, c.rowid AS conv_rowid,
              c.runner_session_id IS NOT NULL AS tiene_sesion,
              t.id AS task_id, t.status AS task_status, t.finished_at AS task_finished_at,
              t.plan_hash AS task_plan_hash, t.provider_session_id IS NOT NULL AS task_reanudable,
@@ -169,8 +170,7 @@ chat.get("/conversations", (c) => {
     hijosPorPadre.set(hijo.parent_conversation_id, lista);
   }
 
-  return c.json(
-    rows.map((r) => {
+  const listado = rows.map((r) => {
       const tarea = r.task_id
         ? { id: r.task_id, status: r.task_status!, finished_at: r.task_finished_at, plan_hash: r.task_plan_hash }
         : null;
@@ -201,8 +201,43 @@ chat.get("/conversations", (c) => {
         estado_tarea_version: tarea?.plan_hash ?? tarea?.finished_at ?? null,
         tiene_sesion: Boolean(r.tiene_sesion),
       };
-    }),
-  );
+  });
+
+  // Con ?limite= se devuelve una página del listado ya ordenado (anclados primero) junto con el
+  // cursor para la siguiente tanda; el cursor codifica la clave del orden: anclado;pinned_at;created_at;rowid.
+  // Sin limite (como hoy) se devuelven todas, para no romper a los consumidores actuales.
+  const limite = Math.min(Math.max(Math.floor(Number(c.req.query("limite") ?? 0)) || 0, 0), 200);
+  if (!limite) return c.json(listado);
+
+  type ClaveOrden = { flag: number; pin: string; fecha: string; rowid: number };
+  const claveDe = (v: (typeof listado)[number]): ClaveOrden => ({
+    flag: v.pinned_at ? 0 : 1,
+    pin: v.pinned_at ?? "",
+    fecha: v.created_at,
+    rowid: v.conv_rowid,
+  });
+  // Devuelve <0 si a va antes que b en el orden del listado (desc en fecha y rowid).
+  const compararOrden = (a: ClaveOrden, b: ClaveOrden): number => {
+    if (a.flag !== b.flag) return a.flag - b.flag;
+    if (a.flag === 0 && a.pin !== b.pin) return a.pin > b.pin ? -1 : 1;
+    if (a.fecha !== b.fecha) return a.fecha > b.fecha ? -1 : 1;
+    return b.rowid - a.rowid;
+  };
+  const partes = (c.req.query("antes") ?? "").split(";");
+  const [fS = "", pinS = "", fechaS = "", rowS = ""] = partes;
+  const hayCursor = (fS === "0" || fS === "1") && fechaS.length > 0 && Number.isFinite(Number(rowS));
+  const cursor: ClaveOrden | null = hayCursor ? { flag: Number(fS), pin: pinS, fecha: fechaS, rowid: Number(rowS) } : null;
+  const inicio = cursor ? listado.findIndex((v) => compararOrden(claveDe(v), cursor) > 0) : 0;
+  if (inicio === -1) return c.json({ conversations: [], siguiente: null });
+  const pagina = listado.slice(inicio, inicio + limite);
+  // El cursor es la clave de la ÚLTIMA fila entregada: la página siguiente echa de después de ella,
+  // así no se pierde ninguna conversación entre tandas. Si no queda nada después, no se anuncia.
+  const ultima = pagina[pagina.length - 1];
+  const hayDetras = listado[inicio + pagina.length] !== undefined;
+  const siguiente = ultima && hayDetras
+    ? encodeURIComponent(`${ultima.pinned_at ? 0 : 1};${ultima.pinned_at ?? ""};${ultima.created_at};${ultima.conv_rowid}`)
+    : null;
+  return c.json({ conversations: pagina, siguiente });
 });
 
 // POST /api/conversations  body: { title?, projectId? }
