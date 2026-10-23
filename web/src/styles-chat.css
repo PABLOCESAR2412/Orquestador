@@ -2661,3 +2661,28 @@
   .tl-chat-cabecera-izq > .tl-chat-titulo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 .tl-detener { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 8px 12px; white-space: nowrap; }
+
+/* Marca de sesión compactada en el hilo: hito con el tema activo, igual en chat suelto y de proyecto.
+   Va antes de la respuesta que continuó con el contexto ya resumido. */
+.tl-hilo-compacta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 2px;
+  padding: 0 4px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.tl-hilo-compacta::before,
+.tl-hilo-compacta::after {
+  content: "";
+  flex: 1 1 auto;
+  min-width: 16px;
+  height: 0;
+  border-top: 1px dashed var(--line-strong);
+}
+.tl-hilo-compacta svg { flex: 0 0 auto; opacity: 0.85; }

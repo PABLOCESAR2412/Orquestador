@@ -299,6 +299,8 @@ export type Message = {
   created_at: string;
   model: string | null;
   effort: string | null;
+  // 1 cuando el proceso de ese turno compactó el contexto: el hilo dibuja el hito de compactación.
+  sesion_compactada?: number;
 };
 
 export type ContextoConversacion = {

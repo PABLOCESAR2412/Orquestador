@@ -775,6 +775,15 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    // La compactación automática del contexto deja marca en la respuesta del turno que la
+    // provocó, para que el hilo la muestre como parte del tema activo (chat suelto, chat de
+    // proyecto y continuaciones usan el mismo registro de mensajes).
+    name: "041_mensajes_compactados",
+    sql: `
+      ALTER TABLE messages ADD COLUMN sesion_compactada INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {

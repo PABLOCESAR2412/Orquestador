@@ -11,7 +11,7 @@ import { getPreferences } from "../preferences";
 import { projectRepoPath } from "./projects";
 import { mensajeSeguro } from "../workspace";
 import { carpetaEntregables } from "../entregables";
-import { actividadDelTurno, itemDeLinea, registrarActividad } from "../actividad";
+import { actividadDelTurno, itemDeLinea, marcarRespuestaCompactada, registrarActividad } from "../actividad";
 import { crearTarea } from "../tareas";
 import { cancelTask, notifyWorker } from "../worker";
 import { publicarEstado, registrarEvento } from "../eventos";
@@ -109,6 +109,7 @@ type Message = {
   created_at: string;
   model: string | null;
   effort: string | null;
+  sesion_compactada?: number;
 };
 type TurnoUsuario = { id: string; role: "user"; content: string };
 
@@ -278,7 +279,7 @@ chat.get("/conversations/:id/turnos/:turno/subagentes", (c) => {
 chat.get("/conversations/:id/messages", (c) => {
   const messages = db
     .query<Message, [string]>(
-      "SELECT id, conversation_id, role, content, created_at, model, effort FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC",
+      "SELECT id, conversation_id, role, content, created_at, model, effort, sesion_compactada FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC",
     )
     .all(c.req.param("id"));
   return c.json(messages);
@@ -940,6 +941,9 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
     db.query(
       "INSERT INTO messages (id, conversation_id, role, content, model, effort) VALUES (?, ?, ?, ?, ?, ?)",
     ).run(assistantMsg.id, conversationId, assistantMsg.role, assistantMsg.content, assistantMsg.model, assistantMsg.effort);
+
+    // Si el proceso de este turno compactó el contexto, la respuesta queda marcada para el hilo.
+    marcarRespuestaCompactada(assistantMsg.id, conversationId, turno.id);
 
     // Una respuesta correcta levanta el aviso de cuota, si lo había.
     db.query("UPDATE conversations SET cuota_modelo = NULL WHERE id = ?").run(conversationId);
