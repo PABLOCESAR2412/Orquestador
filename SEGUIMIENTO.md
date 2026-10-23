@@ -4,6 +4,13 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 23 de octubre de
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Revisión adicional — 23 de octubre de 2026
+
+Entrega: [PR #123](https://github.com/PABLOCESAR2412/Orquestador/pull/123).
+
+- [x] **R19 · Endpoint de Web Push permitía solicitudes a destinos HTTPS arbitrarios (MEDIA).** Se limita a hosts de FCM, Apple, Mozilla y Windows Push; se vuelve a validar antes de enviar, incluidas filas antiguas. Las redirecciones se inspeccionan manualmente y se descartan; el servidor no las sigue. Las suscripciones vencidas o redirigidas y sus entregas en cola se eliminan. Se limita el registro a 20 dispositivos, con renovación permitida. Evidencia: `server/tests/push.test.ts` (17 aprobadas), `bun run typecheck` y CI del PR.
+- [x] **Seguimiento histórico desactualizado.** A11 ahora refleja que el chat directo usa el vigilante de actividad de #122; A12/H8 reflejan la limpieza aplicada y el almacenamiento confirmado por el usuario en producción.
+
 ## Reauditoría del 23 de octubre de 2026 — cierre de hallazgos
 
 Entrega: [PR #122](https://github.com/PABLOCESAR2412/Orquestador/pull/122). Base inicial: `cc653a6` (PR #117); integración posterior de main `a08b383` conserva los PRs #118–#121. Este lote comprueba de nuevo el comportamiento corregido; los registros anteriores conservan su valor histórico. Verificación local: 76 suites de servidor en procesos separados (532 pruebas aprobadas, 63 omitidas por plataforma/opt-in), 54 pruebas web, tipos y build correctos. La suite de respaldo requirió identificar su fixture como aislado; pasó al repetirla. Tras integrar main se repitieron las suites afectadas. CI Linux del PR completa la validación POSIX; no equivale a despliegue en VM.
