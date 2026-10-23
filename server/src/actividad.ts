@@ -381,3 +381,13 @@ export function actividadDelTurno(conversacionId: string, turnoId: string): Fila
     )
     .all(conversacionId, turnoId);
 }
+
+// Solo deja la marca en la respuesta del turno: el paso de compactación (herramienta "compaction")
+// quedó registrado en chat_actividad mientras el agente corria. El UPDATE golpea únicamente el
+// mensaje de respuesta ya insertado; el hilo la dibuja con el tema activo en cualquier tipo de chat.
+export function marcarRespuestaCompactada(mensajeId: string, conversationId: string, turnoId: string): void {
+  db.query(
+    "UPDATE messages SET sesion_compactada = 1 WHERE id = ? AND EXISTS (" +
+      "SELECT 1 FROM chat_actividad WHERE conversation_id = ? AND turno_id = ? AND herramienta = 'compaction')",
+  ).run(mensajeId, conversationId, turnoId);
+}

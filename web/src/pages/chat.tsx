@@ -1626,6 +1626,18 @@ export function ChatPage() {
                     </>
                   ) : (
                     <>
+                      {m.sesion_compactada ? (
+                        <p className="tl-hilo-compacta" role="note">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                            <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+                            <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+                            <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                            <path d="M8 9h8M8 12h8M8 15h5" />
+                          </svg>
+                          Sesión compactada · el contexto anterior se resumió para continuar
+                        </p>
+                      ) : null}
                       <MensajeAgente
                         texto={m.content}
                         cuando={m.created_at}

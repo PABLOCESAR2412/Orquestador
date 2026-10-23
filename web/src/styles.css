@@ -115,7 +115,25 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-* { scrollbar-color: auto; scrollbar-width: auto; }
+
+/* Barra de scroll con el tema activo: pulgar gris de barra del tema, pista transparente y ancho fino.
+   La sintaxis estándar cubre Firefox y Chromium moderno; los selectores ::-webkit-scrollbar mantienen
+   la misma cara en contextos donde aún no aplican scrollbar-width/color (bloques de código, hilo,
+   lateral, ajustes). */
+* { scrollbar-width: thin; scrollbar-color: var(--bar) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--bar);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--line-strong);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
 html, body, #root { height: 100%; }
 html, body { overflow: hidden; }
 #root {
