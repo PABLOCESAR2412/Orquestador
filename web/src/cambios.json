@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Borradores: el texto vuelve al compositor si la app muere justo tras enviar y el mensaje no llegó a guardarse", "pr": 117 },
     { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Historial: paginación en el servidor con cursor (?limite=&antes=) y «Cargar anteriores» en el muelle; la búsqueda cubre todo el historial", "pr": 116 },
     { "fecha": "2026-10-22", "tipo": "grande", "titulo": "Estabilidad del servidor: salida del agente con tope de RAM, streaming de pdf/imagen/video, skills sin enlaces simbólicos, vigilante y esfuerzo también en Codex, tope de arranque, alcance con archivos ignorados y reporte honesto con pruebas en fallo", "pr": 114 },
     { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Dictado por voz: reanuda tras el corte del motor, no duplica tramos confirmados y explica cuando falta soporte", "pr": 113 },

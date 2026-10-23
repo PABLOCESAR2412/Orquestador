@@ -41,7 +41,7 @@ import {
   claveColaActiva,
 } from "../lib/chat-cola";
 import { leerHitos, guardarHitos } from "../lib/chat-hitos";
-import { leerBorrador, guardarBorrador } from "../lib/chat-borrador";
+import { leerBorrador, guardarBorrador, leerEnvio, guardarEnvio, borrarEnvio } from "../lib/chat-borrador";
 import { crearDictador, ctorVoz, type Dictador } from "../lib/chat-dictado";
 import { PLANTILLAS_GAUNTLET } from "../lib/plantillas-gauntlet";
 import "../styles-chat.css";
@@ -544,6 +544,8 @@ export function ChatPage() {
       }
     },
     onSuccess: (_data, { id, content, colaId }) => {
+      // Guardado confirmado: el marcador de envío en vuelo ya no hace falta.
+      borrarEnvio(id);
       setErroresEnvio((prev) => {
         const siguiente = { ...prev };
         delete siguiente[id];
@@ -557,6 +559,8 @@ export function ChatPage() {
       }
     },
     onError: (err, { id, restaurar, colaId }) => {
+      // El envío no está en vuelo: o se restauró el borrador (abajo) o el fallo se queda marcado.
+      borrarEnvio(id);
       if (colaId) setFalloCola({ conversacionId: id, mensajeId: colaId });
       else setErroresEnvio((prev) => ({ ...prev, [id]: errorText(err) }));
       if (!restaurar) return;
@@ -739,6 +743,9 @@ export function ChatPage() {
     const restaurar: Restaurar = { texto: draft, pendientes };
     // El dictado se corta del todo: sus resultados tardíos no deben volver a llenar el compositor.
     dictadorRef.current?.detener();
+    // Marcador de envío en vuelo: si la app muere antes de que el servidor confirme,
+    // el borrador se reconstruye al reabrir el chat (ver los efectos tras el drenaje de cola).
+    guardarEnvio(selectedId, draft, content);
     cambiarBorrador("");
     setPendientes([]);
     seguirHiloAlFinalRef.current = true;
@@ -831,6 +838,26 @@ export function ChatPage() {
     if (!colaActiva || agenteOcupado || enviandoActual || errorCola || cola.length === 0) return;
     iniciarEnvio({ id: selectedId, content: cola[0].texto, colaId: cola[0].id });
   }, [selectedId, colaActiva, agenteOcupado, enviandoActual, errorCola, cola, lista]);
+
+  // Un envío interrumpido (recarga o cierre justo tras enviar) deja un marcador con el texto que
+  // era el borrador y el contenido enviado. Cuando la lista de mensajes carga, se decide una vez:
+  // si el servidor ya lo guardó no se pinta nada (el hilo lo muestra) y el marcador se retira; si
+  // no llegó a guardarse, el borrador se reconstruye solo y el marcador se consume. La restauración
+  // espera a saber si se guardó para no pintar un borrador que haya que retirar a mitad de vista.
+  const reconstruidosRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!selectedId || !messages.data) return;
+    const envio = leerEnvio(selectedId);
+    if (!envio || reconstruidosRef.current.has(selectedId)) return;
+    if (enviandoActual) return;
+    reconstruidosRef.current.add(selectedId);
+    borrarEnvio(selectedId);
+    const ultimoUsuario = [...messages.data].reverse().find((mensaje) => mensaje.role === "user");
+    if (ultimoUsuario?.content === envio.contenido) return;
+    // El borrador veraz de este chat es el persistido (el estado puede venir del chat anterior).
+    const actual = leerBorrador(selectedId);
+    if (envio.texto) cambiarBorrador(actual.trim() ? `${envio.texto}\n${actual}` : envio.texto);
+  }, [selectedId, messages.data, enviandoActual]);
 
   // Vuelve a enviar el mensaje del usuario que precede a una respuesta.
   const reintentar = (mensajeId: string) => {
