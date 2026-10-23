@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-23", "tipo": "mediano", "titulo": "Selector de modelos: buscador en la lista que filtra por nombre, familia o proveedor, agrupa resultados y muestra el proveedor en cada fila", "pr": 119 },
     { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Chat en caliente: reintentos automáticos ante microcortes del proveedor, detener recupera ocupaciones huérfanas y avisos de archivos ausentes sin empujar a recargar", "pr": 118 },
     { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Borradores: el texto vuelve al compositor si la app muere justo tras enviar y el mensaje no llegó a guardarse", "pr": 117 },
     { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Historial: paginación en el servidor con cursor (?limite=&antes=) y «Cargar anteriores» en el muelle; la búsqueda cubre todo el historial", "pr": 116 },
