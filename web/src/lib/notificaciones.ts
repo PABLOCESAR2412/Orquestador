@@ -178,11 +178,23 @@ export function useNotificacionesDeTareas(): void {
   const anteriores = useRef(new Map<string, string>());
   const chats = useQuery({ queryKey: ["conversations"], queryFn: api.listConversations, refetchInterval: 5000 });
   const git = useQuery({ queryKey: ["avisos-git"], queryFn: api.avisosGit, refetchInterval: 5000 });
+  // Las tareas existentes al abrir la app siembran su estado una sola vez: una tarea que ya
+  // corría queda como punto de partida y su fallo posterior (running → failed por eventos
+  // vivos) llega como transición visible y no se pierde. Sin refetch: el aviso lo lleva el
+  // canal de eventos, no este sondeo.
+  const tareas = useQuery({ queryKey: ["tasks"], queryFn: api.listTasks });
+  const sembradoTareas = useRef(false);
+  useEffect(() => {
+    if (sembradoTareas.current || !tareas.data) return;
+    sembradoTareas.current = true;
+    for (const tarea of tareas.data) registrarTransicion(avisadas.current, tarea.id, tarea.status);
+  }, [tareas.data]);
   useEffect(() => {
     const emitir = (id: string, estado: string, titulo: string, cuerpo: string, chatId: string) => {
-      const previo = anteriores.current.get(id);
+      // La primera vez que se ve un id no avisa: es el punto de partida de esta sesión (llenó
+      // el sondeo o el primer paquete tras conectar). Así no reaparecen al reiniciar la app
+      // los avisos viejos; solo lo que cambia con la app abierta vuelve a sonar.
       if (!registrarTransicion(anteriores.current, id, estado)) return;
-      if (previo === undefined && id.startsWith("git-") && estado === "approved") return;
       void mostrar(titulo, cuerpo, id, chatId);
       if (notificacionesActivas() && sonidoNotificacionesActivo()) void probarSonidoNotificaciones();
     };
@@ -192,6 +204,8 @@ export function useNotificacionesDeTareas(): void {
 
   useEventosVivos({}, (evento) => {
     if (evento.tipo !== "tarea") return;
+    // Un evento nuevo de una tarea nunca vista se siembra sin aviso; uno sobre una tarea ya
+    // sembrada (al abrir la app o por un evento anterior) compara estados y avisa si cambió.
     if (!registrarTransicion(avisadas.current, evento.id, evento.status)) return;
     const aviso = AVISOS[evento.status];
     if (!aviso) return;

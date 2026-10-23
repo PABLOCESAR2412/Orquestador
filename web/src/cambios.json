@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Notificaciones: al abrir la app ya no suenan los avisos del pasado; suenan los nuevos con la app abierta y los empujados al dispositivo", "pr": 110 },
     { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Agentes: registra el uso real de Codex cuando la ejecución muere a mitad de turno usando la cuenta acumulada de token_count", "pr": 109 },
     { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Pruebas: el guard de aislamiento de la base también se activa por NODE_ENV de bun test; el fallo del bootstrap fuera del VM se cierra como falsa alarma", "pr": 108 },
     { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Analíticas: ajusta columnas y nombres largos en ejecuciones recientes para evitar desbordes del panel", "pr": 107 },
