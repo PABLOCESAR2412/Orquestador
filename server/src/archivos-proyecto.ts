@@ -233,13 +233,16 @@ export function leerArchivo(
   };
 }
 
-function leerBinario(
+// Valida un binario del proyecto (extensión permitida, archivo real sin enlaces, dentro del
+// proyecto y bajo el límite) SIN cargarlo completo: devuelve la ruta real para servirlo en
+// streaming y solo la cabecera necesaria para verificar la firma.
+function validarBinario(
   raizProyecto: string,
   segmentos: string[],
   extensiones: readonly string[],
   limite: number,
   errorFormato: string,
-): { ruta: string; tamano: number; contenido: Buffer } {
+): { ruta: string; tamano: number; real: string; cabeza: Buffer } {
   const extension = segmentos.at(-1)?.split(".").at(-1)?.toLowerCase();
   if (!extension || !extensiones.includes(extension)) {
     throw new ArchivoError(errorFormato, 415);
@@ -254,7 +257,7 @@ function leerBinario(
     throw new ArchivoError("project_path_not_file", 400);
   }
 
-  let contenido: Buffer;
+  let cabeza = Buffer.alloc(0);
   let tamano: number;
   try {
     const info = fstatSync(fd);
@@ -263,32 +266,33 @@ function leerBinario(
     tamano = info.size;
     if (tamano > limite) throw new ArchivoError("archivo_muy_grande", 413);
 
-    contenido = Buffer.alloc(tamano);
+    // Solo la cabecera entra en RAM: las firmas viven en los primeros bytes.
+    cabeza = Buffer.alloc(Math.min(1024, tamano));
     let leidos = 0;
-    while (leidos < tamano) {
-      const n = readSync(fd, contenido, leidos, tamano - leidos, leidos);
+    while (leidos < cabeza.length) {
+      const n = readSync(fd, cabeza, leidos, cabeza.length - leidos, leidos);
       if (n === 0) break;
       leidos += n;
     }
-    if (leidos !== tamano) contenido = contenido.subarray(0, leidos);
+    cabeza = cabeza.subarray(0, leidos);
   } finally {
     closeSync(fd);
   }
 
-  return { ruta: segmentos.join("/"), tamano, contenido };
+  return { ruta: segmentos.join("/"), tamano, real, cabeza };
 }
 
-// Lee un PDF generado en el workspace del chat y valida su firma.
+// Verifica la firma de un PDF del workspace del chat y devuelve la ruta para el servido.
 export function leerPdf(
   raizProyecto: string,
   segmentos: string[],
-): { ruta: string; tamano: number; contenido: Buffer } {
-  const archivo = leerBinario(raizProyecto, segmentos, ["pdf"], LIMITE_PDF, "formato_pdf_invalido");
+): { ruta: string; tamano: number; real: string } {
+  const archivo = validarBinario(raizProyecto, segmentos, ["pdf"], LIMITE_PDF, "formato_pdf_invalido");
   // La cabecera PDF puede aparecer dentro de los primeros 1024 bytes según la especificación.
-  if (archivo.contenido.subarray(0, 1024).indexOf(Buffer.from("%PDF-", "ascii")) < 0) {
+  if (archivo.cabeza.indexOf(Buffer.from("%PDF-", "ascii")) < 0) {
     throw new ArchivoError("formato_pdf_invalido", 415);
   }
-  return archivo;
+  return { ruta: archivo.ruta, tamano: archivo.tamano, real: archivo.real };
 }
 
 const MIME_IMAGEN: Record<string, string> = {
@@ -303,11 +307,11 @@ const MIME_IMAGEN: Record<string, string> = {
 export function leerImagen(
   raizProyecto: string,
   segmentos: string[],
-): { ruta: string; nombre: string; mime: string; tamano: number; contenido: Buffer } {
-  const archivo = leerBinario(raizProyecto, segmentos, Object.keys(MIME_IMAGEN), LIMITE_IMAGEN, "formato_imagen_invalido");
+): { ruta: string; nombre: string; mime: string; tamano: number; real: string } {
+  const archivo = validarBinario(raizProyecto, segmentos, Object.keys(MIME_IMAGEN), LIMITE_IMAGEN, "formato_imagen_invalido");
   const nombre = archivo.ruta.split("/").at(-1)!;
   const extension = nombre.split(".").at(-1)!.toLowerCase();
-  const bytes = archivo.contenido;
+  const bytes = archivo.cabeza;
   const valida = extension === "png"
     ? bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
     : extension === "jpg" || extension === "jpeg"
@@ -316,19 +320,19 @@ export function leerImagen(
         ? bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP"
         : bytes.toString("ascii", 0, 6) === "GIF87a" || bytes.toString("ascii", 0, 6) === "GIF89a";
   if (!valida) throw new ArchivoError("formato_imagen_invalido", 415);
-  return { ...archivo, nombre, mime: MIME_IMAGEN[extension]! };
+  return { ruta: archivo.ruta, nombre, mime: MIME_IMAGEN[extension]!, tamano: archivo.tamano, real: archivo.real };
 }
 
-// Lee videos MP4 del workspace y valida la cabecera ISO-BMFF antes de servirlos al navegador.
+// Verifica la cabecera ISO-BMFF de un MP4 del workspace y devuelve la ruta para el servido.
 export function leerVideo(
   raizProyecto: string,
   segmentos: string[],
-): { ruta: string; nombre: string; mime: string; tamano: number; contenido: Buffer } {
-  const archivo = leerBinario(raizProyecto, segmentos, ["mp4"], LIMITE_VIDEO, "formato_video_invalido");
-  if (archivo.contenido.length < 12 || archivo.contenido.toString("ascii", 4, 8) !== "ftyp") {
+): { ruta: string; nombre: string; mime: string; tamano: number; real: string } {
+  const archivo = validarBinario(raizProyecto, segmentos, ["mp4"], LIMITE_VIDEO, "formato_video_invalido");
+  if (archivo.cabeza.length < 12 || archivo.cabeza.toString("ascii", 4, 8) !== "ftyp") {
     throw new ArchivoError("formato_video_invalido", 415);
   }
-  return { ...archivo, nombre: archivo.ruta.split("/").at(-1)!, mime: "video/mp4" };
+  return { ruta: archivo.ruta, nombre: archivo.ruta.split("/").at(-1)!, mime: "video/mp4", tamano: archivo.tamano, real: archivo.real };
 }
 
 // Busca una referencia sin carpeta dentro del proyecto cuando el modelo solo citó el nombre.
