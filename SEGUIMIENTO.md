@@ -123,6 +123,14 @@ Entrega: [PR #104](https://github.com/PABLOCESAR2412/Orquestador/pull/104). Fusi
 
 Commit a06b9bf: 55 suites (425 aprobadas, 1 fallo por base compartida, 61 omisiones). Suite aislada: 8 aprobadas. Web: 30 casos, build y Playwright 390/1440 px. Se reprodujeron sesión heredada tras logout, PATCH parcial, omisión de prefijos .opencode y bloqueo CSP del HTML. El respaldo omitía entregables. A07/A08 se detectaron por lectura de código. La suite defectuosa escribió fixtures en la base local: no se tocó el VPS ni se restauraron filas automáticamente.
 
+## Despliegue que no separa interfaz y servidor — tramo 3
+
+Entrega: [PR #121](https://github.com/PABLOCESAR2412/Orquestador/pull/121).
+
+- [x] **Los cinco minutos no rompen el contrato.** Mientras haya ejecuciones en curso, `actualizar.sh` pospone el reinicio del servidor ciclo tras ciclo; antes la interfaz nueva quedaba igual servida ante un servidor anterior y el shell nuevo rompía con «Cannot read properties of undefined (reading 'find')». Ahora el script decide antes de compilar: si cambió `server/` y hay ejecuciones, trae el código pero no recompila la interfaz; las dos partes avanzan en el primer ciclo libre.
+- [x] Los cambios que solo tocan la interfaz se siguen despliegando al instante (no tocan el contrato del servidor); el health check y la vuelta atrás quedan como estaban. Nota actualizada en `deploy/README.md`.
+- Pruebas: `bash -n` válido y revisión de los cuatro casos (sin cambios, solo web, web+server con ejecuciones, web+server libres). La verificación final es operativa en el VM: al fusionar, el siguiente ciclo libre despliega server+web juntos.
+
 ## Historial que aguanta un servidor desactualizado — tramo 3
 
 Entrega: [PR #120](https://github.com/PABLOCESAR2412/Orquestador/pull/120).
