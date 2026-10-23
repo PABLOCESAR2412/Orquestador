@@ -123,6 +123,15 @@ Entrega: [PR #104](https://github.com/PABLOCESAR2412/Orquestador/pull/104). Fusi
 
 Commit a06b9bf: 55 suites (425 aprobadas, 1 fallo por base compartida, 61 omisiones). Suite aislada: 8 aprobadas. Web: 30 casos, build y Playwright 390/1440 px. Se reprodujeron sesión heredada tras logout, PATCH parcial, omisión de prefijos .opencode y bloqueo CSP del HTML. El respaldo omitía entregables. A07/A08 se detectaron por lectura de código. La suite defectuosa escribió fixtures en la base local: no se tocó el VPS ni se restauraron filas automáticamente.
 
+## Rediseño de borradores — sobrevivir a envíos interrumpidos (tramo 3)
+
+Entrega: [PR #117](https://github.com/PABLOCESAR2412/Orquestador/pull/117). Segundo PR del tramo 3; alcance acordado con el usuario: el borrador de envío no se pierde aunque la app muera (recarga o cierre) entre vaciar el compositor y que el servidor confirme el mensaje.
+
+- [x] **Marcador de envío en vuelo.** Al enviar el borrador (solo el envío directo; la cola ya era persistente y el drenaje retira el elemento solo tras la confirmación del POST), `chat.tsx` guarda en localStorage (`web/src/lib/chat-borrador.ts`, clave `telo:envio:<id>`) el texto que era el borrador y el contenido compuesto exacto. `onSuccess` lo borra (guardado confirmado) y `onError` lo borra tras restaurar el borrador como hasta ahora.
+- [x] **Reconciliación al reabrir el chat.** Con la lista de mensajes cargada se decide una sola vez: si el último mensaje del usuario coincide con el contenido guardado, no se pinta nada que duplique y el marcador se retira; si no se guardó, el borrador se reconstruye (fusionando con lo ya escrito, leyendo el borrador persistido de ESE chat para evitar cruces al cambiar de chat). Restaurar tras saber que no se guardó evita pintar un borrador que haya que retirar a mitad de vista.
+- Pruebas: `web/tests/chat-borrador.test.ts` (+3): borrador por chat, marcador completo y marcador corrupto/incompleto. Suite web 34/0; `tsc` limpio.
+- Fuera de alcance anotado: los adjuntos ya subidos no se restauran al compositor (el texto sí); el feedback de revisión de plan no lleva marcador. Sin cambio de servidor.
+
 ## Rediseño del historial — paginación (tramo 3)
 
 Entrega: [PR #116](https://github.com/PABLOCESAR2412/Orquestador/pull/116). Un PR por ítem del tramo 3; este es el primero (paginación del historial).
