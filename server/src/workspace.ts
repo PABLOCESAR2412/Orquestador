@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import {
+  copyFileSync,
   cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -354,6 +356,29 @@ async function existeCommit(clon: string, sha: string): Promise<boolean> {
   return r.code === 0;
 }
 
+function esCarpetaReal(ruta: string): boolean {
+  try {
+    return lstatSync(ruta).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+// Copia recursiva sin enlaces simbólicos: un symlink dentro del árbol de skills se salta,
+// porque un agente escribiendo a través de un enlace escribiría fuera de su sandbox. También
+// se exige una carpeta real como origen (existsSync seguiría el enlace de una carpeta enlazada).
+export function copiarCarpetaSana(origen: string, destino: string): void {
+  if (!lstatSync(origen).isDirectory()) throw new Error("El origen de la copia no es una carpeta real.");
+  mkdirSync(destino, { recursive: true });
+  for (const entrada of readdirSync(origen, { withFileTypes: true })) {
+    if (entrada.isSymbolicLink()) continue;
+    const de = join(origen, entrada.name);
+    const a = join(destino, entrada.name);
+    if (entrada.isDirectory()) copiarCarpetaSana(de, a);
+    else if (entrada.isFile()) copyFileSync(de, a);
+  }
+}
+
 // Sincroniza las carpetas de skills del proyecto hacia el clon del workspace,
 // asegurando que las skills locales y no commiteadas estén disponibles para el agente.
 function sincronizarSkillsDeProyecto(repoPath: string, clon: string): void {
@@ -382,16 +407,16 @@ function sincronizarSkillsDeProyecto(repoPath: string, clon: string): void {
     }
 
     const skillsOpencode = join(repoPath, ".opencode", "skills");
-    if (existsSync(skillsOpencode)) {
+    if (esCarpetaReal(skillsOpencode)) {
       const destOpencode = join(clon, ".opencode", "skills");
       mkdirSync(destOpencode, { recursive: true });
-      cpSync(skillsOpencode, destOpencode, { recursive: true, force: true });
+      copiarCarpetaSana(skillsOpencode, destOpencode);
     }
     const skillsRaiz = join(repoPath, "skills");
-    if (existsSync(skillsRaiz)) {
+    if (esCarpetaReal(skillsRaiz)) {
       const destRaiz = join(clon, "skills");
       mkdirSync(destRaiz, { recursive: true });
-      cpSync(skillsRaiz, destRaiz, { recursive: true, force: true });
+      copiarCarpetaSana(skillsRaiz, destRaiz);
     }
   } catch {
     // Si la sincronización auxiliar de skills no se completa, no bloquea el arranque de la tarea.
