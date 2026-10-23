@@ -386,6 +386,48 @@ describe("métricas de la lista de proyectos", () => {
   });
 });
 
+describe("borrar proyecto con ejecuciones activas", () => {
+  test("responde 409 con tarea en marcha y no borra el registro", async () => {
+    const { db } = await import("../src/db");
+    const id = crypto.randomUUID();
+    db.query("INSERT INTO projects (id, name, repo_path) VALUES (?, 'En ejecución', ?)").run(
+      id,
+      join(process.env.TELO_PROYECTOS_DIR!, `en-curso-${id.slice(0, 8)}`),
+    );
+    db.query("INSERT INTO tasks (id, title, prompt, model, status, project_id) VALUES (?, 'Corriendo', 'hacer algo', 'opencode/x', 'running', ?)").run(
+      crypto.randomUUID(),
+      id,
+    );
+    try {
+      const res = await projects.request(`/projects/${id}`, { method: "DELETE" });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ error: "proyecto_en_curso" });
+      const sigue = db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM projects WHERE id = ?").get(id)!;
+      expect(sigue.n).toBe(1);
+    } finally {
+      db.query("DELETE FROM tasks WHERE project_id = ?").run(id);
+      db.query("DELETE FROM projects WHERE id = ?").run(id);
+    }
+  });
+
+  test("sin ejecuciones activas borra el registro", async () => {
+    const { db } = await import("../src/db");
+    const id = crypto.randomUUID();
+    db.query("INSERT INTO projects (id, name, repo_path) VALUES (?, 'Borrable', ?)").run(
+      id,
+      join(process.env.TELO_PROYECTOS_DIR!, `borrable-${id.slice(0, 8)}`),
+    );
+    try {
+      const res = await projects.request(`/projects/${id}`, { method: "DELETE" });
+      expect(res.status).toBe(200);
+      const sigue = db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM projects WHERE id = ?").get(id)!;
+      expect(sigue.n).toBe(0);
+    } finally {
+      db.query("DELETE FROM projects WHERE id = ?").run(id);
+    }
+  });
+});
+
 describe("memoria editada a mano", () => {
   const json = (cuerpo: unknown) => ({
     method: "PUT",

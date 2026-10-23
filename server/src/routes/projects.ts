@@ -6,7 +6,7 @@ import { db } from "../db";
 import { gitOk, gitSeguro, esRepositorio, GitError, prepararRepoSeguro, tieneGitReal } from "../git";
 import { ArchivoError, buscarArchivosPorNombre, leerArchivo, listarCarpeta, medirCarpeta, normalizarRuta } from "../archivos-proyecto";
 import { redactar } from "../redaccion";
-import { conProyectoRevisado } from "../ocupacion";
+import { conProyectoRevisado, conversacionEnCurso } from "../ocupacion";
 import { ARCHIVOS_GUIA, MAX_MEMORIA, componerInstrucciones, guardarMemoria, memoriaDelProyecto, aprobarMemoriaPropuesta, descartarMemoriaPropuesta } from "../memoria";
 import { ErrorClonado, urlGithubNormalizada } from "../clonado";
 import { iniciarClonadoEnChat } from "../clonado-chat";
@@ -459,6 +459,24 @@ projects.delete("/projects/:id", (c) => {
   const row = leerProyecto(id);
   if (!row) return c.json({ error: "project_not_found" }, 404);
 
+  // Con una ejecución activa la carpeta está en uso: el agente trabaja dentro y borrarla
+  // castra el trabajo en marcha. Se pide cancelar y esperar el cierre antes de seguir.
+  const enEjecucion = db
+    .query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM tasks WHERE project_id = ? AND status IN ('queued','running')")
+    .get(id)!.n;
+  if (enEjecucion > 0)
+    return c.json(
+      { error: "proyecto_en_curso", detalle: "Hay una tarea corriendo en este proyecto. Cancela la tarea y espera su cierre antes de borrar el proyecto." },
+      409,
+    );
+  for (const { id: chatId } of db.query<{ id: string }, [string]>("SELECT id FROM conversations WHERE project_id = ?").all(id)) {
+    if (conversacionEnCurso(chatId))
+      return c.json(
+        { error: "proyecto_en_curso", detalle: "Hay un chat de este proyecto trabajando. Espera a que termine o cancela antes de borrar el proyecto." },
+        409,
+      );
+  }
+
   const borrarCarpeta = c.req.query("borrar_carpeta") === "true";
   if (borrarCarpeta && row.repo_path) {
     const raiz = raizReal();
@@ -466,7 +484,13 @@ projects.delete("/projects/:id", (c) => {
       try {
         rmSync(row.repo_path, { recursive: true, force: true });
       } catch (err) {
-        console.error("No se pudo borrar la carpeta física del proyecto:", err);
+        // Si la carpeta no se pudo quitar, el registro no se borra: quedaría huérfana.
+        const codigo = (err as NodeJS.ErrnoException)?.code;
+        if (codigo !== "ENOENT")
+          return c.json(
+            { error: "carpeta_no_borrada", detalle: "La carpeta del proyecto está en uso y no se pudo borrar. Cierra lo que la está usando y vuelve a intentarlo." },
+            409,
+          );
       }
     }
   }

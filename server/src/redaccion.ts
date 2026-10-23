@@ -1,4 +1,6 @@
 import { config } from "./config";
+import { entornoProveedores, valorClaveJev } from "./claves-proveedor";
+import { valoresTokensMcp } from "./conexiones-mcp";
 
 // Redacción de todo lo que sale del servidor: salida del agente, eventos en vivo, resultados,
 // errores, mensajes de Git y diffs. Oculta valores de secretos conocidos (los del proyecto y los de
@@ -56,10 +58,23 @@ export function valoresDeConfiguracion(): string[] {
   );
 }
 
+// Secretos que el servidor conoce más allá del proyecto: claves de proveedor guardadas (Groq,
+// NVIDIA, Google…), la clave de la integración interna y los tokens de las conexiones MCP. Entran
+// en el mismo filtro que los secretos del proyecto —salida, diffs y escaneo de commits— aunque el
+// proyecto no los declare. Un valor que no se pueda descifrar se omite; nunca lanza error.
+export function valoresSecretosServidor(): string[] {
+  try {
+    const jev = valorClaveJev();
+    return [...Object.values(entornoProveedores()), ...valoresTokensMcp(), ...(jev ? [jev] : [])];
+  } catch {
+    return [];
+  }
+}
+
 // Reemplaza por *** cada valor de `valores` de al menos `minimo` caracteres (más largos primero),
 // y cada credencial con formato conocido. Nunca lanza error.
 export function redactar(texto: string, valores: string[] = [], minimo = MINIMO_VALOR): string {
-  const todos = [...new Set([...valores, ...valoresDeConfiguracion()])]
+  const todos = [...new Set([...valores, ...valoresDeConfiguracion(), ...valoresSecretosServidor()])]
     .filter((v) => !VALORES_IGNORADOS.has(v.toLowerCase().trim()))
     .sort((a, b) => b.length - a.length);
   let limpio = texto;
@@ -119,7 +134,7 @@ function contieneSecreto(linea: string, valores: string[]): boolean {
 // Archivos del diff que añaden una línea con un secreto conocido o con formato de credencial.
 // Solo mira las líneas añadidas. Devuelve nombres de archivo, nunca el valor encontrado.
 export function archivosConSecretos(diff: string, valores: string[]): string[] {
-  const todos = [...valores, ...valoresDeConfiguracion()];
+  const todos = [...valores, ...valoresDeConfiguracion(), ...valoresSecretosServidor()];
   const hallados = new Set<string>();
   let archivo = "(desconocido)";
   for (const linea of diff.split("\n")) {
@@ -139,7 +154,7 @@ export function archivosConSecretos(diff: string, valores: string[]): string[] {
 // no muestra, por ejemplo un archivo marcado binario con `.gitattributes`. Devuelve
 // rutas, nunca el valor del secreto.
 export function archivosConSecretosEnBlobs(blobs: string, valores: string[]): string[] {
-  const todos = [...valores, ...valoresDeConfiguracion()];
+  const todos = [...valores, ...valoresDeConfiguracion(), ...valoresSecretosServidor()];
   const hallados = new Set<string>();
   let archivo = "(desconocido)";
   for (const linea of blobs.split("\n")) {

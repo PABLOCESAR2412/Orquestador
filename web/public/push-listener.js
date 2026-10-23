@@ -11,10 +11,18 @@ self.addEventListener("push", (event) => {
   }
   event.waitUntil(
     (async () => {
-      // Con la app visible la página ya avisa por su cuenta (notificaciones locales):
-      // mostrar aquí de nuevo duplicaría el aviso.
+      // Con la app visible, la página avisa por su cuenta (notificaciones locales) y mostrar
+      // aquí de nuevo duplicaría el aviso; pero si las notificaciones locales están bloqueadas,
+      // esa página nunca avisará y el push quedaría mudo. Solo se calla el worker cuando hay
+      // ventana visible y el permiso permite que la página entera tome la notificación.
       const abiertas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-      if (abiertas.some((cliente) => cliente.visibilityState === "visible")) return;
+      const ventanaAvisara = abiertas.some(
+        (cliente) =>
+          cliente.visibilityState === "visible" &&
+          typeof Notification !== "undefined" &&
+          Notification.permission === "granted",
+      );
+      if (ventanaAvisara) return;
       await self.registration.showNotification(carga.titulo || "Telo", {
         body: carga.cuerpo || "",
         tag: "telo-push",

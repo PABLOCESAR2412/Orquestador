@@ -469,9 +469,25 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         html_url?: string;
         mergeable?: boolean | null;
         mergeable_state?: string;
-        head?: { ref?: string; repo?: { full_name?: string | null } | null };
+        head?: { ref?: string; sha?: string; repo?: { full_name?: string | null } | null };
         base?: { ref?: string; repo?: { full_name?: string | null } | null };
       };
+      // El merge queda ligado al SHA revisado: la punta del PR debe seguir siendo el commit
+      // cuya subida se aprobó para la tarea. Un push posterior (o un amend) invalida la
+      // autorización y exige revisión nueva, y el PUT lo declara con el campo sha.
+      const puntaAprobada = row.task_id
+        ? db
+            .query<{ commit_sha: string }, [string]>(
+              "SELECT commit_sha FROM task_approvals WHERE task_id=? AND accion='push' AND commit_sha IS NOT NULL ORDER BY rowid DESC LIMIT 1",
+            )
+            .get(row.task_id)?.commit_sha ?? null
+        : null;
+      if (puntaAprobada && pull.head?.sha && pull.head.sha !== puntaAprobada)
+        throw new ErrorTarea(
+          "pr_cambiado",
+          409,
+          "La punta del Pull Request cambió desde que la aprobaste. Solicita la autorización otra vez.",
+        );
       if (pull.mergeable === false && pull.mergeable_state === "dirty") {
         const ramaFuente = pull.head?.ref ?? "";
         const ramaBase = pull.base?.ref ?? p.base ?? cfg.base_branch;
@@ -531,6 +547,7 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         {
           commit_title: p.title || `Merge pull request #${numeroPull} desde Telo`,
           merge_method: "squash",
+          ...(puntaAprobada ? { sha: puntaAprobada } : {}),
         },
         "PUT",
         "merge",
