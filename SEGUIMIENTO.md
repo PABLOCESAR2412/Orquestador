@@ -123,6 +123,13 @@ Entrega: [PR #104](https://github.com/PABLOCESAR2412/Orquestador/pull/104). Fusi
 
 Commit a06b9bf: 55 suites (425 aprobadas, 1 fallo por base compartida, 61 omisiones). Suite aislada: 8 aprobadas. Web: 30 casos, build y Playwright 390/1440 px. Se reprodujeron sesión heredada tras logout, PATCH parcial, omisión de prefijos .opencode y bloqueo CSP del HTML. El respaldo omitía entregables. A07/A08 se detectaron por lectura de código. La suite defectuosa escribió fixtures en la base local: no se tocó el VPS ni se restauraron filas automáticamente.
 
+## Historial que aguanta un servidor desactualizado — tramo 3
+
+Entrega: [PR #120](https://github.com/PABLOCESAR2412/Orquestador/pull/120).
+
+- [x] **Blinda el shell ante la mezcla de versiones.** El fallo de producción «Cannot read properties of undefined (reading 'find')» venía de pedir al shell la página del historial a un servidor anterior al paginado: el servidor viejo ignora `?limite=` y contesta el array plano, y el shell nuevo leía `.conversations` sobre él. `normalizaPaginaConversaciones` envuelve el array con `siguiente=null` para que ambas formen vistas; el error desaparece aunque el despliegue renueve interfaz y servidor en momentos distintos (el reinicio se pospone mientras haya agentes en curso).
+- Pruebas: `web/tests/pagina-conversaciones.test.ts` (+3: página intacta, array plano envuelto, array vacío). Verificación local: `tsc` exit 0; web 51 pass/0 fail; build y humo PASS.
+
 ## Selector de modelos con buscador — tramo 3
 
 Entrega: [PR #119](https://github.com/PABLOCESAR2412/Orquestador/pull/119).
