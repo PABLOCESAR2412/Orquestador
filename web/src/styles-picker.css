@@ -97,6 +97,34 @@
   min-height: 40px;
 }
 
+/* Buscador del mock: el chip con el proveedor va en cada fila, el botón ✕ limpia la búsqueda. */
+.picker-proveedor-chip {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 10px;
+  white-space: nowrap;
+}
+/* El ✕ lo pone Telo; el nativo de type="search" solo pillaría en algunos navegadores. */
+.picker-search::-webkit-search-cancel-button { display: none; }
+.picker-limpiar {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.picker-limpiar:hover { background: var(--surface-2); color: var(--ink); }
+.picker-busca-ocultos { margin: 4px 10px 6px; color: var(--ink-3); font-size: 11px; }
+
 @media (max-width: 760px) {
   .picker.picker-con-esfuerzo { box-sizing: border-box; }
   .picker.picker-con-esfuerzo .picker-list { overflow-y: auto; }

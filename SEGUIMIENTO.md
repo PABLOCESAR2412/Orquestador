@@ -123,6 +123,15 @@ Entrega: [PR #104](https://github.com/PABLOCESAR2412/Orquestador/pull/104). Fusi
 
 Commit a06b9bf: 55 suites (425 aprobadas, 1 fallo por base compartida, 61 omisiones). Suite aislada: 8 aprobadas. Web: 30 casos, build y Playwright 390/1440 px. Se reprodujeron sesión heredada tras logout, PATCH parcial, omisión de prefijos .opencode y bloqueo CSP del HTML. El respaldo omitía entregables. A07/A08 se detectaron por lectura de código. La suite defectuosa escribió fixtures en la base local: no se tocó el VPS ni se restauraron filas automáticamente.
 
+## Selector de modelos con buscador — tramo 3
+
+Entrega: [PR #119](https://github.com/PABLOCESAR2412/Orquestador/pull/119).
+
+- [x] **Buscador dentro de la lista.** El selector de modelos estrena la fila de búsqueda del mock (lupa + campo `type="search"` que ya estaba en los estilos sin uso): escribes y el catálogo se filtra en vivo por nombre, identificador, familia o nombre visible del proveedor, sin tildes ni mayúsculas de por medio («config» halla «Configuración»). Los resultados se agrupan por proveedor; «Tus modelos», «Predeterminado» y el aviso de inteligencia se esconden mientras escribes, y la sección Codex también filtra.
+- [x] **Proveedor visible en cada fila.** Todas las filas, incluidas las de Codex, llevan un chip con el proveedor. El catálogo grande queda con tope de 120 resultados y una nota lo avisa cuando se trunca.
+- [x] **Limpieza y estado vacío.** El botón ✕ restaura la vista completa y cuando nada coincide se dice «Sin resultados para «…»» en lugar de dejar la lista sin explicar.
+- Pruebas: `web/tests/busca-modelos.test.ts` (+8: normalización sin tildes, coincidencia por campo y agrupado que conserva el orden). Humo: escribir «other» deja solo «Other Test» (chip «Groq API», contador «1 modelo disponible»), «inexistente» muestra el estado vacío y el ✕ restaura «Tus modelos». Web 48 pass/0 fail; `tsc` exit 0; build y humo PASS.
+
 ## Detener en caliente — correcciones de uso reportadas (PR #118)
 
 - [x] Un microcorte del proveedor ya no rinde la tarea a mitad del trabajo. El 5xx/429 tenía un solo reintento a los 1,2 s: «Unexpected server error» repetido dejaba la tarea en «Requiere corrección» y el usuario tenía que decir «siga». Ahora hay hasta 3 reintentos con esperas crecientes (5xx: 1,2/10/30 s; 429: 2,5/15/45 s) y cada intento retoma la sesión ya abierta para continuar donde quedó; si se agota, el mensaje final lo dice («Telo lo reintentó automáticamente…») y remite a «Seguir» u otro modelo. La mejora cubre tareas y turnos de chat porque comparten motor de ejecución.
