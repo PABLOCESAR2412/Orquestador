@@ -22,6 +22,7 @@ import {
   hashPlan,
   MAX_PLANES,
   promptAnalizador,
+  promptCorreccion,
   promptObrero,
   promptReparacion,
   requiereAprobacion,
@@ -58,6 +59,10 @@ import { enMantenimiento, registrarTrabajo } from "./despliegue";
 const TIEMPO_SIN_ACTIVIDAD_MS = Number(process.env.TELO_TIEMPO_INACTIVIDAD_MS ?? 15 * 60_000);
 
 const MENSAJE_INTERRUMPIDA = "El servidor se reinició mientras la tarea corría. Puedes reanudarla o reintentarla.";
+// Iniciativa del obrero: tras un reporte con fallo, el mismo agente corrige en su sesión hasta
+// este tope de ciclos antes de fallar la tarea. TELO_CICLOS_OBRERO lo ajusta; 0 desactiva
+// la iniciativa y falla con el primer reporte, como antes.
+const MAX_CICLOS_OBRERO = Math.max(0, Math.floor(Number(process.env.TELO_CICLOS_OBRERO ?? 2)) || 0);
 // Tamaño máximo de cada línea de salida que viaja por el canal en vivo.
 const MAX_LINEA_EN_VIVO = 4096;
 export const MAX_NOTAS = 2000;
@@ -392,9 +397,11 @@ async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Pr
 }
 
 // Obrero: ejecuta solo el plan aprobado, en la misma sesión y carpeta que el analizador.
-// Si necesita salirse del plan, devuelve el motivo en vez de un reporte.
+// Si necesita salirse del plan, devuelve el motivo en vez de un reporte. Con `correccion`,
+// la llamada devuelve el fallo de la verificación al mismo agente (iniciativa del obrero).
 async function faseObrero(
   ctx: Contexto,
+  correccion?: { numero: number; reporte: Reporte; texto: string },
 ): Promise<{ desviacion: string } | { reporte: Reporte; texto: string }> {
   const { task } = ctx;
   const plan = planGuardado(task.id);
@@ -407,11 +414,16 @@ async function faseObrero(
   const internos = resolve(ctx.cwd) === resolve(config.dataDir, "tasks", task.id) ? ["salida.log"] : [];
   const alcance = await capturarAlcance(ctx.cwd, plan.pasos.flatMap(p => p.archivos), internos);
 
-  db.query("UPDATE tasks SET status = 'running' WHERE id = ?").run(task.id);
-  publicarEstado(task.id);
-  registrarEvento(task.id, "obrero_iniciado", `Modelo ${task.model} · ejecuta el plan aprobado`);
+  if (correccion) {
+    registrarEvento(task.id, "correccion_iniciada", `Ciclo ${correccion.numero} de ${MAX_CICLOS_OBRERO}: se devuelve el fallo al obrero`);
+  } else {
+    db.query("UPDATE tasks SET status = 'running' WHERE id = ?").run(task.id);
+    publicarEstado(task.id);
+    registrarEvento(task.id, "obrero_iniciado", `Modelo ${task.model} · ejecuta el plan aprobado`);
+  }
 
-  const respuesta = await llamar(ctx, promptDeFase(ctx, promptObrero(plan)), true);
+  const prompt = correccion ? promptCorreccion(plan, correccion.reporte, correccion.texto) : promptObrero(plan);
+  const respuesta = await llamar(ctx, promptDeFase(ctx, prompt), true);
   if (alcance) {
     const fuera = await comprobarAlcance(alcance);
     if (fuera.length) return { desviacion: "Se detectaron cambios fuera del plan: " + fuera.slice(0,20).join(", ") + ". Se conservan para revisión." };
@@ -537,7 +549,17 @@ async function ejecutarTarea(task: QueuedTask) {
       if (decision === "espera") return;
     }
 
-    const resultado = await faseObrero(ctx);
+    // Iniciativa del obrero: un reporte con fallo no termina la tarea de inmediato. El mismo
+    // agente recibe su fallo en la misma sesión y corrige dentro del plan hasta el tope de
+    // ciclos; agotados, la tarea falla con el último reporte, igual que antes.
+    let resultado = await faseObrero(ctx);
+    for (
+      let ciclo = 1;
+      !("desviacion" in resultado) && resultado.reporte.estado === "fallo" && ciclo <= MAX_CICLOS_OBRERO;
+      ciclo++
+    ) {
+      resultado = await faseObrero(ctx, { numero: ciclo, reporte: resultado.reporte, texto: resultado.texto });
+    }
     if ("desviacion" in resultado) {
       if (contarPlanes(task.id) >= MAX_PLANES) {
         throw new ErrorFase(`El obrero se desvió del plan ${MAX_PLANES} veces. Revisa el plan y reintenta la tarea.`);

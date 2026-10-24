@@ -286,6 +286,33 @@ export function promptReparacion(motivo: string): string {
   ].join("\n");
 }
 
+// Iniciativa del obrero: se usa cuando su verificación reporta un fallo. En la misma sesión,
+// el obrero recibe su propio reporte y corrige dentro del plan aprobado; el alcance y las
+// desviaciones se comprueban igual que en la ejecución original.
+export function promptCorreccion(plan: Plan, reporte: Reporte, texto: string): string {
+  const lineas = [
+    "CORRECCIÓN DEL OBRERO: tu verificación reportó un fallo. Corrígelo y vuelve a entregar.",
+    "",
+    "Reporte del intento anterior:",
+    JSON.stringify(reporte, null, 2),
+  ];
+  if (texto.trim()) {
+    const cola = texto.length > 4000 ? texto.slice(-4000) : texto;
+    lineas.push("", "Salida reciente del intento anterior (por si el detalle del fallo está ahí):", cola);
+  }
+  lineas.push(
+    "",
+    "Corrige el fallo dentro del plan aprobado de abajo: mismos archivos y pasos, sin salirte del alcance.",
+    'Si el fallo solo se arregla saliéndote del plan, responde con "estado": "desviacion" y el motivo, igual que antes.',
+    "",
+    "Plan aprobado:",
+    JSON.stringify(sinNotas(plan), null, 2),
+    "",
+    "Al terminar, responde solo con el objeto JSON del reporte, en la misma forma que antes (resumen obligatorio).",
+  );
+  return lineas.join("\n");
+}
+
 export function promptObrero(plan: Plan): string {
   const lineas = [
     "Eres el obrero de Telo. Ejecuta solo el plan aprobado que aparece abajo, dentro de tu carpeta de trabajo.",
