@@ -961,6 +961,15 @@ export function ChatPage() {
     window.setTimeout(() => setAviso(null), 2400);
   };
 
+  // Tarea 12: retirar un mensaje en cola antes de que su turno arranque. El hilo lo borra al refrescar.
+  const quitarCola = useMutation({
+    mutationFn: (variables: { conversacionId: string; mensajeId: string }) =>
+      api.quitarMensajeEnCola(variables.conversacionId, variables.mensajeId),
+    onSettled: (_data, _error, variables) => {
+      qc.invalidateQueries({ queryKey: ["messages", variables.conversacionId] });
+    },
+  });
+
   // Lee archivos y los añade al compositor. Un mensaje no puede pasar del tope de texto de adjuntos.
   const agregarArchivos = async (archivos: File[]) => {
     const id = selectedId;
@@ -1727,6 +1736,14 @@ export function ChatPage() {
                         resaltado={resaltadoId === m.id}
                         marcado={hitos.includes(m.id)}
                         onToggleMarca={() => marcarPrompt(m.id)}
+                        enCola={m.en_cola === 1}
+                        onQuitarCola={
+                          m.en_cola === 1
+                            ? () => {
+                                if (selectedId) quitarCola.mutate({ conversacionId: selectedId, mensajeId: m.id });
+                              }
+                            : undefined
+                        }
                       />
                     </>
                   ) : (

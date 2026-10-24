@@ -4,6 +4,16 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 23 de octubre de
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Tarea 12: cola de mensajes del chat — 23 de octubre de 2026
+
+Entrega: [PR #127](https://github.com/PABLOCESAR2412/Orquestador/pull/127). Va sobre el PR #126 (contiene sus commits).
+
+- [x] **Lo que envías mientras el agente responde queda en cola y se ejecuta en orden de llegada.** Antes el servidor rechazaba el mensaje con 409 `conversation_busy` y había que reenviarlo a mano. Ahora el POST guarda el mensaje y lo encola: los chats de proyecto usan su cola propia de tareas (el worker las corre en orden) y los chats libres guardan el mensaje con `en_cola = 1` (migración 043); al terminar un turno, `arrancarSiguienteEnCola` arranca el pendiente más antiguo dentro del `finally`, y sigue habiendo un turno a la vez por chat.
+- [x] **En el chat: insignia «En cola» y quitar antes de que arranque.** El hilo marca el pendiente con su insignia y un botón de quitar (`DELETE /api/conversations/:id/messages/:mensajeId`; 404 si ya arrancó). La cola local del compositor sigue igual para lo que aún no llegó al servidor.
+- [x] **Un reinicio no ejecuta los pendientes por su cuenta.** Al arrancar, `avisarTurnosInterrumpidos` limpia las banderas `en_cola` y los avisos de siempre piden volver a enviar. «Detener» cancela el turno y vacía la cola con un aviso que lo dice («…los N mensajes en cola quedaron sin ejecutar»).
+- Guardas que se conservan: los reintentos no se encolan (409 como hoy), la cuota agotada sigue bloqueando (`chat_quota_pending`) y un proyecto en revisión de Git bloquea su instante (`proyecto_ocupado`). El límite de 3 minutos por turno ya no existe (`TIEMPO_TURNO_MS = null`; queda el vigilante de inactividad de 15 minutos), así que la cola no esperaba ninguna decisión.
+- Verificación: servidor **76/76 suites** en verde (cada una en proceso propio, como el CI) con pruebas nuevas de orden, quitar, detener con cola y reinicio (`chat-turnos.test.ts`, y `chat-cola.test.ts` actualizado al nuevo solape: encola tarea nueva y supersede la acción git pendiente); web `tsc` limpio, 58 unitarios pass, build ok y humo UI PASS.
+
 ## Lote de correcciones — 23 de octubre de 2026
 
 Entrega: [PR #126](https://github.com/PABLOCESAR2412/Orquestador/pull/126). Incluye el contenido de [PR #125](https://github.com/PABLOCESAR2412/Orquestador/pull/125) (cierre de pendientes del seguimiento), que se retira al fusionar este.
@@ -622,7 +632,7 @@ Lista de control. Se marca lo hecho en cada tarea y aquí a la vez.
 - [x] **Tarea 9.** Botón "Instalar" de OpenCode con confirmación en dos pasos y comando fijo, verificado con npm falso (`instalacion.test.ts`) y en navegador. **Pendiente en el VM:** que `npm` exista para el servicio, y que `opencode models` liste los modelos de la clave guardada.
 - [~] **Tarea 10.** Codex: login por código de dispositivo, verificado con CLI falso (`login-codex.test.ts`) y en navegador; **pendiente en el VM:** el comando exacto y el archivo de sesión. Instalar Codex desde Ajustes: hecho (misma tarjeta que el login, verificado en navegador a 390 y 1440 px). Gemini: clave de AI Studio (tarea 3). Claude: **investigado, no implementado** (ver tarea 10, punto b).
 - [~] **Tarea 11.** Acciones git desde los chats (commit, subir rama y abrir PR, siempre con aprobación). En `main` desde los PR 36 a 42. En esta rama se quitan la fusión local y el push directo a `main`, el PR usa solo `GITHUB_PR_TOKEN` y las notas del plan dejan de romper la aprobación (ver Tarea 11). La protección de `main` en GitHub ya está hecha.
-- [ ] **Tarea 12.** Cola de mensajes del chat: si envías más mientras el agente responde, se ejecutan en orden. Hoy se rechazan con 409. Pendiente (ver Tarea 12).
+- [x] **Tarea 12.** Cola de mensajes del chat: si envías más mientras el agente responde, se ejecutan en orden. Hecha en el PR #127 (ver «Tarea 12: cola de mensajes del chat»).
 - [ ] **Tarea 13.** Wrangler (Cloudflare) instalable desde Ajustes, con inicio de sesión por código. Pendiente de dos decisiones (ver Tarea 13).
 - [x] **Corrección.** El error «opencode salió con código 143» ya no aparece: el chat explica el límite de 3 minutos. Causa en «Diagnóstico del 143».
 - [x] **Corrección.** `/tmp` propio dentro del sandbox: OpenCode ya no falla con «Read-only file system». Verificado con bwrap real.
@@ -925,7 +935,9 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-#### Tarea 12. Cola de mensajes del chat (pendiente)
+#### Tarea 12. Cola de mensajes del chat (hecha: PR #127)
+
+**Entrega.** [PR #127](https://github.com/PABLOCESAR2412/Orquestador/pull/127). El diseño de abajo se implementó tal cual, salvo dos ajustes: los reintentos siguen fallando con 409 mientras hay turno (retoman la sesión propia del turno terminado) y la decisión del límite de 3 minutos quedó sin efecto porque el límite ya no existe (`TIEMPO_TURNO_MS = null`).
 
 **Hoy.** Si el chat está respondiendo, `POST /api/conversations/:id/messages` responde 409 `conversation_busy` (`motivoDeBloqueo` en `routes/chat.ts`). No hay cola.
 

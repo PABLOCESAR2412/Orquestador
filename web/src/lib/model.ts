@@ -390,6 +390,8 @@ export function errorText(err: unknown): string {
         return "Las notas son demasiado largas. El máximo es de 2000 caracteres.";
       case "conversation_busy":
         return "Este chat todavía está respondiendo. Espera a que termine.";
+      case "no_esta_en_cola":
+        return "Ese mensaje ya no está en cola: su turno arrancó o se retiró.";
       case "aislamiento_no_disponible":
         return "El servidor no tiene bubblewrap, así que el agente no puede correr aislado. Pide instalarlo en el VM.";
       case "carpeta_no_permitida":

@@ -802,6 +802,15 @@ const migrations: Migration[] = [
       CREATE INDEX push_entregas_pendientes ON push_entregas(estado,siguiente_ms,bloqueo_hasta_ms);
     `,
   },
+  {
+    // Tarea 12: los mensajes enviados mientras el chat responde quedan en cola dentro de la
+    // conversación y arrancan en orden de llegada cuando el turno libera. Al reiniciar el
+    // servidor la marca se limpia: los pendientes no se ejecutan solos, se avisa como hoy.
+    name: "043_cola_mensajes",
+    sql: `
+      ALTER TABLE messages ADD COLUMN en_cola INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {

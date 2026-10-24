@@ -409,6 +409,19 @@
   vertical-align: 1px;
 }
 .tl-msg-duracion { color: var(--ink-3); }
+/* Insignia de un mensaje esperando en cola (tarea 12): se guardó, pero su turno arranca cuando el chat libere. */
+.tl-msg-en-cola {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--ink-3);
+  font-family: var(--font);
+  font-size: 10px;
+  line-height: 1.5;
+  vertical-align: 1px;
+}
 
 /* Mensaje del usuario: a la derecha, en burbuja */
 .tl-msg-usuario { align-items: flex-end; gap: 6px; }

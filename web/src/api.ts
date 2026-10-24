@@ -317,6 +317,8 @@ export type Message = {
   effort: string | null;
   // 1 cuando el proceso de ese turno compactó el contexto: el hilo dibuja el hito de compactación.
   sesion_compactada?: number;
+  // 1 mientras el mensaje espera en cola a que el turno en curso libere la conversación.
+  en_cola?: number;
   turno_id?: string | null;
   turno_created_at?: string | null;
 };
@@ -584,31 +586,55 @@ export function reintentarConsultaTransitoria(failureCount: number, error: unkno
   return failureCount < 2 && (!(error instanceof ApiError) || error.status >= 500);
 }
 
+// Reintento mínimo ante la ventana del reinicio del servicio: con el despliegue (o el
+// mantenimiento) el proceso baja unos segundos y la puerta devuelve 502/503/504 o suelta
+// la conexión. Los GET idempotentes atraviesan esa ventana con dos reintentos y espera
+// corta; las mutaciones no reintentan jamás para no duplicar un envío real.
+const REINTENTOS_TRANSITORIOS = 2;
+const ESPERAS_REINTENTO_MS = [400, 800];
+const CODIGOS_TRANSITORIOS = new Set([502, 503, 504]);
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: {
-      ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
-      ...init?.headers,
-    },
-  });
-  if (!res.ok) {
-    // Sin sesión, la app va a la pantalla de entrada (salvo la propia petición de entrar).
-    if (res.status === 401 && !path.startsWith("/api/login") && location.pathname !== "/entrar") {
-      location.assign("/entrar");
+  const idempotente = ((init?.method || "GET") as string).toUpperCase() === "GET";
+  const esperar = (ms: number) => new Promise<void>((resolver) => setTimeout(resolver, ms));
+  for (let intento = 0; ; intento++) {
+    const agotado = intento >= REINTENTOS_TRANSITORIOS;
+    let res: Response;
+    try {
+      res = await fetch(path, {
+        ...init,
+        headers: {
+          ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+          ...init?.headers,
+        },
+      });
+    } catch (error) {
+      if (!idempotente || agotado) throw error;
+      await esperar(ESPERAS_REINTENTO_MS[Math.min(intento, ESPERAS_REINTENTO_MS.length - 1)]);
+      continue;
     }
-    const body = (await res.json().catch(() => ({}))) as {
-      error?: string;
-      detail?: string;
-      mensaje?: string;
-      matches?: unknown;
-    };
-    const matches = Array.isArray(body.matches)
-      ? body.matches.filter((ruta): ruta is string => typeof ruta === "string")
-      : undefined;
-    throw new ApiError(res.status, body.error ?? `http_${res.status}`, body.detail ?? body.mensaje, matches);
+    if (!res.ok) {
+      // Sin sesión, la app va a la pantalla de entrada (salvo la propia petición de entrar).
+      if (res.status === 401 && !path.startsWith("/api/login") && location.pathname !== "/entrar") {
+        location.assign("/entrar");
+      }
+      if (idempotente && !agotado && CODIGOS_TRANSITORIOS.has(res.status)) {
+        await esperar(ESPERAS_REINTENTO_MS[Math.min(intento, ESPERAS_REINTENTO_MS.length - 1)]);
+        continue;
+      }
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        detail?: string;
+        mensaje?: string;
+        matches?: unknown;
+      };
+      const matches = Array.isArray(body.matches)
+        ? body.matches.filter((ruta): ruta is string => typeof ruta === "string")
+        : undefined;
+      throw new ApiError(res.status, body.error ?? `http_${res.status}`, body.detail ?? body.mensaje, matches);
+    }
+    return res.json() as Promise<T>;
   }
-  return res.json() as Promise<T>;
 }
 
 async function requestPdf(path: string): Promise<Blob> {
@@ -833,9 +859,14 @@ export const api = {
   medio: (id: string) => request<MedioJob>(`/api/media/${encodeURIComponent(id)}`),
   cancelarMedio: (id: string) => request<{ ok: boolean }>(`/api/media/${encodeURIComponent(id)}/cancelar`, { method: "POST", body: "{}" }),
   sendMessage: (id: string, content: string, retryOf?: string) =>
-    request<{ messages: Message[] }>(`/api/conversations/${id}/messages`, {
+    request<{ messages: Message[]; taskId?: string; enColados?: number }>(`/api/conversations/${id}/messages`, {
       method: "POST",
       body: JSON.stringify({ content, ...(retryOf ? { retryOf } : {}) }),
+    }),
+  // Tarea 12: retira un mensaje en cola antes de que su turno arranque.
+  quitarMensajeEnCola: (id: string, mensajeId: string) =>
+    request<{ ok: boolean; enColados: number }>(`/api/conversations/${id}/messages/${encodeURIComponent(mensajeId)}`, {
+      method: "DELETE",
     }),
   listModels: () => request<{ models: ModelInfo[]; total: number }>("/api/models?all=1"),
   modelIntelligence: () => request<ArtificialAnalysisIndex>("/api/models/intelligence"),
