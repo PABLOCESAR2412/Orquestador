@@ -41,7 +41,7 @@ const enviar = (id: string, content: unknown) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content }),
   });
-test("el chat guarda el mensaje y encola, rechaza solapes y crea una nueva tarea conservando el historial y la sesión", async () => {
+test("el chat guarda el mensaje y encola, encola los solapes en orden y crea una nueva tarea conservando el historial y la sesión", async () => {
   const c = await crear();
   const r = await enviar(c.id, "Revisa el proyecto");
   expect(r.status).toBe(202);
@@ -50,18 +50,30 @@ test("el chat guarda el mensaje y encola, rechaza solapes y crea una nueva tarea
   expect(tarea.status).toBe("queued");
   expect(tarea.conversation_id).toBe(c.id);
   expect(tarea.project_id).toBe(c.proyecto);
-  expect((await enviar(c.id, "No debe solaparse")).status).toBe(409);
+  db.query(
+    "INSERT INTO repository_actions(id,project_id,conversation_id,task_id,action,payload) VALUES (?,?,?,?,'commit','{}')",
+  ).run(crypto.randomUUID(), c.proyecto, c.id, first.taskId);
+  // Tarea 12: un mensaje más mientras la tarea sigue activa no se rechaza: se encola como tarea nueva, en orden.
+  const solape = await enviar(c.id, "No debe solaparse");
+  expect(solape.status).toBe(202);
+  const solapeId = ((await solape.json()) as any).taskId as string;
+  expect(solapeId).not.toBe(first.taskId);
+  expect(db.query<any, [string]>("SELECT status FROM tasks WHERE id=?").get(solapeId)?.status).toBe("queued");
+  // Al encolar el mensaje siguiente, la acción git pendiente de la tarea anterior queda superseded.
+  expect(
+    db
+      .query<any, [string]>("SELECT state FROM repository_actions WHERE task_id=?")
+      .get(first.taskId)?.state,
+  ).toBe("superseded");
   db.query(
     "UPDATE tasks SET status='done',provider_session_id='ses_conservada',plan='{}',reporte='{}' WHERE id=?",
   ).run(first.taskId);
   db.query("UPDATE conversations SET runner_session_id='ses_conservada' WHERE id=?").run(c.id);
-  db.query(
-    "INSERT INTO repository_actions(id,project_id,conversation_id,task_id,action,payload) VALUES (?,?,?,?,'commit','{}')",
-  ).run(crypto.randomUUID(), c.proyecto, c.id, first.taskId);
   const segundo = await enviar(c.id, "Ahora comprueba los cambios");
   expect(segundo.status).toBe(202);
   const segundoId = ((await segundo.json()) as any).taskId;
   expect(segundoId).not.toBe(first.taskId);
+  expect(segundoId).not.toBe(solapeId);
   // La tarea anterior no se destruye: conserva su reporte y plan intactos
   const anterior = db.query<any, [string]>("SELECT * FROM tasks WHERE id=?").get(first.taskId);
   expect(anterior.status).toBe("done");
@@ -72,14 +84,9 @@ test("el chat guarda el mensaje y encola, rechaza solapes y crea una nueva tarea
   expect(nueva.status).toBe("queued");
   expect(nueva.provider_session_id).toBe("ses_conservada");
   expect(
-    db
-      .query<any, [string]>("SELECT state FROM repository_actions WHERE task_id=?")
-      .get(first.taskId).state,
-  ).toBe("superseded");
-  expect(
     db.query<any, [string]>("SELECT COUNT(*) AS n FROM messages WHERE conversation_id=?").get(c.id)
       .n,
-  ).toBe(2);
+  ).toBe(3);
 });
 test("dos conversaciones de un proyecto reciben tareas distintas", async () => {
   const c = await crear();

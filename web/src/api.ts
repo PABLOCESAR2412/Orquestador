@@ -317,6 +317,8 @@ export type Message = {
   effort: string | null;
   // 1 cuando el proceso de ese turno compactó el contexto: el hilo dibuja el hito de compactación.
   sesion_compactada?: number;
+  // 1 mientras el mensaje espera en cola a que el turno en curso libere la conversación.
+  en_cola?: number;
   turno_id?: string | null;
   turno_created_at?: string | null;
 };
@@ -857,9 +859,14 @@ export const api = {
   medio: (id: string) => request<MedioJob>(`/api/media/${encodeURIComponent(id)}`),
   cancelarMedio: (id: string) => request<{ ok: boolean }>(`/api/media/${encodeURIComponent(id)}/cancelar`, { method: "POST", body: "{}" }),
   sendMessage: (id: string, content: string, retryOf?: string) =>
-    request<{ messages: Message[] }>(`/api/conversations/${id}/messages`, {
+    request<{ messages: Message[]; taskId?: string; enColados?: number }>(`/api/conversations/${id}/messages`, {
       method: "POST",
       body: JSON.stringify({ content, ...(retryOf ? { retryOf } : {}) }),
+    }),
+  // Tarea 12: retira un mensaje en cola antes de que su turno arranque.
+  quitarMensajeEnCola: (id: string, mensajeId: string) =>
+    request<{ ok: boolean; enColados: number }>(`/api/conversations/${id}/messages/${encodeURIComponent(mensajeId)}`, {
+      method: "DELETE",
     }),
   listModels: () => request<{ models: ModelInfo[]; total: number }>("/api/models?all=1"),
   modelIntelligence: () => request<ArtificialAnalysisIndex>("/api/models/intelligence"),
