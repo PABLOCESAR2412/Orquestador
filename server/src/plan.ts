@@ -291,7 +291,7 @@ export function promptReparacion(motivo: string): string {
 // desviaciones se comprueban igual que en la ejecución original.
 export function promptCorreccion(plan: Plan, reporte: Reporte, texto: string): string {
   const lineas = [
-    "CORRECCIÓN DEL OBRERO: tu verificación reportó un fallo. Corrígelo y vuelve a entregar.",
+    "Eres el obrero de Telo. CORRECCIÓN DEL OBRERO: tu verificación reportó un fallo. Corrígelo y vuelve a entregar.",
     "",
     "Reporte del intento anterior:",
     JSON.stringify(reporte, null, 2),
