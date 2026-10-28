@@ -109,7 +109,6 @@ async function intentoCodex(opts: OpcionesCodex & {
   // Vigilante de inactividad compartido con OpenCode (proteccion.ts): corta el grupo si el
   // CLI lleva más del tope sin emitir una línea.
   const vigilante = iniciarVigilante({
-    pid: proc.pid,
     tiempoSinActividadMs: opts.tiempoSinActividadMs,
     cortar: () => terminarGrupo(proc),
   });

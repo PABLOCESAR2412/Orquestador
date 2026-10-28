@@ -264,6 +264,45 @@ export type PoliticaDisco = { automatica: boolean; umbral: number; intervaloHora
 export type ResultadoDisco = { fecha: string; modo: "analizar" | "limpiar"; carpetas: number; ocupadas: number; errores: number; libreAntes: number | null; libreDespues: number | null };
 export type MantenimientoDisco = { politica: PoliticaDisco; ultimo: ResultadoDisco | null; enCurso: boolean };
 
+export type TareaArchivoDrive = {
+  id: string;
+  title: string;
+  status: "done" | "failed" | "cancelled";
+  finished_at: string | null;
+  conversation_id: string | null;
+};
+export type ArchivoDrive = {
+  task_id: string;
+  task_title: string;
+  archive_name: string;
+  encrypted_bytes: number;
+  source_bytes: number;
+  sha256: string;
+  archived_at: string;
+  local_disponible: boolean;
+  profile_included: boolean;
+  limpieza_pendiente: boolean;
+};
+export type TrabajoArchivoDrive = {
+  id: string;
+  task_id: string;
+  action: "archive" | "restore";
+  state: "queued" | "running" | "done" | "failed";
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export type AlmacenamientoDrive = {
+  configurado: boolean;
+  callback_uri: string | null;
+  conectado: boolean;
+  cuenta: string | null;
+  cifrado_disponible: boolean;
+  candidatos: TareaArchivoDrive[];
+  archivos: ArchivoDrive[];
+  trabajos: TrabajoArchivoDrive[];
+};
+
 export type ServidorEstado = {
   generado: string;
   proceso: { arrancado: string; segundosActivo: number; bun: string; commit: string | null; rssMb: number; plataforma: string };
@@ -928,6 +967,9 @@ export const api = {
     request<Task>(`/api/programadas/${id}/ejecutar`, { method: "POST", body: "{}" }),
   usage: () => request<{ generado: string; proveedores: UsoProveedor[]; googleLive?: GoogleLiveMetrics }>("/api/uso"),
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
+  googleDriveArchives: () => request<AlmacenamientoDrive>("/api/google-drive/archives"),
+  archivarTareaDrive: (id: string) => request<{ id: string; task_id: string; action: "archive"; state: "queued" }>(`/api/google-drive/archives/${id}`, { method: "POST", body: "{}" }),
+  restaurarTareaDrive: (id: string) => request<{ id: string; task_id: string; action: "restore"; state: "queued" }>(`/api/google-drive/archives/${id}/restore`, { method: "POST", body: "{}" }),
   serverService: () => request<ServicioEstado>("/api/servidor/servicio"),
   serverLogs: (lineas = 100) => request<RegistrosServidor>(`/api/servidor/logs?lineas=${lineas}`),
   mantenimientoDisco: () => request<MantenimientoDisco>("/api/servidor/limpieza"),

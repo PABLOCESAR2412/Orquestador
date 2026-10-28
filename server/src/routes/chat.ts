@@ -8,6 +8,7 @@ import { registrarTrabajo } from "../despliegue";
 import { db } from "../db";
 import { publicar } from "../bus";
 import { AislamientoError, eliminarPerfilOpenCode } from "../runners/aislamiento";
+import { tiempoSinActividadConfigurado } from "../runners/proteccion";
 import { ejecutarAgente, ErrorCuota, promptContinuacion, type ResultadoAgente } from "../ejecutar";
 import { sesionCompatible } from "../conversacion-contexto";
 import { getPreferences } from "../preferences";
@@ -959,7 +960,7 @@ function limpiarAvisosReintentados(conversationId: string, rowid: number | undef
 // La duración no cancela el trabajo: el usuario conserva la cancelación explícita. Lo que sí
 // corta es la inactividad: un turno que no emite nada durante el tope se cierra para liberar.
 const TIEMPO_TURNO_MS = null;
-const TIEMPO_SIN_ACTIVIDAD_MS = Number(process.env.TELO_TIEMPO_INACTIVIDAD_MS ?? 15 * 60_000);
+const TIEMPO_SIN_ACTIVIDAD_MS = tiempoSinActividadConfigurado();
 const controlesTurno = new Map<string, AbortController>();
 
 chat.post("/conversations/:id/detener", c => {

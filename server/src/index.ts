@@ -30,6 +30,8 @@ import { prepararCarpetaGlobal } from "./skills";
 import { github } from "./routes/github";
 import { uso } from "./routes/uso";
 import { media, reanudarGeneracionesMedios } from "./routes/media";
+import { googleDriveOAuth } from "./routes/google-drive-oauth";
+import { googleDriveArchives, iniciarGoogleDriveArchives } from "./routes/google-drive-archives";
 import { jevRoute } from "./routes/jev";
 import { conexiones } from "./routes/conexiones";
 import { push } from "./routes/push";
@@ -130,6 +132,9 @@ const PUBLICAS = new Set([
   "/api/login",
   "/api/logout",
   "/api/sesion",
+  // Google solo puede volver desde la pantalla de consentimiento; el callback valida
+  // estado de un solo uso y la cookie Lax emitida por el endpoint autenticado de inicio.
+  "/api/google-drive/oauth/callback",
 ]);
 app.use("/api/*", async (c, next) => {
   if (PUBLICAS.has(c.req.path)) return next();
@@ -167,6 +172,8 @@ app.route("/api", conexiones);
 app.route("/api", push);
 app.route("/api", github);
 app.route("/api", media);
+app.route("/api", googleDriveOAuth);
+app.route("/api", googleDriveArchives);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
 // El CLI de OpenCode instalado desde la app vuelve a estar en PATH tras un reinicio.
@@ -187,6 +194,7 @@ startWorker();
 startScheduler();
 iniciarMantenimientoDisco();
 iniciarColaPush();
+iniciarGoogleDriveArchives();
 reanudarGeneracionesMedios();
 limpiarSesionesAntiguas();
 // El arranque llegó a la escucha: el tope ya no aplica.

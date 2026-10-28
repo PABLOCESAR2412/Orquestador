@@ -53,7 +53,12 @@ const VALORES_IGNORADOS = new Set([
 
 // Conserva la redacción del secreto OAuth antiguo mientras pueda seguir en el entorno del VM.
 export function valoresDeConfiguracion(): string[] {
-  return [config.clave, config.claveCifrado, process.env.TELO_GOOGLE_CLIENT_SECRET?.trim() || null].filter(
+  return [
+    config.clave,
+    config.claveCifrado,
+    process.env.TELO_GOOGLE_CLIENT_SECRET?.trim() || null,
+    config.googleDriveClientSecret,
+  ].filter(
     (v): v is string => !!v && !VALORES_IGNORADOS.has(v.toLowerCase().trim()),
   );
 }

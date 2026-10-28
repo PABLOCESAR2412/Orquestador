@@ -1,8 +1,20 @@
 # Seguimiento de Telo
 
-Registro central de fases, revisiones y hallazgos. Actualizado: 23 de octubre de 2026.
+Registro central de fases, revisiones y hallazgos. Actualizado: 28 de octubre de 2026.
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
+
+## Archivo externo de espacios de tareas — 28 de octubre de 2026
+
+Entrega: PR pendiente de crear.
+
+- [~] **A01 · Los espacios de tareas terminadas ocupaban el disco de la VM.** Se agrega archivo cifrado en Google Drive con OAuth `drive.file`, cargas reanudables, comprobación SHA-256/GCM y restauración en staging. La interfaz permite archivar y liberar una tarea terminada de forma explícita; conserva historial y base de datos locales. Los proyectos completos no se mueven. Falta validar el flujo en producción con una tarea pequeña, verificar restauración y confirmar el ahorro real antes de archivar más tareas.
+- [x] **A02 · La URL de callback de OAuth podía quedar mal configurada o ser poco visible.** Se usa y muestra el callback exacto desde el origen HTTPS del VM, sin `/chat`; pasos documentados en `deploy/README.md`.
+- [x] **A03 · La expiración de una sesión de carga de Drive se mostraba como error genérico.** Se informa que puede reintentarse y que los archivos locales se conservan.
+
+## Corrección de tareas sin progreso — 23 de octubre de 2026
+
+- [x] **R20 · El vigilante de inactividad podía dejar una tarea viva sin emitir progreso (MEDIA).** El ajuste `TELO_TIEMPO_INACTIVIDAD_MS=0` apagaba la protección y la actividad de CPU/E/S del grupo reiniciaba el reloj aunque el runner no emitiera eventos. Ahora cero o un valor inválido usa 15 minutos; el watchdog se reinicia solo con salida observable del agente, y una ejecución que sí sigue emitiendo progreso conserva duración ilimitada. Evidencia: `server/tests/proteccion.test.ts` (5 aprobadas), `bun run typecheck` y suites relacionadas (12 omitidas por requerir Linux/bubblewrap/setsid). El disco de producción no se ha medido en esta revisión, así que su relación con la captura queda sin confirmar.
 
 ## Revisión adicional — 23 de octubre de 2026
 

@@ -141,6 +141,38 @@ Sin ese permiso, la pestaña muestra un aviso en lugar de los registros. El gast
 - **Instalar OpenCode** usa `npm` del PATH de `orquestador.service`. Si no hay `npm`, el botón lo dice. Instala en `~/.opencode`, que el agente ya ve en solo lectura. El servidor añade esa carpeta a su PATH sin reiniciar. No hace falta sudo.
 - **Login de Codex** necesita el CLI `codex` en el servidor. Antes de usarlo, confirma con `codex login --help` que existe `--device-auth`, y mira qué archivo de sesión crea (la app espera `~/.codex/auth.json`; si es otro, hay que cambiarlo en `server/src/login-cli.ts`).
 
+## Google Drive para archivar espacios de tareas (una vez)
+
+Drive sirve como archivo externo cifrado para los espacios de trabajo de tareas terminadas. El historial de conversaciones y la base de datos siguen en la VM; los proyectos no se mueven. Telo solo libera los archivos locales después de subirlos, comprobar tamaño y SHA-256, y verificar la integridad del cifrado. La primera prueba debe hacerse con una tarea pequeña, comprobando que se puede restaurar antes de archivar más.
+
+1. Habilita **Google Drive API** en el proyecto de Google Cloud y crea un cliente OAuth de tipo aplicación web. Usa el dominio HTTPS de Tailscale como origen; `TELO_PUBLIC_URL` debe ser solo el origen, sin `/chat`:
+
+   ```text
+   TELO_PUBLIC_URL=https://vm-1.tail0656a4.ts.net
+   ```
+
+2. Registra esta URI exacta en **URIs de redireccionamiento autorizados** del cliente OAuth:
+
+   ```text
+   https://vm-1.tail0656a4.ts.net/api/google-drive/oauth/callback
+   ```
+
+   Telo también la muestra en Ajustes > Estado del servidor > Almacenamiento cuando `TELO_PUBLIC_URL` y las credenciales tienen un formato válido. El navegador debe poder abrir el dominio de Tailscale y la sesión de Telo debe estar iniciada al conectar.
+
+3. Guarda estos valores en `/etc/orquestador/orquestador.env`, sin ponerlos en el repositorio:
+
+   ```text
+   TELO_GOOGLE_DRIVE_CLIENT_ID=...apps.googleusercontent.com
+   TELO_GOOGLE_DRIVE_CLIENT_SECRET=...
+   TELO_PUBLIC_URL=https://vm-1.tail0656a4.ts.net
+   ```
+
+   Protege el archivo con dueño `root:root` y modo `0600`. Mantén el valor actual de `TELO_CLAVE_CIFRADO`: Telo lo usa para cifrar el token de Google y los archivos archivados. Si se pierde o se cambia, no se podrán descifrar esas copias. Guárdalo en un respaldo seguro separado.
+
+4. Reinicia `orquestador`, abre Ajustes > Estado del servidor > Almacenamiento y conecta la cuenta Google que tiene el espacio disponible. Antes de archivar varias tareas, archiva una tarea pequeña y restáurala para confirmar el recorrido completo. Para liberar el disco después de una copia ya verificada, pulsa **Verificar y liberar**; para volver a trabajar en ella, pulsa **Restaurar**.
+
+Si la pantalla de consentimiento OAuth está como **Externa / Prueba**, Google puede caducar el permiso de actualización a los siete días. Para mantener la conexión, revisa el estado de publicación del consentimiento y publícala en **Producción**; este diseño solicita únicamente el alcance `drive.file`. Referencias: [alcances de Drive](https://developers.google.com/workspace/drive/api/guides/api-specific-auth) y [caducidad de tokens OAuth](https://developers.google.com/identity/protocols/oauth2).
+
 ## GitHub App para repositorios (una vez)
 
 Telo puede usar una GitHub App instalada en tu cuenta para clonar repositorios privados, subir ramas y crear Pull Requests. En GitHub, limita la instalación a los repositorios de Telo y concede `Contents: read and write` y `Pull requests: read and write` (el permiso de metadatos de repositorio es de solo lectura y viene incluido). Telo solicita credenciales de instalación limitadas a un único repositorio y a `Contents: read` al clonar, `Contents: write` al subir o `Pull requests: write` al abrir un PR.

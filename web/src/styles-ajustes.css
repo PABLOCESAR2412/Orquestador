@@ -1132,3 +1132,41 @@
 @media (prefers-reduced-motion: reduce) {
   .aj-tema-opcion { transition: none; }
 }
+
+/* Archivo de tareas en Google Drive */
+.aj-drive { display: grid; gap: 16px; }
+.aj-drive > .aj-seccion-cabecera { align-items: flex-start; }
+.aj-drive > .aj-seccion-cabecera > div { min-width: 0; }
+.aj-drive .aj-seccion-cabecera .aj-nota { max-width: 70ch; margin: 6px 0 0; }
+.aj-drive-conexion { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; color: var(--ink); font-size: 13px; }
+.aj-drive-led { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; background: var(--ink-2); }
+.aj-drive-led.is-ok { background: var(--online); }
+.aj-drive-listas { display: grid; gap: 20px; }
+.aj-drive-listas h4 { margin: 0 0 8px; color: var(--ink); font-size: 14px; font-weight: 600; }
+.aj-drive-lista { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.aj-drive-fila { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.aj-drive-info { display: flex; flex: 1 1 auto; flex-direction: column; gap: 3px; min-width: 0; }
+.aj-drive-info strong { overflow-wrap: anywhere; color: var(--ink); font-size: 13px; font-weight: 550; }
+.aj-drive-info > span,
+.aj-drive-historial-fila > span:first-child { color: var(--ink-2); font-size: 12px; line-height: 1.45; }
+.aj-drive-fila .aj-btn { flex: 0 0 auto; min-height: 40px; }
+.aj-drive-error { margin: 0; }
+.aj-drive-progreso { display: flex; align-items: center; gap: 9px; min-height: 40px; color: var(--ink); font-size: 13px; }
+.aj-drive-spinner { width: 16px; height: 16px; border: 2px solid var(--line-strong); border-top-color: var(--signal); border-radius: 50%; animation: aj-drive-spin 800ms linear infinite; }
+@keyframes aj-drive-spin { to { transform: rotate(360deg); } }
+.aj-drive-historial { border-top: 1px solid var(--line); padding-top: 10px; }
+.aj-drive-historial summary { width: fit-content; cursor: pointer; color: var(--ink-2); font-size: 12px; }
+.aj-drive-historial summary:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+.aj-drive-historial .aj-drive-lista { margin-top: 9px; }
+.aj-drive-historial-fila { display: grid; grid-template-columns: minmax(120px, 1fr) auto; gap: 5px 12px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.aj-drive-historial-fila > span:nth-child(2) { color: var(--ink); font-size: 12px; }
+.aj-drive-historial-fila > .aj-error { grid-column: 1 / -1; font-size: 12px; }
+@media (max-width: 560px) {
+  .aj-drive > .aj-seccion-cabecera { flex-wrap: wrap; }
+  .aj-drive-fila { align-items: flex-start; flex-direction: column; }
+  .aj-drive-fila .aj-btn { width: 100%; }
+  .aj-drive-conexion .aj-btn { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aj-drive-spinner { animation: none; border-top-color: var(--signal); }
+}

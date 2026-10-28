@@ -1,10 +1,16 @@
 // Protecciones que comparten los runners de agente (OpenCode y Codex): el vigilante de
 // inactividad corta un proceso que lleva minutos sin emitir nada, y la lectura con tope
 // evita que la salida del agente crezca en RAM sin límite.
-import { actividadDelGrupo } from "./actividad-grupo";
-
 const DESCANSO_VIGILANTE_MS = 15_000;
-const MINIMO_VIGILANTE_MS = 10_000;
+export const TIEMPO_SIN_ACTIVIDAD_PREDETERMINADO_MS = 15 * 60_000;
+
+// Un 0 en el entorno no debe apagar accidentalmente la única protección contra
+// runners bloqueados. Para desactivar el vigilante en pruebas, el llamador pasa null.
+export function tiempoSinActividadConfigurado(valor = process.env.TELO_TIEMPO_INACTIVIDAD_MS): number {
+  if (valor === undefined || valor.trim() === "") return TIEMPO_SIN_ACTIVIDAD_PREDETERMINADO_MS;
+  const ms = Number(valor);
+  return Number.isFinite(ms) && ms >= 10_000 ? ms : TIEMPO_SIN_ACTIVIDAD_PREDETERMINADO_MS;
+}
 
 export type VigilanteActividad = {
   // El reloj se reinicia con cada línea que emite el agente.
@@ -16,25 +22,21 @@ export type VigilanteActividad = {
 };
 
 export function iniciarVigilante(opciones: {
-  pid: number | undefined;
   tiempoSinActividadMs?: number | null;
   cortar: () => void;
 }): VigilanteActividad {
-  const { pid, cortar } = opciones;
+  const { cortar } = opciones;
   const tope = opciones.tiempoSinActividadMs ?? 0;
   let ultimaActividad = Date.now();
   let muertoPorSilencio = false;
-  let actividadAnterior = actividadDelGrupo(pid ?? -1);
   const reloj =
-    tope > MINIMO_VIGILANTE_MS
+    tope > 0
       ? setInterval(() => {
-          const actividad = actividadDelGrupo(pid ?? -1);
-          if (actividad !== null && actividad !== actividadAnterior) ultimaActividad = Date.now();
-          actividadAnterior = actividad;
+          if (muertoPorSilencio) return;
           if (Date.now() - ultimaActividad < tope) return;
           muertoPorSilencio = true;
           cortar();
-        }, DESCANSO_VIGILANTE_MS)
+        }, Math.min(DESCANSO_VIGILANTE_MS, Math.max(100, Math.floor(tope / 4))))
       : null;
   return {
     patada: () => {
