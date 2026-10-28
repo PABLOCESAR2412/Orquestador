@@ -6,9 +6,9 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 
 ## Archivo externo de espacios de tareas — 28 de octubre de 2026
 
-Entrega: PR pendiente de crear.
+Entrega: [PR #130](https://github.com/PABLOCESAR2412/Orquestador/pull/130), abierto para revisión; todavía no está fusionado ni desplegado.
 
-- [~] **A01 · Los espacios de tareas terminadas ocupaban el disco de la VM.** Se agrega archivo cifrado en Google Drive con OAuth `drive.file`, cargas reanudables, comprobación SHA-256/GCM y restauración en staging. La interfaz permite archivar y liberar una tarea terminada de forma explícita; conserva historial y base de datos locales. Los proyectos completos no se mueven. Falta validar el flujo en producción con una tarea pequeña, verificar restauración y confirmar el ahorro real antes de archivar más tareas.
+- [~] **A01 · Los espacios de tareas terminadas ocupaban el disco de la VM.** Se agrega archivo cifrado en Google Drive con OAuth `drive.file`, cargas reanudables, comprobación SHA-256/GCM y restauración en staging. La interfaz permite archivar y liberar una tarea terminada de forma explícita; conserva historial y base de datos locales. Los proyectos completos no se mueven. OAuth ya está configurado en la VM. Tras fusionar y desplegar el PR, falta validar el flujo con una tarea pequeña, comprobar la restauración y confirmar el ahorro real antes de archivar más tareas.
 - [x] **A02 · La URL de callback de OAuth podía quedar mal configurada o ser poco visible.** Se usa y muestra el callback exacto desde el origen HTTPS del VM, sin `/chat`; pasos documentados en `deploy/README.md`.
 - [x] **A03 · La expiración de una sesión de carga de Drive se mostraba como error genérico.** Se informa que puede reintentarse y que los archivos locales se conservan.
 
