@@ -33,6 +33,10 @@ type GoogleFile = { id?: string; name?: string; size?: string; trashed?: boolean
 
 export const googleDriveArchives = new Hono();
 let procesando = false;
+let automaticoTimer: ReturnType<typeof setInterval> | null = null;
+
+const AUTO_ARCHIVE_INTERVAL_MS = 60_000;
+const AUTO_ARCHIVE_GRACE_HOURS = 24;
 
 class ArchivoError extends Error {
   constructor(readonly code: string) { super(code); }
@@ -550,6 +554,32 @@ async function procesarCola() {
   } finally { procesando = false; }
 }
 
+function encolarSiguienteAutomatico() {
+  if (!googleDriveConfigurado() || !claveMaestra()) return;
+  if (!db.query("SELECT 1 FROM google_drive_connection WHERE id=1").get()) return;
+
+  const id = db.transaction(() => {
+    if (db.query("SELECT 1 FROM google_drive_archive_jobs WHERE state IN ('queued','running') LIMIT 1").get()) return null;
+
+    const candidatas = db.query<Tarea, []>(`SELECT t.id,t.title,t.status,t.finished_at,t.conversation_id FROM tasks t
+      WHERE t.status IN ('done','failed','cancelled')
+        AND t.finished_at IS NOT NULL
+        AND datetime(t.finished_at) <= datetime('now', '-${AUTO_ARCHIVE_GRACE_HOURS} hours')
+        AND NOT EXISTS (SELECT 1 FROM google_drive_archives a WHERE a.task_id=t.id)
+        AND NOT EXISTS (SELECT 1 FROM repository_actions r WHERE r.task_id=t.id AND r.state IN ('pending','executing','approved'))
+        AND NOT EXISTS (SELECT 1 FROM google_drive_archive_jobs j WHERE j.task_id=t.id AND j.action='archive' AND j.state='failed')
+      ORDER BY datetime(t.finished_at) ASC`).all();
+    const tarea = candidatas.find((candidata) => localDisponible(candidata.id));
+    if (!tarea) return null;
+
+    const jobId = randomUUID();
+    db.query("INSERT INTO google_drive_archive_jobs (id,task_id,action,state) VALUES (?,?,'archive','queued')").run(jobId, tarea.id);
+    return jobId;
+  })();
+
+  if (id) void procesarCola();
+}
+
 export function iniciarGoogleDriveArchives() {
   db.query("UPDATE google_drive_archive_jobs SET state='failed',error='archive_interrupted',updated_at=datetime('now') WHERE state='running'").run();
   try {
@@ -561,6 +591,11 @@ export function iniciarGoogleDriveArchives() {
     }
   } catch { /* DATA_DIR puede no existir en desarrollo */ }
   void procesarCola();
+  if (!automaticoTimer) {
+    automaticoTimer = setInterval(encolarSiguienteAutomatico, AUTO_ARCHIVE_INTERVAL_MS);
+    automaticoTimer.unref?.();
+    encolarSiguienteAutomatico();
+  }
 }
 
 googleDriveArchives.get("/google-drive/archives", (c) => {
@@ -569,7 +604,7 @@ googleDriveArchives.get("/google-drive/archives", (c) => {
     WHERE t.status IN ('done','failed','cancelled') AND t.finished_at IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM google_drive_archives a WHERE a.task_id=t.id)
       AND NOT EXISTS (SELECT 1 FROM repository_actions r WHERE r.task_id=t.id AND r.state IN ('pending','executing','approved'))
-    ORDER BY t.finished_at DESC LIMIT 50`).all().filter((t) => localDisponible(t.id));
+    ORDER BY datetime(t.finished_at) ASC`).all().filter((t) => localDisponible(t.id));
   const archives = db.query<ArchivoDrive, []>("SELECT * FROM google_drive_archives ORDER BY archived_at DESC LIMIT 100").all().map((a) => ({
     task_id: a.task_id, task_title: a.task_title, archive_name: a.archive_name, encrypted_bytes: a.encrypted_bytes,
     source_bytes: a.source_bytes, sha256: a.sha256, archived_at: a.archived_at, local_disponible: localDisponible(a.task_id),
