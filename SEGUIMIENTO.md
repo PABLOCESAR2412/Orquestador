@@ -15,6 +15,14 @@ Entrega: PR pendiente de crear.
 ## Corrección de tareas sin progreso — 23 de octubre de 2026
 
 - [x] **R20 · El vigilante de inactividad podía dejar una tarea viva sin emitir progreso (MEDIA).** El ajuste `TELO_TIEMPO_INACTIVIDAD_MS=0` apagaba la protección y la actividad de CPU/E/S del grupo reiniciaba el reloj aunque el runner no emitiera eventos. Ahora cero o un valor inválido usa 15 minutos; el watchdog se reinicia solo con salida observable del agente, y una ejecución que sí sigue emitiendo progreso conserva duración ilimitada. Evidencia: `server/tests/proteccion.test.ts` (5 aprobadas), `bun run typecheck` y suites relacionadas (12 omitidas por requerir Linux/bubblewrap/setsid). El disco de producción no se ha medido en esta revisión, así que su relación con la captura queda sin confirmar.
+## Iniciativa del obrero: ciclo de corrección — 23 de octubre de 2026
+
+Entrega: [PR #129](https://github.com/PABLOCESAR2412/Orquestador/pull/129). Va sobre los PR #128 (reintentos del cliente) y #127 (cola de mensajes): fusionar en orden.
+
+- [x] **Un reporte con fallo ya no mata la tarea de inmediato: el obrero se autocorrige.** Al terminar con `estado: "fallo"`, el worker devuelve el fallo (reporte y salida reciente) al mismo agente en su misma sesión (`promptCorreccion`), dentro del plan aprobado y con la comprobación de alcance por ciclo, igual que la ejecución original. Tope de 2 ciclos por tarea (`TELO_CICLOS_OBRERO` lo ajusta; 0 desactiva la iniciativa); agotados, la tarea falla con el último reporte, como siempre. Cada ciclo queda en el historial con su evento «Corrección del obrero (iniciativa)».
+- [x] **Desviaciones y límites intactos.** Si la corrección necesita salirse del plan, la tarea vuelve al analizador con el motivo (replanificación con su tope de 3 planes); la cuota agotada y la cancelación operan igual dentro del ciclo. El push de una corrección sobre una tarea con PR redispara el CI de esa PR automáticamente.
+- **Pendiente siguiente, fuera de este PR: auto-fix del CI de la PR.** Leer los checks fallidos del head de la PR y alimentarlos al ciclo exige decidir el token de lectura de logs de CI en el VM, la cadencia de vigilancia y el techo de coste por tarea; queda documentado como su propio ítem.
+- Verificación: servidor **76/76 suites** en verde (por proceso propio, como el CI) con dos pruebas nuevas en `worker-flujo.test.ts` (corrección con éxito en la misma sesión; agotar ciclos y fallar con el último reporte) y el binario falso ampliado (`fixture/corrige`, `fixture/fallo-reporte`); web `tsc` limpio, 58 unitarios pass y build ok.
 
 ## Tarea 12: cola de mensajes del chat — 23 de octubre de 2026
 

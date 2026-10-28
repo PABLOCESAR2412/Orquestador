@@ -217,6 +217,33 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     expect(db.query("SELECT 1 FROM task_approvals WHERE task_id=?").get(id)).toBeNull();
   },15000);
 
+  test("la iniciativa del obrero corrige un fallo de verificación en la misma sesión", async () => {
+    const { id } = await nueva("fixture/corrige");
+    await esperar(() => fila(id).status === "waiting_approval" || fila(id).status === "failed", id);
+    expect(fila(id).error).toBeNull();
+    expect((await aprobar(id)).status).toBe(200);
+    await esperar(() => ["done", "failed"].includes(fila(id).status), id);
+    expect(fila(id).status).toBe("done");
+    // El fallo se devolvió al obrero una vez y el segundo intento entregó un reporte limpio.
+    const ciclo = db.query<{ detail: string }, [string]>("SELECT detail FROM task_events WHERE task_id=? AND kind='correccion_iniciada' ORDER BY id DESC LIMIT 1").get(id);
+    expect(ciclo?.detail).toContain("Ciclo 1 de 2");
+    const reporte = JSON.parse(fila(id).reporte);
+    expect(reporte.pruebas[0].resultado).toBe("ok");
+    expect(reporte.resumen).toBe("Obrero aislado completado");
+  }, 20000);
+
+  test("agotados los ciclos de corrección, la tarea falla con el último reporte", async () => {
+    const { id } = await nueva("fixture/fallo-reporte");
+    await esperar(() => fila(id).status === "waiting_approval" || fila(id).status === "failed", id);
+    expect((await aprobar(id)).status).toBe(200);
+    await esperar(() => fila(id).status === "failed", id);
+    // Dos correcciones con el tope por defecto; el fallo final conserva el reporte y el error.
+    const ciclos = db.query<{ kind: string }, [string]>("SELECT COUNT(*) n FROM task_events WHERE task_id=? AND kind='correccion_iniciada'").get(id) as any;
+    expect(ciclos.n).toBe(2);
+    expect(JSON.parse(fila(id).reporte).estado).toBe("fallo");
+    expect(fila(id).error).toBe("La verificación sigue fallando");
+  }, 20000);
+
   test("registra consumo aunque el proveedor termine con error", async () => {
     const { id } = await nueva("fixture/fallo");
     await esperar(() => fila(id).status === "failed", id);

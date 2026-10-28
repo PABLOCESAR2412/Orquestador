@@ -30,6 +30,7 @@ export type TipoEvento =
   | "plan_rechazado"
   | "replanificada"
   | "obrero_iniciado"
+  | "correccion_iniciada"
   | "sin_cuota"
   | "clasificacion_jev"
   | "memoria_evaluada"

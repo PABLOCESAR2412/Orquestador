@@ -49,6 +49,22 @@ else:
         sys.exit(1)
     if modelo == "fixture/fuera":
         pathlib.Path("extra.txt").write_text("fuera del plan, conservar\n")
+    if modelo == "fixture/fallo-reporte":
+        # Siempre devuelve un reporte con fallo: la iniciativa del obrero agota sus ciclos.
+        reporte = {"estado": "fallo", "resumen": "La verificación sigue fallando",
+                   "cambios": [{"archivo": "permitido.txt", "tipo": "crear"}],
+                   "pruebas": [{"comando": "prueba del proyecto", "resultado": "fallo"}],
+                   "pendientes": [], "diff_disponible": True}
+        evento("text", part={"text": json.dumps(reporte)})
+        sys.exit(0)
+    if modelo == "fixture/corrige" and "CORRECCIÓN DEL OBRERO" not in prompt:
+        # Primer intento: verificación con fallo. El ciclo de corrección lo devuelve a la misma sesión.
+        reporte = {"estado": "fallo", "resumen": "La verificación falla en el primer intento",
+                   "cambios": [{"archivo": "permitido.txt", "tipo": "crear"}],
+                   "pruebas": [{"comando": "prueba del proyecto", "resultado": "fallo"}],
+                   "pendientes": [], "diff_disponible": True}
+        evento("text", part={"text": json.dumps(reporte)})
+        sys.exit(0)
     reporte = {"resumen": "Obrero aislado completado", "cambios": [{"archivo": "permitido.txt", "tipo": "crear"}],
                "pruebas": [{"comando": "git commit bloqueado", "resultado": "ok"}],
                "pendientes": [], "diff_disponible": True}

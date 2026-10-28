@@ -522,6 +522,7 @@ export type TaskEventKind =
   | "plan_rechazado"
   | "replanificada"
   | "obrero_iniciado"
+  | "correccion_iniciada"
   | "comprobacion_fallida"
   | "comprobacion_aviso"
   | "plan_revision"
