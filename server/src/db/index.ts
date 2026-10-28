@@ -811,6 +811,68 @@ const migrations: Migration[] = [
       ALTER TABLE messages ADD COLUMN en_cola INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    // OAuth de Google Drive: los estados PKCE caducan y el refresh token se cifra con la clave
+    // maestra; no se guarda el token de acceso.
+    name: "044_google_drive_oauth",
+    sql: `
+      CREATE TABLE google_drive_oauth_states (
+        state_hash TEXT PRIMARY KEY,
+        code_verifier TEXT NOT NULL,
+        expira_ms INTEGER NOT NULL,
+        creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX google_drive_oauth_states_expira ON google_drive_oauth_states(expira_ms);
+      CREATE TABLE google_drive_connection (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        account_email TEXT NOT NULL,
+        account_id TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        iv TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        value_enc TEXT NOT NULL,
+        actualizado_en TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `,
+  },
+  {
+    // Índice de archivos cifrados en Drive y trabajos de archivo/restauración recuperables.
+    name: "045_google_drive_archives",
+    sql: `
+      CREATE TABLE google_drive_archives (
+        task_id TEXT PRIMARY KEY,
+        task_title TEXT NOT NULL,
+        drive_file_id TEXT NOT NULL,
+        archive_name TEXT NOT NULL,
+        encrypted_bytes INTEGER NOT NULL,
+        source_bytes INTEGER NOT NULL,
+        sha256 TEXT NOT NULL,
+        profile_included INTEGER NOT NULL DEFAULT 0,
+        archived_at TEXT NOT NULL DEFAULT (datetime('now')),
+        local_removed_at TEXT
+      );
+      CREATE TABLE google_drive_archive_jobs (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        action TEXT NOT NULL CHECK (action IN ('archive', 'restore')),
+        state TEXT NOT NULL CHECK (state IN ('queued', 'running', 'done', 'failed')),
+        error TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX google_drive_archive_jobs_estado ON google_drive_archive_jobs(state, created_at);
+      CREATE INDEX google_drive_archive_jobs_tarea ON google_drive_archive_jobs(task_id, created_at);
+    `,
+  },
+  {
+    // Huella estable del contenido local y recuperación de reemplazos/limpiezas interrumpidos.
+    name: "046_google_drive_archive_integrity",
+    sql: `
+      ALTER TABLE google_drive_archives ADD COLUMN source_sha256 TEXT;
+      ALTER TABLE google_drive_archives ADD COLUMN previous_drive_file_id TEXT;
+      ALTER TABLE google_drive_archives ADD COLUMN cleanup_started_at TEXT;
+    `,
+  },
 ];
 
 function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {

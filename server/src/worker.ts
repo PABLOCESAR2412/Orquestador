@@ -46,6 +46,7 @@ import {
 } from "./workspace";
 import { avisarPush } from "./push";
 import { enMantenimiento, registrarTrabajo } from "./despliegue";
+import { tiempoSinActividadConfigurado } from "./runners/proteccion";
 
 // Un worker coordina hasta diez tareas independientes en orden de llegada.
 // Corre dentro del mismo proceso que la API, así que sigue activo aunque
@@ -55,8 +56,8 @@ import { enMantenimiento, registrarTrabajo } from "./despliegue";
 // Entre ambas, si el plan necesita aprobación, la tarea espera en `waiting_approval` sin ocupar el worker.
 
 // Cero actividad del runner (ni una línea) durante este tiempo termina la ejecución con
-// un fallo claro y libera el slot de la cola. TELO_TIEMPO_INACTIVIDAD_MS lo ajusta; 0 lo apaga.
-const TIEMPO_SIN_ACTIVIDAD_MS = Number(process.env.TELO_TIEMPO_INACTIVIDAD_MS ?? 15 * 60_000);
+// un fallo claro y libera el slot de la cola. TELO_TIEMPO_INACTIVIDAD_MS lo ajusta; un valor inválido usa 15 minutos.
+const TIEMPO_SIN_ACTIVIDAD_MS = tiempoSinActividadConfigurado();
 
 const MENSAJE_INTERRUMPIDA = "El servidor se reinició mientras la tarea corría. Puedes reanudarla o reintentarla.";
 // Iniciativa del obrero: tras un reporte con fallo, el mismo agente corrige en su sesión hasta

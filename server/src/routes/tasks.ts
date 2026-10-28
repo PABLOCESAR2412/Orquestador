@@ -15,6 +15,7 @@ import {
   mensajeSeguro,
 } from "../workspace";
 import type { Plan, Reporte } from "../plan";
+import { bloqueoContinuacionDrive } from "./google-drive-archives";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
 const MAX_PROMPT = 10_000;
@@ -313,13 +314,19 @@ tasks.post("/tasks/:id/reanudar", (c) => {
   if (!row) return c.json({ error: "task_not_found" }, 404);
   if (!ESTADOS_REANUDABLES.includes(row.status)) return c.json({ error: "task_not_resumable" }, 409);
   if (!row.reanudable) return c.json({ error: "task_without_session" }, 409);
+  const bloqueo = bloqueoContinuacionDrive(id);
+  if (bloqueo) return c.json({ error: bloqueo, detail: bloqueo === "task_workspace_archived" ? "Restaura primero el espacio de trabajo desde Ajustes > Servidor > Almacenamiento." : "Espera a que termine el archivado antes de continuar." }, 409);
 
+  let bloqueoFinal: string | null = null;
   db.transaction(() => {
+    bloqueoFinal = bloqueoContinuacionDrive(id);
+    if (bloqueoFinal) return;
     db.query(
       "UPDATE tasks SET status = 'queued', result = NULL, error = NULL, finished_at = NULL, continuar = 1 WHERE id = ?",
     ).run(id);
     registrarEvento(id, "reanudada", `Estaba ${row.status === "interrupted" ? "interrumpida" : "fallida"}`);
   })();
+  if (bloqueoFinal) return c.json({ error: bloqueoFinal, detail: bloqueoFinal === "task_workspace_archived" ? "Restaura primero el espacio de trabajo desde Ajustes > Servidor > Almacenamiento." : "Espera a que termine el archivado antes de continuar." }, 409);
 
   publicarEstado(id);
   notifyWorker();
@@ -358,7 +365,10 @@ tasks.post("/tasks/:id/seguir", async (c) => {
   }
 
   // La condición del UPDATE evita seguir una tarea que cambió de estado mientras se validaba el modelo.
+  let bloqueoFinal: string | null = null;
   const encolada = db.transaction(() => {
+    bloqueoFinal = bloqueoContinuacionDrive(id);
+    if (bloqueoFinal) return false;
     const r = db
       .query(
         "UPDATE tasks SET status = 'queued', model = ?, effort = ?, modelo_agotado = NULL, error = NULL, finished_at = NULL, continuar = 1 WHERE id = ? AND status = ?",
@@ -368,6 +378,7 @@ tasks.post("/tasks/:id/seguir", async (c) => {
     registrarEvento(id, "seguida", cambiaModelo ? `Modelo ${model} (antes ${row.model})` : `Modelo ${model}`);
     return true;
   })();
+  if (bloqueoFinal) return c.json({ error: bloqueoFinal, detail: bloqueoFinal === "task_workspace_archived" ? "Restaura primero el espacio de trabajo desde Ajustes > Servidor > Almacenamiento." : "Espera a que termine el archivado antes de continuar." }, 409);
   if (!encolada) return c.json({ error: "task_not_continuable" }, 409);
 
   publicarEstado(id);

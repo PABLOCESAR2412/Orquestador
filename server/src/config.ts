@@ -20,4 +20,13 @@ export const config = {
   get githubAppPrivateKeyPath() {
     return process.env.TELO_GITHUB_APP_PRIVATE_KEY_PATH?.trim() || null;
   },
+  get googleDriveClientId() {
+    return process.env.TELO_GOOGLE_DRIVE_CLIENT_ID?.trim() || null;
+  },
+  get googleDriveClientSecret() {
+    return process.env.TELO_GOOGLE_DRIVE_CLIENT_SECRET?.trim() || null;
+  },
+  get publicUrl() {
+    return process.env.TELO_PUBLIC_URL?.trim() || null;
+  },
 };

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { api, reintentarConsultaTransitoria, type ServicioEstado, type ServidorEstado } from "../api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError, api, reintentarConsultaTransitoria, type ServicioEstado, type ServidorEstado } from "../api";
 import { duracion, formatBytes, porcentaje } from "../components/tarea-formato";
 import { errorText, formatUsd } from "../lib/model";
 import { LoadingSkeleton } from "../components/loading-skeleton";
@@ -397,6 +397,166 @@ function TarjetaDisco({
   );
 }
 
+function errorArchivoDrive(error: unknown): string {
+  if (!(error instanceof ApiError)) return errorText(error);
+  const mensajes: Record<string, string> = {
+    drive_auth_required: "Vuelve a conectar Google Drive y comprueba que la clave de cifrado del servidor siga configurada.",
+    drive_permission_or_quota: "Google Drive rechazó la operación. Revisa el permiso concedido a Telo y el espacio disponible.",
+    drive_upload_expired: "La carga temporal de Google Drive venció. Puedes volver a archivar; la carpeta local sigue intacta.",
+    drive_api_error: "Google Drive no completó la operación. La tarea local se conserva; puedes reintentar.",
+    integrity_check_failed: "La copia remota no pasó la verificación. Los archivos locales se conservaron.",
+    archive_creation_failed: "No se pudo preparar el archivo en el servidor. La tarea local se conserva.",
+    disk_or_filesystem_error: "El servidor no pudo leer o actualizar los archivos. Revisa el espacio e inténtalo de nuevo.",
+    task_not_archivable: "La tarea ya no cumple las condiciones para archivarse o cambió durante la operación.",
+    task_restore_conflict: "La tarea ya existe localmente o cambió su estado. No se sobrescribieron archivos.",
+    archive_interrupted: "El servidor se reinició durante la operación. Puedes volver a intentarla.",
+    archive_cleanup_incomplete: "La copia está guardada, pero quedó una limpieza pendiente. Termínala desde Ajustes > Almacenamiento antes de continuar la tarea.",
+    archive_format_unsupported: "El archivo guardado tiene un formato que esta versión de Telo no reconoce.",
+    google_drive_job_in_progress: "Espera a que termine la operación actual de Google Drive.",
+  };
+  return mensajes[error.code] ?? errorText(error);
+}
+
+function estadoTareaArchivo(estado: string): string {
+  return estado === "done" ? "Completada" : estado === "failed" ? "Fallida" : estado === "cancelled" ? "Cancelada" : estado;
+}
+
+function tituloTrabajoDrive(action: "archive" | "restore"): string {
+  return action === "archive" ? "Archivando en Google Drive" : "Restaurando en el servidor";
+}
+
+function PanelArchivoGoogleDrive() {
+  const cliente = useQueryClient();
+  const [errorAccion, setErrorAccion] = useState<unknown>(null);
+  const archivos = useQuery({
+    queryKey: ["google-drive-archives"],
+    queryFn: api.googleDriveArchives,
+    retry: reintentarConsultaTransitoria,
+    refetchInterval: (query) => query.state.data?.trabajos.some((j) => j.state === "queued" || j.state === "running") ? 2_000 : 15_000,
+  });
+  const accion = useMutation<{ id: string; task_id: string; action: "archive" | "restore"; state: "queued" }, unknown, { id: string; tipo: "archive" | "restore" }>({
+    mutationFn: ({ id, tipo }: { id: string; tipo: "archive" | "restore" }) =>
+      tipo === "archive" ? api.archivarTareaDrive(id) : api.restaurarTareaDrive(id),
+    onMutate: () => setErrorAccion(null),
+    onError: setErrorAccion,
+    onSuccess: () => void cliente.invalidateQueries({ queryKey: ["google-drive-archives"] }),
+    onSettled: () => void cliente.invalidateQueries({ queryKey: ["google-drive-archives"] }),
+  });
+  const dato = archivos.data;
+  const ocupado = accion.isPending || Boolean(dato?.trabajos.some((j) => j.state === "queued" || j.state === "running"));
+  const listo = Boolean(dato?.configurado && dato.conectado && dato.cifrado_disponible);
+  const recientes = dato?.trabajos.slice(0, 5) ?? [];
+
+  return (
+    <section className="aj-tarjeta aj-drive" aria-labelledby="aj-drive-titulo">
+      <div className="aj-seccion-cabecera">
+        <div>
+          <h3 id="aj-drive-titulo" className="aj-tarjeta-titulo-simple">Archivo externo · Google Drive</h3>
+          <p className="aj-nota">Guarda tareas terminadas con cifrado y libera su carpeta local. El historial permanece en Telo; restaura una tarea antes de continuarla.</p>
+        </div>
+        <button type="button" className="aj-btn" onClick={() => void archivos.refetch()} disabled={archivos.isFetching}>
+          {archivos.isFetching ? "Actualizando…" : "Actualizar"}
+        </button>
+      </div>
+
+      {archivos.isPending && <LoadingSkeleton tipo="lineas" cantidad={2} />}
+      {archivos.isError && <ErrorConReintento error={archivos.error} onReintentar={() => void archivos.refetch()} />}
+      {errorAccion != null ? <p className="aj-error" role="alert">{errorArchivoDrive(errorAccion)}</p> : null}
+      {dato && (
+        <>
+          <div className="aj-drive-conexion" role="status">
+            <span className={dato.conectado ? "aj-drive-led is-ok" : "aj-drive-led"} aria-hidden="true" />
+            <span>
+              {!dato.configurado
+                ? "Falta configurar OAuth de Google Drive en el servidor."
+                : dato.conectado
+                  ? `Conectado${dato.cuenta ? ` como ${dato.cuenta}` : ""}.`
+                  : "Google Drive todavía no está conectado."}
+            </span>
+            {dato.configurado && !dato.conectado && (
+              <a className="aj-btn aj-btn-primario" href="/api/google-drive/oauth/start">Conectar Google Drive</a>
+            )}
+            {dato.conectado && !dato.cifrado_disponible && <span className="aj-error">Falta la clave maestra de cifrado.</span>}
+          </div>
+          {!dato.conectado && dato.callback_uri && (
+            <p className="aj-nota">URI de retorno que debes registrar en el cliente OAuth de Google Cloud: <code>{dato.callback_uri}</code></p>
+          )}
+          {!dato.configurado && !dato.callback_uri && (
+            <p className="aj-nota">Configura la URL pública como origen HTTPS, sin la ruta <code>/chat</code>, y registra en Google la URI de retorno que muestra este panel cuando la configuración esté completa.</p>
+          )}
+          <p className="aj-nota">Solo se ofrecen tareas completadas, fallidas o canceladas sin acciones de Git pendientes. Los perfiles OpenCode compartidos por chats no se mueven.</p>
+
+          {ocupado && dato.trabajos.find((j) => j.state === "queued" || j.state === "running") && (
+            <div className="aj-drive-progreso" role="status" aria-live="polite">
+              <span className="aj-drive-spinner" aria-hidden="true" />
+              {tituloTrabajoDrive(dato.trabajos.find((j) => j.state === "queued" || j.state === "running")!.action)}…
+            </div>
+          )}
+
+          <div className="aj-drive-listas">
+            <div>
+              <h4>Tareas disponibles para archivar</h4>
+              {dato.candidatos.length === 0
+                ? <p className="aj-nota">No hay tareas terminadas pendientes de archivar.</p>
+                : <ul className="aj-drive-lista">
+                    {dato.candidatos.map((task) => (
+                      <li key={task.id} className="aj-drive-fila">
+                        <div className="aj-drive-info">
+                          <strong>{task.title || "Tarea sin título"}</strong>
+                          <span>{estadoTareaArchivo(task.status)}{task.finished_at ? ` · ${fechaCorta(task.finished_at)}` : ""}</span>
+                        </div>
+                        <button type="button" className="aj-btn aj-btn-primario" disabled={!listo || ocupado} onClick={() => accion.mutate({ id: task.id, tipo: "archive" })}>
+                          Archivar
+                        </button>
+                      </li>
+                    ))}
+                  </ul>}
+            </div>
+
+            <div>
+              <h4>Copias archivadas</h4>
+              {dato.archivos.length === 0
+                ? <p className="aj-nota">Todavía no hay copias en Drive.</p>
+                : <ul className="aj-drive-lista">
+                    {dato.archivos.map((archive) => (
+                      <li key={archive.task_id} className="aj-drive-fila">
+                        <div className="aj-drive-info">
+                          <strong>{archive.task_title || archive.archive_name}</strong>
+                          <span>{archive.limpieza_pendiente
+                            ? "Quedó una limpieza local pendiente · verifica la copia para terminarla"
+                            : archive.local_disponible
+                              ? `La carpeta local sigue disponible · ${formatBytes(archive.source_bytes)} por liberar`
+                            : `Archivada ${fechaCorta(archive.archived_at)} · copia cifrada ${formatBytes(archive.encrypted_bytes)}`}</span>
+                        </div>
+                        {archive.local_disponible || archive.limpieza_pendiente
+                          ? <button type="button" className="aj-btn aj-btn-primario" disabled={!listo || ocupado} onClick={() => accion.mutate({ id: archive.task_id, tipo: "archive" })}>Verificar y liberar</button>
+                          : <button type="button" className="aj-btn" disabled={!listo || ocupado} onClick={() => accion.mutate({ id: archive.task_id, tipo: "restore" })}>Restaurar</button>}
+                      </li>
+                    ))}
+                  </ul>}
+            </div>
+          </div>
+
+          {recientes.length > 0 && (
+            <details className="aj-drive-historial">
+              <summary>Operaciones recientes</summary>
+              <ul className="aj-drive-lista">
+                {recientes.map((job) => (
+                  <li key={job.id} className="aj-drive-historial-fila">
+                    <span>{job.action === "archive" ? "Archivo" : "Restauración"} · {job.task_id.slice(0, 8)}</span>
+                    <span>{job.state === "queued" ? "En cola" : job.state === "running" ? "En curso" : job.state === "done" ? "Lista" : "Falló"}</span>
+                    {job.state === "failed" && <span className="aj-error">{errorArchivoDrive(new ApiError(500, job.error ?? "drive_api_error"))}</span>}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 // Discos y carpetas reales del servidor.
 export function AlmacenamientoServidor() {
   const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000, retry: reintentarConsultaTransitoria });
@@ -424,6 +584,7 @@ export function AlmacenamientoServidor() {
       </div>
 
       <DiscoPanel />
+      <PanelArchivoGoogleDrive />
       <section className="aj-tarjeta" aria-labelledby="aj-carpetas-titulo">
         <h3 id="aj-carpetas-titulo" className="aj-tarjeta-titulo-simple">
           Carpetas

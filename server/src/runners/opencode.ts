@@ -459,7 +459,6 @@ async function ejecutarOpenCode(opts: {
   // Vigilante de actividad compartido con codex: el reloj se reinicia con cada línea del agente.
   // Si se corta por silencio, la ejecución falla con un mensaje claro en vez de retener el slot.
   const vigilante = iniciarVigilante({
-    pid: proc.pid,
     tiempoSinActividadMs: opts.tiempoSinActividadMs,
     cortar: () => terminarGrupo(proc.pid),
   });

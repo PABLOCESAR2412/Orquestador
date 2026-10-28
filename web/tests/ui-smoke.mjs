@@ -135,6 +135,12 @@ try {
         }
         return route.fulfill({ json: { politica: politicaDisco, ultimo: ultimoDisco, enCurso: false } });
       }
+      if (path === "/api/google-drive/archives") {
+        return route.fulfill({ json: {
+          configurado: false, callback_uri: null, conectado: false, cuenta: null, cifrado_disponible: false,
+          candidatos: [], archivos: [], trabajos: [],
+        } });
+      }
       let data = [];
       if (path === "/api/sesion") return route.fulfill({ status: authenticated ? 200 : 401, json: { ok: authenticated } });
       if (path === "/api/login") { authenticated = true; data = { ok: true }; }
