@@ -110,6 +110,7 @@ export const EVENT_LABEL: Record<TaskEventKind, string> = {
   plan_revision: "El plan necesita revisión",
   replanificada: "Replanificada por desviación",
   obrero_iniciado: "Obrero ejecutando el plan",
+  correccion_iniciada: "Corrección del obrero (iniciativa)",
   clasificacion_jev: "Clasificación sugerida por Jev",
   memoria_evaluada: "Propuesta de memoria evaluada por Jev",
   memoria_propuesta: "Propuesta de memoria guardada para revisión",
