@@ -968,7 +968,18 @@ chat.post("/conversations/:id/detener", c => {
   if (!conv) return c.json({ error: "conversation_not_found" }, 404);
   if (conv.parent_conversation_id) return c.json({ error: "subagent_readonly" }, 403);
   const control = controlesTurno.get(conv.id);
-  if (control) { control.abort(); return c.json({ outcome: "cancelling" }, 202); }
+  if (control) {
+    control.abort();
+    // Detener cancela el turno y también la cola: nada se ejecuta «por sorpresa» después.
+    const enCola = contarCola(conv.id);
+    if (enCola > 0) {
+      limpiarCola(conv.id);
+      guardarAviso(conv.id, enCola === 1
+        ? "El agente se detuvo y el mensaje en cola no se ejecutó. Envíalo de nuevo para continuar."
+        : `El agente se detuvo y los ${enCola} mensajes en cola quedaron sin ejecutar. Envíalos de nuevo para continuar.`);
+    }
+    return c.json({ outcome: "cancelling" }, 202);
+  }
   const tarea = tareaDelChat(conv.id);
   if (tarea && ["queued", "analyzing", "running", "waiting_approval"].includes(tarea.status)) {
     const outcome = cancelTask(tarea.id);
@@ -1134,12 +1145,48 @@ function iniciarTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: string
       liberarConversacion(conv.id);
       publicarChat(conv.id, "terminado");
       notifyWorker();
+      arrancarSiguienteEnCola(conv.id);
     });
+}
+
+// Tarea 12: cola de mensajes de los chats libres. Se guarda con la bandera en_cola en la fila
+// del mensaje y aquí se cuenta la de una conversación.
+function contarCola(conversationId: string): number {
+  return (
+    db.query<{ n: number }, [string]>(
+      "SELECT COUNT(*) n FROM messages WHERE conversation_id=? AND role='user' AND en_cola=1",
+    ).get(conversationId)?.n ?? 0
+  );
+}
+
+function limpiarCola(conversationId: string): void {
+  db.query("UPDATE messages SET en_cola = 0 WHERE conversation_id = ? AND role = 'user' AND en_cola = 1").run(conversationId);
+}
+
+// Al terminar un turno arranca el mensaje en cola más antiguo, en el orden de llegada. El
+// reinicio del servidor no llega aquí: los avisos de arranque limpian la bandera antes, así
+// que un pendiente jamás se ejecuta solo tras reiniciar.
+export function arrancarSiguienteEnCola(conversationId: string): void {
+  const conv = leerConversacion(conversationId);
+  if (!conv || conversacionEnCurso(conversationId)) return;
+  const pendiente = db
+    .query<{ id: string; content: string }, [string]>(
+      "SELECT id, content FROM messages WHERE conversation_id=? AND role='user' AND en_cola=1 ORDER BY created_at ASC, rowid ASC LIMIT 1",
+    )
+    .get(conversationId);
+  if (!pendiente) return;
+  if (conv.cuota_modelo) return; // Cuota agotada: espera el «Seguir» del usuario.
+  db.query("UPDATE messages SET en_cola = 0 WHERE id = ?").run(pendiente.id);
+  const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
+  iniciarTurno(conv, { id: pendiente.id, role: "user", content: pendiente.content }, pendiente.content, model);
 }
 
 // Al arrancar el servidor no hay turnos en curso. Si el último mensaje de un chat es del usuario, la
 // respuesta se perdió al reiniciarse: se avisa en el chat para que el usuario lo envíe de nuevo.
 export function avisarTurnosInterrumpidos(): number {
+  // Los pendientes en cola pasan a mensajes guardados sin bandera: un reinicio no ejecuta turnos
+  // por su cuenta y el aviso de abajo ya pide volver a enviar lo que quedó a medias.
+  db.query("UPDATE messages SET en_cola = 0").run();
   const chats = db
     .query<{ id: string }, []>(
       `SELECT c.id FROM conversations c
@@ -1176,12 +1223,28 @@ chat.post("/conversations/:id/messages", async (c) => {
   const reintento = retryOf ? turnoReintentable(conversationId, retryOf, content, Boolean(conv.runner_session_id)) : null;
   if (retryOf && !reintento) return c.json({ error: "message_not_retryable" }, 409);
   const bloqueo = motivoDeBloqueo(conv);
-  if (bloqueo) return c.json({ error: bloqueo }, 409);
+  // Tarea 12: mientras el agente responde, un mensaje nuevo queda en cola en vez de rechazarse
+  // (409 conversation_busy). Los reintentos no se encolan (retoman la sesión propia del turno
+  // terminado) y un proyecto en revisión de Git bloquea solo un instante: ambos fallan como hoy.
+  const encolable = bloqueo === "conversation_busy" && !retryOf;
+  if (bloqueo && !encolable) return c.json({ error: bloqueo }, 409);
   const tareaActual = conv.project_id ? tareaDelChat(conversationId) : null;
   const modeloAgotado = conv.cuota_modelo ?? (tareaActual?.status === "sin_cuota"
     ? tareaActual.modelo_agotado ?? tareaActual.model
     : null);
   if (modeloAgotado) return c.json({ error: "chat_quota_pending" }, 409);
+  if (encolable) {
+    const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
+    if (conv.project_id) {
+      // Los chats de proyecto encolan con su cola propia de tareas: el worker las corre en orden.
+      const turno = guardarMensajeUsuario(conversationId, content);
+      const taskId = encolarTurno(conv, content, model);
+      return c.json({ messages: [turno], taskId }, 202);
+    }
+    const turno = guardarMensajeUsuario(conversationId, content);
+    db.query("UPDATE messages SET en_cola = 1 WHERE id = ?").run(turno.id);
+    return c.json({ messages: [turno], enColados: contarCola(conversationId) }, 202);
+  }
 
   // Fusionar un PR existente por número es una acción directa: no debe crear una tarea ni otra rama.
   const numeroPr = numeroPullRequestParaFusionar(content);
@@ -1244,6 +1307,22 @@ chat.post("/conversations/:id/messages", async (c) => {
     : content;
   iniciarTurno(conv, turno, promptTurno, model);
   return c.json({ messages: [turno] }, 202);
+});
+
+// DELETE /api/conversations/:id/messages/:mensajeId (Tarea 12): se retira un mensaje en cola
+// antes de que arranque su turno. Solo acepta filas todavía marcadas; si ya arrancó, 404 igual
+// que un mensaje que no existe.
+chat.delete("/conversations/:id/messages/:mensajeId", (c) => {
+  const conversationId = c.req.param("id");
+  const mensajeId = c.req.param("mensajeId");
+  const conv = leerConversacion(conversationId);
+  if (!conv) return c.json({ error: "conversation_not_found" }, 404);
+  const pendiente = db
+    .query("SELECT id FROM messages WHERE id = ? AND conversation_id = ? AND role = 'user' AND en_cola = 1")
+    .get(mensajeId, conversationId);
+  if (!pendiente) return c.json({ error: "no_esta_en_cola" }, 404);
+  db.query("DELETE FROM messages WHERE id = ?").run(mensajeId);
+  return c.json({ ok: true, enColados: contarCola(conversationId) });
 });
 
 // POST /api/conversations/:id/seguir

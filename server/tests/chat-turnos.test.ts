@@ -17,14 +17,14 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 
 const { db } = await import("../src/db");
 const { config } = await import("../src/config");
-const { conversacionEnCurso } = await import("../src/ocupacion");
+const { conversacionEnCurso, ocuparConversacion, liberarConversacion } = await import("../src/ocupacion");
 const { chat, avisarTurnosInterrumpidos } = await import("../src/routes/chat");
 const { guardarImagenAdjunta, imagenesDelPrompt } = await import("../src/chat-adjuntos");
 
 const app = new Hono();
 app.route("/api", chat);
 
-type Mensaje = { id: string; role: string; content: string; model: string | null; effort: string | null };
+type Mensaje = { id: string; role: string; content: string; model: string | null; effort: string | null; en_cola: number };
 
 const RESTAURAR = { PATH: process.env.PATH, TELO_AISLAMIENTO: process.env.TELO_AISLAMIENTO };
 let carpeta = "";
@@ -79,7 +79,7 @@ function conversacion(model = "opencode/prueba"): string {
 
 function mensajes(id: string): Mensaje[] {
   return db
-    .query<Mensaje, [string]>("SELECT id, role, content, model, effort FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC")
+    .query<Mensaje, [string]>("SELECT id, role, content, model, effort, en_cola FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC")
     .all(id);
 }
 
@@ -329,6 +329,19 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     expect(mensajes(id).some(m => m.role === "assistant")).toBe(false);
     await esperar(() => !conversacionEnCurso(id));
   });
+  test("detener cancela también la cola de pendientes: nada se ejecuta después", async () => {
+    const id = conversacion();
+    expect((await enviar(id, "Primera pregunta LENTO")).status).toBe(202);
+    expect((await enviar(id, "Encolado que no debe correr")).status).toBe(202);
+    const res = await app.request(`/api/conversations/${id}/detener`, { method: "POST" });
+    expect(res.status).toBe(202);
+    await esperar(() => mensajes(id).some(m => m.role === "system" && m.content.includes("Ejecución detenida por ti")));
+    await esperar(() => !conversacionEnCurso(id));
+    // El aviso explica la cola y la bandera queda limpia: el pendiente no se ejecuta solo.
+    expect(mensajes(id).some(m => m.role === "system" && m.content.includes("en cola no se ejecutó"))).toBe(true);
+    expect(mensajes(id).find(m => m.role === "user" && m.content === "Encolado que no debe correr")?.en_cola).toBe(0);
+    expect(mensajes(id).some(m => m.role === "assistant")).toBe(false);
+  });
   test("envía las solicitudes de imagen y video al modelo seleccionado sin crear trabajos multimedia de pago", async () => {
     for (const prompt of ["Genera una imagen de un colibrí", "Crea un video vertical de un colibrí"]) {
       const id = conversacion("opencode/big-pickle");
@@ -416,15 +429,20 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     expect(despues.find((c) => c.id === id)?.ocupada).toBe(false);
   });
 
-  test("un segundo mensaje mientras responde se rechaza con conversation_busy", async () => {
+  test("dos mensajes seguidos: el segundo espera en cola y se ejecuta después, en orden", async () => {
     const id = conversacion();
     expect((await enviar(id, "Primera pregunta LENTO")).status).toBe(202);
-    const segundo = await enviar(id, "Segunda pregunta");
-    expect(segundo.status).toBe(409);
-    expect(await segundo.json()).toEqual({ error: "conversation_busy" });
-    await esperar(() => mensajes(id).some((m) => m.role === "assistant"));
-    // El segundo no quedó guardado: el rechazo ocurre antes de guardar nada.
-    expect(mensajes(id).filter((m) => m.role === "user")).toHaveLength(1);
+    const segunda = await enviar(id, "Segunda pregunta");
+    expect(segunda.status).toBe(202);
+    const cuerpo = (await segunda.json()) as { messages: Mensaje[]; enColados: number };
+    expect(cuerpo.enColados).toBe(1);
+    // Mientras responde el primero: en cola, sin turno propio y con el chat ocupado.
+    expect(mensajes(id).find((m) => m.role === "user" && m.content === "Segunda pregunta")?.en_cola).toBe(1);
+    expect(conversacionEnCurso(id)).toBe(true);
+    // Al terminar el primero, el encolado arranca solo y también responde.
+    await esperar(() => mensajes(id).filter((m) => m.role === "assistant").length === 2);
+    expect(mensajes(id).find((m) => m.role === "user" && m.content === "Segunda pregunta")?.en_cola).toBe(0);
+    expect(mensajes(id).map((m) => m.role)).toEqual(["user", "user", "assistant", "assistant"]);
   });
 
   test("un fallo del agente queda como aviso del sistema en el chat", async () => {
@@ -502,6 +520,108 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
       model: "opencode/modelo-b",
       effort: "low",
     });
+  });
+});
+
+describe("cola de mensajes del chat sin corredor", () => {
+  test("un mensaje durante la respuesta queda en cola con su bandera", async () => {
+    const id = conversacion();
+    ocuparConversacion(id);
+    try {
+      const respuesta = await enviar(id, "Segunda pregunta");
+      expect(respuesta.status).toBe(202);
+      const cuerpo = (await respuesta.json()) as { messages: { id: string }[]; enColados: number };
+      expect(cuerpo.enColados).toBe(1);
+      expect(db.query<{ en_cola: number }, [string]>("SELECT en_cola FROM messages WHERE id = ?")
+        .get(cuerpo.messages[0]?.id ?? "")?.en_cola).toBe(1);
+    } finally { liberarConversacion(id); }
+  });
+
+  test("la cola respeta el orden de llegada", async () => {
+    const id = conversacion();
+    ocuparConversacion(id);
+    try {
+      expect((await enviar(id, "Cola uno")).status).toBe(202);
+      expect((await enviar(id, "Cola dos")).status).toBe(202);
+      expect(mensajes(id).filter((m) => m.en_cola === 1).map((m) => m.content)).toEqual(["Cola uno", "Cola dos"]);
+    } finally { liberarConversacion(id); }
+  });
+
+  test("quitar un mensaje de la cola lo borra de verdad", async () => {
+    const id = conversacion();
+    ocuparConversacion(id);
+    try {
+      const primera = await enviar(id, "Encolado que se quita");
+      const idMensaje = ((await primera.json()) as { messages: { id: string }[] }).messages[0]?.id ?? "";
+      const quitado = await app.request(`/api/conversations/${id}/messages/${idMensaje}`, { method: "DELETE" });
+      expect(quitado.status).toBe(200);
+      expect(await quitado.json()).toEqual({ ok: true, enColados: 0 });
+      expect(db.query("SELECT id FROM messages WHERE id = ?").get(idMensaje)).toBe(null);
+      const repetido = await app.request(`/api/conversations/${id}/messages/${idMensaje}`, { method: "DELETE" });
+      expect(repetido.status).toBe(404);
+      expect(await repetido.json()).toEqual({ error: "no_esta_en_cola" });
+    } finally { liberarConversacion(id); }
+  });
+
+  test("un proyecto en revisión de Git sigue bloqueando con 409", async () => {
+    const { conProyectoRevisado } = await import("../src/ocupacion");
+    const projectId = crypto.randomUUID();
+    const id = crypto.randomUUID();
+    db.query("INSERT INTO projects (id, name) VALUES (?, 'Proyecto en revisión')").run(projectId);
+    db.query("INSERT INTO conversations (id, title, project_id) VALUES (?, 'Chat en revisión', ?)").run(id, projectId);
+    try {
+      const respuesta = await conProyectoRevisado(projectId, async () => enviar(id, "hola"));
+      expect(respuesta).not.toBeNull();
+      expect(respuesta!.status).toBe(409);
+      expect(await respuesta!.json()).toEqual({ error: "proyecto_ocupado" });
+    } finally {
+      db.query("DELETE FROM conversations WHERE id = ?").run(id);
+      db.query("DELETE FROM projects WHERE id = ?").run(projectId);
+    }
+  });
+
+  test("la cuota agotada sigue bloqueando aunque el chat esté ocupado", async () => {
+    const id = conversacion();
+    db.query("UPDATE conversations SET cuota_modelo = 'openai/gpt-5-pa' WHERE id = ?").run(id);
+    ocuparConversacion(id);
+    try {
+      const respuesta = await enviar(id, "otra pregunta");
+      expect(respuesta.status).toBe(409);
+      expect(await respuesta.json()).toEqual({ error: "chat_quota_pending" });
+      expect(mensajes(id)).toHaveLength(0);
+    } finally { liberarConversacion(id); }
+  });
+
+  test("un chat de proyecto con tarea en curso encola el nuevo mensaje como tarea nueva", async () => {
+    const projectId = crypto.randomUUID();
+    const id = crypto.randomUUID();
+    db.query("INSERT INTO projects (id, name) VALUES (?, 'Proyecto con cola de tareas')").run(projectId);
+    db.query("INSERT INTO conversations (id, title, project_id) VALUES (?, 'Chat con tareas', ?)").run(id, projectId);
+    db.query(
+      "INSERT INTO tasks (id, title, prompt, model, status, project_id, conversation_id, workspace) VALUES (?, 'Tarea en curso', 'p', 'opencode/prueba', 'running', ?, ?, ?)",
+    ).run(crypto.randomUUID(), projectId, id, join(carpeta, "ws-cola-proyecto"));
+    const respuesta = await enviar(id, "Segundo encargo");
+    expect(respuesta.status).toBe(202);
+    const cuerpo = (await respuesta.json()) as { messages: { id: string }[]; taskId: string };
+    expect(cuerpo.taskId).toBeTruthy();
+    const estados = db
+      .query<{ status: string }, [string]>("SELECT status FROM tasks WHERE conversation_id = ?")
+      .all(id)
+      .map((t) => t.status);
+    expect(estados).toEqual(["running", "queued"]);
+    expect(mensajes(id).some((m) => m.role === "user" && m.content === "Segundo encargo")).toBe(true);
+  });
+
+  test("al arrancar el servidor la cola se limpia y se avisa, sin ejecutar los pendientes", async () => {
+    const id = conversacion();
+    ocuparConversacion(id);
+    try {
+      await enviar(id, "Cola perdida en el reinicio");
+    } finally { liberarConversacion(id); }
+    expect(avisarTurnosInterrumpidos()).toBeGreaterThanOrEqual(1);
+    expect(mensajes(id).every((m) => m.en_cola === 0)).toBe(true);
+    expect(mensajes(id).some((m) => m.role === "system" && m.content.includes("se reinició"))).toBe(true);
+    db.query("DELETE FROM messages WHERE conversation_id = ? AND role = 'system'").run(id);
   });
 });
 

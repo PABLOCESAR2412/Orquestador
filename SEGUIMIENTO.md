@@ -16,6 +16,38 @@ Entrega: PR pendiente de crear.
 
 - [x] **R20 · El vigilante de inactividad podía dejar una tarea viva sin emitir progreso (MEDIA).** El ajuste `TELO_TIEMPO_INACTIVIDAD_MS=0` apagaba la protección y la actividad de CPU/E/S del grupo reiniciaba el reloj aunque el runner no emitiera eventos. Ahora cero o un valor inválido usa 15 minutos; el watchdog se reinicia solo con salida observable del agente, y una ejecución que sí sigue emitiendo progreso conserva duración ilimitada. Evidencia: `server/tests/proteccion.test.ts` (5 aprobadas), `bun run typecheck` y suites relacionadas (12 omitidas por requerir Linux/bubblewrap/setsid). El disco de producción no se ha medido en esta revisión, así que su relación con la captura queda sin confirmar.
 
+## Tarea 12: cola de mensajes del chat — 23 de octubre de 2026
+
+Entrega: [PR #127](https://github.com/PABLOCESAR2412/Orquestador/pull/127). Va sobre el PR #126 (contiene sus commits).
+
+- [x] **Lo que envías mientras el agente responde queda en cola y se ejecuta en orden de llegada.** Antes el servidor rechazaba el mensaje con 409 `conversation_busy` y había que reenviarlo a mano. Ahora el POST guarda el mensaje y lo encola: los chats de proyecto usan su cola propia de tareas (el worker las corre en orden) y los chats libres guardan el mensaje con `en_cola = 1` (migración 043); al terminar un turno, `arrancarSiguienteEnCola` arranca el pendiente más antiguo dentro del `finally`, y sigue habiendo un turno a la vez por chat.
+- [x] **En el chat: insignia «En cola» y quitar antes de que arranque.** El hilo marca el pendiente con su insignia y un botón de quitar (`DELETE /api/conversations/:id/messages/:mensajeId`; 404 si ya arrancó). La cola local del compositor sigue igual para lo que aún no llegó al servidor.
+- [x] **Un reinicio no ejecuta los pendientes por su cuenta.** Al arrancar, `avisarTurnosInterrumpidos` limpia las banderas `en_cola` y los avisos de siempre piden volver a enviar. «Detener» cancela el turno y vacía la cola con un aviso que lo dice («…los N mensajes en cola quedaron sin ejecutar»).
+- Guardas que se conservan: los reintentos no se encolan (409 como hoy), la cuota agotada sigue bloqueando (`chat_quota_pending`) y un proyecto en revisión de Git bloquea su instante (`proyecto_ocupado`). El límite de 3 minutos por turno ya no existe (`TIEMPO_TURNO_MS = null`; queda el vigilante de inactividad de 15 minutos), así que la cola no esperaba ninguna decisión.
+- Verificación: servidor **76/76 suites** en verde (cada una en proceso propio, como el CI) con pruebas nuevas de orden, quitar, detener con cola y reinicio (`chat-turnos.test.ts`, y `chat-cola.test.ts` actualizado al nuevo solape: encola tarea nueva y supersede la acción git pendiente); web `tsc` limpio, 58 unitarios pass, build ok y humo UI PASS.
+
+## Lote de correcciones — 23 de octubre de 2026
+
+Entrega: [PR #126](https://github.com/PABLOCESAR2412/Orquestador/pull/126). Incluye el contenido de [PR #125](https://github.com/PABLOCESAR2412/Orquestador/pull/125) (cierre de pendientes del seguimiento), que se retira al fusionar este.
+
+- [x] **El 502 puntual en `/api/servidor` era la ventana de reinicio del servicio, y el cliente ahora la atraviesa.** El handler del servidor ya estaba defendido (cachés compartidos entre solicitudes simultáneas, mediciones con tiempos de espera, `statSync` acotado a dos ficheros conocidos, nada que lance), así que la falla del usuario coincidió con el breve reinicio del proceso (despliegue o mantenimiento) y la puerta respondió 502. En `web/src/api.ts` las peticiones GET idempotentes reintentan ante 502/503/504 y ante una conexión caída: 2 reintentos con esperas de 400/800 ms. Las mutaciones jamás reintentan (no se duplica un envío real) y los códigos definitivos (4xx, 500) fallan al primer intento. Este reintento por petición complementa el que las consultas TanStack ya tenían (`reintentarConsultaTransitoria`) y cubre las rutas que no pasan por ellas (entrar, llamadas manuales). Nuevas pruebas: `web/tests/peticiones.test.ts` (dos 502 y éxito en el tercero; POST con 502 sin reintento; GET con 500 sin reintento; conexión caída con 3 intentos).
+- [x] **Los dos tests del guard de bases dejan de depender de dónde viva el repositorio.** Fallaban al correr la suite en un worktree dentro de `%TEMP%`: el guard permite cualquier directorio estrictamente debajo del temporal del sistema, así que el `server/data` propio del clon parecía permitido y nada lanzaba (artefacto de ubicación; el guard no tenía regresión y no hubo fixtures en la base real: sondeo de la base del usuario con 0 filas de hoy). Los dos tests ahora rechazan `tmpdir()` en seco — la raíz misma queda fuera del permitido por diseño del guard — y pasan igual en local, CI y clones dentro o fuera del temporal.
+- Verificación fiel al CI: servidor `typecheck` ok y **76/76 suites** verdes ejecutando cada una en proceso propio (`bun test` por suite, como hace el workflow; la corrida monoproceso era la que revelaba los dos fallos del guard); web: `tsc -b` limpio, 58 unitarios pass, build ok, humo `test:ui` PASS y preview HTML aislada PASS en 390/1440 px.
+
+## Humo que aguanta el historial del fixture — revisión del 23 de octubre
+
+Entrega: [PR #124](https://github.com/PABLOCESAR2412/Orquestador/pull/124).
+
+- [x] Devuelve a verde el `interfaz` de `main` (el merge de la reauditoría quedó con el humo rojo). En la verificación tras «Enviar», `getByText('Mensaje recibido', { exact: true })` resolvía 2 elementos: el fixture acumula el historial de la conversación y ya hay dos respuestas idénticas (la del segmento previo y la nueva). La espera ahora usa `.first()`; no hay bug de la app: son las dos burbujas legítimas que el fixture dejó y la burbuja del usuario aparece una sola vez.
+- Pruebas: `tsc` limpio; unitarios 54 pass/0 fail; build ok; `test:ui` PASS en 390/1440 px con el cambio final; la condición del doble reproduce de forma intermitente en local (1 de 3 pasadas) y esa fue la causa del rojo en CI (`run 39972167683`).
+## Cierre de pendientes del seguimiento — 23 de octubre de 2026
+
+Entrega: [PR #125](https://github.com/PABLOCESAR2412/Orquestador/pull/125).
+
+- [x] **El parche de sprintf-js se mantiene tras evaluar la vía oficial.** No hay versión corregida (la última es 1.1.3, setiembre de 2023) y el advisory [GHSA-hp3w-g68c-fv3c / CVE-2026-97058](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) se retiró el 22 de octubre de 2026 («la aplicación debe manejar la excepción») sin versiones corregidas. El criterio del pendiente queda evaluado: el parche local acota la precisión a los límites de ECMAScript y seguirá vigente hasta que exista una 1.1.4+ oficial con el arreglo.
+- El resto del inventario (validaciones del VM: primer ciclo real del timer de despliegue, respaldos/R2, Web Push en Android con VAPID, migración 039, Tailscale, proveedores NVIDIA/Gemini/Groq, contraste AA, presupuesto Azure; las tareas 7, 9 y 10 y la 13 que exigen decisiones del usuario; las que esperan datos: aviso 404 y «PR de Test») quedan abiertas documentando ese porqué; Tarea 12 (cola de mensajes del chat) y las skills propuestas por proyecto esperan su propio plan, un ítem por PR.
+- Higiene: `*.tsbuildinfo` entra en `.gitignore`, y el bullet histórico «PR #115.» de los avisos pasa a «PR #118.» (ese PR absorbió su contenido).
+
 ## Revisión adicional — 23 de octubre de 2026
 
 Entrega: [PR #123](https://github.com/PABLOCESAR2412/Orquestador/pull/123).
@@ -147,7 +179,7 @@ Entrega: [PR #104](https://github.com/PABLOCESAR2412/Orquestador/pull/104). Fusi
 - Compilación y recorrido web completo aprobados a 390/1440 px, con el MP4 adjunto como fixture local de decodificación/envío.
 - Preview HTML comprobada mediante Playwright CLI contra el servidor real aislado.
 - [ ] Validar worker/bubblewrap y CPU/IO con procesos Linux reales; Android físico y restauración del conjunto R2 en el VPS.
-- [ ] Sustituir el parche de sprintf-js cuando exista una versión oficial corregida.
+- [x] **Sustituir el parche de sprintf-js cuando exista una versión oficial corregida — evaluado el 23 de octubre: no existe ninguna.** La última publicada sigue siendo 1.1.3 (setiembre de 2023) y el advisory [GHSA-hp3w-g68c-fv3c / CVE-2026-97058](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) (precisión sin límite en `toFixed`/`toExponential`) se **retiró el 22 de octubre de 2026** sin versiones corregidas: quedó en que la aplicación debe manejar la excepción. El parche local se mantiene porque acota la precisión a los límites de ECMAScript; si aparece una 1.1.4+ oficial con el arreglo, se sustituye y se retira el parche.
 - No se restauraron ni eliminaron filas de las bases locales preexistentes; los nuevos tests obligan a usar temporales.
 
 ### Correcciones anteriores conservadas
@@ -197,7 +229,7 @@ Entrega: [PR #119](https://github.com/PABLOCESAR2412/Orquestador/pull/119).
 
 - [x] Un microcorte del proveedor ya no rinde la tarea a mitad del trabajo. El 5xx/429 tenía un solo reintento a los 1,2 s: «Unexpected server error» repetido dejaba la tarea en «Requiere corrección» y el usuario tenía que decir «siga». Ahora hay hasta 3 reintentos con esperas crecientes (5xx: 1,2/10/30 s; 429: 2,5/15/45 s) y cada intento retoma la sesión ya abierta para continuar donde quedó; si se agota, el mensaje final lo dice («Telo lo reintentó automáticamente…») y remite a «Seguir» u otro modelo. La mejora cubre tareas y turnos de chat porque comparten motor de ejecución.
 - [x] «Detener» recupera una ocupación huérfana. Si el chat figuraba respondiendo sin turno ni tarea viva (cierre raro del runner), la ruta devolvía «not_running» sin efecto; ahora libera la ocupación y publica el estado terminado. El botón sigue accesible mientras la petición está en curso. El abort del runner revisado línea a línea era correcto (grupo `setsid` por proceso); lo que faltaba era este estado.
-- [x] Los avisos de archivos y adjuntos ausentes dicen qué pasó. Por la vía de mutaciones caían al mensaje genérico de 404 que empuja a recargar la página; ahora nombran el elemento (el agente pudo mover o borrar el entregable) y el texto genérico deja de culpar a la página. PR #115.
+- [x] Los avisos de archivos y adjuntos ausentes dicen qué pasó. Por la vía de mutaciones caían al mensaje genérico de 404 que empuja a recargar la página; ahora nombran el elemento (el agente pudo mover o borrar el entregable) y el texto genérico deja de culpar a la página. PR #118.
 - [x] La voz se promete solo si la herramienta responde. La instrucción del chat y la skill de video piden verificar el TTS/MCP de voz antes de ofrecer narración; si no existe, se anuncia en la primera respuesta que irá sin voz, sin fingir resultados ni llamar servicios de pago.
 - [x] Verificación: typechecks de servidor y web (exit 0); `cuota.test.ts` +1 (el envoltorio de reintentos no rompe la clasificación transitoria), `chat-turnos.test.ts` +1 (libera ocupación huérfana sin procesos, corre en cualquier entorno); par de ficheros 42 pass/0 fail; suite completa del servidor en el CI del PR.
 - [ ] Si el aviso genérico de 404 vuelve a aparecer, anotar qué botón lo produjo (abrir un MP4/PDF, enviar mensaje…): el diagnóstico no identificó la ruta exacta y con ese dato se cierra el caso.
@@ -612,7 +644,7 @@ Lista de control. Se marca lo hecho en cada tarea y aquí a la vez.
 - [x] **Tarea 9.** Botón "Instalar" de OpenCode con confirmación en dos pasos y comando fijo, verificado con npm falso (`instalacion.test.ts`) y en navegador. **Pendiente en el VM:** que `npm` exista para el servicio, y que `opencode models` liste los modelos de la clave guardada.
 - [~] **Tarea 10.** Codex: login por código de dispositivo, verificado con CLI falso (`login-codex.test.ts`) y en navegador; **pendiente en el VM:** el comando exacto y el archivo de sesión. Instalar Codex desde Ajustes: hecho (misma tarjeta que el login, verificado en navegador a 390 y 1440 px). Gemini: clave de AI Studio (tarea 3). Claude: **investigado, no implementado** (ver tarea 10, punto b).
 - [~] **Tarea 11.** Acciones git desde los chats (commit, subir rama y abrir PR, siempre con aprobación). En `main` desde los PR 36 a 42. En esta rama se quitan la fusión local y el push directo a `main`, el PR usa solo `GITHUB_PR_TOKEN` y las notas del plan dejan de romper la aprobación (ver Tarea 11). La protección de `main` en GitHub ya está hecha.
-- [ ] **Tarea 12.** Cola de mensajes del chat: si envías más mientras el agente responde, se ejecutan en orden. Hoy se rechazan con 409. Pendiente (ver Tarea 12).
+- [x] **Tarea 12.** Cola de mensajes del chat: si envías más mientras el agente responde, se ejecutan en orden. Hecha en el PR #127 (ver «Tarea 12: cola de mensajes del chat»).
 - [ ] **Tarea 13.** Wrangler (Cloudflare) instalable desde Ajustes, con inicio de sesión por código. Pendiente de dos decisiones (ver Tarea 13).
 - [x] **Corrección.** El error «opencode salió con código 143» ya no aparece: el chat explica el límite de 3 minutos. Causa en «Diagnóstico del 143».
 - [x] **Corrección.** `/tmp` propio dentro del sandbox: OpenCode ya no falla con «Read-only file system». Verificado con bwrap real.
@@ -915,7 +947,9 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 
 ---
 
-#### Tarea 12. Cola de mensajes del chat (pendiente)
+#### Tarea 12. Cola de mensajes del chat (hecha: PR #127)
+
+**Entrega.** [PR #127](https://github.com/PABLOCESAR2412/Orquestador/pull/127). El diseño de abajo se implementó tal cual, salvo dos ajustes: los reintentos siguen fallando con 409 mientras hay turno (retoman la sesión propia del turno terminado) y la decisión del límite de 3 minutos quedó sin efecto porque el límite ya no existe (`TIEMPO_TURNO_MS = null`).
 
 **Hoy.** Si el chat está respondiendo, `POST /api/conversations/:id/messages` responde 409 `conversation_busy` (`motivoDeBloqueo` en `routes/chat.ts`). No hay cola.
 

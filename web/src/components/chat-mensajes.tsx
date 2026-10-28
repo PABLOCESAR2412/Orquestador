@@ -106,7 +106,9 @@ export function MensajeUsuario({
   id,
   resaltado = false,
   marcado = false,
+  enCola = false,
   onToggleMarca,
+  onQuitarCola,
 }: {
   conversationId?: string;
   texto: string;
@@ -114,14 +116,32 @@ export function MensajeUsuario({
   id?: string;
   resaltado?: boolean;
   marcado?: boolean;
+  enCola?: boolean;
   onToggleMarca?: () => void;
+  onQuitarCola?: () => void;
 }) {
   const { texto: prosa, adjuntos, imagenes } = partirMensaje(texto);
   return (
     <article id={id} className={`tl-msg tl-msg-usuario${resaltado ? " is-resaltado" : ""}`}>
       <div className="tl-msg-usuario-cabecera">
-        <div className="tl-msg-meta">Tú · {haceTexto(cuando)}</div>
+        <div className="tl-msg-meta">
+          Tú · {haceTexto(cuando)}
+          {enCola && <span className="tl-msg-en-cola" role="note">En cola</span>}
+        </div>
         <div className="tl-msg-acciones">
+          {onQuitarCola && (
+            <button
+              type="button"
+              className="tl-accion-icono"
+              aria-label="Quitar de la cola"
+              title="Quitar de la cola: el mensaje se borró y no se enviará"
+              onClick={onQuitarCola}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          )}
           {onToggleMarca && (
             <button
               type="button"

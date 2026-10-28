@@ -803,9 +803,18 @@ const migrations: Migration[] = [
     `,
   },
   {
+    // Tarea 12: los mensajes enviados mientras el chat responde quedan en cola dentro de la
+    // conversación y arrancan en orden de llegada cuando el turno libera. Al reiniciar el
+    // servidor la marca se limpia: los pendientes no se ejecutan solos, se avisa como hoy.
+    name: "043_cola_mensajes",
+    sql: `
+      ALTER TABLE messages ADD COLUMN en_cola INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
+  {
     // OAuth de Google Drive: los estados PKCE caducan y el refresh token se cifra con la clave
     // maestra; no se guarda el token de acceso.
-    name: "043_google_drive_oauth",
+    name: "044_google_drive_oauth",
     sql: `
       CREATE TABLE google_drive_oauth_states (
         state_hash TEXT PRIMARY KEY,
@@ -828,7 +837,7 @@ const migrations: Migration[] = [
   },
   {
     // Índice de archivos cifrados en Drive y trabajos de archivo/restauración recuperables.
-    name: "044_google_drive_archives",
+    name: "045_google_drive_archives",
     sql: `
       CREATE TABLE google_drive_archives (
         task_id TEXT PRIMARY KEY,
@@ -857,7 +866,7 @@ const migrations: Migration[] = [
   },
   {
     // Huella estable del contenido local y recuperación de reemplazos/limpiezas interrumpidos.
-    name: "045_google_drive_archive_integrity",
+    name: "046_google_drive_archive_integrity",
     sql: `
       ALTER TABLE google_drive_archives ADD COLUMN source_sha256 TEXT;
       ALTER TABLE google_drive_archives ADD COLUMN previous_drive_file_id TEXT;
