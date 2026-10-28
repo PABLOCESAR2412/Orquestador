@@ -3,1145 +3,196 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
-    {
-      "fecha": "2026-10-28",
-      "tipo": "mediano",
-      "titulo": "Google Drive: incorpora paginación al listado de tareas y archivos archivados",
-      "pr": 131
-    },
-    {
-      "fecha": "2026-10-28",
-      "tipo": "mediano",
-      "titulo": "Google Drive: archiva automáticamente tareas elegibles tras 24 horas y permite archivar todas las tareas de todas las páginas, con progreso y opción de detener",
-      "pr": 132
-    },
-    {
-      "fecha": "2026-10-28",
-      "tipo": "mediano",
-      "titulo": "Almacenamiento: archiva espacios de tareas terminadas en Google Drive con cargas reanudables y restauración verificada para liberar espacio en la VM",
-      "pr": 130
-    },
-    {
-      "fecha": "2026-10-23",
-      "tipo": "mediano",
-      "titulo": "Iniciativa del obrero: ante un fallo de verificación el agente se autocorrige en su sesión (hasta 2 ciclos, ajustable) antes de fallar la tarea",
-      "pr": 129
-    },
-    {
-      "fecha": "2026-10-23",
-      "tipo": "mediano",
-      "titulo": "Cola de mensajes del chat: lo que envías mientras responde el agente queda en cola y se ejecuta en orden; insignia En cola y opción de quitar antes de que arranque",
-      "pr": 127
-    },
-    {
-      "fecha": "2026-10-23",
-      "tipo": "minimo",
-      "titulo": "Resiliencia del cliente: las peticiones GET reintentan ante 502/503/504 o conexión caída mientras el servicio se reinicia, sin duplicar mutaciones; los tests del guard de bases ya no dependen de dónde viva el repositorio",
-      "pr": 126
-    },
-    {
-      "fecha": "2026-10-23",
-      "tipo": "minimo",
-      "titulo": "Seguimiento: cierra el pendiente del parche sprintf-js (no hay versión oficial corregida y el advisory se retiró), sincroniza el bullet de avisos a PR 118 e ignora tsbuildinfo",
-      "pr": 125
-    },
-    {
-      "fecha": "2026-10-23",
-      "tipo": "minimo",
-      "titulo": "Humo: la espera de la respuesta del asistente admite que el historial acumule dos respuestas idénticas, sin strict mode",
-      "pr": 124
-    },
-    {
-      "fecha": "2026-10-23",
-      "tipo": "minimo",
-      "titulo": "Seguridad de notificaciones: restringe endpoints Push a proveedores conocidos, bloquea redirecciones y limita las suscripciones por dispositivo",
-      "pr": 123
-    },
-    {
-      "fecha": "2026-10-23",
-      "tipo": "minimo",
-      "titulo": "Auditoría: cierra fallos de secretos, alcance, sesiones, streaming y Git; páginas de mensajes, previews HTML aisladas, avisos por dispositivo y respaldos con drenado seguro",
-      "pr": 122
-    },
-    {
-      "fecha": "2026-10-23",
-      "tipo": "minimo",
-      "titulo": "Despliegue: mientras haya ejecuciones en curso la interfaz nueva no se recompila, para que interfaz y servidor avancen juntos",
-      "pr": 121
-    },
-    {
-      "fecha": "2026-10-23",
-      "tipo": "minimo",
-      "titulo": "Historial: el shell aguanta el array plano de un servidor anterior al paginado, sin caer con «Cannot read properties of undefined»",
-      "pr": 120
-    },
-    {
-      "fecha": "2026-10-23",
-      "tipo": "mediano",
-      "titulo": "Selector de modelos: buscador en la lista que filtra por nombre, familia o proveedor, agrupa resultados y muestra el proveedor en cada fila",
-      "pr": 119
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "mediano",
-      "titulo": "Chat en caliente: reintentos automáticos ante microcortes del proveedor, detener recupera ocupaciones huérfanas y avisos de archivos ausentes sin empujar a recargar",
-      "pr": 118
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Borradores: el texto vuelve al compositor si la app muere justo tras enviar y el mensaje no llegó a guardarse",
-      "pr": 117
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "mediano",
-      "titulo": "Historial: paginación en el servidor con cursor (?limite=&antes=) y «Cargar anteriores» en el muelle; la búsqueda cubre todo el historial",
-      "pr": 116
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "grande",
-      "titulo": "Estabilidad del servidor: salida del agente con tope de RAM, streaming de pdf/imagen/video, skills sin enlaces simbólicos, vigilante y esfuerzo también en Codex, tope de arranque, alcance con archivos ignorados y reporte honesto con pruebas en fallo",
-      "pr": 114
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "mediano",
-      "titulo": "Dictado por voz: reanuda tras el corte del motor, no duplica tramos confirmados y explica cuando falta soporte",
-      "pr": 113
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Git: el botón de subir cambios desaparece tras un push exitoso, a la rama de tarea o a la base, y queda el destino en la tarjeta",
-      "pr": 112
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Interfaz: barras de scroll con el tema activo y hito visible de sesión compactada en chat suelto y de proyecto",
-      "pr": 111
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "grande",
-      "titulo": "Git y secretos: escaneo completo de blobs con bloqueo, tokens MCP y de proveedor en el filtro central, merge ligado al SHA aprobado y push que confirma antes de sellar",
-      "pr": 112
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Notificaciones: al abrir la app ya no suenan los avisos del pasado; suenan los nuevos con la app abierta y los empujados al dispositivo",
-      "pr": 110
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Agentes: registra el uso real de Codex cuando la ejecución muere a mitad de turno usando la cuenta acumulada de token_count",
-      "pr": 109
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Pruebas: el guard de aislamiento de la base también se activa por NODE_ENV de bun test; el fallo del bootstrap fuera del VM se cierra como falsa alarma",
-      "pr": 108
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Analíticas: ajusta columnas y nombres largos en ejecuciones recientes para evitar desbordes del panel",
-      "pr": 107
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Ajustes: retira la etiqueta Datos del servidor y su hora de la barra de pestañas",
-      "pr": 107
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Chat: botón Detener para turnos libres y proyectos, cancelación real del agente y pausa de la cola local",
-      "pr": 107
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "mediano",
-      "titulo": "Almacenamiento: análisis y limpieza desde Ajustes, política por uso o intervalo, protección de agentes activos y borrado sin bloquear la API",
-      "pr": 107
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Disco: limpieza controlada de dependencias en tareas inactivas y respaldos sin paquetes reconstruibles",
-      "pr": 106
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "grande",
-      "titulo": "Notificaciones: empuja el aviso al dispositivo sin la app abierta (VAPID cifradas, suscripciones, dedupe por evento y receptor en el service worker)",
-      "pr": 105
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Agentes: fija el modelo pequeño de OpenCode al elegido para que titulos y compactación no caigan en modelos fuera del plan",
-      "pr": 105
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Integración: resuelve conflictos del registro central y conserva las correcciones de auditoría junto con Web Push",
-      "pr": 105
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "CI: separa la telemetría del agente ficticio de los archivos aprobados del plan",
-      "pr": 104
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Auditoría: conserva entregables, revoca sesiones heredadas, aísla pruebas, valida alcance y PATCH, habilita HTML seguro, repite avisos y reconoce herramientas activas; seguimiento central y dependencias mitigadas",
-      "pr": 104
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "mediano",
-      "titulo": "Chat: bienvenida con recientes, vista HTML aislada y reportes independientes del repositorio",
-      "pr": 103
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "mediano",
-      "titulo": "Continuidad: sincroniza modelos, señala acciones pendientes, amplía avisos y compacta OpenCode sin corte total de 15 minutos",
-      "pr": 103
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Móvil: adapta cabecera, esfuerzo, versiones y archivos; conserva paletas y usa el sonido de notificación de Android",
-      "pr": 103
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "grande",
-      "titulo": "Fiabilidad: escanea secretos en los blobs del índice (sin bloquear valores de prueba), purga el historial con índices nuevos, apaga la tarea por silencio, inyecta guías en tareas sin proyecto y desacopla la suite de la base",
-      "pr": 102
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Tareas: muestra el evento de PR con conflictos y traduce los errores guardados a frases claras",
-      "pr": 102
-    },
-    {
-      "fecha": "2026-10-22",
-      "tipo": "minimo",
-      "titulo": "Chat: reproduce video y audio permitidos bajo la política de contenido (media-src con blob)",
-      "pr": 102
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "mediano",
-      "titulo": "Agentes: muestra subchats, actividad y resultados desde la respuesta y limita las sesiones hijas a seguimiento",
-      "pr": 101
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "mediano",
-      "titulo": "Skills: integra Context7 global, MCP y manual del proveedor para consultas técnicas",
-      "pr": 101
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "mediano",
-      "titulo": "Chat: permite adjuntar videos MP4 y WebM como hojas visuales de cuatro fotogramas",
-      "pr": 101
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "mediano",
-      "titulo": "Skills: deriva borradores globales desde respuestas y añade revisión antes de guardarlos",
-      "pr": 101
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "minimo",
-      "titulo": "Tareas: muestra pruebas y cambios en un informe claro y prepara una corrección al detectar fallos",
-      "pr": 100
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "minimo",
-      "titulo": "Chat: encuentra medios guardados en chats vinculados a proyectos y reintenta fallos temporales del servidor",
-      "pr": 100
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "mediano",
-      "titulo": "Chat: reanuda tareas interrumpidas, permite el mismo modelo en varios chats, oculta acciones Git antiguas y ofrece cinco sonidos de aviso",
-      "pr": 100
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "mediano",
-      "titulo": "Chat: recupera sesiones OpenCode caducadas, encuentra videos en subcarpetas y previsualiza enlaces externos",
-      "pr": 100
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "minimo",
-      "titulo": "Git: oculta tarjetas de acciones antiguas y conserva su acceso en el historial",
-      "pr": 99
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "mediano",
-      "titulo": "Medios: enruta imágenes y videos al agente, bloquea APIs facturables y documenta TTS local",
-      "pr": 98
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "mediano",
-      "titulo": "Chat: previsualiza y descarga videos MP4, y añade una skill global para animaciones sin residuos de escena",
-      "pr": 97
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "grande",
-      "titulo": "Respaldos: guarda el último conjunto verificado en un bucket privado de Cloudflare R2 y depura copias antiguas",
-      "pr": 96
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "minimo",
-      "titulo": "Tareas: elimina el corte automático de 30 minutos y conserva la cancelación manual",
-      "pr": 96
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "minimo",
-      "titulo": "Skills: prioriza las guías globales de Telo y conserva las del proyecto como complemento",
-      "pr": 96
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "mediano",
-      "titulo": "Conexiones: administra servidores MCP remotos para OpenCode y Codex con credenciales cifradas",
-      "pr": 96
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "grande",
-      "titulo": "Agentes: conserva subagentes como subchats con actividad, resultados y contexto independiente",
-      "pr": 96
-    },
-    {
-      "fecha": "2026-10-21",
-      "tipo": "minimo",
-      "titulo": "Chat y Git: anima la marca Telo al iniciar y muestra enlaces de PR solo cuando GitHub confirma su creación",
-      "pr": 96
-    },
-    {
-      "fecha": "2026-10-20",
-      "tipo": "minimo",
-      "titulo": "Git: solicita solo Contents al fusionar un pull request con la GitHub App",
-      "pr": 95
-    },
-    {
-      "fecha": "2026-10-20",
-      "tipo": "minimo",
-      "titulo": "Agentes: redacta en español la actividad visible durante el trabajo",
-      "pr": 95
-    },
-    {
-      "fecha": "2026-10-20",
-      "tipo": "minimo",
-      "titulo": "Imágenes: solicita JPEG a Google y alinea el nombre descargado con el MIME recibido",
-      "pr": 95
-    },
-    {
-      "fecha": "2026-10-20",
-      "tipo": "mediano",
-      "titulo": "Apariencia: 20 temas, 10 tipografías y escala de texto global, guardados en este dispositivo",
-      "pr": 95
-    },
-    {
-      "fecha": "2026-10-20",
-      "tipo": "mediano",
-      "titulo": "Chat: nuevo estado de inicio con marca animada, cargas skeleton, pestañas independientes de PR y avisos de escritorio con sonido",
-      "pr": 95
-    },
-    {
-      "fecha": "2026-10-20",
-      "tipo": "mediano",
-      "titulo": "Git: genera mensajes convencionales, consolida el flujo en una tarjeta y prepara tareas para resolver conflictos de PR",
-      "pr": 95
-    },
-    {
-      "fecha": "2026-10-20",
-      "tipo": "mediano",
-      "titulo": "Medios y Git: muestra el motivo HTTP de Google, redacta credenciales y explica rechazos de reglas de rama",
-      "pr": 93
-    },
-    {
-      "fecha": "2026-10-20",
-      "tipo": "minimo",
-      "titulo": "Git: registra en el historial de la tarea el fallo del reintegro con conflicto, igual que el resto de fallos de subida",
-      "pr": 93
-    },
-    {
-      "fecha": "2026-10-20",
-      "tipo": "minimo",
-      "titulo": "Chat: evita reiniciar diagramas al actualizar mensajes, acorta el sondeo vivo y muestra rechazos de push como resultado de la acción",
-      "pr": 94
-    },
-    {
-      "fecha": "2026-10-20",
-      "tipo": "minimo",
-      "titulo": "Chat: sigue el texto progresivo hasta el final y respeta el scroll manual hacia mensajes anteriores",
-      "pr": 94
-    },
-    {
-      "fecha": "2026-10-20",
-      "tipo": "mediano",
-      "titulo": "Agentes: cita fuentes web verificables con enlaces a libros, videos y otros materiales en todos los runners",
-      "pr": 94
-    },
-    {
-      "fecha": "2026-10-19",
-      "tipo": "mediano",
-      "titulo": "Git: al crear una tarea lleva la copia local del proyecto al día; antes de subir a la base reintegra su punta y la tarjeta muestra el detalle real del fallo",
-      "pr": 92
-    },
-    {
-      "fecha": "2026-10-19",
-      "tipo": "mediano",
-      "titulo": "Agentes: mejora la composición, legibilidad y revisión de imágenes e infografías en todos los modelos",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-19",
-      "tipo": "mediano",
-      "titulo": "Chat: al autorizar una subida elige destino (rama base directo o rama y PR) y Telo respeta la elección en la cadena",
-      "pr": 90
-    },
-    {
-      "fecha": "2026-10-19",
-      "tipo": "minimo",
-      "titulo": "Historial: muestra los cambios agrupados por PR sin alterar las versiones destacadas",
-      "pr": 90
-    },
-    {
-      "fecha": "2026-10-19",
-      "tipo": "minimo",
-      "titulo": "Aislamiento: oculta al agente /etc/orquestador y la clave privada de la GitHub App, ampliable con TELO_OCULTAR_EXTRA",
-      "pr": 89
-    },
-    {
-      "fecha": "2026-10-19",
-      "tipo": "mediano",
-      "titulo": "Servidor: reanuda reintentos transitorios, conserva avisos de Git y endurece el estado del agente",
-      "pr": 88
-    },
-    {
-      "fecha": "2026-10-19",
-      "tipo": "mediano",
-      "titulo": "Chat y GitHub: recupera archivos históricos, estabiliza el canal en vivo y explica merges bloqueados",
-      "pr": 86
-    },
-    {
-      "fecha": "2026-10-19",
-      "tipo": "grande",
-      "titulo": "Servidor: protege tareas frente a carreras, cifra credenciales de GitHub y alinea despliegues y capacidad",
-      "pr": 86
-    },
-    {
-      "fecha": "2026-10-19",
-      "tipo": "mediano",
-      "titulo": "Chat: inspecciona contexto reciente, consumo por modelo, sesión y mensajes guardados",
-      "pr": 86
-    },
-    {
-      "fecha": "2026-10-19",
-      "tipo": "mediano",
-      "titulo": "Chat: muestra narración y acciones observables en vivo, sin scroll interno",
-      "pr": 86
-    },
-    {
-      "fecha": "2026-10-19",
-      "tipo": "mediano",
-      "titulo": "Agentes: aplica un contrato de ejecución verificable a chats y tareas en todos los modelos",
-      "pr": 86
-    },
-    {
-      "fecha": "2026-10-19",
-      "tipo": "grande",
-      "titulo": "Chat y analíticas: corrige respaldos de modelo, previsualiza archivos, estima tokens faltantes y lista tareas programadas",
-      "pr": 84
-    },
-    {
-      "fecha": "2026-10-18",
-      "tipo": "minimo",
-      "titulo": "Chat: reintenta respuestas detenidas por tiempo desde la sesión guardada",
-      "pr": 84
-    },
-    {
-      "fecha": "2026-10-18",
-      "tipo": "grande",
-      "titulo": "Skills globales para todos los runners, envío de imágenes al agente y permiso correcto para fusionar PR",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-18",
-      "tipo": "mediano",
-      "titulo": "Chat: reduce errores HTTP/2 del canal vivo, conserva sesiones al superar el límite y extiende turnos largos",
-      "pr": 84
-    },
-    {
-      "fecha": "2026-10-18",
-      "tipo": "minimo",
-      "titulo": "Chat: reintenta solicitudes fallidas sin duplicar el prompt ni ofrecer avisos antiguos",
-      "pr": 84
-    },
-    {
-      "fecha": "2026-10-18",
-      "tipo": "mediano",
-      "titulo": "Chat: fija las acciones Git a su respuesta, renderiza PDFs en el chat y mejora el diseño predeterminado de entregables",
-      "pr": 84
-    },
-    {
-      "fecha": "2026-10-18",
-      "tipo": "minimo",
-      "titulo": "Chat: elimina el scroll de página duplicado y conserva el desplazamiento dentro del hilo",
-      "pr": 83
-    },
-    {
-      "fecha": "2026-10-18",
-      "tipo": "minimo",
-      "titulo": "Barra lateral móvil: separa la actividad del chat de su menú de opciones",
-      "pr": 82
-    },
-    {
-      "fecha": "2026-10-18",
-      "tipo": "minimo",
-      "titulo": "Chat: abre imágenes generadas al hacer clic y permite descargarlas",
-      "pr": 82
-    },
-    {
-      "fecha": "2026-10-18",
-      "tipo": "mediano",
-      "titulo": "Chat: previsualiza y permite descargar PDFs generados por el agente",
-      "pr": 82
-    },
-    {
-      "fecha": "2026-10-18",
-      "tipo": "minimo",
-      "titulo": "Barra lateral: muestra un icono junto a cada chat",
-      "pr": 82
-    },
-    {
-      "fecha": "2026-10-18",
-      "tipo": "mediano",
-      "titulo": "Chat: resuelve referencias de archivos, ajusta el visor y muestra el resultado real de las tareas",
-      "pr": 81
-    },
-    {
-      "fecha": "2026-10-18",
-      "tipo": "grande",
-      "titulo": "Chat: genera imágenes y video con autorización, crea subagentes por modelo y muestra actividad en vivo",
-      "pr": 80
-    },
-    {
-      "fecha": "2026-10-17",
-      "tipo": "minimo",
-      "titulo": "Chat móvil: ordena estado y acciones de mensajes, cola y compositor del plan",
-      "pr": 78
-    },
-    {
-      "fecha": "2026-10-17",
-      "tipo": "minimo",
-      "titulo": "Chat: elimina el scroll horizontal y permite volver al mensaje reciente",
-      "pr": 77
-    },
-    {
-      "fecha": "2026-10-17",
-      "tipo": "mediano",
-      "titulo": "Chat: reintenta errores temporales de OpenCode, usa recomendaciones en el placeholder, renderiza gráficos y permite imprimir documentos a PDF",
-      "pr": 76
-    },
-    {
-      "fecha": "2026-10-17",
-      "tipo": "minimo",
-      "titulo": "Gauntlet: limita reintentos, historial, precarga PWA, SSE y aprobaciones; protege la IP real del cliente y traduce la navegación",
-      "pr": 74
-    },
-    {
-      "fecha": "2026-10-17",
-      "tipo": "mediano",
-      "titulo": "Chat: reordena, edita y redirige mensajes en cola; línea de tiempo con prompts importantes",
-      "pr": 75
-    },
-    {
-      "fecha": "2026-10-17",
-      "tipo": "grande",
-      "titulo": "Chat: conserva el contexto al cambiar de modelo, valida esfuerzo por turno y separa rate limits de cuota agotada; protege el acceso de login",
-      "pr": 71
-    },
-    {
-      "fecha": "2026-10-17",
-      "tipo": "mediano",
-      "titulo": "Chat: modelo y esfuerzo por respuesta, archivos citados en vista dividida y formato visual más legible",
-      "pr": 72
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "mediano",
-      "titulo": "Múltiples chats por proyecto, chats libres independientes con botón multifunción e historial de versiones alineado a Telo",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "grande",
-      "titulo": "Rendimiento e índices en base de datos, resiliencia SSE con Last-Event-ID, rate limiting por IP y modularización de ajustes",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "grande",
-      "titulo": "Sesiones dinámicas por dispositivo con revocación, propuestas de memoria sin Jev y modularización de chat",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "minimo",
-      "titulo": "Chat: reduce el tamaño del texto de mensajes y contenido Markdown",
-      "pr": 66
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "minimo",
-      "titulo": "Chat: elimina el borde blanco del compositor y conserva el foco de teclado ámbar",
-      "pr": 65
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "grande",
-      "titulo": "GitHub: muestra la credencial de cada acción, comprueba el acceso antes de autorizar y registra el método usado",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "mediano",
-      "titulo": "Chat: gráficos Mermaid seguros para explicar proyectos",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "grande",
-      "titulo": "TypeSafe Jev: recomendaciones, evaluación de memoria y clasificación con clave cifrada",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "minimo",
-      "titulo": "Versión del sistema: historial de cambios al hacer clic",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "minimo",
-      "titulo": "Usos: porcentajes restantes por ventana con gasto y saldo estimado",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "minimo",
-      "titulo": "Errores: explicación del fallo, detalle seguro y primer paso para resolverlo",
-      "pr": 60
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "minimo",
-      "titulo": "El chat muestra el agotamiento de cuota y evita enviar mensajes hasta cambiar de modelo",
-      "pr": 59
-    },
-    {
-      "fecha": "2026-10-11",
-      "tipo": "mediano",
-      "titulo": "Seguridad del agente y tareas interrumpidas",
-      "pr": 12
-    },
-    {
-      "fecha": "2026-10-11",
-      "tipo": "grande",
-      "titulo": "Gestión de chats, aislamiento de agentes con bubblewrap, eventos en vivo y respaldos",
-      "pr": 13
-    },
-    {
-      "fecha": "2026-10-11",
-      "tipo": "grande",
-      "titulo": "Git por tarea, aprobaciones de commit y push, secretos por proyecto y tareas programadas",
-      "pr": 14
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "mediano",
-      "titulo": "Inicio de sesión con Google (OAuth PKCE)",
-      "pr": 15
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "mediano",
-      "titulo": "Modo claro en la cabecera y paginación en analíticas",
-      "pr": 16
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "mediano",
-      "titulo": "Instrucciones del proyecto desde su repo y memoria por proyecto",
-      "pr": 17
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "minimo",
-      "titulo": "Documentación de pantallas nuevas de Stitch",
-      "pr": 18
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "mediano",
-      "titulo": "Clave SSH por proyecto para subir ramas a GitHub",
-      "pr": 19
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "minimo",
-      "titulo": "Documentación de las cinco pantallas exportadas de Stitch",
-      "pr": 20
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "mediano",
-      "titulo": "Capturas de Stitch aplicadas en la barra y las pantallas principales",
-      "pr": 21
-    },
-    {
-      "fecha": "2026-10-13",
-      "tipo": "grande",
-      "titulo": "Actualización de Telo desde main con timer de systemd",
-      "pr": 22
-    },
-    {
-      "fecha": "2026-10-13",
-      "tipo": "mediano",
-      "titulo": "Adjuntos, dictado, documentos y configuración del chat",
-      "pr": 23
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "mediano",
-      "titulo": "Nuevo proyecto en la barra lateral",
-      "pr": 24
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "mediano",
-      "titulo": "Proyectos en la barra lateral y «Abrir chat» en cada proyecto",
-      "pr": 24
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "mediano",
-      "titulo": "Comandos con / en el chat",
-      "pr": 24
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "mediano",
-      "titulo": "Historial de prompts enviados, con salto al mensaje",
-      "pr": 24
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "mediano",
-      "titulo": "Avisos del sistema al terminar, fallar o pedir una decisión",
-      "pr": 24
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "minimo",
-      "titulo": "Iconos para renombrar, fijar y eliminar chats",
-      "pr": 24
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "minimo",
-      "titulo": "El mensaje vuelve al campo si el servidor no lo guardó",
-      "pr": 24
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "minimo",
-      "titulo": "Borde nuevo del campo de mensaje, sin contorno blanco al enfocar",
-      "pr": 24
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "minimo",
-      "titulo": "Selector de modelo visible bajo la barra superior",
-      "pr": 24
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "minimo",
-      "titulo": "Botón «Ejecutar de nuevo» en tareas terminadas",
-      "pr": 24
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "minimo",
-      "titulo": "Meta de PWA sin aviso de obsolescencia en la consola",
-      "pr": 24
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "minimo",
-      "titulo": "Clave pública oculta, con iconos de copiar y mostrar",
-      "pr": 24
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "minimo",
-      "titulo": "Versión del sistema bajo el estado del servidor",
-      "pr": 24
-    },
-    {
-      "fecha": "2026-10-12",
-      "tipo": "minimo",
-      "titulo": "Regla de versión en CLAUDE.md",
-      "pr": 24
-    },
-    {
-      "fecha": "2026-10-13",
-      "tipo": "mediano",
-      "titulo": "Clonado de repositorios privados de GitHub con clave por proyecto",
-      "pr": 26
-    },
-    {
-      "fecha": "2026-10-13",
-      "tipo": "mediano",
-      "titulo": "Proceso del agente en el chat: cada acción con su vista previa, en vivo y después",
-      "pr": 26
-    },
-    {
-      "fecha": "2026-10-13",
-      "tipo": "minimo",
-      "titulo": "Respuestas del chat más concretas: qué se hará, rutas y verificación",
-      "pr": 26
-    },
-    {
-      "fecha": "2026-10-13",
-      "tipo": "minimo",
-      "titulo": "Comprobación de tipos del servidor con tsconfig y tipos de Bun",
-      "pr": 30
-    },
-    {
-      "fecha": "2026-10-13",
-      "tipo": "minimo",
-      "titulo": "Aviso de nueva versión: el velo cubre también la barra lateral, con desenfoque",
-      "pr": 27
-    },
-    {
-      "fecha": "2026-10-13",
-      "tipo": "grande",
-      "titulo": "Analizador y obrero por tarea: plan revisable, aprobación y reporte guardado",
-      "pr": 28
-    },
-    {
-      "fecha": "2026-10-14",
-      "tipo": "minimo",
-      "titulo": "Documentación al día: fases 5 y 6 mergeadas y pendientes del VM",
-      "pr": 31
-    },
-    {
-      "fecha": "2026-10-14",
-      "tipo": "mediano",
-      "titulo": "Proyectos en tarjetas, alta con revisión de GitHub y clonado en el chat del proyecto",
-      "pr": 32
-    },
-    {
-      "fecha": "2026-10-14",
-      "tipo": "mediano",
-      "titulo": "Seguir tras agotarse la cuota: aviso con el modelo y continuación desde el último punto",
-      "pr": 33
-    },
-    {
-      "fecha": "2026-10-14",
-      "tipo": "mediano",
-      "titulo": "Claves de Groq, NVIDIA y Gemini guardadas cifradas desde Ajustes, con uso en los agentes",
-      "pr": 34
-    },
-    {
-      "fecha": "2026-10-14",
-      "tipo": "minimo",
-      "titulo": "Chat en segundo plano: la respuesta no se pierde si el móvil se duerme o cae la red, y el envío no se duplica",
-      "pr": 34
-    },
-    {
-      "fecha": "2026-10-14",
-      "tipo": "minimo",
-      "titulo": "Barra lateral: sin enlace Chat y con todos los chats, también los de proyecto",
-      "pr": 34
-    },
-    {
-      "fecha": "2026-10-14",
-      "tipo": "minimo",
-      "titulo": "Modelos de Groq, NVIDIA y Gemini visibles en el selector cuando su clave está guardada; Gemini envía las dos variables que usa OpenCode; Ajustes avisa si OpenCode no reconoce el proveedor",
-      "pr": 34
-    },
-    {
-      "fecha": "2026-10-14",
-      "tipo": "mediano",
-      "titulo": "Vista de proyectos con actividad (chats, tareas y última actividad) y acciones en iconos de 40 px",
-      "pr": 34
-    },
-    {
-      "fecha": "2026-10-14",
-      "tipo": "mediano",
-      "titulo": "Memoria del proyecto editable a mano, con la misma redacción y límite que la de los agentes",
-      "pr": 34
-    },
-    {
-      "fecha": "2026-10-14",
-      "tipo": "mediano",
-      "titulo": "Ajustes del servidor: estado del servicio y registros recientes, con secretos ocultos",
-      "pr": 34
-    },
-    {
-      "fecha": "2026-10-14",
-      "tipo": "mediano",
-      "titulo": "Instalación de OpenCode desde Ajustes: se muestra el comando fijo, se confirma y la salida sale redactada",
-      "pr": 34
-    },
-    {
-      "fecha": "2026-10-14",
-      "tipo": "mediano",
-      "titulo": "Skills globales en Ajustes y por proyecto, editables desde la app; OpenCode las lee en su carpeta",
-      "pr": 34
-    },
-    {
-      "fecha": "2026-10-14",
-      "tipo": "grande",
-      "titulo": "Inicio de sesión de Codex por código de dispositivo, ejecutado en el servidor sin exponer el token",
-      "pr": 34
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "minimo",
-      "titulo": "Documentación de la fase 3 al día: estado de Codex y Claude según la documentación oficial de Anthropic",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "minimo",
-      "titulo": "Documentación del plan de acciones git desde los chats (commit, subir y PR con aprobación) y decisiones de token y ramas",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "mediano",
-      "titulo": "Codex se instala desde Ajustes con confirmación, y su inicio de sesión aparece cuando ya está instalado",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "minimo",
-      "titulo": "Un chat que supera los 3 minutos se detiene con un aviso claro, en vez de mostrar el código de salida 143",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "minimo",
-      "titulo": "El agente tiene /tmp propio dentro de su sandbox: OpenCode ya no falla con sistema de solo lectura",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "minimo",
-      "titulo": "Se quita el nombre del proyecto debajo de cada chat en la barra lateral",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "minimo",
-      "titulo": "Autorización única de commit y push, merge ligado a cambios revisados e historial Git compacto",
-      "pr": 42
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "minimo",
-      "titulo": "Notas del plan al aprobar: el obrero ya no rechaza el plan por el cambio de hash",
-      "pr": 43
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "minimo",
-      "titulo": "Pruebas de Codex aisladas: la suite del servidor pasa completa, sin fallos por HOME compartido",
-      "pr": 43
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "mediano",
-      "titulo": "Acciones git: se quitan la fusión local y el push directo a main; el PR usa solo GITHUB_PR_TOKEN",
-      "pr": 43
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "minimo",
-      "titulo": "Documentación de la Tarea 11 al día: estado real, decisiones de token y ramas, y pendientes",
-      "pr": 43
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "minimo",
-      "titulo": "Botón Recargar del aviso de versión: recarga aunque no haya un service worker en espera",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "minimo",
-      "titulo": "Archivos con «secretos» en el nombre (secretos.ts) ya no bloquean el commit; «secret» cuenta solo como palabra",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "minimo",
-      "titulo": "El analizador rechaza rutas fuera del workspace y dentro de .git antes de aprobar",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "mediano",
-      "titulo": "Chat: tiempo de respuesta, copiar y escuchar mensajes, actividad con iconos y sugerencias contextuales",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "mediano",
-      "titulo": "Chat: actividad en vivo desplazable y resumen de cambios con diff revisable",
-      "pr": null
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "mediano",
-      "titulo": "Ajustes: modelos Google y Codex, guardado, Skills CLI y acceso GitHub por sesión",
-      "pr": 47
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "mediano",
-      "titulo": "Chat: cola persistente de mensajes con edición, redirección y envío automático",
-      "pr": 48
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "minimo",
-      "titulo": "La lectura de respuestas usa una voz en español",
-      "pr": 49
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "mediano",
-      "titulo": "Analíticas separan el consumo de chat, tareas y funciones locales",
-      "pr": 50
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "mediano",
-      "titulo": "GitHub App: credenciales temporales limitadas al repo para clonar, subir y crear PR",
-      "pr": 51
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "minimo",
-      "titulo": "Autorizaciones Git por mensaje, validación de cambios y decisiones repetidas sin duplicar operaciones",
-      "pr": 51
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "minimo",
-      "titulo": "Inicio de sesión de Codex: enlace limpio y código de dispositivo visible y copiable",
-      "pr": 52
-    },
-    {
-      "fecha": "2026-10-15",
-      "tipo": "mediano",
-      "titulo": "Sesiones verificadas por CLI, comprobaciones previas, reportes legibles, precisión de métricas y CI de navegador",
-      "pr": 53
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "mediano",
-      "titulo": "GitHub App: clonado privado sin deploy key y detalle de errores al crear PR",
-      "pr": 53
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "minimo",
-      "titulo": "Chat: acciones Git tras la respuesta, reintentos agrupados y confirmación de borrado más clara",
-      "pr": 54
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "mediano",
-      "titulo": "Modelos agrupados por proveedor, con el catálogo de la cuenta Codex identificado",
-      "pr": 55
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "minimo",
-      "titulo": "Uso del proveedor: gasto y saldo estimado en porcentajes por ventana",
-      "pr": 56
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "minimo",
-      "titulo": "Barra lateral: grupos recientes simplificados y atenuados",
-      "pr": 57
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "mediano",
-      "titulo": "Chat: hasta diez ejecuciones concurrentes y estado aislado por conversación",
-      "pr": 58
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "minimo",
-      "titulo": "Se retira la conexión OAuth de Google que no se utilizaba para modelos ni métricas",
-      "pr": 61
-    },
-    {
-      "fecha": "2026-10-16",
-      "tipo": "minimo",
-      "titulo": "Ajustes: muestra el estado de GitHub y el alcance de cada instalación con más claridad",
-      "pr": 61
-    },
-    {
-      "fecha": "2026-10-18",
-      "tipo": "mediano",
-      "titulo": "Chat: modelos favoritos y puntuación de inteligencia, estado visible, acciones compactas y navegación del hilo",
-      "pr": 79
-    },
-    {
-      "fecha": "2026-10-18",
-      "tipo": "minimo",
-      "titulo": "GitHub: fusionar por número no abre otra rama y las solicitudes de PR repetidas no se duplican",
-      "pr": null
-    }
+    { "fecha": "2026-10-28", "tipo": "mediano", "titulo": "Google Drive: archiva automáticamente tareas elegibles tras 24 horas y permite archivar todas las tareas de todas las páginas, con progreso y opción de detener", "pr": 132 },
+    { "fecha": "2026-10-28", "tipo": "mediano", "titulo": "Google Drive: incorpora paginación al listado de tareas y archivos archivados", "pr": 131 },
+    { "fecha": "2026-10-28", "tipo": "mediano", "titulo": "Almacenamiento: archiva espacios de tareas terminadas en Google Drive con cargas reanudables y restauración verificada para liberar espacio en la VM", "pr": 130 },
+    { "fecha": "2026-10-23", "tipo": "mediano", "titulo": "Iniciativa del obrero: ante un fallo de verificación el agente se autocorrige en su sesión (hasta 2 ciclos, ajustable) antes de fallar la tarea", "pr": 129 },
+    { "fecha": "2026-10-23", "tipo": "mediano", "titulo": "Cola de mensajes del chat: lo que envías mientras responde el agente queda en cola y se ejecuta en orden; insignia En cola y opción de quitar antes de que arranque", "pr": 127 },
+    { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Resiliencia del cliente: las peticiones GET reintentan ante 502/503/504 o conexión caída mientras el servicio se reinicia, sin duplicar mutaciones; los tests del guard de bases ya no dependen de dónde viva el repositorio", "pr": 126 },
+    { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Seguimiento: cierra el pendiente del parche sprintf-js (no hay versión oficial corregida y el advisory se retiró), sincroniza el bullet de avisos a PR 118 e ignora tsbuildinfo", "pr": 125 },
+    { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Humo: la espera de la respuesta del asistente admite que el historial acumule dos respuestas idénticas, sin strict mode", "pr": 124 },
+    { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Seguridad de notificaciones: restringe endpoints Push a proveedores conocidos, bloquea redirecciones y limita las suscripciones por dispositivo", "pr": 123 },
+    { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Auditoría: cierra fallos de secretos, alcance, sesiones, streaming y Git; páginas de mensajes, previews HTML aisladas, avisos por dispositivo y respaldos con drenado seguro", "pr": 122 },
+    { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Despliegue: mientras haya ejecuciones en curso la interfaz nueva no se recompila, para que interfaz y servidor avancen juntos", "pr": 121 },
+    { "fecha": "2026-10-23", "tipo": "minimo", "titulo": "Historial: el shell aguanta el array plano de un servidor anterior al paginado, sin caer con «Cannot read properties of undefined»", "pr": 120 },
+    { "fecha": "2026-10-23", "tipo": "mediano", "titulo": "Selector de modelos: buscador en la lista que filtra por nombre, familia o proveedor, agrupa resultados y muestra el proveedor en cada fila", "pr": 119 },
+    { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Chat en caliente: reintentos automáticos ante microcortes del proveedor, detener recupera ocupaciones huérfanas y avisos de archivos ausentes sin empujar a recargar", "pr": 118 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Borradores: el texto vuelve al compositor si la app muere justo tras enviar y el mensaje no llegó a guardarse", "pr": 117 },
+    { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Historial: paginación en el servidor con cursor (?limite=&antes=) y «Cargar anteriores» en el muelle; la búsqueda cubre todo el historial", "pr": 116 },
+    { "fecha": "2026-10-22", "tipo": "grande", "titulo": "Estabilidad del servidor: salida del agente con tope de RAM, streaming de pdf/imagen/video, skills sin enlaces simbólicos, vigilante y esfuerzo también en Codex, tope de arranque, alcance con archivos ignorados y reporte honesto con pruebas en fallo", "pr": 114 },
+    { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Dictado por voz: reanuda tras el corte del motor, no duplica tramos confirmados y explica cuando falta soporte", "pr": 113 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Git: el botón de subir cambios desaparece tras un push exitoso, a la rama de tarea o a la base, y queda el destino en la tarjeta", "pr": 112 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Interfaz: barras de scroll con el tema activo y hito visible de sesión compactada en chat suelto y de proyecto", "pr": 111 },
+    { "fecha": "2026-10-22", "tipo": "grande", "titulo": "Git y secretos: escaneo completo de blobs con bloqueo, tokens MCP y de proveedor en el filtro central, merge ligado al SHA aprobado y push que confirma antes de sellar", "pr": 112 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Notificaciones: al abrir la app ya no suenan los avisos del pasado; suenan los nuevos con la app abierta y los empujados al dispositivo", "pr": 110 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Agentes: registra el uso real de Codex cuando la ejecución muere a mitad de turno usando la cuenta acumulada de token_count", "pr": 109 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Pruebas: el guard de aislamiento de la base también se activa por NODE_ENV de bun test; el fallo del bootstrap fuera del VM se cierra como falsa alarma", "pr": 108 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Analíticas: ajusta columnas y nombres largos en ejecuciones recientes para evitar desbordes del panel", "pr": 107 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Ajustes: retira la etiqueta Datos del servidor y su hora de la barra de pestañas", "pr": 107 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Chat: botón Detener para turnos libres y proyectos, cancelación real del agente y pausa de la cola local", "pr": 107 },
+    { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Almacenamiento: análisis y limpieza desde Ajustes, política por uso o intervalo, protección de agentes activos y borrado sin bloquear la API", "pr": 107 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Disco: limpieza controlada de dependencias en tareas inactivas y respaldos sin paquetes reconstruibles", "pr": 106 },
+
+    {"fecha":"2026-10-22","tipo":"grande","titulo":"Notificaciones: empuja el aviso al dispositivo sin la app abierta (VAPID cifradas, suscripciones, dedupe por evento y receptor en el service worker)","pr":105},
+    {"fecha":"2026-10-22","tipo":"minimo","titulo":"Agentes: fija el modelo pequeño de OpenCode al elegido para que titulos y compactación no caigan en modelos fuera del plan","pr":105},
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Integración: resuelve conflictos del registro central y conserva las correcciones de auditoría junto con Web Push", "pr": 105 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "CI: separa la telemetría del agente ficticio de los archivos aprobados del plan", "pr": 104 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Auditoría: conserva entregables, revoca sesiones heredadas, aísla pruebas, valida alcance y PATCH, habilita HTML seguro, repite avisos y reconoce herramientas activas; seguimiento central y dependencias mitigadas", "pr": 104 },
+    { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Chat: bienvenida con recientes, vista HTML aislada y reportes independientes del repositorio", "pr": 103 },
+    { "fecha": "2026-10-22", "tipo": "mediano", "titulo": "Continuidad: sincroniza modelos, señala acciones pendientes, amplía avisos y compacta OpenCode sin corte total de 15 minutos", "pr": 103 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Móvil: adapta cabecera, esfuerzo, versiones y archivos; conserva paletas y usa el sonido de notificación de Android", "pr": 103 },
+    { "fecha": "2026-10-22", "tipo": "grande", "titulo": "Fiabilidad: escanea secretos en los blobs del índice (sin bloquear valores de prueba), purga el historial con índices nuevos, apaga la tarea por silencio, inyecta guías en tareas sin proyecto y desacopla la suite de la base", "pr": 102 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Tareas: muestra el evento de PR con conflictos y traduce los errores guardados a frases claras", "pr": 102 },
+    { "fecha": "2026-10-22", "tipo": "minimo", "titulo": "Chat: reproduce video y audio permitidos bajo la política de contenido (media-src con blob)", "pr": 102 },
+    { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Agentes: muestra subchats, actividad y resultados desde la respuesta y limita las sesiones hijas a seguimiento", "pr": 101 },
+    { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Skills: integra Context7 global, MCP y manual del proveedor para consultas técnicas", "pr": 101 },
+    { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Chat: permite adjuntar videos MP4 y WebM como hojas visuales de cuatro fotogramas", "pr": 101 },
+    { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Skills: deriva borradores globales desde respuestas y añade revisión antes de guardarlos", "pr": 101 },
+    { "fecha": "2026-10-21", "tipo": "minimo", "titulo": "Tareas: muestra pruebas y cambios en un informe claro y prepara una corrección al detectar fallos", "pr": 100 },
+    { "fecha": "2026-10-21", "tipo": "minimo", "titulo": "Chat: encuentra medios guardados en chats vinculados a proyectos y reintenta fallos temporales del servidor", "pr": 100 },
+    { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Chat: reanuda tareas interrumpidas, permite el mismo modelo en varios chats, oculta acciones Git antiguas y ofrece cinco sonidos de aviso", "pr": 100 },
+    { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Chat: recupera sesiones OpenCode caducadas, encuentra videos en subcarpetas y previsualiza enlaces externos", "pr": 100 },
+    { "fecha": "2026-10-21", "tipo": "minimo", "titulo": "Git: oculta tarjetas de acciones antiguas y conserva su acceso en el historial", "pr": 99 },
+    { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Medios: enruta imágenes y videos al agente, bloquea APIs facturables y documenta TTS local", "pr": 98 },
+    { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Chat: previsualiza y descarga videos MP4, y añade una skill global para animaciones sin residuos de escena", "pr": 97 },
+    { "fecha": "2026-10-21", "tipo": "grande", "titulo": "Respaldos: guarda el último conjunto verificado en un bucket privado de Cloudflare R2 y depura copias antiguas", "pr": 96 },
+    { "fecha": "2026-10-21", "tipo": "minimo", "titulo": "Tareas: elimina el corte automático de 30 minutos y conserva la cancelación manual", "pr": 96 },
+    { "fecha": "2026-10-21", "tipo": "minimo", "titulo": "Skills: prioriza las guías globales de Telo y conserva las del proyecto como complemento", "pr": 96 },
+    { "fecha": "2026-10-21", "tipo": "mediano", "titulo": "Conexiones: administra servidores MCP remotos para OpenCode y Codex con credenciales cifradas", "pr": 96 },
+    { "fecha": "2026-10-21", "tipo": "grande", "titulo": "Agentes: conserva subagentes como subchats con actividad, resultados y contexto independiente", "pr": 96 },
+    { "fecha": "2026-10-21", "tipo": "minimo", "titulo": "Chat y Git: anima la marca Telo al iniciar y muestra enlaces de PR solo cuando GitHub confirma su creación", "pr": 96 },
+    { "fecha": "2026-10-20", "tipo": "minimo", "titulo": "Git: solicita solo Contents al fusionar un pull request con la GitHub App", "pr": 95 },
+    { "fecha": "2026-10-20", "tipo": "minimo", "titulo": "Agentes: redacta en español la actividad visible durante el trabajo", "pr": 95 },
+    { "fecha": "2026-10-20", "tipo": "minimo", "titulo": "Imágenes: solicita JPEG a Google y alinea el nombre descargado con el MIME recibido", "pr": 95 },
+    { "fecha": "2026-10-20", "tipo": "mediano", "titulo": "Apariencia: 20 temas, 10 tipografías y escala de texto global, guardados en este dispositivo", "pr": 95 },
+    { "fecha": "2026-10-20", "tipo": "mediano", "titulo": "Chat: nuevo estado de inicio con marca animada, cargas skeleton, pestañas independientes de PR y avisos de escritorio con sonido", "pr": 95 },
+    { "fecha": "2026-10-20", "tipo": "mediano", "titulo": "Git: genera mensajes convencionales, consolida el flujo en una tarjeta y prepara tareas para resolver conflictos de PR", "pr": 95 },
+    { "fecha": "2026-10-20", "tipo": "mediano", "titulo": "Medios y Git: muestra el motivo HTTP de Google, redacta credenciales y explica rechazos de reglas de rama", "pr": 93 },
+    { "fecha": "2026-10-20", "tipo": "minimo", "titulo": "Git: registra en el historial de la tarea el fallo del reintegro con conflicto, igual que el resto de fallos de subida", "pr": 93 },
+    { "fecha": "2026-10-20", "tipo": "minimo", "titulo": "Chat: evita reiniciar diagramas al actualizar mensajes, acorta el sondeo vivo y muestra rechazos de push como resultado de la acción", "pr": 94 },
+    { "fecha": "2026-10-20", "tipo": "minimo", "titulo": "Chat: sigue el texto progresivo hasta el final y respeta el scroll manual hacia mensajes anteriores", "pr": 94 },
+    { "fecha": "2026-10-20", "tipo": "mediano", "titulo": "Agentes: cita fuentes web verificables con enlaces a libros, videos y otros materiales en todos los runners", "pr": 94 },
+    { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Git: al crear una tarea lleva la copia local del proyecto al día; antes de subir a la base reintegra su punta y la tarjeta muestra el detalle real del fallo", "pr": 92 },
+    { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Agentes: mejora la composición, legibilidad y revisión de imágenes e infografías en todos los modelos", "pr": null },
+    { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Chat: al autorizar una subida elige destino (rama base directo o rama y PR) y Telo respeta la elección en la cadena", "pr": 90 },
+    { "fecha": "2026-10-19", "tipo": "minimo", "titulo": "Historial: muestra los cambios agrupados por PR sin alterar las versiones destacadas", "pr": 90 },
+    { "fecha": "2026-10-19", "tipo": "minimo", "titulo": "Aislamiento: oculta al agente /etc/orquestador y la clave privada de la GitHub App, ampliable con TELO_OCULTAR_EXTRA", "pr": 89 },
+    { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Servidor: reanuda reintentos transitorios, conserva avisos de Git y endurece el estado del agente", "pr": 88 },
+    { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Chat y GitHub: recupera archivos históricos, estabiliza el canal en vivo y explica merges bloqueados", "pr": 86 },
+    { "fecha": "2026-10-19", "tipo": "grande", "titulo": "Servidor: protege tareas frente a carreras, cifra credenciales de GitHub y alinea despliegues y capacidad", "pr": 86 },
+    { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Chat: inspecciona contexto reciente, consumo por modelo, sesión y mensajes guardados", "pr": 86 },
+    { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Chat: muestra narración y acciones observables en vivo, sin scroll interno", "pr": 86 },
+    { "fecha": "2026-10-19", "tipo": "mediano", "titulo": "Agentes: aplica un contrato de ejecución verificable a chats y tareas en todos los modelos", "pr": 86 },
+    { "fecha": "2026-10-19", "tipo": "grande", "titulo": "Chat y analíticas: corrige respaldos de modelo, previsualiza archivos, estima tokens faltantes y lista tareas programadas", "pr": 84 },
+    { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Chat: reintenta respuestas detenidas por tiempo desde la sesión guardada", "pr": 84 },
+    { "fecha": "2026-10-18", "tipo": "grande", "titulo": "Skills globales para todos los runners, envío de imágenes al agente y permiso correcto para fusionar PR", "pr": null },
+    { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: reduce errores HTTP/2 del canal vivo, conserva sesiones al superar el límite y extiende turnos largos", "pr": 84 },
+    { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Chat: reintenta solicitudes fallidas sin duplicar el prompt ni ofrecer avisos antiguos", "pr": 84 },
+    { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: fija las acciones Git a su respuesta, renderiza PDFs en el chat y mejora el diseño predeterminado de entregables", "pr": 84 },
+    { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Chat: elimina el scroll de página duplicado y conserva el desplazamiento dentro del hilo", "pr": 83 },
+    { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Barra lateral móvil: separa la actividad del chat de su menú de opciones", "pr": 82 },
+    { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Chat: abre imágenes generadas al hacer clic y permite descargarlas", "pr": 82 },
+    { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: previsualiza y permite descargar PDFs generados por el agente", "pr": 82 },
+    { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "Barra lateral: muestra un icono junto a cada chat", "pr": 82 },
+    { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: resuelve referencias de archivos, ajusta el visor y muestra el resultado real de las tareas", "pr": 81 },
+    { "fecha": "2026-10-18", "tipo": "grande", "titulo": "Chat: genera imágenes y video con autorización, crea subagentes por modelo y muestra actividad en vivo", "pr": 80 },
+    { "fecha": "2026-10-17", "tipo": "minimo", "titulo": "Chat móvil: ordena estado y acciones de mensajes, cola y compositor del plan", "pr": 78 },
+    { "fecha": "2026-10-17", "tipo": "minimo", "titulo": "Chat: elimina el scroll horizontal y permite volver al mensaje reciente", "pr": 77 },
+    { "fecha": "2026-10-17", "tipo": "mediano", "titulo": "Chat: reintenta errores temporales de OpenCode, usa recomendaciones en el placeholder, renderiza gráficos y permite imprimir documentos a PDF", "pr": 76 },
+    { "fecha": "2026-10-17", "tipo": "minimo", "titulo": "Gauntlet: limita reintentos, historial, precarga PWA, SSE y aprobaciones; protege la IP real del cliente y traduce la navegación", "pr": 74 },
+    { "fecha": "2026-10-17", "tipo": "mediano", "titulo": "Chat: reordena, edita y redirige mensajes en cola; línea de tiempo con prompts importantes", "pr": 75 },
+    { "fecha": "2026-10-17", "tipo": "grande", "titulo": "Chat: conserva el contexto al cambiar de modelo, valida esfuerzo por turno y separa rate limits de cuota agotada; protege el acceso de login", "pr": 71 },
+    { "fecha": "2026-10-17", "tipo": "mediano", "titulo": "Chat: modelo y esfuerzo por respuesta, archivos citados en vista dividida y formato visual más legible", "pr": 72 },
+    { "fecha": "2026-10-16", "tipo": "mediano", "titulo": "Múltiples chats por proyecto, chats libres independientes con botón multifunción e historial de versiones alineado a Telo", "pr": null },
+    { "fecha": "2026-10-16", "tipo": "grande", "titulo": "Rendimiento e índices en base de datos, resiliencia SSE con Last-Event-ID, rate limiting por IP y modularización de ajustes", "pr": null },
+    { "fecha": "2026-10-16", "tipo": "grande", "titulo": "Sesiones dinámicas por dispositivo con revocación, propuestas de memoria sin Jev y modularización de chat", "pr": null },
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Chat: reduce el tamaño del texto de mensajes y contenido Markdown", "pr": 66 },
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Chat: elimina el borde blanco del compositor y conserva el foco de teclado ámbar", "pr": 65 },
+    { "fecha": "2026-10-16", "tipo": "grande", "titulo": "GitHub: muestra la credencial de cada acción, comprueba el acceso antes de autorizar y registra el método usado", "pr": null },
+    { "fecha": "2026-10-16", "tipo": "mediano", "titulo": "Chat: gráficos Mermaid seguros para explicar proyectos", "pr": null },
+    { "fecha": "2026-10-16", "tipo": "grande", "titulo": "TypeSafe Jev: recomendaciones, evaluación de memoria y clasificación con clave cifrada", "pr": null },
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Versión del sistema: historial de cambios al hacer clic", "pr": null },
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Usos: porcentajes restantes por ventana con gasto y saldo estimado", "pr": null },
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Errores: explicación del fallo, detalle seguro y primer paso para resolverlo", "pr": 60 },
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "El chat muestra el agotamiento de cuota y evita enviar mensajes hasta cambiar de modelo", "pr": 59 },
+    { "fecha": "2026-10-11", "tipo": "mediano", "titulo": "Seguridad del agente y tareas interrumpidas", "pr": 12 },
+    { "fecha": "2026-10-11", "tipo": "grande", "titulo": "Gestión de chats, aislamiento de agentes con bubblewrap, eventos en vivo y respaldos", "pr": 13 },
+    { "fecha": "2026-10-11", "tipo": "grande", "titulo": "Git por tarea, aprobaciones de commit y push, secretos por proyecto y tareas programadas", "pr": 14 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Inicio de sesión con Google (OAuth PKCE)", "pr": 15 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Modo claro en la cabecera y paginación en analíticas", "pr": 16 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Instrucciones del proyecto desde su repo y memoria por proyecto", "pr": 17 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Documentación de pantallas nuevas de Stitch", "pr": 18 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Clave SSH por proyecto para subir ramas a GitHub", "pr": 19 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Documentación de las cinco pantallas exportadas de Stitch", "pr": 20 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Capturas de Stitch aplicadas en la barra y las pantallas principales", "pr": 21 },
+    { "fecha": "2026-10-13", "tipo": "grande", "titulo": "Actualización de Telo desde main con timer de systemd", "pr": 22 },
+    { "fecha": "2026-10-13", "tipo": "mediano", "titulo": "Adjuntos, dictado, documentos y configuración del chat", "pr": 23 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Nuevo proyecto en la barra lateral", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Proyectos en la barra lateral y «Abrir chat» en cada proyecto", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Comandos con / en el chat", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Historial de prompts enviados, con salto al mensaje", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "mediano", "titulo": "Avisos del sistema al terminar, fallar o pedir una decisión", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Iconos para renombrar, fijar y eliminar chats", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "El mensaje vuelve al campo si el servidor no lo guardó", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Borde nuevo del campo de mensaje, sin contorno blanco al enfocar", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Selector de modelo visible bajo la barra superior", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Botón «Ejecutar de nuevo» en tareas terminadas", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Meta de PWA sin aviso de obsolescencia en la consola", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Clave pública oculta, con iconos de copiar y mostrar", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Versión del sistema bajo el estado del servidor", "pr": 24 },
+    { "fecha": "2026-10-12", "tipo": "minimo", "titulo": "Regla de versión en CLAUDE.md", "pr": 24 },
+    { "fecha": "2026-10-13", "tipo": "mediano", "titulo": "Clonado de repositorios privados de GitHub con clave por proyecto", "pr": 26 },
+    { "fecha": "2026-10-13", "tipo": "mediano", "titulo": "Proceso del agente en el chat: cada acción con su vista previa, en vivo y después", "pr": 26 },
+    { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Respuestas del chat más concretas: qué se hará, rutas y verificación", "pr": 26 },
+    { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Comprobación de tipos del servidor con tsconfig y tipos de Bun", "pr": 30 },
+    { "fecha": "2026-10-13", "tipo": "minimo", "titulo": "Aviso de nueva versión: el velo cubre también la barra lateral, con desenfoque", "pr": 27 },
+    { "fecha": "2026-10-13", "tipo": "grande", "titulo": "Analizador y obrero por tarea: plan revisable, aprobación y reporte guardado", "pr": 28 },
+    { "fecha": "2026-10-14", "tipo": "minimo", "titulo": "Documentación al día: fases 5 y 6 mergeadas y pendientes del VM", "pr": 31 },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Proyectos en tarjetas, alta con revisión de GitHub y clonado en el chat del proyecto", "pr": 32 },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Seguir tras agotarse la cuota: aviso con el modelo y continuación desde el último punto", "pr": 33 },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Claves de Groq, NVIDIA y Gemini guardadas cifradas desde Ajustes, con uso en los agentes", "pr": 34 },
+    { "fecha": "2026-10-14", "tipo": "minimo", "titulo": "Chat en segundo plano: la respuesta no se pierde si el móvil se duerme o cae la red, y el envío no se duplica", "pr": 34 },
+    { "fecha": "2026-10-14", "tipo": "minimo", "titulo": "Barra lateral: sin enlace Chat y con todos los chats, también los de proyecto", "pr": 34 },
+    { "fecha": "2026-10-14", "tipo": "minimo", "titulo": "Modelos de Groq, NVIDIA y Gemini visibles en el selector cuando su clave está guardada; Gemini envía las dos variables que usa OpenCode; Ajustes avisa si OpenCode no reconoce el proveedor", "pr": 34 },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Vista de proyectos con actividad (chats, tareas y última actividad) y acciones en iconos de 40 px", "pr": 34 },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Memoria del proyecto editable a mano, con la misma redacción y límite que la de los agentes", "pr": 34 },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Ajustes del servidor: estado del servicio y registros recientes, con secretos ocultos", "pr": 34 },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Instalación de OpenCode desde Ajustes: se muestra el comando fijo, se confirma y la salida sale redactada", "pr": 34 },
+    { "fecha": "2026-10-14", "tipo": "mediano", "titulo": "Skills globales en Ajustes y por proyecto, editables desde la app; OpenCode las lee en su carpeta", "pr": 34 },
+    { "fecha": "2026-10-14", "tipo": "grande", "titulo": "Inicio de sesión de Codex por código de dispositivo, ejecutado en el servidor sin exponer el token", "pr": 34 },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Documentación de la fase 3 al día: estado de Codex y Claude según la documentación oficial de Anthropic", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Documentación del plan de acciones git desde los chats (commit, subir y PR con aprobación) y decisiones de token y ramas", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Codex se instala desde Ajustes con confirmación, y su inicio de sesión aparece cuando ya está instalado", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Un chat que supera los 3 minutos se detiene con un aviso claro, en vez de mostrar el código de salida 143", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "El agente tiene /tmp propio dentro de su sandbox: OpenCode ya no falla con sistema de solo lectura", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Se quita el nombre del proyecto debajo de cada chat en la barra lateral", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Autorización única de commit y push, merge ligado a cambios revisados e historial Git compacto", "pr": 42 },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Notas del plan al aprobar: el obrero ya no rechaza el plan por el cambio de hash", "pr": 43 },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Pruebas de Codex aisladas: la suite del servidor pasa completa, sin fallos por HOME compartido", "pr": 43 },
+    { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Acciones git: se quitan la fusión local y el push directo a main; el PR usa solo GITHUB_PR_TOKEN", "pr": 43 },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Documentación de la Tarea 11 al día: estado real, decisiones de token y ramas, y pendientes", "pr": 43 },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Botón Recargar del aviso de versión: recarga aunque no haya un service worker en espera", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Archivos con «secretos» en el nombre (secretos.ts) ya no bloquean el commit; «secret» cuenta solo como palabra", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "El analizador rechaza rutas fuera del workspace y dentro de .git antes de aprobar", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Chat: tiempo de respuesta, copiar y escuchar mensajes, actividad con iconos y sugerencias contextuales", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Chat: actividad en vivo desplazable y resumen de cambios con diff revisable", "pr": null },
+    { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Ajustes: modelos Google y Codex, guardado, Skills CLI y acceso GitHub por sesión", "pr": 47 },
+    { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Chat: cola persistente de mensajes con edición, redirección y envío automático", "pr": 48 },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "La lectura de respuestas usa una voz en español", "pr": 49 },
+    { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Analíticas separan el consumo de chat, tareas y funciones locales", "pr": 50 },
+    { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "GitHub App: credenciales temporales limitadas al repo para clonar, subir y crear PR", "pr": 51 },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Autorizaciones Git por mensaje, validación de cambios y decisiones repetidas sin duplicar operaciones", "pr": 51 },
+    { "fecha": "2026-10-15", "tipo": "minimo", "titulo": "Inicio de sesión de Codex: enlace limpio y código de dispositivo visible y copiable", "pr": 52 },
+    { "fecha": "2026-10-15", "tipo": "mediano", "titulo": "Sesiones verificadas por CLI, comprobaciones previas, reportes legibles, precisión de métricas y CI de navegador", "pr": 53 },
+    { "fecha": "2026-10-16", "tipo": "mediano", "titulo": "GitHub App: clonado privado sin deploy key y detalle de errores al crear PR", "pr": 53 },
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Chat: acciones Git tras la respuesta, reintentos agrupados y confirmación de borrado más clara", "pr": 54 },
+    { "fecha": "2026-10-16", "tipo": "mediano", "titulo": "Modelos agrupados por proveedor, con el catálogo de la cuenta Codex identificado", "pr": 55 },
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Uso del proveedor: gasto y saldo estimado en porcentajes por ventana", "pr": 56 },
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Barra lateral: grupos recientes simplificados y atenuados", "pr": 57 },
+    { "fecha": "2026-10-16", "tipo": "mediano", "titulo": "Chat: hasta diez ejecuciones concurrentes y estado aislado por conversación", "pr": 58 },
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Se retira la conexión OAuth de Google que no se utilizaba para modelos ni métricas", "pr": 61 },
+    { "fecha": "2026-10-16", "tipo": "minimo", "titulo": "Ajustes: muestra el estado de GitHub y el alcance de cada instalación con más claridad", "pr": 61 },
+    { "fecha": "2026-10-18", "tipo": "mediano", "titulo": "Chat: modelos favoritos y puntuación de inteligencia, estado visible, acciones compactas y navegación del hilo", "pr": 79 },
+    { "fecha": "2026-10-18", "tipo": "minimo", "titulo": "GitHub: fusionar por número no abre otra rama y las solicitudes de PR repetidas no se duplican", "pr": null }
   ]
 }
