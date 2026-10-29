@@ -3,8 +3,18 @@ import { db } from "../db";
 import { validateSelection } from "../models";
 import { publicar } from "../bus";
 
-type Row = { id: string; model: string | null; effort: string | null };
-type Body = { model?: string | null; effort?: string | null; title?: string; pinned?: boolean };
+type RolTrabajador = "arquitectura" | "seguridad" | "verificacion";
+type Trabajador = { model: string; rol: RolTrabajador };
+type Row = { id: string; model: string | null; effort: string | null; orquestacion_habilitada: number; orquestacion_seleccion_automatica: number; orquestacion_trabajadores: string };
+type Body = {
+  model?: string | null;
+  effort?: string | null;
+  title?: string;
+  pinned?: boolean;
+  orquestacion_habilitada?: boolean;
+  orquestacion_seleccion_automatica?: boolean;
+  orquestacion_trabajadores?: Trabajador[];
+};
 
 export const settings = new Hono();
 settings.get("/avisos-git", (c) => c.json(db.query(`SELECT a.id,a.conversation_id,a.action,a.state FROM repository_actions a WHERE a.state IN ('pending','failed','approved') AND a.conversation_id IS NOT NULL AND a.rowid IN (SELECT MAX(rowid) FROM repository_actions GROUP BY conversation_id,action) ORDER BY a.rowid DESC LIMIT 100`).all()));
@@ -14,13 +24,15 @@ settings.get("/avisos-git", (c) => c.json(db.query(`SELECT a.id,a.conversation_i
 settings.patch("/conversations/:id", async (c) => {
   const id = c.req.param("id");
   const row = db
-    .query<Row, [string]>("SELECT id, model, effort FROM conversations WHERE id = ?")
+    .query<Row, [string]>("SELECT id, model, effort, orquestacion_habilitada, orquestacion_seleccion_automatica, orquestacion_trabajadores FROM conversations WHERE id = ?")
     .get(id);
   if (!row) return c.json({ error: "conversation_not_found" }, 404);
 
   const body = await c.req.json<Body>().catch(() => null);
   if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "invalid_request" }, 400);
   if (body.pinned !== undefined && typeof body.pinned !== "boolean") return c.json({ error: "invalid_request" }, 400);
+  if (body.orquestacion_habilitada !== undefined && typeof body.orquestacion_habilitada !== "boolean") return c.json({ error: "invalid_request" }, 400);
+  if (body.orquestacion_seleccion_automatica !== undefined && typeof body.orquestacion_seleccion_automatica !== "boolean") return c.json({ error: "invalid_request" }, 400);
 
   if (body.title !== undefined) {
     const titulo = typeof body.title === "string" ? body.title.trim() : "";
@@ -28,6 +40,15 @@ settings.patch("/conversations/:id", async (c) => {
   }
 
   const cambiaConfiguracion = body.model !== undefined || body.effort !== undefined;
+  const cambiaOrquestacion = body.orquestacion_habilitada !== undefined || body.orquestacion_seleccion_automatica !== undefined || body.orquestacion_trabajadores !== undefined;
+  if (body.orquestacion_trabajadores !== undefined) {
+    const trabajadores = body.orquestacion_trabajadores;
+    const roles = new Set<RolTrabajador>(["arquitectura", "seguridad", "verificacion"]);
+    if (!Array.isArray(trabajadores) || trabajadores.length > 3 || trabajadores.some((t) =>
+      !t || typeof t !== "object" || Array.isArray(t) || typeof t.model !== "string" || !t.model.trim() || t.model.length > 200 || !roles.has(t.rol),
+    )) return c.json({ error: "invalid_orchestration_workers" }, 400);
+    if (new Set(trabajadores.map((t) => t.model)).size !== trabajadores.length) return c.json({ error: "duplicate_orchestration_worker" }, 400);
+  }
   let costWarning: string | null = null;
   let costTier: string | null = null;
 
@@ -45,17 +66,41 @@ settings.patch("/conversations/:id", async (c) => {
     }
   }
 
+  if (cambiaOrquestacion) {
+    let trabajadoresActuales: Trabajador[] = [];
+    try { trabajadoresActuales = JSON.parse(row.orquestacion_trabajadores); } catch {}
+    const trabajadores = body.orquestacion_trabajadores ?? trabajadoresActuales;
+    const habilitada = body.orquestacion_habilitada ?? Boolean(row.orquestacion_habilitada);
+    const modeloCoordinador = body.model === undefined ? row.model : body.model;
+    if (habilitada && !modeloCoordinador) return c.json({ error: "orchestration_requires_coordinator" }, 400);
+    if (habilitada && trabajadores.some((trabajador) => trabajador.model === modeloCoordinador)) return c.json({ error: "orchestration_coordinator_cannot_be_worker" }, 400);
+    for (const trabajador of trabajadores) {
+      const check = await validateSelection(trabajador.model, null);
+      if (!check.ok) return c.json({ error: "invalid_orchestration_model", model: trabajador.model }, 400);
+    }
+  }
+
   db.transaction(() => {
     if (body.title !== undefined) db.query("UPDATE conversations SET title = ? WHERE id = ?").run(body.title.trim(), id);
     if (body.pinned !== undefined) db.query("UPDATE conversations SET pinned_at = CASE WHEN ? THEN COALESCE(pinned_at, datetime('now')) ELSE NULL END WHERE id = ?").run(body.pinned ? 1 : 0, id);
     if (cambiaConfiguracion) db.query("UPDATE conversations SET model = ?, effort = ? WHERE id = ?").run(body.model === undefined ? row.model : body.model, body.effort === undefined ? row.effort : body.effort, id);
+    if (cambiaOrquestacion) {
+      const campos: string[] = [];
+      const valores: (string | number)[] = [];
+      if (body.orquestacion_habilitada !== undefined) { campos.push("orquestacion_habilitada=?"); valores.push(body.orquestacion_habilitada ? 1 : 0); }
+      if (body.orquestacion_seleccion_automatica !== undefined) { campos.push("orquestacion_seleccion_automatica=?"); valores.push(body.orquestacion_seleccion_automatica ? 1 : 0); }
+      if (body.orquestacion_trabajadores !== undefined) { campos.push("orquestacion_trabajadores=?"); valores.push(JSON.stringify(body.orquestacion_trabajadores)); }
+      if (campos.length) db.query(`UPDATE conversations SET ${campos.join(", ")} WHERE id=?`).run(...valores, id);
+    }
   })();
-  if (cambiaConfiguracion) publicar({ tipo: "configuracion_chat", conversacion_id: id });
+  if (cambiaConfiguracion || cambiaOrquestacion) publicar({ tipo: "configuracion_chat", conversacion_id: id });
 
   const actual = db
-    .query<{ id: string; title: string; model: string | null; effort: string | null; pinned_at: string | null }, [string]>(
-      "SELECT id, title, model, effort, pinned_at FROM conversations WHERE id = ?",
+    .query<{ id: string; title: string; model: string | null; effort: string | null; pinned_at: string | null; orquestacion_habilitada: number; orquestacion_seleccion_automatica: number; orquestacion_trabajadores: string }, [string]>(
+      "SELECT id, title, model, effort, pinned_at, orquestacion_habilitada, orquestacion_seleccion_automatica, orquestacion_trabajadores FROM conversations WHERE id = ?",
     )
     .get(id);
-  return c.json({ ...actual, costTier, costWarning });
+  let trabajadores: Trabajador[] = [];
+  try { trabajadores = JSON.parse(actual?.orquestacion_trabajadores ?? "[]"); } catch {}
+  return c.json({ ...actual, orquestacion_habilitada: Boolean(actual?.orquestacion_habilitada), orquestacion_seleccion_automatica: Boolean(actual?.orquestacion_seleccion_automatica), orquestacion_trabajadores: trabajadores, costTier, costWarning });
 });

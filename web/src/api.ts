@@ -7,6 +7,9 @@ export type Conversation = {
   title: string;
   model: string | null;
   effort: string | null;
+  orquestacion_habilitada?: boolean;
+  orquestacion_seleccion_automatica?: boolean;
+  orquestacion_trabajadores?: TrabajadorOrquestacion[];
   project_id?: string | null;
   project_name?: string | null;
   pinned_at?: string | null;
@@ -32,6 +35,9 @@ export type Conversation = {
   subagent_result?: string | null;
   subchats?: Conversation[];
 };
+
+export type RolTrabajadorOrquestacion = "arquitectura" | "seguridad" | "verificacion";
+export type TrabajadorOrquestacion = { model: string; rol: RolTrabajadorOrquestacion };
 
 export type PaginaConversaciones = {
   conversations: Conversation[];
@@ -227,26 +233,34 @@ export type TaskDiff =
 
 export type GoogleLiveMetrics = {
   conectado: boolean;
-  estado: "activo" | "agotado" | "sin_clave" | "clave_invalida" | "desconectado";
+  estado: "activo" | "sin_clave" | "clave_invalida" | "rate_limit" | "desconectado";
   mensaje: string;
-  limiteRpd: number;
-  llamadasHoy: number;
-  restantesRpd: number;
-  porcentajeRestante: number;
-  limiteRpm: number;
-  tokensHoy: number;
-  costoHoyUsd: number;
   ultimaComprobacion: string;
 };
 
 export type UsoProveedor = {
   id: string;
   nombre: string;
-  ultimas5h: { costoUsd: number; tokens: number; llamadas: number };
-  ultimos7d: { costoUsd: number; tokens: number; llamadas: number };
-  cuotaRestanteUsd: number | null;
-  precision: "medida_telo" | "sin_datos";
+  ultimas5h: UsoVentanaProveedor;
+  ultimos7d: UsoVentanaProveedor;
+  mesActual: UsoVentanaProveedor;
+  precision: "registro_telo" | "sin_datos";
   googleLive?: GoogleLiveMetrics;
+};
+
+export type UsoVentanaProveedor = {
+  costoUsd: number;
+  costoEstimadoUsd: number;
+  costesEstimados: number;
+  costesNoDisponibles: number;
+  costesDesconocidos: number;
+  tokens: number;
+  tokensMedidos: number;
+  tokensEstimados: number;
+  tokensNoDisponibles: number;
+  tokensDesconocidos: number;
+  llamadasSinTokens: number;
+  llamadas: number;
 };
 
 // Estado de la unidad orquestador en systemd. Fuera de systemd (desarrollo), disponible es false.
@@ -590,26 +604,6 @@ export type TaskEvent = {
   created_at: string;
 };
 
-export type QuotaAccount = {
-  id: string;
-  label: string;
-  anotadoUsd: number;
-  limiteUsd: number | null;
-  saldoEstimadoUsd: number;
-  usoDesdeAnotacionUsd: number;
-  anotadoEn: string;
-  nota: string | null;
-  precision: "estimado";
-};
-
-export type QuotaProvider = {
-  id: string;
-  nombre: string;
-  gastoMesUsd: number;
-  cuentas: QuotaAccount[];
-  precision: "estimado" | "sin_saldo";
-};
-
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -913,7 +907,15 @@ export const api = {
   modelUsage: () => request<{ counts: Record<string, number> }>("/api/models/usage"),
   updateConversation: (
     id: string,
-    patch: { model?: string | null; effort?: string | null; title?: string; pinned?: boolean },
+    patch: {
+      model?: string | null;
+      effort?: string | null;
+      title?: string;
+      pinned?: boolean;
+      orquestacion_habilitada?: boolean;
+      orquestacion_seleccion_automatica?: boolean;
+      orquestacion_trabajadores?: TrabajadorOrquestacion[];
+    },
   ) =>
     request<{
       id: string;
@@ -923,6 +925,9 @@ export const api = {
       pinned_at: string | null;
       costTier: CostTier | null;
       costWarning: string | null;
+      orquestacion_habilitada: boolean;
+      orquestacion_seleccion_automatica: boolean;
+      orquestacion_trabajadores: TrabajadorOrquestacion[];
     }>(`/api/conversations/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteConversation: (id: string) =>
     request<{ ok: boolean }>(`/api/conversations/${id}`, { method: "DELETE" }),
@@ -1063,13 +1068,6 @@ export const api = {
   continueChat: (id: string) =>
     request<{ messages: Message[] }>(`/api/conversations/${id}/seguir`, { method: "POST", body: "{}" }),
   retryTask: (id: string) => request<Task>(`/api/tasks/${id}/reintentar`, { method: "POST", body: "{}" }),
-  listQuotas: () =>
-    request<{ generado: string; proveedores: QuotaProvider[] }>("/api/cuotas"),
-  createQuota: (body: { provider: string; label: string; remainingUsd: number; limitUsd?: number | null }) =>
-    request<{ id: string }>("/api/cuotas", { method: "POST", body: JSON.stringify(body) }),
-  updateQuota: (id: string, body: { remainingUsd: number; limitUsd?: number | null }) =>
-    request<{ ok: boolean }>(`/api/cuotas/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-  deleteQuota: (id: string) => request<{ ok: boolean }>(`/api/cuotas/${id}`, { method: "DELETE" }),
   listTasks: () => request<Task[]>("/api/tasks?limit=50"),
   getTask: (id: string) => request<Task>(`/api/tasks/${id}`),
   createTask: (body: {

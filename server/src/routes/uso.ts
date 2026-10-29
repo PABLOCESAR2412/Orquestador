@@ -1,23 +1,42 @@
 import { Hono } from "hono";
 import { db } from "../db";
-import { cuotaRestanteUsd, nombreProveedor } from "./cuotas";
 import { valorClaveProveedor } from "../claves-proveedor";
 
 // Uso que Telo registró por proveedor y comprobación en vivo de la API de Google Gemini.
 
-type Agregado = { costoUsd: number; tokens: number; llamadas: number };
+type Agregado = {
+  costoUsd: number;
+  costoEstimadoUsd: number;
+  costesEstimados: number;
+  costesNoDisponibles: number;
+  costesDesconocidos: number;
+  tokens: number;
+  tokensMedidos: number;
+  tokensEstimados: number;
+  tokensNoDisponibles: number;
+  tokensDesconocidos: number;
+  llamadasSinTokens: number;
+  llamadas: number;
+};
+
+const NOMBRES_PROVEEDOR: Record<string, string> = {
+  opencode: "OpenCode",
+  codex: "Codex",
+  google: "Google (Gemini)",
+  openrouter: "OpenRouter",
+  groq: "Groq",
+  nvidia: "NVIDIA",
+  openai: "OpenAI",
+};
+
+function nombreProveedor(id: string): string {
+  return NOMBRES_PROVEEDOR[id] ?? id;
+}
 
 export type GoogleLiveMetrics = {
   conectado: boolean;
-  estado: "activo" | "agotado" | "sin_clave" | "clave_invalida" | "desconectado";
+  estado: "activo" | "sin_clave" | "clave_invalida" | "rate_limit" | "desconectado";
   mensaje: string;
-  limiteRpd: number;
-  llamadasHoy: number;
-  restantesRpd: number;
-  porcentajeRestante: number;
-  limiteRpm: number;
-  tokensHoy: number;
-  costoHoyUsd: number;
   ultimaComprobacion: string;
 };
 
@@ -33,74 +52,43 @@ export async function obtenerMetricasGoogleLive(forzar = false): Promise<GoogleL
   const claveGoogle = valorClaveProveedor("google");
   let conectado = false;
   let estado: GoogleLiveMetrics["estado"] = "sin_clave";
-  let mensaje = "No hay clave de Google Gemini configurada en Ajustes";
+  let mensaje = "No hay clave de Google Gemini configurada en Ajustes.";
 
   if (claveGoogle) {
     try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(claveGoogle)}`, {
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
+        headers: { "x-goog-api-key": claveGoogle },
         signal: AbortSignal.timeout(6000),
       });
 
       if (res.ok) {
         conectado = true;
         estado = "activo";
-        mensaje = "Conectado a Google AI Studio (API en vivo activa)";
+        mensaje = "Clave válida: Telo pudo consultar el catálogo de modelos. Google no expone aquí la cuota ni el saldo.";
       } else if (res.status === 429) {
         conectado = false;
-        estado = "agotado";
-        mensaje = "Límite de cuota o rate-limit alcanzado en Google AI Studio (429)";
+        estado = "rate_limit";
+        mensaje = "Google respondió con límite temporal (429). Esta comprobación no determina tu cuota ni su reinicio.";
       } else if (res.status === 400 || res.status === 401 || res.status === 403) {
         conectado = false;
         estado = "clave_invalida";
-        mensaje = "Clave de Google Gemini no válida o sin permisos (HTTP " + res.status + ")";
+        mensaje = "Google rechazó la clave o la configuración de la API. Revisa que la clave corresponda al proyecto y que Gemini API esté habilitada.";
       } else {
         conectado = false;
         estado = "desconectado";
-        mensaje = "Respuesta inusual de Google AI Studio (HTTP " + res.status + ")";
+        mensaje = `Google no pudo comprobarse (HTTP ${res.status}).`;
       }
-    } catch (err: unknown) {
+    } catch {
       conectado = false;
       estado = "desconectado";
-      const errTexto = err instanceof Error ? err.message : String(err);
-      mensaje = "Sin conexión con la API de Google: " + errTexto;
+      mensaje = "No se pudo conectar con Google para validar la clave. Revisa la red e inténtalo de nuevo.";
     }
-  }
-
-  // Agregado de las últimas 24 horas para Google Gemini en Telo
-  const row = db
-    .query<{ llamadas: number; tokens: number; costo: number }, []>(
-      `SELECT COUNT(*) AS llamadas,
-              COALESCE(SUM(input_tokens + output_tokens), 0) AS tokens,
-              COALESCE(SUM(cost), 0) AS costo
-         FROM usage
-        WHERE (provider = 'google' OR (provider = 'opencode' AND (model LIKE '%gemini%' OR model LIKE '%argon%')))
-          AND created_at >= datetime('now', '-24 hours')`,
-    )
-    .get();
-
-  const limiteRpd = 1500;
-  const llamadasHoy = row?.llamadas ?? 0;
-  const tokensHoy = row?.tokens ?? 0;
-  const costoHoyUsd = Math.round((row?.costo ?? 0) * 10_000) / 10_000;
-  const restantesRpd = Math.max(0, limiteRpd - llamadasHoy);
-  const porcentajeRestante = Math.round((restantesRpd / limiteRpd) * 100);
-
-  if (estado === "activo" && restantesRpd === 0) {
-    estado = "agotado";
-    mensaje = "Cuota diaria estimada de 1,500 peticiones alcanzada";
   }
 
   const data: GoogleLiveMetrics = {
     conectado,
     estado,
     mensaje,
-    limiteRpd,
-    llamadasHoy,
-    restantesRpd,
-    porcentajeRestante,
-    limiteRpm: 15,
-    tokensHoy,
-    costoHoyUsd,
     ultimaComprobacion: new Date().toISOString(),
   };
 
@@ -110,9 +98,31 @@ export async function obtenerMetricasGoogleLive(forzar = false): Promise<GoogleL
 
 function agregado(provider: string, ventana: string): Agregado {
   const row = db
-    .query<{ costo: number; tokens: number; llamadas: number }, [string, string, string]>(
+    .query<{
+      costo: number;
+      costoEstimado: number;
+      costesEstimados: number;
+      costesNoDisponibles: number;
+      costesDesconocidos: number;
+      tokens: number;
+      tokensMedidos: number;
+      tokensEstimados: number;
+      tokensNoDisponibles: number;
+      tokensDesconocidos: number;
+      llamadasSinTokens: number;
+      llamadas: number;
+    }, [string, string, string]>(
       `SELECT COALESCE(SUM(cost), 0) AS costo,
+              COALESCE(SUM(CASE WHEN cost_precision = 'estimado' THEN cost ELSE 0 END), 0) AS costoEstimado,
+              COALESCE(SUM(cost_precision = 'estimado'), 0) AS costesEstimados,
+              COALESCE(SUM(cost_precision = 'no_disponible'), 0) AS costesNoDisponibles,
+              COALESCE(SUM(cost_precision = 'desconocida'), 0) AS costesDesconocidos,
               COALESCE(SUM(input_tokens + output_tokens), 0) AS tokens,
+              COALESCE(SUM(CASE WHEN tokens_precision = 'medida' THEN input_tokens + output_tokens ELSE 0 END), 0) AS tokensMedidos,
+              COALESCE(SUM(CASE WHEN tokens_precision = 'estimado' THEN input_tokens + output_tokens ELSE 0 END), 0) AS tokensEstimados,
+              COALESCE(SUM(CASE WHEN tokens_precision = 'no_disponible' THEN input_tokens + output_tokens ELSE 0 END), 0) AS tokensNoDisponibles,
+              COALESCE(SUM(CASE WHEN tokens_precision = 'desconocida' THEN input_tokens + output_tokens ELSE 0 END), 0) AS tokensDesconocidos,
+              COALESCE(SUM(tokens_precision IN ('no_disponible', 'desconocida')), 0) AS llamadasSinTokens,
               COUNT(*) AS llamadas
          FROM usage
         WHERE (provider = ? OR (? = 'google' AND provider = 'opencode' AND (model LIKE '%gemini%' OR model LIKE '%argon%')))
@@ -121,22 +131,27 @@ function agregado(provider: string, ventana: string): Agregado {
     .get(provider, provider, ventana);
   return {
     costoUsd: Math.round((row?.costo ?? 0) * 10_000) / 10_000,
+    costoEstimadoUsd: Math.round((row?.costoEstimado ?? 0) * 10_000) / 10_000,
+    costesEstimados: row?.costesEstimados ?? 0,
+    costesNoDisponibles: row?.costesNoDisponibles ?? 0,
+    costesDesconocidos: row?.costesDesconocidos ?? 0,
     tokens: row?.tokens ?? 0,
+    tokensMedidos: row?.tokensMedidos ?? 0,
+    tokensEstimados: row?.tokensEstimados ?? 0,
+    tokensNoDisponibles: row?.tokensNoDisponibles ?? 0,
+    tokensDesconocidos: row?.tokensDesconocidos ?? 0,
+    llamadasSinTokens: row?.llamadasSinTokens ?? 0,
     llamadas: row?.llamadas ?? 0,
   };
 }
 
-// Proveedores: los que tienen uso en 30 días, los que tienen cuentas anotadas, OpenCode y Google.
+// Proveedores con uso reciente, más OpenCode y Google para mostrar su estado aunque no haya uso.
 function proveedoresActivos(): string[] {
   const usados = db
     .query<{ provider: string }, []>("SELECT DISTINCT provider FROM usage WHERE created_at >= datetime('now', '-30 days')")
     .all()
     .map((r) => r.provider);
-  const conCuentas = db
-    .query<{ provider: string }, []>("SELECT DISTINCT provider FROM quota_accounts")
-    .all()
-    .map((r) => r.provider);
-  return [...new Set([...usados, ...conCuentas, "opencode", "google"])].sort();
+  return [...new Set([...usados, "opencode", "google"])].sort();
 }
 
 export const uso = new Hono();
@@ -158,8 +173,8 @@ uso.get("/uso", async (c) => {
       nombre: nombreProveedor(id),
       ultimas5h: agregado(id, "-5 hours"),
       ultimos7d: agregado(id, "-7 days"),
-      cuotaRestanteUsd: cuotaRestanteUsd(id),
-      precision: (enUltimos30d > 0 || (id === "google" && googleLive.conectado)) ? ("medida_telo" as const) : ("sin_datos" as const),
+      mesActual: agregado(id, "start of month"),
+      precision: enUltimos30d > 0 ? ("registro_telo" as const) : ("sin_datos" as const),
       ...(id === "google" ? { googleLive } : {}),
     };
   });
