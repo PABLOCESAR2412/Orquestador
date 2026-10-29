@@ -873,6 +873,21 @@ const migrations: Migration[] = [
       ALTER TABLE google_drive_archives ADD COLUMN cleanup_started_at TEXT;
     `,
   },
+  {
+    // Selección persistente del coordinador (model) y sus modelos auxiliares por conversación.
+    name: "047_chat_orchestration",
+    sql: `
+      ALTER TABLE conversations ADD COLUMN orquestacion_habilitada INTEGER NOT NULL DEFAULT 0 CHECK (orquestacion_habilitada IN (0,1));
+      ALTER TABLE conversations ADD COLUMN orquestacion_trabajadores TEXT NOT NULL DEFAULT '[]';
+    `,
+  },
+  {
+    // Permite que el coordinador elija qué auxiliares usar en cada petición.
+    name: "048_chat_orchestration_auto_selection",
+    sql: `
+      ALTER TABLE conversations ADD COLUMN orquestacion_seleccion_automatica INTEGER NOT NULL DEFAULT 0 CHECK (orquestacion_seleccion_automatica IN (0,1));
+    `,
+  },
 ];
 
 function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {

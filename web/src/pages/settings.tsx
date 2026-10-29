@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as TeclaReact, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { api, reintentarConsultaTransitoria, type ModelInfo, type Preferences, type ProviderStatus } from "../api";
+import { api, reintentarConsultaTransitoria, type ModelInfo, type Preferences, type ProviderStatus, type UsoVentanaProveedor } from "../api";
 import { EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
 import { useEventosVivos } from "../lib/eventos-vivos";
@@ -47,7 +47,7 @@ export function SettingsPage() {
   const models = useQuery({ queryKey: ["models"], queryFn: api.listModels, staleTime: 5 * 60_000 });
   const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000, retry: reintentarConsultaTransitoria });
   const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders });
-  const cuotas = useQuery({ queryKey: ["cuotas"], queryFn: api.listQuotas });
+  const uso = useQuery({ queryKey: ["uso"], queryFn: api.usage, refetchInterval: 60_000 });
   const latencia = useMuestrasLatencia();
   const install = useInstallPrompt();
 
@@ -149,7 +149,8 @@ export function SettingsPage() {
   const etiquetaDe = (p: ProviderStatus): string | null =>
     p.id === primarioId ? "Primario" : p.id === respaldoId ? "Respaldo" : p.variable === null ? "Local" : null;
 
-  const gastoDe = (id: string): number | null => cuotas.data?.proveedores.find((q) => q.id === id)?.gastoMesUsd ?? null;
+  const usoMesDe = (id: string): UsoVentanaProveedor | null =>
+    uso.data?.proveedores.find((p) => p.id === id)?.mesActual ?? null;
 
   // Diagnóstico por proveedor: cuántos modelos ve OpenCode y cuántos llegan al selector del chat.
   const modelosDe = (id: string): { total: number; enSelector: number } | null => {
@@ -283,8 +284,7 @@ export function SettingsPage() {
                     key={p.id}
                     p={p}
                     etiqueta={etiquetaDe(p)}
-                    gasto={gastoDe(p.id)}
-                    presupuesto={presupuesto}
+                    usoMes={usoMesDe(p.id)}
                     modelos={modelosDe(p.id)}
                   />
                 ))}
@@ -598,21 +598,21 @@ function Kpi({
 function TarjetaProveedor({
   p,
   etiqueta,
-  gasto,
-  presupuesto,
+  usoMes,
   modelos,
 }: {
   p: ProviderStatus;
   etiqueta: string | null;
-  gasto: number | null;
-  presupuesto: number | null;
+  usoMes: UsoVentanaProveedor | null;
   // Modelos del proveedor en el catálogo de OpenCode (total) y los que salen en el selector del chat.
   modelos: { total: number; enSelector: number } | null;
 }) {
   // Codex está activo cuando hay sesión autenticada; los otros motores requieren clave disponible para agentes.
   const listo = p.id === "codex" ? p.configured : p.configured && p.enAgente;
   const sinClave = p.variable === null;
-  const pct = presupuesto && gasto !== null ? Math.min(100, Math.round((gasto / presupuesto) * 100)) : 0;
+  const tieneUsoMes = Boolean(usoMes?.llamadas);
+  const costeCompleto = Boolean(usoMes && usoMes.llamadas > 0 && usoMes.costesEstimados === usoMes.llamadas && usoMes.costesNoDisponibles === 0 && usoMes.costesDesconocidos === 0);
+  const gastoMes = costeCompleto ? usoMes!.costoEstimadoUsd : null;
   const nota = notaEstado(p, modelos);
   const tituloSinControl = "La clave vive en el servidor y la app no la recibe.";
 
@@ -703,21 +703,17 @@ function TarjetaProveedor({
 
       <div className="aj-presupuesto">
         <div className="aj-campo-etiqueta">
-          <span>Gasto del mes</span>
-          <span className="aj-mono">{gasto !== null ? formatUsd(gasto) : "Sin uso registrado"}</span>
-        </div>
-        <div
-          className="aj-barra"
-          role="img"
-          aria-label={presupuesto ? `${pct} % del presupuesto mensual` : "Sin presupuesto mensual definido"}
-          title="El presupuesto es global. La app todavía no guarda uno por proveedor."
-        >
-          <div className="aj-barra-relleno" style={{ width: `${pct}%` }} />
+          <span>Estimación de coste este mes (UTC)</span>
+          <span className="aj-mono">
+            {gastoMes !== null ? `≈ ${formatUsd(gastoMes)}` : tieneUsoMes ? "Sin dato completo" : "Sin uso registrado"}
+          </span>
         </div>
         <p className="aj-nota">
-          {presupuesto !== null
-            ? `${pct} % del presupuesto mensual de US$ ${presupuesto.toFixed(2)}.`
-            : "Sin presupuesto mensual. Fíjalo en Presupuesto mensual y aviso."}
+          {gastoMes !== null
+            ? "Estimación basada en las llamadas que Telo registró; no es la factura ni el saldo oficial del proveedor."
+            : tieneUsoMes
+              ? "Telo registró llamadas, pero faltan datos fiables para calcular su coste total."
+              : "Telo aún no registra llamadas de este proveedor este mes."}
         </p>
       </div>
 
