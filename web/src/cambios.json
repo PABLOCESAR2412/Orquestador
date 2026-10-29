@@ -7,31 +7,31 @@
       "fecha": "2026-10-29",
       "tipo": "minimo",
       "titulo": "Chat: identifica fases por acciones observables y separa el progreso del supervisor, auxiliares y subagentes",
-      "pr": null
+      "pr": 136
     },
     {
       "fecha": "2026-10-29",
       "tipo": "minimo",
       "titulo": "Chat: permite plegar la actividad de subagentes y reduce el sondeo detallado mientras está cerrada",
-      "pr": null
+      "pr": 136
     },
     {
       "fecha": "2026-10-29",
       "tipo": "mediano",
       "titulo": "Ajustes: muestra disponibilidad real de skills y herramientas, requisitos de integraciones personales y campos MCP con estado explícito de cifrado",
-      "pr": null
+      "pr": 136
     },
     {
       "fecha": "2026-10-29",
       "tipo": "mediano",
       "titulo": "Chat: añade un selector de agentes predefinidos para video, Instagram, Obsidian, ingeniería, legal, empleo y prospección; reutiliza datos explícitos del borrador y activa HyperFrames en solicitudes de video",
-      "pr": null
+      "pr": 136
     },
     {
       "fecha": "2026-10-29",
       "tipo": "minimo",
       "titulo": "Tareas y chats: ya no se cancelan por 15 minutos sin salida; siguen hasta terminar o hasta que el usuario los detenga",
-      "pr": null
+      "pr": 136
     },
     {
       "fecha": "2026-10-29",
