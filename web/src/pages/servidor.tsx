@@ -6,6 +6,7 @@ import { errorText, formatUsd } from "../lib/model";
 import { LoadingSkeleton } from "../components/loading-skeleton";
 import { medirLatencia } from "../lib/latencia";
 import { DiscoPanel } from "../components/settings/panel-disco";
+import { useDialogo } from "../components/controls";
 
 // Contenido de las pestañas "Estado del servidor" y "Almacenamiento" de Ajustes y Servidor.
 // Solo muestra lo que devuelve la API o lo que este navegador mide. Si un dato falta, la tarjeta dice "—".
@@ -451,18 +452,45 @@ function PaginadorDrive({ total, pagina, alCambiar, etiqueta }: {
   );
 }
 
+function ConfirmarArchivadoDrive({ cantidad, onCancelar, onConfirmar }: {
+  cantidad: number;
+  onCancelar: () => void;
+  onConfirmar: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useDialogo(ref, onCancelar);
+
+  return (
+    <>
+      <div className="scrim dim aj-drive-confirm-capa" aria-hidden="true" onClick={onCancelar} />
+      <div className="panel aj-drive-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="aj-drive-confirm-titulo" aria-describedby="aj-drive-confirm-detalle" ref={ref}>
+        <h2 id="aj-drive-confirm-titulo">¿Archivar todas las tareas?</h2>
+        <p id="aj-drive-confirm-detalle" className="muted-note">
+          Se procesarán {cantidad} tareas elegibles, una por una. Puede tardar. Telo solo libera cada carpeta local después de verificar la copia cifrada en Google Drive. Si una tarea ya no cumple las condiciones, se omitirá.
+        </p>
+        <div className="aj-drive-confirm-acciones">
+          <button type="button" className="ghost" autoFocus onClick={onCancelar}>Cancelar</button>
+          <button type="button" className="primary" onClick={onConfirmar}>Archivar todas</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function PanelArchivoGoogleDrive() {
   const cliente = useQueryClient();
   const [errorAccion, setErrorAccion] = useState<unknown>(null);
   const [paginaCandidatos, setPaginaCandidatos] = useState(0);
   const [paginaArchivos, setPaginaArchivos] = useState(0);
-  const [lote, setLote] = useState<{ total: number; completadas: number; titulo: string | null; detenerSolicitado: boolean } | null>(null);
+  const [lote, setLote] = useState<{ total: number; procesadas: number; omitidas: number; titulo: string | null; detenerSolicitado: boolean } | null>(null);
+  const [confirmarLote, setConfirmarLote] = useState(false);
+  const [actualizandoManual, setActualizandoManual] = useState(false);
   const detenerLote = useRef(false);
   const archivos = useQuery({
     queryKey: ["google-drive-archives"],
     queryFn: api.googleDriveArchives,
     retry: reintentarConsultaTransitoria,
-    refetchInterval: (query) => query.state.data?.trabajos.some((j) => j.state === "queued" || j.state === "running") ? 2_000 : 15_000,
+    refetchInterval: (query) => lote ? false : query.state.data?.trabajos.some((j) => j.state === "queued" || j.state === "running") ? 5_000 : 30_000,
   });
   const accion = useMutation<{ id: string; task_id: string; action: "archive" | "restore"; state: "queued" }, unknown, { id: string; tipo: "archive" | "restore" }>({
     mutationFn: ({ id, tipo }: { id: string; tipo: "archive" | "restore" }) =>
@@ -485,30 +513,88 @@ function PanelArchivoGoogleDrive() {
   const listo = Boolean(dato?.configurado && dato.conectado && dato.cifrado_disponible);
   const recientes = dato?.trabajos.slice(0, 5) ?? [];
 
+  async function actualizarArchivoDrive() {
+    if (ocupado || actualizandoManual) return;
+    setActualizandoManual(true);
+    try {
+      await archivos.refetch();
+    } finally {
+      setActualizandoManual(false);
+    }
+  }
+
   async function archivarTodas() {
     const tareas = dato?.candidatos ?? [];
     if (!listo || ocupado || tareas.length === 0) return;
-    const confirmado = window.confirm(`Se archivarán ${tareas.length} tareas elegibles, una por una, aunque aparezcan en otras páginas. Puede tardar; cada carpeta local se libera solo después de verificar la copia cifrada en Google Drive. Puedes detenerlo después de la tarea actual. ¿Continuar?`);
-    if (!confirmado) return;
 
     detenerLote.current = false;
     setErrorAccion(null);
-    setLote({ total: tareas.length, completadas: 0, titulo: null, detenerSolicitado: false });
+    setLote({ total: tareas.length, procesadas: 0, omitidas: 0, titulo: null, detenerSolicitado: false });
     try {
-      for (let indice = 0; indice < tareas.length; indice++) {
+      for (const tarea of tareas) {
         if (detenerLote.current) break;
-        const tarea = tareas[indice];
         setLote((estado) => estado ? { ...estado, titulo: tarea.title || "Tarea sin título" } : estado);
-        const encolado = await api.archivarTareaDrive(tarea.id);
-        while (true) {
+        let encolado: Awaited<ReturnType<typeof api.archivarTareaDrive>> | null = null;
+        let intentosConflicto = 0;
+        while (!encolado && !detenerLote.current) {
           const estadoActual = await api.googleDriveArchives();
           cliente.setQueryData(["google-drive-archives"], estadoActual);
-          const trabajo = estadoActual.trabajos.find((item) => item.id === encolado.id);
-          if (trabajo?.state === "failed") throw new ApiError(500, trabajo.error ?? "drive_api_error");
-          if (trabajo?.state === "done") break;
+          const sigueElegible = estadoActual.candidatos.some((candidata) => candidata.id === tarea.id);
+          const yaArchivada = estadoActual.archivos.some((archivo) => archivo.task_id === tarea.id);
+          if (!sigueElegible) {
+            setLote((estado) => estado ? {
+              ...estado,
+              procesadas: estado.procesadas + 1,
+              omitidas: estado.omitidas + (yaArchivada ? 0 : 1),
+              titulo: null,
+            } : estado);
+            break;
+          }
+          const trabajoActivo = estadoActual.trabajos.some((trabajo) => trabajo.state === "queued" || trabajo.state === "running");
+          if (trabajoActivo) {
+            await new Promise<void>((resolver) => window.setTimeout(resolver, 2_000));
+            continue;
+          }
+          try {
+            encolado = await api.archivarTareaDrive(tarea.id);
+          } catch (error) {
+            if (error instanceof ApiError && error.status === 409 && error.code === "task_not_archivable" && intentosConflicto < 10) {
+              intentosConflicto++;
+              await new Promise<void>((resolver) => window.setTimeout(resolver, 1_000));
+              continue;
+            }
+            throw error;
+          }
+        }
+        if (!encolado) continue;
+        let completada = false;
+        while (!completada) {
+          const estadoActual = await api.googleDriveArchives();
+          cliente.setQueryData(["google-drive-archives"], estadoActual);
+          const trabajo = estadoActual.trabajos.find((item) => item.id === encolado!.id);
+          if (trabajo?.state === "failed") {
+            if (trabajo.error === "task_not_archivable") {
+              const sigueElegible = estadoActual.candidatos.some((candidata) => candidata.id === tarea.id);
+              const yaArchivada = estadoActual.archivos.some((archivo) => archivo.task_id === tarea.id);
+              if (!sigueElegible) {
+                setLote((estado) => estado ? {
+                  ...estado,
+                  procesadas: estado.procesadas + 1,
+                  omitidas: estado.omitidas + (yaArchivada ? 0 : 1),
+                  titulo: null,
+                } : estado);
+                break;
+              }
+            }
+            throw new ApiError(500, trabajo.error ?? "drive_api_error");
+          }
+          if (trabajo?.state === "done") {
+            completada = true;
+            break;
+          }
           await new Promise<void>((resolver) => window.setTimeout(resolver, 2_000));
         }
-        setLote((estado) => estado ? { ...estado, completadas: indice + 1, titulo: null } : estado);
+        if (completada) setLote((estado) => estado ? { ...estado, procesadas: estado.procesadas + 1, titulo: null } : estado);
       }
     } catch (error) {
       setErrorAccion(error);
@@ -518,7 +604,6 @@ function PanelArchivoGoogleDrive() {
       setLote(null);
     }
   }
-
   function solicitarDetencionLote() {
     detenerLote.current = true;
     setLote((estado) => estado ? { ...estado, detenerSolicitado: true } : estado);
@@ -531,8 +616,8 @@ function PanelArchivoGoogleDrive() {
           <h3 id="aj-drive-titulo" className="aj-tarjeta-titulo-simple">Archivo externo · Google Drive</h3>
           <p className="aj-nota">Guarda tareas terminadas con cifrado y libera su carpeta local. El historial permanece en Telo; restaura una tarea antes de continuarla.</p>
         </div>
-        <button type="button" className="aj-btn" onClick={() => void archivos.refetch()} disabled={archivos.isFetching}>
-          {archivos.isFetching ? "Actualizando…" : "Actualizar"}
+        <button type="button" className="aj-btn" onClick={() => void actualizarArchivoDrive()} disabled={ocupado || actualizandoManual}>
+          {lote ? "Archivando…" : ocupado ? "Operación en curso" : actualizandoManual ? "Actualizando…" : "Actualizar"}
         </button>
       </div>
 
@@ -567,7 +652,8 @@ function PanelArchivoGoogleDrive() {
             <div className="aj-drive-progreso" role="status" aria-live="polite">
               <span className="aj-drive-spinner" aria-hidden="true" />
               <span>
-                Archivado: {lote.completadas} de {lote.total} tareas{lote.titulo ? ` · ${lote.titulo}` : ""}.
+                Procesadas: {lote.procesadas} de {lote.total} tareas{lote.titulo ? ` · ${lote.titulo}` : ""}.
+                {lote.omitidas > 0 && ` Se omitieron ${lote.omitidas} que ya no cumplían las condiciones.`}
                 {lote.detenerSolicitado && " Se detendrá al terminar la tarea actual."}
               </span>
               {!lote.detenerSolicitado && <button type="button" className="aj-btn" onClick={solicitarDetencionLote}>Detener</button>}
@@ -588,7 +674,7 @@ function PanelArchivoGoogleDrive() {
                     <strong>Archivado manual</strong>
                     <p className="aj-nota">Procesa todas las tareas disponibles, en orden y una por una. Si una falla, se detiene para que puedas revisarla.</p>
                   </div>
-                  <button type="button" className="aj-btn aj-btn-primario" disabled={!listo || ocupado} onClick={() => void archivarTodas()}>
+                  <button type="button" className="aj-btn aj-btn-primario" disabled={!listo || ocupado} onClick={() => setConfirmarLote(true)}>
                     Archivar todas ({dato.candidatos.length})
                   </button>
                 </div>
@@ -651,6 +737,17 @@ function PanelArchivoGoogleDrive() {
             </details>
           )}
         </>
+      )}
+
+      {confirmarLote && dato && (
+        <ConfirmarArchivadoDrive
+          cantidad={dato.candidatos.length}
+          onCancelar={() => setConfirmarLote(false)}
+          onConfirmar={() => {
+            setConfirmarLote(false);
+            void archivarTodas();
+          }}
+        />
       )}
     </section>
   );
