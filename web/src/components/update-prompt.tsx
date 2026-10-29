@@ -33,6 +33,8 @@ export function UpdatePrompt() {
     const alPedirAviso = () => setHayNuevaVersion(true);
     window.addEventListener(EVENTO_VERSION_NUEVA, alPedirAviso);
 
+    // Detecta versiones publicadas al abrir Telo, sin esperar al primer intervalo.
+    void revisar();
     const timer = window.setInterval(revisar, REVISION_CADA_MS);
     const alVolver = () => {
       if (document.visibilityState === "visible") void revisar();
