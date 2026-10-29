@@ -2608,6 +2608,24 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 .update-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
+/* Confirmación del archivado masivo en el estilo de Telo. */
+.aj-drive-confirm-capa {
+  z-index: 200;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+}
+.aj-drive-confirm-dialog {
+  position: fixed;
+  z-index: 201;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 32px));
+  background: var(--surface);
+}
+.aj-drive-confirm-dialog > .muted-note { line-height: 1.5; }
+.aj-drive-confirm-acciones { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
 /* Gráficas SVG */
 .chart { position: relative; width: 100%; }
 .chart svg { display: block; overflow: visible; border-radius: 6px; }
