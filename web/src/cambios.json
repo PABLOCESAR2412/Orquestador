@@ -3,7 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
-    { "fecha": "2026-10-28", "tipo": "mediano", "titulo": "Chat: configura un modelo supervisor por conversación, selecciona auxiliares según el mensaje y contexto, muestra el uso con su precisión y avisa cuando falta generación multimedia conectada", "pr": null },
+    { "fecha": "2026-10-28", "tipo": "mediano", "titulo": "Chat: configura un modelo supervisor por conversación, selecciona auxiliares según el mensaje y contexto, muestra el uso con su precisión y avisa cuando falta generación multimedia conectada", "pr": 135 },
     { "fecha": "2026-10-28", "tipo": "mediano", "titulo": "Google Drive: archiva automáticamente tareas elegibles tras 24 horas y permite archivar todas las tareas de todas las páginas, con progreso y opción de detener", "pr": 132 },
     { "fecha": "2026-10-28", "tipo": "mediano", "titulo": "Google Drive: incorpora paginación al listado de tareas y archivos archivados", "pr": 131 },
     { "fecha": "2026-10-28", "tipo": "mediano", "titulo": "Almacenamiento: archiva espacios de tareas terminadas en Google Drive con cargas reanudables y restauración verificada para liberar espacio en la VM", "pr": 130 },
