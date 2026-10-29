@@ -490,7 +490,9 @@ function PanelArchivoGoogleDrive() {
     queryKey: ["google-drive-archives"],
     queryFn: api.googleDriveArchives,
     retry: reintentarConsultaTransitoria,
-    refetchInterval: (query) => lote ? false : query.state.data?.trabajos.some((j) => j.state === "queued" || j.state === "running") ? 5_000 : 30_000,
+    refetchInterval: (query) => lote
+      ? false
+      : query.state.data?.trabajos.some((j) => j.state === "queued" || j.state === "running") ? 5_000 : 30_000,
   });
   const accion = useMutation<{ id: string; task_id: string; action: "archive" | "restore"; state: "queued" }, unknown, { id: string; tipo: "archive" | "restore" }>({
     mutationFn: ({ id, tipo }: { id: string; tipo: "archive" | "restore" }) =>
@@ -531,8 +533,9 @@ function PanelArchivoGoogleDrive() {
     setErrorAccion(null);
     setLote({ total: tareas.length, procesadas: 0, omitidas: 0, titulo: null, detenerSolicitado: false });
     try {
-      for (const tarea of tareas) {
+      for (let indice = 0; indice < tareas.length; indice++) {
         if (detenerLote.current) break;
+        const tarea = tareas[indice];
         setLote((estado) => estado ? { ...estado, titulo: tarea.title || "Tarea sin título" } : estado);
         let encolado: Awaited<ReturnType<typeof api.archivarTareaDrive>> | null = null;
         let intentosConflicto = 0;
@@ -567,34 +570,15 @@ function PanelArchivoGoogleDrive() {
           }
         }
         if (!encolado) continue;
-        let completada = false;
-        while (!completada) {
+        while (true) {
           const estadoActual = await api.googleDriveArchives();
           cliente.setQueryData(["google-drive-archives"], estadoActual);
-          const trabajo = estadoActual.trabajos.find((item) => item.id === encolado!.id);
-          if (trabajo?.state === "failed") {
-            if (trabajo.error === "task_not_archivable") {
-              const sigueElegible = estadoActual.candidatos.some((candidata) => candidata.id === tarea.id);
-              const yaArchivada = estadoActual.archivos.some((archivo) => archivo.task_id === tarea.id);
-              if (!sigueElegible) {
-                setLote((estado) => estado ? {
-                  ...estado,
-                  procesadas: estado.procesadas + 1,
-                  omitidas: estado.omitidas + (yaArchivada ? 0 : 1),
-                  titulo: null,
-                } : estado);
-                break;
-              }
-            }
-            throw new ApiError(500, trabajo.error ?? "drive_api_error");
-          }
-          if (trabajo?.state === "done") {
-            completada = true;
-            break;
-          }
+          const trabajo = estadoActual.trabajos.find((item) => item.id === encolado.id);
+          if (trabajo?.state === "failed") throw new ApiError(500, trabajo.error ?? "drive_api_error");
+          if (trabajo?.state === "done") break;
           await new Promise<void>((resolver) => window.setTimeout(resolver, 2_000));
         }
-        if (completada) setLote((estado) => estado ? { ...estado, procesadas: estado.procesadas + 1, titulo: null } : estado);
+        setLote((estado) => estado ? { ...estado, procesadas: estado.procesadas + 1, titulo: null } : estado);
       }
     } catch (error) {
       setErrorAccion(error);
@@ -604,6 +588,7 @@ function PanelArchivoGoogleDrive() {
       setLote(null);
     }
   }
+
   function solicitarDetencionLote() {
     detenerLote.current = true;
     setLote((estado) => estado ? { ...estado, detenerSolicitado: true } : estado);

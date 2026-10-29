@@ -21,7 +21,7 @@ const TIEMPO_CACHE_MS = 30_000;
 const TIEMPO_HERRAMIENTA_MS = 3_000;
 const TIEMPO_DF_MS = 5_000;
 const MAX_ENTRADAS_ALMACENAMIENTO = 250_000;
-const HERRAMIENTAS = ["opencode", "bwrap", "git", "bun"] as const;
+const HERRAMIENTAS = ["opencode", "bwrap", "git", "bun", "node", "ffmpeg", "ffprobe"] as const;
 const RAIZ_REPOSITORIO = resolve(import.meta.dir, "../../..");
 
 // Entorno mínimo para los comandos de diagnóstico: nunca se pasan variables TELO_* ni claves.

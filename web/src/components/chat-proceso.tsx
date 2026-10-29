@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type PasoActividad, type SubagentChat } from "../api";
 import { errorText } from "../lib/model";
@@ -272,13 +272,13 @@ export function ProcesoGuardado({
   );
 }
 
-function SubagenteFila({ hijo, onAbrir }: { hijo: SubagentChat; onAbrir?: (id: string) => void }) {
+function SubagenteFila({ hijo, onAbrir, actividadVisible }: { hijo: SubagentChat; onAbrir?: (id: string) => void; actividadVisible: boolean }) {
   const enCurso = hijo.subagent_status === "running";
   const pasos = useQuery({
     queryKey: ["actividad", hijo.id, hijo.subagent_turn_id],
     queryFn: () => api.listTurnoActividad(hijo.id, hijo.subagent_turn_id!),
-    enabled: Boolean(hijo.subagent_turn_id),
-    refetchInterval: enCurso ? 1200 : false,
+    enabled: Boolean(hijo.subagent_turn_id) && actividadVisible,
+    refetchInterval: enCurso && actividadVisible ? 2500 : false,
   });
   const estado = hijo.subagent_status === "done"
     ? "Completado"
@@ -302,11 +302,14 @@ function SubagenteFila({ hijo, onAbrir }: { hijo: SubagentChat; onAbrir?: (id: s
           {estado}
         </span>
       </div>
-      <details className="tl-subagente-detalle" open={enCurso}>
+      <details className="tl-subagente-detalle">
         <summary>Prompt asignado</summary>
         <p>{hijo.subagent_prompt}</p>
       </details>
       {enCurso && pasos.data && pasos.data.length > 0 && <ProcesoAgente pasos={pasos.data} enCurso />}
+      {enCurso && (!pasos.data || pasos.data.length === 0) && (
+        <p className="tl-subagente-espera">Esperando el primer paso observable de este agente…</p>
+      )}
       {!enCurso && hijo.subagent_status === "failed" && hijo.subagent_result && (
         <p className="tl-subagente-resultado is-error">{hijo.subagent_result}</p>
       )}
@@ -338,11 +341,13 @@ export function SubagentesTurno({
   enCurso?: boolean;
   mostrarEspera?: boolean;
 }) {
+  const [abierto, setAbierto] = useState(true);
+  useEffect(() => setAbierto(true), [turnoId]);
   const subagentes = useQuery({
     queryKey: ["subagentes", conversacionId, turnoId],
     queryFn: () => api.listSubagentes(conversacionId, turnoId),
     enabled: Boolean(conversacionId && turnoId) && hijosFijos === undefined,
-    refetchInterval: (query) => hijosFijos === undefined && (enCurso || query.state.data?.some((hijo) => hijo.subagent_status === "running")) ? 1200 : false,
+    refetchInterval: (query) => hijosFijos === undefined && (enCurso || query.state.data?.some((hijo) => hijo.subagent_status === "running")) ? 2500 : false,
   });
   const hijos = hijosFijos ?? subagentes.data ?? [];
   if (hijos.length === 0 && !(enCurso && mostrarEspera)) return null;
@@ -359,14 +364,14 @@ export function SubagentesTurno({
   ].filter(([cantidad]) => Number(cantidad) > 0).map(([cantidad, etiqueta]) => `${cantidad} ${etiqueta}`).join(" · ");
 
   return (
-    <section className="tl-subagentes" aria-live="polite" aria-label="Subagentes de este turno">
-      <header className="tl-subagentes-cabecera">
+    <details className="tl-subagentes" open={abierto} onToggle={(event) => setAbierto(event.currentTarget.open)} aria-live="polite" aria-label="Subagentes de este turno">
+      <summary className="tl-subagentes-cabecera">
         <strong>{titulo}</strong>
         {resumen && <span>{resumen}</span>}
-      </header>
+      </summary>
       {subagentes.isError && <p className="tl-nota">No se pudo actualizar el estado de los subagentes.</p>}
       {hijos.length === 0 && <p className="tl-nota">Los subchats aparecerán aquí cuando OpenCode cree cada subagente.</p>}
-      {hijos.map((hijo) => <SubagenteFila key={hijo.id} hijo={hijo} onAbrir={onAbrir} />)}
-    </section>
+      {hijos.map((hijo) => <SubagenteFila key={hijo.id} hijo={hijo} onAbrir={onAbrir} actividadVisible={abierto} />)}
+    </details>
   );
 }

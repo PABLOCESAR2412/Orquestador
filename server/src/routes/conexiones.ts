@@ -20,7 +20,11 @@ type BodyConexion = {
 
 export const conexiones = new Hono();
 
-conexiones.get("/conexiones", (c) => c.json({ conexiones: listarConexionesMcp() }));
+conexiones.get("/conexiones", (c) => c.json({
+  conexiones: listarConexionesMcp(),
+  // Solo informa si el servidor puede cifrar nuevos tokens; nunca expone la clave.
+  cifrado_disponible: Boolean(claveMaestra()),
+}));
 
 conexiones.post("/conexiones", async (c) => {
   const body = await c.req.json<BodyConexion>().catch(() => null);

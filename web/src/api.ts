@@ -352,6 +352,11 @@ export type ConexionMcp = {
   actualizada_en: string;
 };
 
+export type ConexionesMcpEstado = {
+  conexiones: ConexionMcp[];
+  cifrado_disponible: boolean;
+};
+
 export type ConexionMcpInput = {
   nombre?: string;
   url?: string;
@@ -1026,7 +1031,7 @@ export const api = {
   confirmarCodexLogin: () => request<LoginCodex>("/api/providers/codex/confirmar", { method: "POST" }),
   // Cuenta global de GitHub (en Ajustes) para operar sin claves SSH por proyecto.
   githubCuenta: () => request<GithubCuenta>("/api/github/cuenta"),
-  listMcpConnections: () => request<{ conexiones: ConexionMcp[] }>("/api/conexiones"),
+  listMcpConnections: () => request<ConexionesMcpEstado>("/api/conexiones"),
   createMcpConnection: (body: ConexionMcpInput) =>
     request<ConexionMcp>("/api/conexiones", { method: "POST", body: JSON.stringify(body) }),
   updateMcpConnection: (id: string, body: ConexionMcpInput) =>

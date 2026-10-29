@@ -29,7 +29,7 @@ export const RELEASES_DESTACADAS: Release[] = [
     fecha: "2026-10-16",
     titulo: "Múltiples chats por proyecto, chats libres independientes y optimizaciones de sistema",
     resumen:
-      "Soporte integral para múltiples conversaciones independientes dentro de cada proyecto y chats libres fuera de proyectos. Monitorización de cuota de Gemini en vivo, métricas segmentadas en analítica y nuevo historial de versiones alineado a Telo.",
+      "Soporte integral para múltiples conversaciones independientes dentro de cada proyecto y chats libres fuera de proyectos. Registro de llamadas de Gemini en Telo, métricas segmentadas en analítica y nuevo historial de versiones alineado a Telo.",
     items: [
       {
         tag: "FEATURE",
@@ -51,9 +51,9 @@ export const RELEASES_DESTACADAS: Release[] = [
       },
       {
         tag: "FEATURE",
-        titulo: "Monitorización de cuota de Google Gemini en vivo",
+        titulo: "Comprobación de conexión con Google Gemini",
         descripcion:
-          "Consulta y estimación en tiempo real del límite diario (1.500 RPD) y por minuto (15 RPM), con desglose de porcentaje restante y alertas preventivas.",
+          "Comprueba si la clave permite consultar el catálogo de modelos. Google no devuelve en esta consulta la cuota restante del proyecto ni los límites efectivos por modelo.",
       },
       {
         tag: "MEJORA",

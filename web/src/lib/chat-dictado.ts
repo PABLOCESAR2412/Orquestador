@@ -201,4 +201,3 @@ export function crearDictador(opciones: {
     detener,
   };
 }
-
