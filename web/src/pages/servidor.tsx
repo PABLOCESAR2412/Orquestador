@@ -426,7 +426,6 @@ function tituloTrabajoDrive(action: "archive" | "restore"): string {
 }
 
 const DRIVE_ITEMS_POR_PAGINA = 15;
-const DRIVE_LOTE_MAXIMO = 5;
 
 function PaginadorDrive({ total, pagina, alCambiar, etiqueta }: {
   total: number;
@@ -486,10 +485,10 @@ function PanelArchivoGoogleDrive() {
   const listo = Boolean(dato?.configurado && dato.conectado && dato.cifrado_disponible);
   const recientes = dato?.trabajos.slice(0, 5) ?? [];
 
-  async function archivarLoteActual() {
-    const tareas = candidatosPagina.slice(0, DRIVE_LOTE_MAXIMO);
+  async function archivarTodas() {
+    const tareas = dato?.candidatos ?? [];
     if (!listo || ocupado || tareas.length === 0) return;
-    const confirmado = window.confirm(`Se archivarán hasta ${tareas.length} tareas de esta página, una por una. Cada carpeta local se libera solo después de verificar la copia cifrada en Google Drive. ¿Continuar?`);
+    const confirmado = window.confirm(`Se archivarán ${tareas.length} tareas elegibles, una por una, aunque aparezcan en otras páginas. Puede tardar; cada carpeta local se libera solo después de verificar la copia cifrada en Google Drive. Puedes detenerlo después de la tarea actual. ¿Continuar?`);
     if (!confirmado) return;
 
     detenerLote.current = false;
@@ -562,16 +561,16 @@ function PanelArchivoGoogleDrive() {
           {!dato.configurado && !dato.callback_uri && (
             <p className="aj-nota">Configura la URL pública como origen HTTPS, sin la ruta <code>/chat</code>, y registra en Google la URI de retorno que muestra este panel cuando la configuración esté completa.</p>
           )}
-          <p className="aj-nota">Solo se ofrecen tareas completadas, fallidas o canceladas sin acciones de Git pendientes. Los perfiles OpenCode compartidos por chats no se mueven.</p>
+          <p className="aj-nota">Solo se archivan tareas completadas, fallidas o canceladas sin acciones de Git pendientes. Los perfiles OpenCode compartidos por chats no se mueven. {listo ? "El archivado automático comienza 24 horas después de terminar y procesa una tarea a la vez." : "El archivado automático comenzará cuando Google Drive y el cifrado estén configurados."}</p>
 
           {lote ? (
             <div className="aj-drive-progreso" role="status" aria-live="polite">
               <span className="aj-drive-spinner" aria-hidden="true" />
               <span>
-                Lote: {lote.completadas} de {lote.total} tareas completadas{lote.titulo ? ` · ${lote.titulo}` : ""}.
+                Archivado: {lote.completadas} de {lote.total} tareas{lote.titulo ? ` · ${lote.titulo}` : ""}.
                 {lote.detenerSolicitado && " Se detendrá al terminar la tarea actual."}
               </span>
-              {!lote.detenerSolicitado && <button type="button" className="aj-btn" onClick={solicitarDetencionLote}>Detener lote</button>}
+              {!lote.detenerSolicitado && <button type="button" className="aj-btn" onClick={solicitarDetencionLote}>Detener</button>}
             </div>
           ) : ocupado && dato.trabajos.find((j) => j.state === "queued" || j.state === "running") && (
             <div className="aj-drive-progreso" role="status" aria-live="polite">
@@ -586,11 +585,11 @@ function PanelArchivoGoogleDrive() {
               {dato.candidatos.length > 0 && (
                 <div className="aj-drive-lote">
                   <div>
-                    <strong>Archivado gradual</strong>
-                    <p className="aj-nota">Archiva hasta {Math.min(DRIVE_LOTE_MAXIMO, candidatosPagina.length)} tareas visibles, una por una. Si una falla, el lote se detiene para revisarla.</p>
+                    <strong>Archivado manual</strong>
+                    <p className="aj-nota">Procesa todas las tareas disponibles, en orden y una por una. Si una falla, se detiene para que puedas revisarla.</p>
                   </div>
-                  <button type="button" className="aj-btn aj-btn-primario" disabled={!listo || ocupado} onClick={() => void archivarLoteActual()}>
-                    Archivar lote de hasta {Math.min(DRIVE_LOTE_MAXIMO, candidatosPagina.length)}
+                  <button type="button" className="aj-btn aj-btn-primario" disabled={!listo || ocupado} onClick={() => void archivarTodas()}>
+                    Archivar todas ({dato.candidatos.length})
                   </button>
                 </div>
               )}

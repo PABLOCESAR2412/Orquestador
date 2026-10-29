@@ -3,6 +3,8 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-28", "tipo": "mediano", "titulo": "Google Drive: archiva automáticamente tareas elegibles tras 24 horas y permite archivar todas las tareas de todas las páginas, con progreso y opción de detener", "pr": 132 },
+    { "fecha": "2026-10-28", "tipo": "mediano", "titulo": "Google Drive: incorpora paginación al listado de tareas y archivos archivados", "pr": 131 },
     { "fecha": "2026-10-28", "tipo": "mediano", "titulo": "Almacenamiento: archiva espacios de tareas terminadas en Google Drive con cargas reanudables y restauración verificada para liberar espacio en la VM", "pr": 130 },
     { "fecha": "2026-10-23", "tipo": "mediano", "titulo": "Iniciativa del obrero: ante un fallo de verificación el agente se autocorrige en su sesión (hasta 2 ciclos, ajustable) antes de fallar la tarea", "pr": 129 },
     { "fecha": "2026-10-23", "tipo": "mediano", "titulo": "Cola de mensajes del chat: lo que envías mientras responde el agente queda en cola y se ejecuta en orden; insignia En cola y opción de quitar antes de que arranque", "pr": 127 },
