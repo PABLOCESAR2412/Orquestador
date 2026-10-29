@@ -7,6 +7,7 @@ import { ModelPicker } from "../components/model-picker";
 import { UsoPanel } from "../components/uso-panel";
 import { ChatContexto } from "../components/chat-contexto";
 import { OrquestacionChat } from "../components/orquestacion-chat";
+import { AgentesPredefinidosChat } from "../components/agentes-predefinidos-chat";
 import { IndicadorPensando, MensajeAgente, MensajeUsuario } from "../components/chat-mensajes";
 import { ProcesoAgente } from "../components/chat-proceso";
 import { copiarTexto, type ReferenciaArchivo } from "../components/chat-contenido";
@@ -187,6 +188,7 @@ export function ChatPage() {
   const [usoAbierto, setUsoAbierto] = useState(false);
   const [contextoAbierto, setContextoAbierto] = useState(false);
   const [orquestacionAbierta, setOrquestacionAbierta] = useState(false);
+  const [agentesAbiertos, setAgentesAbiertos] = useState(false);
   const [pendientes, setPendientes] = useState<Pendiente[]>([]);
   const pendientesPorChatRef = useRef<Record<string, Pendiente[]>>({});
   const cambiarPendientes = (id: string, transformar: (anteriores: Pendiente[]) => Pendiente[]) => {
@@ -331,6 +333,7 @@ export function ChatPage() {
   const chipRef = useRef<HTMLButtonElement>(null);
   const usoRef = useRef<HTMLButtonElement>(null);
   const contextoRef = useRef<HTMLButtonElement>(null);
+  const agentesRef = useRef<HTMLButtonElement>(null);
   const abrirArchivo = useCallback((referencia: ReferenciaArchivo, triggerId: string) => {
     archivoDisparadorRef.current = triggerId;
     setArchivoAbierto(referencia);
@@ -1841,10 +1844,11 @@ export function ChatPage() {
                 <IndicadorPensando
                   modelo={nombreAgente}
                   desde={inicioPensando}
+                  fase={tareaActiva ? tareaChat?.status as "queued" | "analyzing" | "running" : "connecting"}
                   vivo={(selectedId && vivos[selectedId]?.pasos) || []}
                   conversacionId={selectedId ?? undefined}
                   turnoId={selectedId ? vivos[selectedId]?.turnoId ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.id : undefined}
-                    mostrarSubagentes={!current?.model?.startsWith("codex/") && /\b(subagentes?|agentes?\s+(?:en\s+)?paralelo|deleg(?:a|ar|ando)|llama\s+a\s+(?:varios|m[aá]s\s+de\s+uno|un\s+subagente))\b/i.test(envioActual?.content ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.content ?? "")}
+                  mostrarSubagentes={!current?.model?.startsWith("codex/") && (Boolean(current?.orquestacion_habilitada) || /\b(subagentes?|agentes?\s+(?:en\s+)?paralelo|deleg(?:a|ar|ando)|llama\s+a\s+(?:varios|m[aá]s\s+de\s+uno|un\s+subagente))\b/i.test(envioActual?.content ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.content ?? ""))}
                   onAbrirSubchat={setSelectedId}
                 />
               )}
@@ -2368,6 +2372,21 @@ export function ChatPage() {
                   </button>
 
                   <button
+                    ref={agentesRef}
+                    type="button"
+                    className="tl-boton tl-boton-compacto tl-agentes-boton"
+                    aria-haspopup="dialog"
+                    aria-expanded={agentesAbiertos}
+                    onClick={() => {
+                      setPickerOpen(false);
+                      setUsoAbierto(false);
+                      setAgentesAbiertos(true);
+                    }}
+                  >
+                    Agentes
+                  </button>
+
+                  <button
                     ref={chipRef}
                     type="button"
                     className="tl-modelo-boton"
@@ -2525,6 +2544,19 @@ export function ChatPage() {
               models={modelList}
               onClose={() => setContextoAbierto(false)}
               disparador={contextoRef}
+            />
+          )}
+
+          {agentesAbiertos && (
+            <AgentesPredefinidosChat
+              messages={messages.data ?? []}
+              draft={draft}
+              onClose={() => setAgentesAbiertos(false)}
+              disparador={agentesRef}
+              onApply={(texto) => {
+                cambiarBorrador(texto);
+                setAgentesAbiertos(false);
+              }}
             />
           )}
 

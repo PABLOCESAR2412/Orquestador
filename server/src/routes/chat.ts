@@ -8,7 +8,6 @@ import { registrarTrabajo } from "../despliegue";
 import { db } from "../db";
 import { publicar } from "../bus";
 import { AislamientoError, eliminarPerfilOpenCode } from "../runners/aislamiento";
-import { tiempoSinActividadConfigurado } from "../runners/proteccion";
 import { ejecutarAgente, ErrorCuota, promptContinuacion, type ResultadoAgente } from "../ejecutar";
 import { sesionCompatible } from "../conversacion-contexto";
 import { getPreferences } from "../preferences";
@@ -980,10 +979,9 @@ function limpiarAvisosReintentados(conversationId: string, rowid: number | undef
   db.query("DELETE FROM messages WHERE conversation_id=? AND role='system' AND rowid>?").run(conversationId, rowid);
 }
 
-// La duración no cancela el trabajo: el usuario conserva la cancelación explícita. Lo que sí
-// corta es la inactividad: un turno que no emite nada durante el tope se cierra para liberar.
+// La duración o el silencio no cancelan el turno; el usuario conserva la cancelación explícita.
 const TIEMPO_TURNO_MS = null;
-const TIEMPO_SIN_ACTIVIDAD_MS = tiempoSinActividadConfigurado();
+const TIEMPO_SIN_ACTIVIDAD_MS = null;
 const controlesTurno = new Map<string, AbortController>();
 
 chat.post("/conversations/:id/detener", c => {
@@ -1032,6 +1030,10 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
   let huboSubagentes = false;
   let perfilesSubagente: Awaited<ReturnType<typeof prepararSubagentes>> = null;
   try {
+    registrarActividad(conversationId, turno.id, {
+      tipo: "texto",
+      texto: `Solicitud recibida. Preparando contexto para el modelo ${model}.`,
+    });
     const cwd = conv.subagent_workspace || join(chatWorkspace, conv.parent_conversation_id ?? conversationId);
     mkdirSync(cwd, { recursive: true });
     const analisisOrquestado = conv.orquestacion_habilitada && !conv.parent_conversation_id
@@ -1048,6 +1050,10 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       ...analisisOrquestado,
       perfilesSubagente ? `${perfilesSubagente.instruccion}\n\n${prompt}` : prompt,
     ].join("\n\n");
+    registrarActividad(conversationId, turno.id, {
+      tipo: "texto",
+      texto: `Contexto preparado. Solicitud enviada al modelo ${model}; esperando actividad observable del proveedor.`,
+    });
     result = await ejecutarAgente({
       prompt: promptCoordinador,
       model,
@@ -1085,8 +1091,19 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       // Cada paso del agente (texto intermedio o acción) se guarda y se publica mientras corre.
       onLinea: (linea) => {
         const item = itemDeLinea(linea);
-        if (item) registrarActividad(conversationId, turno.id, item);
+        if (!item) return;
+        registrarActividad(conversationId, turno.id, item.tipo === "accion"
+          ? {
+              ...item,
+              titulo: `[Supervisor] ${item.titulo}`.slice(0, 160),
+              ...(item.callId ? { callId: `supervisor:${item.callId}` } : {}),
+            }
+          : item);
       },
+    });
+    registrarActividad(conversationId, turno.id, {
+      tipo: "texto",
+      texto: `El modelo ${model} terminó; guardando la respuesta y el estado de la sesión.`,
     });
     turnoTerminado = true;
   } catch (err) {
@@ -1230,6 +1247,7 @@ async function ejecutarAnalisisOrquestado(
         model: modeloCoordinador,
         variant: conv.effort,
         cwd,
+        timeoutMs: TIEMPO_TURNO_MS,
         tiempoSinActividadMs: TIEMPO_SIN_ACTIVIDAD_MS,
         signal,
         projectId: conv.project_id,
@@ -1262,8 +1280,13 @@ async function ejecutarAnalisisOrquestado(
   }
 
   registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `Orquestación: ${seleccionNota ? `${seleccionNota} ` : ""}${trabajadores.length} auxiliar${trabajadores.length === 1 ? "" : "es"} analiza${trabajadores.length === 1 ? "" : "n"} en paralelo y solo lectura.` });
-  const resultados = await Promise.all(trabajadores.map(async (trabajador) => {
-    if (signal.aborted) return { trabajador, texto: "Análisis cancelado junto con el turno." };
+  const resultados = await Promise.all(trabajadores.map(async (trabajador, indice) => {
+    const etiquetaAuxiliar = `Auxiliar ${trabajador.rol} (${trabajador.model})`;
+    if (signal.aborted) {
+      registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `${etiquetaAuxiliar}: cancelado junto con el turno.` });
+      return { trabajador, texto: "Análisis cancelado junto con el turno." };
+    }
+    registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `${etiquetaAuxiliar}: inició la revisión de solo lectura.` });
     const controlador = new AbortController();
     const abortar = () => controlador.abort(signal.reason);
     signal.addEventListener("abort", abortar, { once: true });
@@ -1278,21 +1301,40 @@ async function ejecutarAnalisisOrquestado(
         model: trabajador.model,
         variant: null,
         cwd,
+        timeoutMs: TIEMPO_TURNO_MS,
         tiempoSinActividadMs: TIEMPO_SIN_ACTIVIDAD_MS,
         signal: controlador.signal,
         projectId: conv.project_id,
         conversationId: conv.id,
         estilo: "chat",
         soloLectura: true,
+        // No mostramos texto de análisis privado: solo pasos observables del auxiliar.
+        onLinea: (linea) => {
+          const item = itemDeLinea(linea);
+          if (!item || item.tipo !== "accion") return;
+          registrarActividad(conv.id, turnoId, {
+            ...item,
+            titulo: `[${trabajador.rol}] ${item.titulo}`.slice(0, 160),
+            ...(item.callId ? { callId: `aux-${indice + 1}:${item.callId}` } : {}),
+          });
+        },
       });
-      return { trabajador, texto: resultado.textoFinal.slice(0, 3500) || "El modelo no devolvió análisis." };
+      const texto = resultado.textoFinal.slice(0, 3500) || "El modelo no devolvió análisis.";
+      registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `${etiquetaAuxiliar}: terminó la revisión.` });
+      return { trabajador, texto };
     } catch (error) {
-      return { trabajador, texto: `No se obtuvo análisis auxiliar: ${mensajeSeguro(error).slice(0, 300)}` };
+      const cancelado = signal.aborted || controlador.signal.aborted;
+      const detalle = cancelado
+        ? "se canceló junto con el turno"
+        : `falló: ${mensajeSeguro(error).slice(0, 240)}`;
+      registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `${etiquetaAuxiliar}: ${detalle}.` });
+      return { trabajador, texto: cancelado ? "Análisis cancelado junto con el turno." : `No se obtuvo análisis auxiliar: ${mensajeSeguro(error).slice(0, 300)}` };
     } finally {
       signal.removeEventListener("abort", abortar);
     }
   }));
 
+  registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `Los auxiliares terminaron. El supervisor ${modeloCoordinador} integra sus resultados y prepara la respuesta.` });
   return [
     "Informes auxiliares (lectura solamente; contrasta sus conclusiones y realiza tú cualquier cambio solicitado):",
     ...resultados.map(({ trabajador, texto }) => `\n### ${trabajador.rol} · ${trabajador.model}\n${texto}`),
