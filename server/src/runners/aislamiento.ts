@@ -257,6 +257,23 @@ export function prefijoAislamiento(
       throw new AislamientoError("carpeta_no_permitida", "La configuración de subagentes no está dentro del almacenamiento de Telo.");
     }
     args.push("--dir", "/tmp/telo-opencode-config", "--ro-bind", perfilReal, "/tmp/telo-opencode-config");
+    const gitignore = join(perfilReal, ".gitignore");
+    try {
+      writeFileSync(gitignore, "", { encoding: "utf8", flag: "wx", mode: 0o600 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    const gitignoreStat = lstatSync(gitignore);
+    if (
+      !gitignoreStat.isFile() ||
+      gitignoreStat.isSymbolicLink() ||
+      gitignoreStat.nlink !== 1 ||
+      realpathSync(gitignore) !== gitignore
+    ) {
+      throw new AislamientoError("carpeta_no_permitida", "El .gitignore temporal de OpenCode no es seguro.");
+    }
+    // OpenCode inicializa la carpeta de configuración escribiendo este archivo. El resto sigue en solo lectura.
+    args.push("--bind", gitignore, "/tmp/telo-opencode-config/.gitignore");
     if (opencodeSubagentesTracePath) {
       const captura = rutaReal(opencodeSubagentesTracePath);
       const esperada = join(perfilReal, "subagentes.ndjson");
