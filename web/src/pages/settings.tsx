@@ -930,6 +930,8 @@ function JevPanel() {
     mutationFn: api.setJevKey,
     onSuccess: () => {
       setValor("");
+      setVisible(false);
+      setConfiguracionAbiertaManual(false);
       setError(null);
       setAviso("Clave guardada cifrada en el servidor. Jev se activará en las próximas evaluaciones.");
       qc.removeQueries({ queryKey: ["jev-recomendaciones"] });
