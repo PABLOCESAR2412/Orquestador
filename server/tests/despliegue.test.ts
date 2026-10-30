@@ -22,6 +22,7 @@ test("el mantenimiento rechaza admisión nueva pero espera trabajos ya admitidos
   app.use("*", puertaDespliegue);
   app.post("/trabajo", async c => { entrar(); await pendiente; return c.json({ ok: true }); });
   app.post("/detener", c => c.json({ ok: true }));
+  app.post("/api/tasks/:id/cancel", c => c.json({ ok: true }));
   app.get("/api/tasks/:id/diff", c => c.json({ ok: true }));
   app.get("/api/projects/:id/git", c => c.json({ ok: true }));
   app.get("/api/tasks", c => c.json({ ok: true }));
@@ -31,6 +32,7 @@ test("el mantenimiento rechaza admisión nueva pero espera trabajos ya admitidos
   expect(estadoDespliegue()).toEqual({ mantenimiento: true, activas: 1 });
   expect((await app.request("/trabajo", { method: "POST" })).status).toBe(503);
   expect((await app.request("/detener", { method: "POST" })).status).toBe(200);
+  expect((await app.request("/api/tasks/ejemplo/cancel", { method: "POST" })).status).toBe(200);
   expect((await app.request("/api/tasks/ejemplo/diff")).status).toBe(503);
   expect((await app.request("/api/projects/ejemplo/git")).status).toBe(503);
   expect((await app.request("/api/tasks")).status).toBe(200);

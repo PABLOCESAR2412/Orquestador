@@ -56,14 +56,34 @@ export function tituloDesdeTexto(texto: string): string {
 const escapar = (texto: string) =>
   texto.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-// Quita scripts, marcos, atributos on* y URLs javascript: de un HTML generado por el agente.
+// El parser reconoce también atributos compactos (<svg/onload=...>) que una regex omite.
 export function limpiarHtml(html: string): string {
-  return html
-    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, "")
-    .replace(/<script\b[^>]*>/gi, "")
-    .replace(/<(iframe|object|embed)\b[\s\S]*?<\/\1\s*>/gi, "")
-    .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/(href|src)\s*=\s*("|')\s*javascript:[^"']*\2/gi, "$1=$2#$2");
+  return new HTMLRewriter().on("*", {
+    element(elemento) {
+      if (["script", "iframe", "object", "embed", "base"].includes(elemento.tagName)
+        || (elemento.tagName === "meta" && elemento.hasAttribute("http-equiv"))) {
+        elemento.remove();
+        return;
+      }
+      for (const [nombre, valor] of [...elemento.attributes]) {
+        if (nombre.startsWith("on") || nombre === "srcdoc") elemento.removeAttribute(nombre);
+        if (["href", "src", "xlink:href", "action", "formaction"].includes(nombre)) {
+          const url = valor.replace(/[\u0000-\u0020\u007f]/g, "");
+          const relativa = !/[:&\\]/.test(url) && !url.startsWith("//");
+          const segura = /^(?:https?:\/\/|mailto:|#)/i.test(url)
+            || (nombre === "src" && /^data:image\/(?:png|jpeg|gif|webp);base64,/i.test(url));
+          if (!relativa && !segura) elemento.removeAttribute(nombre);
+        }
+      }
+    },
+  }).transform(html);
+}
+
+// La política viaja dentro de la descarga, donde ya no existen las cabeceras del servidor.
+function htmlDocumento(html: string): string {
+  const politica = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'none\'; style-src \'unsafe-inline\'; img-src data:; base-uri \'none\'; form-action \'none\'">';
+  // Debe preceder a todo el HTML recibido, incluso a un doctype malformado.
+  return `<!doctype html>\n${politica}\n${html}`;
 }
 
 // Filas de una tabla GFM del Markdown, o null si el texto no tiene ninguna.
@@ -194,10 +214,10 @@ export async function generarArchivo(
     case "md":
       return enc.encode(texto);
     case "html": {
-      if (/<html[\s>]|<!doctype html/i.test(texto)) return enc.encode(limpiarHtml(texto));
+      if (/<html[\s>]|<!doctype html/i.test(texto)) return enc.encode(htmlDocumento(limpiarHtml(texto)));
       const cuerpo = limpiarHtml(String(await marked.parse(texto)));
       const pagina = `<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapar(titulo)}</title>${ESTILO_VISTA}</head><body>${cuerpo}</body></html>\n`;
-      return enc.encode(pagina);
+      return enc.encode(htmlDocumento(pagina));
     }
     case "docx": {
       const doc = new Document({

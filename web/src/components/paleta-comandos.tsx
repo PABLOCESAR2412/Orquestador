@@ -20,7 +20,13 @@ type Comando = {
 const normalizar = (texto: string) => texto.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 
 // Ctrl+K o Cmd+K abre la paleta desde cualquier pantalla. Monta la hoja solo mientras está abierta.
-export function PaletaComandos() {
+export function PaletaComandos({
+  proyectoId,
+  proyectoNombre,
+}: {
+  proyectoId: string | null;
+  proyectoNombre: string | null;
+}) {
   const { paletteOpen, setPaletteOpen, closePalette } = useShell();
   const previo = useRef<HTMLElement | null>(null);
 
@@ -49,10 +55,18 @@ export function PaletaComandos() {
   }, [paletteOpen]);
 
   if (!paletteOpen) return null;
-  return <HojaComandos onCerrar={cerrar} />;
+  return <HojaComandos onCerrar={cerrar} proyectoId={proyectoId} proyectoNombre={proyectoNombre} />;
 }
 
-function HojaComandos({ onCerrar }: { onCerrar: () => void }) {
+function HojaComandos({
+  onCerrar,
+  proyectoId,
+  proyectoNombre,
+}: {
+  onCerrar: () => void;
+  proyectoId: string | null;
+  proyectoNombre: string | null;
+}) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { triggerNewTask, setSelectedConversationId } = useShell();
@@ -67,11 +81,10 @@ function HojaComandos({ onCerrar }: { onCerrar: () => void }) {
     {
       id: "nuevo-chat",
       grupo: "NUEVO CHAT",
-      etiqueta: "Nuevo chat",
-      shortcut: "Ctrl+N",
+      etiqueta: proyectoId ? `Nuevo chat en ${proyectoNombre || "este proyecto"}` : "Nuevo chat",
       alias: "conversacion",
       ejecutar: async () => {
-        const conv = await api.createConversation(null);
+        const conv = await api.createConversation(proyectoId);
         await qc.invalidateQueries({ queryKey: ["conversations"] });
         setSelectedConversationId(conv.id);
         await navigate({ to: "/chat" });

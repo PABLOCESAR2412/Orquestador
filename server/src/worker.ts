@@ -84,6 +84,7 @@ type QueuedTask = {
   provider_session_id: string | null;
   provider_session_model: string | null;
   conversation_id: string | null;
+  message_id: string | null;
   // 1 si el plan ya fue aprobado: la tarea va directo al obrero.
   aprobado: number;
   // 1 si la tarea se detuvo por cuota agotada y debe retomar su sesión (ver pausarPorCuota).
@@ -110,7 +111,7 @@ function nextQueued(): QueuedTask | null {
   if (enMantenimiento()) return null;
   const pendientes = db
     .query<QueuedTask, []>(
-      "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, t.provider_session_model, t.conversation_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado, t.continuar FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC",
+      "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, t.provider_session_model, t.conversation_id, t.message_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado, t.continuar FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC",
     )
     .all();
   const candidata = pendientes.find((task) =>
@@ -224,6 +225,13 @@ function leerPlan(respuesta: { text: string; textoFinal: string }): Validacion<P
   return { ok: false, motivo };
 }
 
+function turnoDeTarea(task: QueuedTask): { id: string } | null {
+  return task.conversation_id && task.message_id
+    ? db.query<{ id: string }, [string, string]>("SELECT id FROM messages WHERE id=? AND conversation_id=? AND role='user'")
+      .get(task.message_id, task.conversation_id)
+    : null;
+}
+
 // Una llamada del analizador u obrero: puede durar lo necesario y registra su uso.
 async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizarConSubagentes = false): Promise<ResultadoAgente> {
   const { task, controller, salida } = ctx;
@@ -235,9 +243,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
   let perfilesSubagente: Awaited<ReturnType<typeof prepararSubagentes>> = null;
   let huboSubagentes = false;
   let turnoTerminado = false;
-  const turnoChat = task.conversation_id
-    ? db.query<{ id: string }, [string]>("SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(task.conversation_id)
-    : null;
+  const turnoChat = turnoDeTarea(task);
   try {
     if (aprender || analizarConSubagentes) {
       perfilesSubagente = await prepararSubagentes({
@@ -578,9 +584,7 @@ async function ejecutarTarea(task: QueuedTask) {
         avisarChat(task.id, serializarRespuestaTarea(reporte, texto), { model: task.model, effort: task.effort });
       }
     } else {
-      const messageId = task.conversation_id
-        ? db.query<{ id: string }, [string]>("SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(task.conversation_id)?.id
-        : undefined;
+      const messageId = turnoDeTarea(task)?.id ?? null;
       if (!finish(task.id, "done", { result: texto, reporte })) return;
       if (task.conversation_id) db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(task.conversation_id);
       avisarChat(task.id, serializarRespuestaTarea(reporte, texto), { model: task.model, effort: task.effort });

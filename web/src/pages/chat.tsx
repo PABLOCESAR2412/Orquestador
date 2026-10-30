@@ -46,6 +46,7 @@ import { leerBorrador, guardarBorrador, leerEnvio, guardarEnvio, borrarEnvio } f
 import { crearDictador, ctorVoz, type Dictador } from "../lib/chat-dictado";
 import { PLANTILLAS_GAUNTLET } from "../lib/plantillas-gauntlet";
 import { actualizarVentanaMensajes } from "../lib/chat-mensajes";
+import { tareaVisibleDelChat } from "../lib/actividad-chat";
 import "../styles-chat.css";
 import "../styles-flujo.css";
 
@@ -517,7 +518,7 @@ export function ChatPage() {
     refetchInterval: 3_000,
     retry: reintentarConsultaTransitoria,
   });
-  const tareaChat = current?.project_id ? tareasChat.data?.at(-1) : undefined;
+  const tareaChat = current?.project_id ? tareaVisibleDelChat(tareasChat.data) : undefined;
   const modeloAgotadoChat = current?.cuota_modelo ?? (tareaChat?.status === "sin_cuota"
     ? tareaChat.modelo_agotado ?? tareaChat.model
     : null);
@@ -1289,7 +1290,7 @@ export function ChatPage() {
   const nuevoChat = () => {
     if (creandoChat) return;
     setCreandoChat(true);
-    api.createConversation(null).then(
+    api.createConversation(current?.project_id ?? null).then(
       (conv) => {
         void qc.invalidateQueries({ queryKey: ["conversations"] });
         setSelectedId(conv.id);

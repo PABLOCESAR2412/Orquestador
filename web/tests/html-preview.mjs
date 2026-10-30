@@ -9,6 +9,7 @@ const { Hono } = await import("../../server/node_modules/hono/dist/index.js");
 const { db } = await import("../../server/src/db/index.ts");
 const { config } = await import("../../server/src/config.ts");
 const { chat, previewHtmlAutorizada } = await import("../../server/src/routes/chat.ts");
+const { generarArchivo } = await import("../../server/src/documentos.ts");
 const { COOKIE_SESION, crearSesionDispositivo, sesionValida, cerrarSesionPorToken } = await import("../../server/src/auth.ts");
 config.sinClave = false;
 const id = crypto.randomUUID();
@@ -34,6 +35,32 @@ const servidor = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch(request) {
 } });
 const navegador = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
 try {
+  const casosExportacion = [
+    ["normal", "<!doctype html>"],
+    ["NBSP", "\u00a0<!doctype html>"],
+    ["VT", "\u000b<!doctype html>"],
+    ["doctype con > citado", '<!doctype html PUBLIC ">x">'],
+  ];
+  for (const [caso, prefijo] of casosExportacion) {
+    // Una página nueva impide que la política de un caso anterior oculte una regresión.
+    const pagina = await navegador.newPage();
+    try {
+      const peticionesExternas = [];
+      await pagina.route("https://externo.invalid/**", route => {
+        peticionesExternas.push(route.request().url());
+        return route.abort();
+      });
+      const exportado = new TextDecoder().decode(await generarArchivo("html", "Exportación segura", `${prefijo}<html><body><h1>Exportación</h1><img src="https://externo.invalid/fuera.png"><svg/onload="window.__exportacionInsegura=1"></svg><script>window.__exportacionInsegura=2</script></body></html>`));
+      // También verifica la CSP si una futura regresión del filtro dejara pasar código activo.
+      await pagina.setContent(exportado.replace("</body>", '<script>window.__exportacionInsegura=3</script></body>'));
+      assert.equal(await pagina.evaluate(() => Boolean(document.head.querySelector('meta[http-equiv="Content-Security-Policy"]'))), true, caso);
+      assert.equal(await pagina.evaluate(() => window.__exportacionInsegura), undefined, caso);
+      assert.deepEqual(peticionesExternas, [], caso);
+      console.log(`PASS exportación HTML ${caso}: CSP en head, script bloqueado y sin peticiones externas.`);
+    } finally {
+      await pagina.close();
+    }
+  }
   for (const ancho of [390, 1440]) {
     const pagina = await navegador.newPage({ viewport: { width: ancho, height: 850 } });
     const peticiones = [];

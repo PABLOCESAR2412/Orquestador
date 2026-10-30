@@ -47,6 +47,18 @@ describe("documentos: generación", () => {
     expect(limpio).not.toContain("javascript:");
   });
 
+  test("el HTML exportado bloquea atributos compactos y URLs de script codificadas", async () => {
+    const ataque = '<html><body><svg/onload=alert(1)></svg><a href=jav&#97;script:alert(2)>x</a><iframe srcdoc="<script>alert(3)</script>"></iframe></body></html>';
+    const limpio = limpiarHtml(ataque);
+    expect(limpio).not.toContain("onload");
+    expect(limpio).not.toContain("jav&#97;script");
+    expect(limpio).not.toContain("iframe");
+    const html = decodificar(await generarArchivo("html", "Seguro", ataque));
+    expect(html.indexOf('http-equiv="Content-Security-Policy"')).toBeGreaterThan(-1);
+    expect(html.indexOf('http-equiv="Content-Security-Policy"')).toBeLessThan(html.indexOf("<body"));
+    expect(html).toContain("script-src 'none'");
+  });
+
   test("docx es un archivo ZIP (PK) y su vista conserva el texto", async () => {
     const docx = await generarArchivo("docx", "Informe", TEXTO);
     expect(decodificar(docx.slice(0, 2))).toBe("PK");
