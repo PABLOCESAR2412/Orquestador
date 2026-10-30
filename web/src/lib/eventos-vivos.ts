@@ -12,7 +12,8 @@ type Suscriptor = {
 
 const ESPERA_MIN_MS = 1_000;
 const ESPERA_MAX_MS = 30_000;
-const ESPERA_POLL_MS = 8_000;
+// Mantén margen frente al proxy, que puede cortar las respuestas HTTP/2 alrededor de 10 s.
+const ESPERA_POLL_MS = 4_000;
 const DEMORA_DESCONEXION_MS = 2_000;
 const TIEMPO_CONEXION_ESTABLE_MS = 45_000;
 

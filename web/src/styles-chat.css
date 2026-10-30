@@ -683,12 +683,22 @@
 .tl-actividad-live-icono { display: inline-grid; place-items: center; color: var(--ink-2); }
 .tl-actividad-live-contador { margin-left: auto; color: var(--ink-3); font-size: 11px; white-space: nowrap; }
 .tl-actividad-live-fase { color: var(--ink-3); font-size: 11px; }
+.tl-actividad-live-fase.is-sin-actividad { color: var(--danger); }
 .tl-actividad-live-cuerpo {
   padding: 8px 12px 2px;
   border-top: 1px solid var(--line);
 }
 .tl-actividad-live-cuerpo .tl-proceso { margin-bottom: 6px; }
 .tl-actividad-live-espera { margin: 8px 0 10px; color: var(--ink-3); font-size: 12px; line-height: 1.5; }
+.tl-actividad-live-inactiva {
+  margin: 8px 0 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--danger-soft);
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .tl-auxiliares-vivo { margin: 8px 0 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
 .tl-auxiliares-vivo-resumen { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 10px; padding: 9px 10px; color: var(--ink-2); cursor: pointer; list-style: none; font-size: 12px; }
 .tl-auxiliares-vivo-resumen::-webkit-details-marker { display: none; }
@@ -705,6 +715,9 @@
 .tl-auxiliar-vivo-estado.is-running { color: var(--signal); }
 .tl-auxiliar-vivo-estado.is-failed { color: var(--danger); }
 .tl-auxiliar-vivo > p { margin: 5px 0 2px 15px; color: var(--ink-2); font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.tl-auxiliar-vivo-encargo { margin: 6px 0 0 15px; padding-left: 8px; border-left: 2px solid var(--line-strong); }
+.tl-auxiliar-vivo-encargo strong { color: var(--ink); font-size: 10.5px; font-weight: 600; }
+.tl-auxiliar-vivo-encargo p { margin: 2px 0 0; color: var(--ink-2); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
 .tl-auxiliar-vivo-pasos { margin: 6px 0 0 15px; color: var(--ink-3); font-size: 11px; }
 .tl-auxiliar-vivo-pasos > summary { width: fit-content; cursor: pointer; }
 .tl-auxiliar-vivo-pasos .tl-proceso { margin-top: 5px; }
@@ -2258,6 +2271,8 @@
 .tl-subagente-estado.is-running { color: var(--signal); }
 .tl-subagente-estado.is-error,.tl-subagente-resultado.is-error { color: var(--danger); }
 .tl-subagente-detalle { margin: 7px 0 4px 17px; color: var(--ink-2); font-size: 11px; }
+.tl-subagente-encargo { margin: 8px 0 4px 17px; padding-left: 8px; border-left: 2px solid var(--line-strong); color: var(--ink-2); font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.tl-subagente-encargo strong { color: var(--ink); font-weight: 600; }
 .tl-subagente-detalle summary,.tl-subagente-resultado summary { width: fit-content; color: var(--ink-2); cursor: pointer; text-underline-offset: 3px; }
 .tl-subagente-detalle p,.tl-subagente-resultado p { margin: 5px 0; color: var(--ink-2); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .tl-subagente .tl-proceso { margin: 6px 0 6px 17px; }
@@ -2312,6 +2327,7 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.tl-proceso-actor { color: var(--ink); font-weight: 650; }
 .tl-proceso-accion { min-width: 0; }
 .tl-paso-accion {
   min-width: 0;

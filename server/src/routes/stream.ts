@@ -12,9 +12,9 @@ const MAX_EVENTOS_PENDIENTES = 100;
 const MAX_BYTES_PENDIENTES = 256 * 1024;
 const MAX_CARACTERES_SALIDA = 8_000;
 const MAX_CARACTERES_DETALLE = 4_000;
-// El proxy frontal cierra algunas respuestas HTTP/2 alrededor de los 10 s.
-// Dejar margen hace que el servidor complete el sondeo antes del límite externo.
-const MAX_ESPERA_POLL_MS = 8_000;
+// Algunos proxies cierran respuestas HTTP/2 antes de 10 s. Mantener el sondeo
+// debajo de ese umbral también permite aceptar clientes antiguos que pidan 8 s.
+const MAX_ESPERA_POLL_MS = 4_000;
 
 export const stream = new Hono();
 
@@ -33,10 +33,13 @@ stream.get("/eventos-vivos/poll", async (c) => {
     : /^\d+$/.test(desdeTexto) && Number.isSafeInteger(Number(desdeTexto))
       ? Number(desdeTexto)
       : NaN;
-  const espera = esperaTexto === undefined ? MAX_ESPERA_POLL_MS : Number(esperaTexto);
-  if (Number.isNaN(desde) || !Number.isInteger(espera) || espera < 0 || espera > MAX_ESPERA_POLL_MS) {
+  const esperaSolicitada = esperaTexto === undefined ? MAX_ESPERA_POLL_MS : Number(esperaTexto);
+  if (Number.isNaN(desde) || !Number.isSafeInteger(esperaSolicitada) || esperaSolicitada < 0) {
     return c.json({ error: "invalid_cursor_or_wait" }, 400);
   }
+  // Las versiones anteriores de la interfaz enviaban espera=8000; recortarla
+  // evita romperlas con 400 y termina antes de que el proxy corte la conexión.
+  const espera = Math.min(esperaSolicitada, MAX_ESPERA_POLL_MS);
 
   return await new Promise<Response>((resolve) => {
     let terminado = false;

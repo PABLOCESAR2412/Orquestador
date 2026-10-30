@@ -39,7 +39,7 @@ beforeEach(() => {
   db.query("DELETE FROM provider_keys").run();
   db.query("DELETE FROM uso_jev").run();
   // Las variables del entorno del servidor también cuentan como "configurada": se quitan para aislar cada prueba.
-  for (const variable of ["GROQ_API_KEY", "NVIDIA_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"]) {
+  for (const variable of ["GROQ_API_KEY", "NVIDIA_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY"]) {
     delete process.env[variable];
   }
 });
@@ -79,6 +79,11 @@ describe("guardar y leer la clave", () => {
     expect(entornoProveedores()).toEqual({ GROQ_API_KEY: "gsk_otro_valor_999" });
     const filas = db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM provider_keys").get();
     expect(filas?.n).toBe(1);
+  });
+
+  test("la clave de OpenRouter llega al entorno de OpenCode", () => {
+    guardarClaveProveedor("openrouter", VALOR);
+    expect(entornoProveedores()).toEqual({ OPENROUTER_API_KEY: VALOR });
   });
 
   test("sin clave maestra no se guarda, y el entorno queda vacío sin lanzar error", () => {
@@ -271,7 +276,7 @@ describe("rutas de claves de proveedor", () => {
     expect(texto).not.toContain(VALOR);
     const datos = JSON.parse(texto) as { disponible: boolean; proveedores: { id: string; configurada: boolean }[] };
     expect(datos.disponible).toBe(true);
-    expect(datos.proveedores.map((p) => p.id)).toEqual(["groq", "nvidia", "google"]);
+    expect(datos.proveedores.map((p) => p.id)).toEqual(["groq", "nvidia", "google", "openrouter"]);
     expect(datos.proveedores.find((p) => p.id === "groq")?.configurada).toBe(true);
   });
 
@@ -352,7 +357,42 @@ describe("GET /providers", () => {
       guardable: true,
       guardada: false,
     });
+    expect(lista.find((p) => p.id === "openrouter")).toMatchObject({
+      configured: false,
+      enAgente: false,
+      guardable: true,
+      guardada: false,
+      variable: "OPENROUTER_API_KEY",
+    });
     expect(lista.find((p) => p.id === "codex")).toMatchObject({ guardable: false, variable: "OPENAI_API_KEY" });
+  });
+
+  test("prueba los cuatro catálogos sin generar texto ni exponer claves", async () => {
+    const fetchOriginal = globalThis.fetch;
+    const llamadas: { url: string; headers: Headers }[] = [];
+    globalThis.fetch = (async (_input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      llamadas.push({ url: String(_input), headers: new Headers(init?.headers) });
+      return Response.json({ data: [{ id: "test/model" }, { id: "test/model-2" }] });
+    }) as typeof fetch;
+    try {
+      const proveedores = [
+        { id: "google", url: "generativelanguage.googleapis.com/v1beta/models", header: "x-goog-api-key" },
+        { id: "groq", url: "api.groq.com/openai/v1/models", header: "authorization" },
+        { id: "nvidia", url: "integrate.api.nvidia.com/v1/models", header: "authorization" },
+        { id: "openrouter", url: "openrouter.ai/api/v1/models", header: "authorization" },
+      ];
+      for (const proveedor of proveedores) {
+        guardarClaveProveedor(proveedor.id, VALOR);
+        const respuesta = await providers.request(`/providers/${proveedor.id}/probar`, { method: "POST" });
+        expect(await respuesta.json()).toEqual({ ok: true, modelos: 2 });
+        const llamada = llamadas.at(-1)!;
+        expect(llamada.url).toContain(proveedor.url);
+        expect(llamada.headers.get(proveedor.header)).toBe(proveedor.header === "authorization" ? `Bearer ${VALOR}` : VALOR);
+        expect(await (await providers.request(`/providers/${proveedor.id}/probar`, { method: "POST" })).text()).not.toContain(VALOR);
+      }
+    } finally {
+      globalThis.fetch = fetchOriginal;
+    }
   });
 
   test("una clave solo en el entorno del servidor cuenta como configurada, pero no llega al agente sin TELO_AGENTE_VARIABLES", async () => {

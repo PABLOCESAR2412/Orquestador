@@ -1101,6 +1101,9 @@ export const api = {
       method: "DELETE",
     }),
   listProviders: () => request<ProviderStatus[]>("/api/providers"),
+  testProvider: (id: string) => request<{ ok: boolean; modelos: number | null; error?: string }>(
+    `/api/providers/${encodeURIComponent(id)}/probar`, { method: "POST", body: "{}" },
+  ),
   // La clave se escribe una vez y nunca vuelve por la API. Guardar otra vez la reemplaza.
   setProviderKey: (id: string, valor: string) =>
     request<{ id: string; configurada: boolean; actualizada_en: string }>(

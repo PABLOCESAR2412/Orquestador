@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ModelInfo, TrabajadorOrquestacion, RolTrabajadorOrquestacion } from "../api";
 import { useDialogo } from "./controls";
 
@@ -32,6 +32,7 @@ export function OrquestacionChat({
   modelo,
   esfuerzo,
   habilitada,
+  preactivarAuxiliares = false,
   seleccionAutomatica,
   trabajadores,
   modelos,
@@ -43,6 +44,7 @@ export function OrquestacionChat({
   modelo: string | null;
   esfuerzo: string | null;
   habilitada: boolean;
+  preactivarAuxiliares?: boolean;
   seleccionAutomatica: boolean;
   trabajadores: TrabajadorOrquestacion[];
   modelos: ModelInfo[];
@@ -52,15 +54,28 @@ export function OrquestacionChat({
   onGuardar: (config: { model: string; effort: string | null; orquestacion_habilitada: boolean; orquestacion_seleccion_automatica: boolean; orquestacion_trabajadores: TrabajadorOrquestacion[] }) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const sugerenciasInicialesAplicadas = useRef(Boolean(trabajadores.length || !preactivarAuxiliares));
   const [coordinador, setCoordinador] = useState(modelo ?? "");
   const [esfuerzoActual, setEsfuerzoActual] = useState(esfuerzo);
-  const [activa, setActiva] = useState(habilitada);
-  const [seleccionAutomaticaActual, setSeleccionAutomaticaActual] = useState(seleccionAutomatica);
-  const [auxiliares, setAuxiliares] = useState<TrabajadorOrquestacion[]>(trabajadores);
+  const [activa, setActiva] = useState(habilitada || preactivarAuxiliares);
+  const [seleccionAutomaticaActual, setSeleccionAutomaticaActual] = useState(preactivarAuxiliares ? true : seleccionAutomatica);
+  const [auxiliares, setAuxiliares] = useState<TrabajadorOrquestacion[]>(() =>
+    trabajadores.length
+      ? trabajadores
+      : preactivarAuxiliares
+        ? recomendar(modelos, new Set([modelo ?? ""]))
+        : trabajadores,
+  );
   const [verModelosConCosto, setVerModelosConCosto] = useState(() =>
     Boolean((modelo && modelos.some((item) => item.id === modelo && !item.free)) || trabajadores.some((trabajador) => modelos.some((item) => item.id === trabajador.model && !item.free))),
   );
   useDialogo(ref, onCerrar);
+
+  useEffect(() => {
+    if (!preactivarAuxiliares || !activa || sugerenciasInicialesAplicadas.current || !modelos.length) return;
+    sugerenciasInicialesAplicadas.current = true;
+    if (!auxiliares.length) setAuxiliares(recomendar(modelos, new Set([coordinador])));
+  }, [activa, auxiliares.length, coordinador, modelos, preactivarAuxiliares]);
 
   const modeloCoordinador = modelos.find((item) => item.id === coordinador);
   const seleccionados = new Set([coordinador, ...auxiliares.map((trabajador) => trabajador.model)]);
@@ -120,7 +135,7 @@ export function OrquestacionChat({
         </div>
         <div className="tl-dialogo-cuerpo">
           {error && <p className="tl-alerta" role="alert">{error}</p>}
-          <p className="tl-orquestacion-nota">El supervisor responde y es el único que aplica cambios. Los auxiliares analizan en paralelo y solo lectura.</p>
+          <p className="tl-orquestacion-nota">El supervisor responde y es el único que aplica cambios. Los auxiliares analizan en paralelo y solo lectura. Telo realiza llamadas separadas a los modelos que configures; no se crean credenciales por agente. Cada proveedor debe estar conectado en Configuración → Proveedores IA. Guardar solo prepara el chat: las llamadas empiezan cuando envíes un mensaje.</p>
 
           <label className="tl-campo">
             <span className="tl-campo-etiqueta">Modelo supervisor</span>
@@ -178,7 +193,7 @@ export function OrquestacionChat({
                   <button type="button" className="tl-boton tl-orquestacion-quitar" aria-label={`Quitar auxiliar ${indice + 1}`} onClick={() => setAuxiliares((actuales) => actuales.filter((_item, actual) => actual !== indice))}>Quitar modelo</button>
                 </div>
               ))}
-              {!recomendaciones.length && !auxiliares.length && <p className="tl-orquestacion-costo" role="note">El catálogo no tiene modelos marcados como gratis disponibles para auxiliares. Puedes mostrar modelos con posible costo y añadirlos manualmente, o guardar el supervisor sin auxiliares.</p>}
+              {!auxiliares.length && <p className="tl-orquestacion-costo" role="note">{recomendaciones.length ? "Todavía no hay modelos auxiliares seleccionados. El supervisor puede responder sin análisis auxiliares." : "El catálogo no tiene modelos marcados como gratis disponibles para auxiliares. Puedes mostrar modelos con posible costo y añadirlos manualmente, o guardar el supervisor sin auxiliares."}</p>}
               <label className="tl-orquestacion-toggle tl-orquestacion-incluir-costo">
                 <input type="checkbox" checked={verModelosConCosto} onChange={(event) => setVerModelosConCosto(event.target.checked)} />
                 <span>Mostrar modelos que pueden tener costo</span>

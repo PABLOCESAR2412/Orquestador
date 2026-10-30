@@ -301,7 +301,15 @@ try {
         { id: "groq/other-test", provider: "groq", name: "Other Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Other", recommended: true },
       ] };
       else if (path === "/api/preferences") data = { defaultModel: null, defaultEffort: null, monthlyBudgetUsd: null, budgetAlertPercent: 80 };
-      else if (path === "/api/providers") data = [{ id: "codex", name: "Codex", configured: codexSesionEnPicker, variable: null, enAgente: false, guardable: false, sesion: codexSesionEnPicker }];
+      else if (path === "/api/providers") data = [
+        { id: "opencode", name: "OpenCode", configured: true, implemented: true, hint: "CLI instalado.", variable: null, enAgente: true, guardable: false, guardada: false, sesion: false },
+        { id: "codex", name: "Codex", configured: codexSesionEnPicker, implemented: true, hint: "Sesión de Codex.", variable: "OPENAI_API_KEY", enAgente: false, guardable: false, guardada: false, sesion: codexSesionEnPicker },
+        { id: "google", name: "Google (Gemini)", configured: true, implemented: true, hint: "Clave de prueba.", variable: "GOOGLE_GENERATIVE_AI_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
+        { id: "groq", name: "Groq", configured: false, implemented: true, hint: "Clave de prueba.", variable: "GROQ_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
+        { id: "nvidia", name: "NVIDIA", configured: true, implemented: true, hint: "Clave de prueba.", variable: "NVIDIA_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
+        { id: "openrouter", name: "OpenRouter", configured: false, implemented: true, hint: "Clave de prueba.", variable: "OPENROUTER_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
+      ];
+      else if (/^\/api\/providers\/[^/]+\/probar$/.test(path)) data = { ok: true, modelos: 7 };
       else if (path === "/api/providers/codex/models") data = { generado: now, models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", context: 100000, variants: ["high"] }] };
       else if (path === "/api/providers/codex/login") data = { estado: "esperando", conectada: false, url: "https://auth.openai.com/codex/device", codigo: "ABCD-EFGH", salida: "Salida de prueba\n" + "x".repeat(300) };
       else if (path === "/api/jev" && route.request().method() === "GET") data = { disponible: true, configurada: jevConfigurada, actualizada_en: jevConfigurada ? now : null };
@@ -430,6 +438,8 @@ try {
     const mensajeSupervisor = page.locator(".tl-msg-agente").filter({ hasText: "Faltan dependencias" }).first();
     await mensajeSupervisor.getByText("Se creó 1 subagente", { exact: true }).waitFor();
     await mensajeSupervisor.getByText("1 trabajando", { exact: true }).waitFor();
+    await mensajeSupervisor.getByText("Encargo del Supervisor:", { exact: false }).waitFor();
+    await mensajeSupervisor.getByText("Revisa las rutas y reporta riesgos", { exact: false }).waitFor();
     await mensajeSupervisor.locator(".tl-proceso-boton").click();
     await mensajeSupervisor.getByText("Ejecutando git status", { exact: true }).first().waitFor();
     await mensajeSupervisor.getByRole("button", { name: "Abrir subchat", exact: true }).click();
@@ -1233,6 +1243,18 @@ try {
     await page.goto(`${base}/ajustes`);
     await page.getByRole("heading", { name: "Ajustes y Servidor", exact: true }).waitFor();
     assert.equal(await page.getByRole("heading", { name: "Cuenta de Google", exact: true }).count(), 0);
+    const proveedoresInferencia = page.getByRole("tablist", { name: "Proveedores de inferencia" });
+    await proveedoresInferencia.getByRole("tab", { name: "Google Gemini" }).waitFor();
+    assert.equal(await proveedoresInferencia.getByRole("tab").count(), 4);
+    const panelGemini = page.getByRole("tabpanel", { name: "Google Gemini" });
+    await panelGemini.getByRole("button", { name: "Editar", exact: true }).click();
+    assert.equal(await panelGemini.locator("input[type=password]").count(), 1, "la clave solo aparece al editarla");
+    await panelGemini.getByRole("button", { name: "Cancelar", exact: true }).click();
+    await panelGemini.locator(".aj-probar-proveedor").getByRole("button", { name: "Probar conexión", exact: true }).click();
+    await panelGemini.getByText(/Catálogo consultado: 7 modelos disponibles/).waitFor();
+    await proveedoresInferencia.getByRole("tab", { name: "OpenRouter" }).click();
+    await page.getByRole("tabpanel", { name: "OpenRouter" }).waitFor();
+    await page.screenshot({ path: `scratch/capturas-ci/proveedores-${width}.png` });
     await page.goto(`${base}/ajustes?pestana=personalizacion`);
     const tarjetaApariencia = page.locator('article[aria-labelledby="ajustes-apariencia"]');
     await tarjetaApariencia.waitFor();

@@ -188,6 +188,7 @@ export function ChatPage() {
   const [usoAbierto, setUsoAbierto] = useState(false);
   const [contextoAbierto, setContextoAbierto] = useState(false);
   const [orquestacionAbierta, setOrquestacionAbierta] = useState(false);
+  const [orquestacionDesdeAgente, setOrquestacionDesdeAgente] = useState(false);
   const [agentesAbiertos, setAgentesAbiertos] = useState(false);
   const [pendientes, setPendientes] = useState<Pendiente[]>([]);
   const pendientesPorChatRef = useRef<Record<string, Pendiente[]>>({});
@@ -1660,7 +1661,10 @@ export function ChatPage() {
                   aria-haspopup="dialog"
                   aria-expanded={orquestacionAbierta}
                   title="Configurar el supervisor y los modelos auxiliares de este chat"
-                  onClick={() => setOrquestacionAbierta(true)}
+                  onClick={() => {
+                    setOrquestacionDesdeAgente(false);
+                    setOrquestacionAbierta(true);
+                  }}
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <circle cx="5" cy="6" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="12" cy="18" r="2" />
@@ -1849,6 +1853,7 @@ export function ChatPage() {
                   conversacionId={selectedId ?? undefined}
                   turnoId={selectedId ? vivos[selectedId]?.turnoId ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.id : undefined}
                   mostrarSubagentes={!current?.model?.startsWith("codex/") && (Boolean(current?.orquestacion_habilitada) || /\b(subagentes?|agentes?\s+(?:en\s+)?paralelo|deleg(?:a|ar|ando)|llama\s+a\s+(?:varios|m[aá]s\s+de\s+uno|un\s+subagente))\b/i.test(envioActual?.content ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.content ?? ""))}
+                  orquestacionActiva={Boolean(current?.orquestacion_habilitada)}
                   onAbrirSubchat={setSelectedId}
                 />
               )}
@@ -2557,6 +2562,12 @@ export function ChatPage() {
                 cambiarBorrador(texto);
                 setAgentesAbiertos(false);
               }}
+              onConfigureSupervisor={(texto) => {
+                cambiarBorrador(texto);
+                setAgentesAbiertos(false);
+                setOrquestacionDesdeAgente(true);
+                setOrquestacionAbierta(true);
+              }}
             />
           )}
 
@@ -2566,13 +2577,20 @@ export function ChatPage() {
               modelo={current.model}
               esfuerzo={current.effort}
               habilitada={Boolean(current.orquestacion_habilitada)}
+              preactivarAuxiliares={orquestacionDesdeAgente}
               seleccionAutomatica={current.orquestacion_seleccion_automatica ?? true}
               trabajadores={current.orquestacion_trabajadores ?? []}
               modelos={modelList}
               guardando={configure.isPending}
               error={settingsError}
-              onCerrar={() => setOrquestacionAbierta(false)}
-              onGuardar={(config) => configure.mutate(config, { onSuccess: () => setOrquestacionAbierta(false) })}
+              onCerrar={() => {
+                setOrquestacionAbierta(false);
+                setOrquestacionDesdeAgente(false);
+              }}
+              onGuardar={(config) => configure.mutate(config, { onSuccess: () => {
+                setOrquestacionAbierta(false);
+                setOrquestacionDesdeAgente(false);
+              } })}
             />
           )}
 

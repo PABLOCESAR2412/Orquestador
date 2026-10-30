@@ -63,6 +63,13 @@ function textoParaVoz(texto: string): string {
     .trim();
 }
 
+function fechaUtcMs(valor: string | null): number | null {
+  if (!valor) return null;
+  const tieneZona = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(valor);
+  const fecha = new Date(tieneZona ? valor : `${valor.replace(" ", "T")}Z`).getTime();
+  return Number.isFinite(fecha) ? fecha : null;
+}
+
 function vozEspanola(): SpeechSynthesisVoice | undefined {
   const idioma = navigator.language.toLowerCase();
   const voces = window.speechSynthesis
@@ -479,6 +486,7 @@ type AuxiliarVivo = {
   modelo: string;
   estado: "running" | "done" | "failed" | "cancelled";
   avance: string;
+  instruccion: string | null;
   pasos: PasoActividad[];
 };
 
@@ -499,12 +507,17 @@ function auxiliaresEnVivo(pasos: PasoActividad[]): AuxiliarVivo[] {
         modelo: resultadoHito?.[2] ?? "Modelo auxiliar",
         estado: "running",
         avance: "Preparando revisión de solo lectura",
+        instruccion: null,
         pasos: [],
       };
       auxiliares.set(rol, auxiliar);
     }
     if (resultadoHito) {
       const detalle = resultadoHito[3].replace(/[.!]+$/, "");
+      if (/^encargo del supervisor:/i.test(detalle)) {
+        auxiliar.instruccion = detalle.replace(/^encargo del supervisor:\s*/i, "");
+        continue;
+      }
       auxiliar.avance = detalle;
       if (/termin[oó] la revisi[oó]n/i.test(detalle)) auxiliar.estado = "done";
       else if (/fall[oó]:/i.test(detalle)) auxiliar.estado = "failed";
@@ -546,11 +559,17 @@ function PanelAuxiliaresVivos({ auxiliares }: { auxiliares: AuxiliarVivo[] }) {
               </span>
               <span className={`tl-auxiliar-vivo-estado is-${auxiliar.estado}`} role="status">{estadoEtiqueta(auxiliar.estado)}</span>
             </header>
+            {auxiliar.instruccion && (
+              <div className="tl-auxiliar-vivo-encargo">
+                <strong>Encargo del Supervisor</strong>
+                <p>{auxiliar.instruccion}</p>
+              </div>
+            )}
             <p>{auxiliar.avance}</p>
             {auxiliar.pasos.length > 0 && (
               <details className="tl-auxiliar-vivo-pasos">
                 <summary>Ver actividad · {auxiliar.pasos.length}</summary>
-                <ProcesoAgente pasos={auxiliar.pasos} enCurso={auxiliar.estado === "running"} />
+                <ProcesoAgente pasos={auxiliar.pasos} enCurso={auxiliar.estado === "running"} actor={auxiliar.rol} />
               </details>
             )}
           </article>
@@ -661,6 +680,7 @@ export function IndicadorPensando({
   conversacionId,
   turnoId,
   mostrarSubagentes = false,
+  orquestacionActiva = false,
   onAbrirSubchat,
 }: {
   modelo: string;
@@ -670,16 +690,28 @@ export function IndicadorPensando({
   conversacionId?: string;
   turnoId?: string;
   mostrarSubagentes?: boolean;
+  orquestacionActiva?: boolean;
   onAbrirSubchat?: (id: string) => void;
 }) {
   const [ahora, setAhora] = useState(Date.now());
+  const [ultimaActividadVista, setUltimaActividadVista] = useState(() => fechaUtcMs(desde) ?? Date.now());
   const [actividadAbierta, setActividadAbierta] = useState(true);
   useEffect(() => {
     const temporizador = window.setInterval(() => setAhora(Date.now()), 1000);
     return () => window.clearInterval(temporizador);
   }, []);
-  useEffect(() => setActividadAbierta(true), [turnoId]);
+  const firmaActividad = vivo.map((paso) => `${paso.seq}:${paso.estado}`).join(",");
+  useEffect(() => {
+    setActividadAbierta(true);
+    setUltimaActividadVista(firmaActividad ? Date.now() : fechaUtcMs(desde) ?? Date.now());
+  }, [turnoId, desde]);
+  useEffect(() => {
+    if (firmaActividad) setUltimaActividadVista(Date.now());
+  }, [firmaActividad]);
   const transcurrido = tiempoTranscurrido(desde, ahora);
+  const silencioMs = Math.max(0, ahora - ultimaActividadVista);
+  const silencioVisible = silencioMs >= 120_000;
+  const silencioTexto = tiempoTranscurrido(new Date(ultimaActividadVista).toISOString(), ahora) ?? "2 min";
   const auxiliares = auxiliaresEnVivo(vivo);
   const pasosSupervisor = vivo.filter((paso) => !(paso.tipo === "accion" && /^\[(arquitectura|seguridad|verificacion)\]/i.test(paso.titulo)) && !(paso.tipo === "texto" && /^Auxiliar (arquitectura|seguridad|verificacion) \(/i.test(paso.titulo)));
   const ultimaAccion = [...pasosSupervisor].reverse().find((paso) => paso.tipo === "accion" && paso.estado === "en_curso");
@@ -766,7 +798,7 @@ export function IndicadorPensando({
         <summary className="tl-actividad-live-cabecera">
           <span className="tl-actividad-live-icono" aria-hidden="true">{ICONO_AGENTE}</span>
           <span>Actividad en vivo</span>
-          <span className="tl-actividad-live-fase">{etapaVisible}</span>
+          <span className={`tl-actividad-live-fase${silencioVisible ? " is-sin-actividad" : ""}`}>{silencioVisible ? `Sin actividad nueva · ${silencioTexto}` : etapaVisible}</span>
           <span className="tl-actividad-live-contador">
             {pasosSupervisor.filter((paso) => paso.tipo === "accion").length} acciones del supervisor
             {auxiliares.length ? ` · ${auxiliares.length} auxiliares` : ""}
@@ -775,8 +807,13 @@ export function IndicadorPensando({
         <div className="tl-actividad-live-cuerpo">
           <div className="tl-pensando" title={ultimaAccion?.titulo ?? estado} aria-live="polite">
             <span className="tl-pensando-texto">{estado}</span>
-            {ultimaAccion && <span className="tl-paso-spinner" role="img" aria-label="Acción en curso" />}
+            {(ultimaAccion || orquestacionActiva) && <span className="tl-paso-spinner" role="img" aria-label={orquestacionActiva ? "Supervisor en curso" : "Acción en curso"} />}
           </div>
+            {silencioVisible && (
+              <p className="tl-actividad-live-inactiva" role="status">
+                No llegan pasos nuevos desde hace {silencioTexto}. El turno sigue activo, pero esta vista no puede confirmar que el proveedor avance. Si no responde, puedes detenerlo desde el chat.
+              </p>
+            )}
             {mostrarSubagentes && conversacionId && turnoId && (
             <SubagentesTurno
               conversacionId={conversacionId}
@@ -788,12 +825,16 @@ export function IndicadorPensando({
           )}
           <PanelAuxiliaresVivos auxiliares={auxiliares} />
           {pasosSupervisor.length > 0
-            ? <ProcesoAgente pasos={pasosSupervisor} enCurso />
+            ? <ProcesoAgente pasos={pasosSupervisor} enCurso actor="Supervisor" />
             : auxiliarActivo
               ? <p className="tl-actividad-live-espera">Los auxiliares están trabajando. El supervisor incorporará sus resultados cuando terminen; la tarea sigue activa.</p>
               : mostrarSubagentes
-                ? <p className="tl-actividad-live-espera">El supervisor está coordinando subagentes. Sus pasos aparecerán aquí cuando cada uno empiece a emitir actividad observable.</p>
-                : <p className="tl-actividad-live-espera">Aún no llega una acción observable del agente. La tarea sigue activa; puedes detenerla desde el chat.</p>}
+                ? <p className="tl-actividad-live-espera">El modelo principal aún no confirmó subchats mediante la herramienta task. Las plantillas de Agentes no los crean; configura el Supervisor para ejecutar modelos auxiliares.</p>
+                : orquestacionActiva && ultimaNarracion?.startsWith("Supervisor ") && ultimaNarracion.includes("está eligiendo")
+                  ? <p className="tl-actividad-live-espera">El supervisor está eligiendo auxiliares. Si la selección tarda más de 15 segundos, Telo continuará sin auxiliares para que responda el modelo principal.</p>
+                  : orquestacionActiva
+                    ? <p className="tl-actividad-live-espera">El supervisor y sus auxiliares siguen trabajando. Aquí aparecerán sus acciones observables; puedes detener el turno desde el chat.</p>
+                    : <p className="tl-actividad-live-espera">Aún no llega una acción observable del agente. El turno sigue activo; puedes detenerlo desde el chat.</p>}
         </div>
       </details>
     </article>

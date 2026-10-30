@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { proveedorConClave, tieneClaveProveedor } from "../claves-proveedor";
+import { proveedorConClave, tieneClaveProveedor, valorClaveApiProveedor } from "../claves-proveedor";
 import { cancelarLoginCodex, confirmarLoginCodex, estadoLoginCodex, iniciarLoginCodex, LoginError, sesionCodexConectada } from "../login-cli";
 import { hallarEjecutable } from "../ejecutable";
 import { listarModelosCodex } from "../modelos-codex";
@@ -102,6 +102,12 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
       "Clave de NVIDIA. Se guarda aquí, cifrada, o viene del archivo de entorno del servidor.",
       enAgente,
     ),
+    proveedorGuardable(
+      "openrouter",
+      "OpenRouter",
+      "Clave de OpenRouter. Se guarda aquí, cifrada, o viene del archivo de entorno del servidor.",
+      enAgente,
+    ),
   ];
 }
 
@@ -109,6 +115,44 @@ export const providers = new Hono();
 
 // GET /api/providers
 providers.get("/providers", async (c) => c.json(await estadoProveedores()));
+
+// Prueba credenciales con un GET al catálogo de modelos; no genera respuestas ni consume tokens.
+providers.post("/providers/:id/probar", async (c) => {
+  const id = c.req.param("id");
+  const clave = valorClaveApiProveedor(id);
+  if (!clave) return c.json({ ok: false, error: "provider_key_missing" });
+
+  const destinos: Record<string, { url: string; headers: Record<string, string> }> = {
+    google: { url: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1", headers: { "x-goog-api-key": clave } },
+    groq: { url: "https://api.groq.com/openai/v1/models", headers: { Authorization: `Bearer ${clave}` } },
+    nvidia: { url: "https://integrate.api.nvidia.com/v1/models", headers: { Authorization: `Bearer ${clave}` } },
+    openrouter: { url: "https://openrouter.ai/api/v1/models", headers: { Authorization: `Bearer ${clave}` } },
+  };
+  const destino = destinos[id];
+  if (!destino) return c.json({ ok: false, error: "provider_test_unsupported" });
+
+  try {
+    const respuesta = await fetch(destino.url, {
+      headers: { Accept: "application/json", ...destino.headers },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!respuesta.ok) {
+      return c.json({
+        ok: false,
+        error: respuesta.status === 401 || respuesta.status === 403
+          ? "provider_key_rejected"
+          : respuesta.status === 429
+            ? "provider_rate_limited"
+            : "provider_connection_failed",
+      });
+    }
+    const cuerpo = await respuesta.json().catch(() => null) as { data?: unknown[]; models?: unknown[] } | null;
+    const modelos = Array.isArray(cuerpo?.data) ? cuerpo.data.length : Array.isArray(cuerpo?.models) ? cuerpo.models.length : null;
+    return c.json({ ok: true, modelos });
+  } catch {
+    return c.json({ ok: false, error: "provider_connection_failed" });
+  }
+});
 
 // Inicio de sesión de Codex por código de dispositivo (ver login-cli.ts). Solo Codex tiene este flujo.
 providers.get("/providers/codex/login", async (c) => c.json(await estadoLoginCodex()));

@@ -606,8 +606,70 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
+.aj-proveedores-pestanas {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+  scrollbar-width: thin;
+}
+.aj-proveedor-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.aj-proveedor-tab:hover { color: var(--ink); background: var(--surface-hover); }
+.aj-proveedor-tab.is-activa { border-color: var(--line-strong); background: var(--surface); color: var(--ink); }
+.aj-proveedor-tab:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.aj-proveedor-punto {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+.aj-proveedor-punto.is-conectado,
+.aj-estado-proveedor .aj-proveedor-punto { background: var(--online); }
+.aj-estado-proveedor {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.aj-estado-proveedor.is-conectado { color: var(--online); }
+.aj-estado-proveedor.is-error { color: var(--danger); }
+.aj-estado-proveedor.is-error .aj-proveedor-punto { background: var(--danger); }
+.aj-probar-proveedor { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.aj-probar-proveedor .aj-nota,
+.aj-probar-proveedor .aj-error { margin: 0; }
+.aj-clave-guardada { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.aj-clave-guardada > span { flex: 1; justify-content: flex-start; }
+.aj-proveedores-adicionales { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 620px) {
+  .aj-proveedores-adicionales { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 560px) {
   .aj-campos { grid-template-columns: minmax(0, 1fr); }
+  .aj-proveedor-tab { padding-inline: 10px; }
 }
 .aj-campo {
   display: flex;

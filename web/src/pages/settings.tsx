@@ -31,6 +31,12 @@ const PESTANAS: { id: Pestana; texto: string }[] = [
 
 // El prefijo de un modelo ("openai/...") no siempre es el id del proveedor en el servidor ("codex").
 const PROVEEDOR_DE_PREFIJO: Record<string, string> = { openai: "codex" };
+const PESTANAS_PROVEEDOR = [
+  { id: "google", texto: "Google Gemini" },
+  { id: "groq", texto: "Groq Cloud" },
+  { id: "nvidia", texto: "NVIDIA NIM" },
+  { id: "openrouter", texto: "OpenRouter" },
+] as const;
 
 function proveedorDeModelo(modelo: string | null | undefined): string | null {
   if (!modelo) return null;
@@ -54,6 +60,7 @@ export function SettingsPage() {
   const [draft, setDraft] = useState<Preferences | null>(null);
   const [budgetText, setBudgetText] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [proveedorSeleccionado, setProveedorSeleccionado] = useState<string>(PESTANAS_PROVEEDOR[0].id);
   const [localError, setLocalError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -173,6 +180,9 @@ export function SettingsPage() {
   };
 
   const configurados = proveedores.data?.filter((p) => p.configured).length ?? 0;
+  const proveedoresPrincipales = proveedores.data?.filter((p) => PESTANAS_PROVEEDOR.some((tab) => tab.id === p.id)) ?? [];
+  const proveedorActivo = proveedoresPrincipales.find((p) => p.id === proveedorSeleccionado) ?? proveedoresPrincipales[0];
+  const proveedoresAdicionales = proveedores.data?.filter((p) => !PESTANAS_PROVEEDOR.some((tab) => tab.id === p.id)) ?? [];
   const datos = servidor.data;
   const plataforma = datos?.proceso.plataforma;
   const eyebrow = ["Sistema / Control", plataforma].filter(Boolean).join(" · ");
@@ -279,15 +289,60 @@ export function SettingsPage() {
                   <ErrorConReintento error={proveedores.error} onReintentar={() => void proveedores.refetch()} />
                 )}
                 {proveedores.isPending && !proveedores.data && <LoadingSkeleton tipo="tarjetas" cantidad={3} />}
-                {proveedores.data?.map((p) => (
-                  <TarjetaProveedor
-                    key={p.id}
-                    p={p}
-                    etiqueta={etiquetaDe(p)}
-                    usoMes={usoMesDe(p.id)}
-                    modelos={modelosDe(p.id)}
-                  />
-                ))}
+                {proveedores.data && proveedoresPrincipales.length > 0 && (
+                  <>
+                    <div className="aj-proveedores-pestanas" role="tablist" aria-label="Proveedores de inferencia">
+                      {PESTANAS_PROVEEDOR.map((tab, indice) => {
+                        const proveedor = proveedoresPrincipales.find((p) => p.id === tab.id);
+                        if (!proveedor) return null;
+                        const conectado = proveedor.configured && proveedor.enAgente;
+                        const seleccionado = proveedorActivo?.id === tab.id;
+                        return (
+                          <button
+                            key={tab.id}
+                            id={`aj-proveedor-tab-${tab.id}`}
+                            type="button"
+                            role="tab"
+                            aria-selected={seleccionado}
+                            aria-controls={`aj-proveedor-panel-${tab.id}`}
+                            tabIndex={seleccionado ? 0 : -1}
+                            className={`aj-proveedor-tab${seleccionado ? " is-activa" : ""}`}
+                            onClick={() => setProveedorSeleccionado(tab.id)}
+                            onKeyDown={(event) => {
+                              if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+                              event.preventDefault();
+                              const direccion = event.key === "ArrowRight" ? 1 : -1;
+                              const siguiente = PESTANAS_PROVEEDOR[(indice + direccion + PESTANAS_PROVEEDOR.length) % PESTANAS_PROVEEDOR.length];
+                              setProveedorSeleccionado(siguiente.id);
+                              document.getElementById(`aj-proveedor-tab-${siguiente.id}`)?.focus();
+                            }}
+                          >
+                            <span className={`aj-proveedor-punto${conectado ? " is-conectado" : ""}`} aria-hidden="true" />
+                            {tab.texto}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {proveedorActivo && (
+                      <TarjetaProveedor
+                        key={proveedorActivo.id}
+                        p={proveedorActivo}
+                        etiqueta={etiquetaDe(proveedorActivo)}
+                        usoMes={usoMesDe(proveedorActivo.id)}
+                        modelos={modelosDe(proveedorActivo.id)}
+                        tabId={`aj-proveedor-panel-${proveedorActivo.id}`}
+                        tabLabelId={`aj-proveedor-tab-${proveedorActivo.id}`}
+                      />
+                    )}
+                    {proveedoresAdicionales.length > 0 && (
+                      <div className="aj-proveedores-adicionales" aria-label="Acceso local y otros proveedores">
+                        {proveedoresAdicionales.map((p) => (
+                          <TarjetaProveedor key={p.id} p={p} etiqueta={etiquetaDe(p)} usoMes={usoMesDe(p.id)} modelos={modelosDe(p.id)} />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
               </section>
 
               <section className="aj-seccion" aria-labelledby="aj-funciones-auxiliares-titulo">
@@ -600,12 +655,16 @@ function TarjetaProveedor({
   etiqueta,
   usoMes,
   modelos,
+  tabId,
+  tabLabelId,
 }: {
   p: ProviderStatus;
   etiqueta: string | null;
   usoMes: UsoVentanaProveedor | null;
   // Modelos del proveedor en el catálogo de OpenCode (total) y los que salen en el selector del chat.
   modelos: { total: number; enSelector: number } | null;
+  tabId?: string;
+  tabLabelId?: string;
 }) {
   // Codex está activo cuando hay sesión autenticada; los otros motores requieren clave disponible para agentes.
   const listo = p.id === "codex" ? p.configured : p.configured && p.enAgente;
@@ -615,9 +674,33 @@ function TarjetaProveedor({
   const gastoMes = costeCompleto ? usoMes!.costoEstimadoUsd : null;
   const nota = notaEstado(p, modelos);
   const tituloSinControl = "La clave vive en el servidor y la app no la recibe.";
+  const esMotorDirecto = PESTANAS_PROVEEDOR.some((tab) => tab.id === p.id);
+  const prueba = useMutation({ mutationFn: () => api.testProvider(p.id) });
+  const estadoPrueba = prueba.data?.ok
+    ? p.enAgente ? "Conexión comprobada" : "API responde · clave no llega al agente"
+    : prueba.data ? "No se pudo conectar" : listo ? "Credenciales listas" : p.configured ? "Clave no disponible para agentes" : "Sin clave configurada";
+  const errorPrueba = prueba.data?.error === "provider_key_rejected"
+    ? "El proveedor rechazó la clave. Edítala y vuelve a probar."
+    : prueba.data?.error === "provider_rate_limited"
+      ? "El proveedor limitó la consulta. Espera un momento y vuelve a probar."
+      : prueba.data?.error === "provider_key_missing"
+        ? "Guarda una clave para probar la conexión."
+        : prueba.data?.error === "provider_test_unsupported"
+          ? "Este proveedor no admite una prueba desde Telo."
+          : prueba.data && !prueba.data.ok
+            ? "No se pudo consultar el catálogo. Revisa la clave y el estado del proveedor."
+            : prueba.isError
+              ? errorText(prueba.error)
+              : null;
+  const endpoints: Record<string, string> = {
+    google: "generativelanguage.googleapis.com",
+    groq: "api.groq.com/openai/v1",
+    nvidia: "integrate.api.nvidia.com/v1",
+    openrouter: "openrouter.ai/api/v1",
+  };
 
   return (
-    <article className="aj-tarjeta" aria-labelledby={`aj-prov-${p.id}`}>
+    <article className={`aj-tarjeta${esMotorDirecto ? " aj-tarjeta-proveedor" : ""}`} aria-labelledby={tabId ? tabLabelId : `aj-prov-${p.id}`} id={tabId} role={tabId ? "tabpanel" : undefined}>
       <div className="aj-tarjeta-cabecera">
         <div className="aj-tarjeta-titulo">
           <span className="aj-icono" aria-hidden="true">
@@ -631,25 +714,32 @@ function TarjetaProveedor({
             <p className="aj-descripcion-tarjeta">{p.hint}</p>
           </div>
         </div>
-        <div className="aj-interruptor">
-          <span>{listo ? "Activo" : "Inactivo"}</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={listo}
-            aria-label={`${p.name}: activo`}
-            className="aj-switch"
-            disabled
-            title={p.id === "codex"
-              ? "Refleja si el servidor tiene una sesión de Codex iniciada."
-              : sinClave
-                ? "Se activa al instalar el CLI de OpenCode en el servidor. La app no lo cambia."
-                : p.guardable
-                  ? "Se activa al guardar la clave aquí o al configurarla en el archivo de entorno del servidor. La app no lo apaga."
-                  : `Se activa al configurar ${p.variable} en el archivo de entorno del servidor. La app no lo cambia.`
-            }
-          />
-        </div>
+        {esMotorDirecto ? (
+          <div className={`aj-estado-proveedor${prueba.data?.ok ? " is-conectado" : errorPrueba ? " is-error" : ""}`} role="status">
+            <span className="aj-proveedor-punto" aria-hidden="true" />
+            {prueba.isPending ? "Probando conexión…" : estadoPrueba}
+          </div>
+        ) : (
+          <div className="aj-interruptor">
+            <span>{listo ? "Activo" : "Inactivo"}</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={listo}
+              aria-label={`${p.name}: activo`}
+              className="aj-switch"
+              disabled
+              title={p.id === "codex"
+                ? "Refleja si el servidor tiene una sesión de Codex iniciada."
+                : sinClave
+                  ? "Se activa al instalar el CLI de OpenCode en el servidor. La app no lo cambia."
+                  : p.guardable
+                    ? "Se activa al guardar la clave aquí o al configurarla en el archivo de entorno del servidor. La app no lo apaga."
+                    : `Se activa al configurar ${p.variable} en el archivo de entorno del servidor. La app no lo cambia.`
+              }
+            />
+          </div>
+        )}
       </div>
 
       <div className="aj-campos">
@@ -696,7 +786,7 @@ function TarjetaProveedor({
             <span>Endpoint base</span>
           </div>
           <div className="aj-entrada aj-entrada-vacia">
-            <span>{sinClave ? "No aplica: corre en el servidor" : "No informado por el servidor"}</span>
+            <span>{sinClave ? "No aplica: corre en el servidor" : endpoints[p.id] ?? "Gestionado por el servidor"}</span>
           </div>
         </div>}
       </div>
@@ -722,6 +812,15 @@ function TarjetaProveedor({
           {modelos.enSelector === 1 ? "1 modelo" : `${modelos.enSelector} modelos`} en el selector del chat.
         </p>
       )}
+      {esMotorDirecto && (
+        <div className="aj-probar-proveedor">
+          <button type="button" className="aj-btn" disabled={!p.configured || prueba.isPending} onClick={() => prueba.mutate()}>
+            {prueba.isPending ? "Probando…" : "Probar conexión"}
+          </button>
+          {prueba.data?.ok && <p className="aj-nota" role="status">Catálogo consultado{prueba.data.modelos === null ? "." : `: ${prueba.data.modelos} modelos disponibles.`} No se generó texto ni se consumieron tokens.</p>}
+          {errorPrueba && <p className="aj-error" role="alert">{errorPrueba}</p>}
+        </div>
+      )}
       {nota && <p className="aj-nota aj-nota-aviso">{nota}</p>}
       {p.id === "opencode" && !p.configured && <InstalarHerramienta id="opencode" nombre="OpenCode" />}
       {p.id === "codex" && (
@@ -739,6 +838,7 @@ function CampoClave({ p }: { p: ProviderStatus }) {
   const qc = useQueryClient();
   const [valor, setValor] = useState("");
   const [verValor, setVerValor] = useState(false);
+  const [editando, setEditando] = useState(!p.guardada && !p.configured);
   const [aviso, setAviso] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const idCampo = `aj-clave-${p.id}`;
@@ -753,6 +853,7 @@ function CampoClave({ p }: { p: ProviderStatus }) {
     mutationFn: (texto: string) => api.setProviderKey(p.id, texto),
     onSuccess: () => {
       setValor("");
+      setEditando(false);
       setError(null);
       setAviso("Clave guardada. Se usará en los próximos envíos.");
       refrescar();
@@ -768,6 +869,8 @@ function CampoClave({ p }: { p: ProviderStatus }) {
     onSuccess: () => {
       setError(null);
       setAviso("Clave quitada.");
+      setValor("");
+      setEditando(true);
       refrescar();
     },
     onError: (e) => {
@@ -794,42 +897,44 @@ function CampoClave({ p }: { p: ProviderStatus }) {
   return (
     <div className="aj-campo aj-campo-clave">
       <div className="aj-campo-etiqueta">
-        <label htmlFor={idCampo}>
-          Clave API · <span className="aj-mono">{p.variable}</span>
-        </label>
-        <button type="button" className="aj-texto-btn" onClick={() => setVerValor((v) => !v)}>
-          {verValor ? "Ocultar" : "Mostrar"}
-        </button>
+        <label htmlFor={editando ? idCampo : undefined}>Clave API · <span className="aj-mono">{p.variable}</span></label>
+        {!editando && <button type="button" className="aj-texto-btn" onClick={() => setEditando(true)}>Editar</button>}
+        {editando && <button type="button" className="aj-texto-btn" onClick={() => { setEditando(false); setValor(""); setVerValor(false); }}>Cancelar</button>}
       </div>
-      <div className="aj-clave-fila">
-        <input
-          id={idCampo}
-          className="aj-input aj-mono"
-          type={verValor ? "text" : "password"}
-          autoComplete="off"
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck={false}
-          placeholder={p.guardada ? "Pega una clave nueva" : "Pega la clave"}
-          value={valor}
-          disabled={ocupado}
-          onChange={(e) => setValor(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter guarda aquí; si no, enviaría el formulario de Ajustes.
-            if (e.key !== "Enter") return;
-            e.preventDefault();
-            enviar();
-          }}
-        />
-        <button type="button" className="aj-btn aj-btn-primario" onClick={enviar} disabled={!valor.trim() || ocupado}>
-          {guardar.isPending ? "Guardando…" : "Guardar"}
-        </button>
-        {p.guardada && (
-          <button type="button" className="aj-btn" onClick={() => quitar.mutate()} disabled={ocupado}>
-            {quitar.isPending ? "Quitando…" : "Quitar"}
+      {editando ? (
+        <div className="aj-clave-fila">
+          <input
+            id={idCampo}
+            className="aj-input aj-mono"
+            type={verValor ? "text" : "password"}
+            autoComplete="new-password"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder={p.guardada || p.configured ? "Pega una clave nueva" : "Pega la clave"}
+            value={valor}
+            disabled={ocupado}
+            onChange={(e) => setValor(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              enviar();
+            }}
+          />
+          <button type="button" className="aj-texto-btn" onClick={() => setVerValor((v) => !v)} aria-pressed={verValor}>
+            {verValor ? "Ocultar" : "Mostrar"}
           </button>
-        )}
-      </div>
+          <button type="button" className="aj-btn aj-btn-primario" onClick={enviar} disabled={!valor.trim() || ocupado}>
+            {guardar.isPending ? "Guardando…" : "Guardar clave"}
+          </button>
+          {p.guardada && <button type="button" className="aj-btn" onClick={() => quitar.mutate()} disabled={ocupado}>{quitar.isPending ? "Quitando…" : "Quitar"}</button>}
+        </div>
+      ) : (
+        <div className="aj-clave-guardada">
+          <span className="aj-entrada" aria-label="Clave configurada y oculta">••••••••••••••••</span>
+          {p.guardada && <button type="button" className="aj-btn" onClick={() => quitar.mutate()} disabled={ocupado}>{quitar.isPending ? "Quitando…" : "Quitar"}</button>}
+        </div>
+      )}
       <p className="aj-nota">{estado}</p>
       {aviso && <p className="aj-nota" role="status">{aviso}</p>}
       {error && <p className="aj-error" role="alert">{error}</p>}

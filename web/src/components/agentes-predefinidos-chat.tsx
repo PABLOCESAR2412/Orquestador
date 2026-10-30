@@ -139,7 +139,7 @@ function escaparRegExp(valor: string): string {
 function valorExplicito(textos: string[], aliases: string[] = []): string {
   for (const texto of textos) {
     for (const alias of aliases) {
-      const patron = new RegExp(`(?:^|[\\n;])\\s*(?:${escaparRegExp(alias)})\\s*[:=]\\s*([^\\n;]{1,500})`, "i");
+      const patron = new RegExp(`(?:^|[\n;])\\s*(?:${escaparRegExp(alias)})\\s*[:=]\\s*([^\n;]{1,500})`, "i");
       const valor = texto.match(patron)?.[1]?.trim();
       if (valor) return valor;
     }
@@ -152,12 +152,14 @@ export function AgentesPredefinidosChat({
   draft,
   onClose,
   onApply,
+  onConfigureSupervisor,
   disparador,
 }: {
   messages: Message[];
   draft: string;
   onClose: () => void;
   onApply: (draft: string) => void;
+  onConfigureSupervisor: (draft: string) => void;
   disparador: RefObject<HTMLButtonElement | null>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -203,12 +205,12 @@ export function AgentesPredefinidosChat({
       ? `${cantidad} campo${cantidad === 1 ? "" : "s"} completado${cantidad === 1 ? "" : "s"}; conservé los valores que ya habías escrito.`
       : "No encontré otros datos claros. Añádelos manualmente; no voy a adivinarlos.");
   };
-  const usarEnChat = () => {
+  const prepararBorrador = () => {
     const campos = agente.campos.flatMap((campo) => {
       const valor = valores[`${agente.id}:${campo.id}`]?.trim();
       return valor ? [`${campo.etiqueta}: ${valor}`] : [];
     });
-    onApply(`$${agente.id}\n\n${campos.join("\n")}`.trim());
+    return `$${agente.id}\n\n${campos.join("\n")}`.trim();
   };
 
   return (
@@ -249,8 +251,11 @@ export function AgentesPredefinidosChat({
               );
             })}
             <div className="tl-agentes-pie">
-              <p className="tl-orquestacion-nota">Esto prepara el borrador del chat para que lo revises. No lo envía ni publica contenido o escribe en servicios externos.</p>
-              <button type="button" className="primary" onClick={usarEnChat} disabled={agente.campos.some((campo) => campo.requerido && !valores[`${agente.id}:${campo.id}`]?.trim())}>Usar en el chat</button>
+              <p className="tl-orquestacion-nota">La plantilla prepara un borrador; no lo envía, publica ni escribe en servicios externos. Para que Telo inicie auxiliares, configura el Supervisor y añade modelos. Usarán las conexiones guardadas en Configuración → Proveedores IA, sin credenciales separadas por agente. Revisa y envía el mensaje manualmente.</p>
+              <div className="tl-dialogo-acciones">
+                <button type="button" className="primary" onClick={() => onConfigureSupervisor(prepararBorrador())} disabled={agente.campos.some((campo) => campo.requerido && !valores[`${agente.id}:${campo.id}`]?.trim())}>Configurar Supervisor y auxiliares</button>
+                <button type="button" className="tl-boton" onClick={() => onApply(prepararBorrador())} disabled={agente.campos.some((campo) => campo.requerido && !valores[`${agente.id}:${campo.id}`]?.trim())}>Usar en el chat</button>
+              </div>
             </div>
           </div>
         </div>
