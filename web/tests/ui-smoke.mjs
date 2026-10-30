@@ -1245,7 +1245,7 @@ try {
     assert.equal(await page.getByRole("heading", { name: "Cuenta de Google", exact: true }).count(), 0);
     const proveedoresInferencia = page.getByRole("tablist", { name: "Proveedores de inferencia" });
     await proveedoresInferencia.getByRole("tab", { name: "Google Gemini" }).waitFor();
-    assert.equal(await proveedoresInferencia.getByRole("tab").count(), 4);
+    assert.equal(await proveedoresInferencia.getByRole("tab").count(), 5);
     const panelGemini = page.getByRole("tabpanel", { name: "Google Gemini" });
     await panelGemini.getByRole("button", { name: "Editar", exact: true }).click();
     assert.equal(await panelGemini.locator("input[type=password]").count(), 1, "la clave solo aparece al editarla");
