@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type PasoActividad, type SubagentChat } from "../api";
 import { errorText } from "../lib/model";
@@ -165,11 +165,13 @@ export function ProcesoAgente({
   pasos,
   enCurso = false,
   textoFinal = "",
+  actor = "Agente",
 }: {
   pasos: PasoActividad[];
   enCurso?: boolean;
   // Respuesta final del mensaje: si un paso de texto es igual, no se repite.
   textoFinal?: string;
+  actor?: string;
 }) {
   const visibles = sinRespuesta(pasos, textoFinal);
   if (visibles.length === 0) {
@@ -180,6 +182,8 @@ export function ProcesoAgente({
       {visibles.map((p) =>
         p.tipo === "texto" ? (
           <li key={p.seq} className="tl-proceso-texto">
+            <strong className="tl-proceso-actor">{actor}</strong>
+            <span aria-hidden="true"> · </span>
             {p.titulo}
           </li>
         ) : (
@@ -264,7 +268,7 @@ export function ProcesoGuardado({
           {pasos.data && pasos.data.length === 0 && (
             <p className="tl-nota">No hay pasos guardados para esta respuesta.</p>
           )}
-          {pasos.data && pasos.data.length > 0 && <ProcesoAgente pasos={pasos.data} textoFinal={textoFinal} />}
+          {pasos.data && pasos.data.length > 0 && <ProcesoAgente pasos={pasos.data} textoFinal={textoFinal} actor="Supervisor" />}
           {abierto && !subagentesFijos && <SubagentesTurno conversacionId={conversacionId} turnoId={turnoId} onAbrir={onAbrirSubchat} />}
         </div>
       )}
@@ -272,13 +276,13 @@ export function ProcesoGuardado({
   );
 }
 
-function SubagenteFila({ hijo, onAbrir }: { hijo: SubagentChat; onAbrir?: (id: string) => void }) {
+function SubagenteFila({ hijo, onAbrir, actividadVisible }: { hijo: SubagentChat; onAbrir?: (id: string) => void; actividadVisible: boolean }) {
   const enCurso = hijo.subagent_status === "running";
   const pasos = useQuery({
     queryKey: ["actividad", hijo.id, hijo.subagent_turn_id],
     queryFn: () => api.listTurnoActividad(hijo.id, hijo.subagent_turn_id!),
-    enabled: Boolean(hijo.subagent_turn_id),
-    refetchInterval: enCurso ? 1200 : false,
+    enabled: Boolean(hijo.subagent_turn_id) && actividadVisible,
+    refetchInterval: enCurso && actividadVisible ? 1000 : false,
   });
   const estado = hijo.subagent_status === "done"
     ? "Completado"
@@ -302,11 +306,19 @@ function SubagenteFila({ hijo, onAbrir }: { hijo: SubagentChat; onAbrir?: (id: s
           {estado}
         </span>
       </div>
-      <details className="tl-subagente-detalle" open={enCurso}>
-        <summary>Prompt asignado</summary>
+      {hijo.subagent_prompt && (
+        <p className="tl-subagente-encargo">
+          <strong>Encargo del Supervisor:</strong> {hijo.subagent_prompt.replace(/\s+/g, " ").slice(0, 240)}{hijo.subagent_prompt.length > 240 ? "…" : ""}
+        </p>
+      )}
+      <details className="tl-subagente-detalle">
+        <summary>Ver instrucción completa</summary>
         <p>{hijo.subagent_prompt}</p>
       </details>
-      {enCurso && pasos.data && pasos.data.length > 0 && <ProcesoAgente pasos={pasos.data} enCurso />}
+      {enCurso && pasos.data && pasos.data.length > 0 && <ProcesoAgente pasos={pasos.data} enCurso actor={hijo.subagent_agent || "Subagente"} />}
+      {enCurso && (!pasos.data || pasos.data.length === 0) && (
+        <p className="tl-subagente-espera">Esperando el primer paso observable de este agente…</p>
+      )}
       {!enCurso && hijo.subagent_status === "failed" && hijo.subagent_result && (
         <p className="tl-subagente-resultado is-error">{hijo.subagent_result}</p>
       )}
@@ -338,16 +350,18 @@ export function SubagentesTurno({
   enCurso?: boolean;
   mostrarEspera?: boolean;
 }) {
+  const [abierto, setAbierto] = useState(true);
+  useEffect(() => setAbierto(true), [turnoId]);
   const subagentes = useQuery({
     queryKey: ["subagentes", conversacionId, turnoId],
     queryFn: () => api.listSubagentes(conversacionId, turnoId),
     enabled: Boolean(conversacionId && turnoId) && hijosFijos === undefined,
-    refetchInterval: (query) => hijosFijos === undefined && (enCurso || query.state.data?.some((hijo) => hijo.subagent_status === "running")) ? 1200 : false,
+      refetchInterval: (query) => hijosFijos === undefined && (enCurso || query.state.data?.some((hijo) => hijo.subagent_status === "running")) ? 1000 : false,
   });
   const hijos = hijosFijos ?? subagentes.data ?? [];
   if (hijos.length === 0 && !(enCurso && mostrarEspera)) return null;
   const titulo = hijos.length === 0
-    ? "Delegación solicitada"
+    ? "Aún no hay subagentes"
     : hijos.length === 1
       ? "Se creó 1 subagente"
       : `Se crearon ${hijos.length} subagentes`;
@@ -359,14 +373,14 @@ export function SubagentesTurno({
   ].filter(([cantidad]) => Number(cantidad) > 0).map(([cantidad, etiqueta]) => `${cantidad} ${etiqueta}`).join(" · ");
 
   return (
-    <section className="tl-subagentes" aria-live="polite" aria-label="Subagentes de este turno">
-      <header className="tl-subagentes-cabecera">
+    <details className="tl-subagentes" open={abierto} onToggle={(event) => setAbierto(event.currentTarget.open)} aria-live="polite" aria-label="Subagentes delegados por el Supervisor">
+      <summary className="tl-subagentes-cabecera">
         <strong>{titulo}</strong>
         {resumen && <span>{resumen}</span>}
-      </header>
+      </summary>
       {subagentes.isError && <p className="tl-nota">No se pudo actualizar el estado de los subagentes.</p>}
-      {hijos.length === 0 && <p className="tl-nota">Los subchats aparecerán aquí cuando OpenCode cree cada subagente.</p>}
-      {hijos.map((hijo) => <SubagenteFila key={hijo.id} hijo={hijo} onAbrir={onAbrir} />)}
-    </section>
+      {hijos.length === 0 && <p className="tl-nota">Los auxiliares del Supervisor se ejecutan en «Actividad en vivo» y no crean subchats de OpenCode. Aquí solo aparecen los subchats que el modelo principal crea con la herramienta task. Para usar auxiliares, configura y guarda el Supervisor para este chat; sus modelos usan las conexiones de «Configuración → Proveedores IA».</p>}
+      {hijos.map((hijo) => <SubagenteFila key={hijo.id} hijo={hijo} onAbrir={onAbrir} actividadVisible={abierto} />)}
+    </details>
   );
 }

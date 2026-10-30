@@ -91,6 +91,10 @@ try {
     let conversacionesDisponibles = false;
     let modeloC1 = "google/prueba";
     let esfuerzoC1 = null;
+    let orquestacionC1 = false;
+    let seleccionAutomaticaC1 = true;
+    let trabajadoresC1 = [];
+    let configuracionesOrquestacion = [];
     let codexSesionEnPicker = false;
     let jevConfigurada = false;
     let approvals = 0;
@@ -147,7 +151,7 @@ try {
       else if (path === "/api/media/capacidades") data = {};
       else if (path === "/api/conversations") {
         const lista = conversacionesDisponibles ? [
-        { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, tiene_sesion: true, created_at: now, subchats: [{ id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true }] },
+        { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, orquestacion_habilitada: orquestacionC1, orquestacion_seleccion_automatica: seleccionAutomaticaC1, orquestacion_trabajadores: trabajadoresC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, tiene_sesion: true, created_at: now, subchats: [{ id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true }] },
         { id: "c2", title: "Chat paralelo", model: "nvidia/nemotron-test", project_id: null, project_name: null, created_at: now },
         { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, pendiente_aprobacion: true, estado_tarea: "pendiente_aprobacion", estado_tarea_id: "review-c3", estado_tarea_version: "hash-c3", created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
         { id: "c4", title: "Chat anterior", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() },
@@ -255,9 +259,13 @@ try {
       }
       else if (path === "/api/conversations/c1" && route.request().method() === "PATCH") {
         const body = route.request().postDataJSON();
+        configuracionesOrquestacion.push(body);
         if ("model" in body) modeloC1 = body.model;
         if ("effort" in body) esfuerzoC1 = body.effort;
-        data = { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, pinned_at: null, costTier: null, costWarning: null };
+        if ("orquestacion_habilitada" in body) orquestacionC1 = body.orquestacion_habilitada;
+        if ("orquestacion_seleccion_automatica" in body) seleccionAutomaticaC1 = body.orquestacion_seleccion_automatica;
+        if ("orquestacion_trabajadores" in body) trabajadoresC1 = body.orquestacion_trabajadores;
+        data = { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, orquestacion_habilitada: orquestacionC1, orquestacion_seleccion_automatica: seleccionAutomaticaC1, orquestacion_trabajadores: trabajadoresC1, pinned_at: null, costTier: null, costWarning: null };
       }
       else if (path === "/api/conversations/c2/messages") data = [
         { id: "a-c2-pdf", role: "assistant", content: "PDF libre generado: `libre.pdf`. Imagen lista: `infografía final.png`.", model: "nvidia/nemotron-test", created_at: now },
@@ -293,7 +301,15 @@ try {
         { id: "groq/other-test", provider: "groq", name: "Other Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Other", recommended: true },
       ] };
       else if (path === "/api/preferences") data = { defaultModel: null, defaultEffort: null, monthlyBudgetUsd: null, budgetAlertPercent: 80 };
-      else if (path === "/api/providers") data = [{ id: "codex", name: "Codex", configured: codexSesionEnPicker, variable: null, enAgente: false, guardable: false, sesion: codexSesionEnPicker }];
+      else if (path === "/api/providers") data = [
+        { id: "opencode", name: "OpenCode", configured: true, implemented: true, hint: "CLI instalado.", variable: null, enAgente: true, guardable: false, guardada: false, sesion: false },
+        { id: "codex", name: "Codex", configured: codexSesionEnPicker, implemented: true, hint: "Sesión de Codex.", variable: "OPENAI_API_KEY", enAgente: false, guardable: false, guardada: false, sesion: codexSesionEnPicker },
+        { id: "google", name: "Google (Gemini)", configured: true, implemented: true, hint: "Clave de prueba.", variable: "GOOGLE_GENERATIVE_AI_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
+        { id: "groq", name: "Groq", configured: false, implemented: true, hint: "Clave de prueba.", variable: "GROQ_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
+        { id: "nvidia", name: "NVIDIA", configured: true, implemented: true, hint: "Clave de prueba.", variable: "NVIDIA_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
+        { id: "openrouter", name: "OpenRouter", configured: false, implemented: true, hint: "Clave de prueba.", variable: "OPENROUTER_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
+      ];
+      else if (/^\/api\/providers\/[^/]+\/probar$/.test(path)) data = { ok: true, modelos: 7 };
       else if (path === "/api/providers/codex/models") data = { generado: now, models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", context: 100000, variants: ["high"] }] };
       else if (path === "/api/providers/codex/login") data = { estado: "esperando", conectada: false, url: "https://auth.openai.com/codex/device", codigo: "ABCD-EFGH", salida: "Salida de prueba\n" + "x".repeat(300) };
       else if (path === "/api/jev" && route.request().method() === "GET") data = { disponible: true, configurada: jevConfigurada, actualizada_en: jevConfigurada ? now : null };
@@ -325,7 +341,6 @@ try {
         data = { creada: true };
       }
       else if (path === "/api/servidor") data = null;
-      else if (path === "/api/cuotas") data = { proveedores: [] };
       else if (path === "/api/skills") data = { skills: [] };
       else if (path.includes("/herramientas/")) data = { instalada: true, estado: "inactivo" };
       else if (path.includes("github/app")) data = { configurado: true, faltantes: [], seleccionada: 1, instalaciones: [
@@ -354,10 +369,11 @@ try {
       }
       else if (path === "/api/uso") data = { generado: now, proveedores: [{
         id: "google", nombre: "Google (Gemini)",
-        ultimas5h: { costoUsd: 0.5, tokens: 1200, llamadas: 2 },
-        ultimos7d: { costoUsd: 1, tokens: 4000, llamadas: 6 },
-        cuotaRestanteUsd: 4, precision: "medida_telo",
-      }] };
+        ultimas5h: { costoUsd: 0.5, costoEstimadoUsd: 0.5, costesEstimados: 2, costesNoDisponibles: 0, costesDesconocidos: 0, tokens: 1200, tokensMedidos: 1200, tokensEstimados: 0, tokensNoDisponibles: 0, tokensDesconocidos: 0, llamadasSinTokens: 0, llamadas: 2 },
+        ultimos7d: { costoUsd: 1, costoEstimadoUsd: 1, costesEstimados: 6, costesNoDisponibles: 0, costesDesconocidos: 0, tokens: 4000, tokensMedidos: 4000, tokensEstimados: 0, tokensNoDisponibles: 0, tokensDesconocidos: 0, llamadasSinTokens: 0, llamadas: 6 },
+        mesActual: { costoUsd: 1, costoEstimadoUsd: 1, costesEstimados: 6, costesNoDisponibles: 0, costesDesconocidos: 0, tokens: 4000, tokensMedidos: 4000, tokensEstimados: 0, tokensNoDisponibles: 0, tokensDesconocidos: 0, llamadasSinTokens: 0, llamadas: 6 },
+        precision: "registro_telo",
+      }], googleLive: { conectado: true, estado: "activo", mensaje: "Clave válida", ultimaComprobacion: now } };
       else if (path === "/api/analytics") data = {
         days: 30, filtros: { proyecto: null, modelo: null }, proyectos: [], modelos: [], budget: null, usoJev: [],
         totals: { calls: 1, inputTokens: sinDatos ? 0 : 8, outputTokens: sinDatos ? 0 : 2, cost: 0 }, byDay: [{ day: now.slice(0, 10), calls: 1, cost: 0, tokens: sinDatos ? 0 : 10, tokensEstimados: 0, modelos: [{ model: "google/prueba", provider: "google", calls: 1, tokens: sinDatos ? 0 : 10, estimados: 0 }] }], byModel: [{ model: "opencode/muse-spark-1.3-contributor-free-con-nombre-extenso", tareas: 0, tokens: 3100000, duracionMediaSeg: 591, cost: 0, calls: 2 }],
@@ -422,6 +438,8 @@ try {
     const mensajeSupervisor = page.locator(".tl-msg-agente").filter({ hasText: "Faltan dependencias" }).first();
     await mensajeSupervisor.getByText("Se creó 1 subagente", { exact: true }).waitFor();
     await mensajeSupervisor.getByText("1 trabajando", { exact: true }).waitFor();
+    await mensajeSupervisor.getByText("Encargo del Supervisor:", { exact: false }).waitFor();
+    await mensajeSupervisor.getByText("Revisa las rutas y reporta riesgos", { exact: false }).waitFor();
     await mensajeSupervisor.locator(".tl-proceso-boton").click();
     await mensajeSupervisor.getByText("Ejecutando git status", { exact: true }).first().waitFor();
     await mensajeSupervisor.getByRole("button", { name: "Abrir subchat", exact: true }).click();
@@ -1058,30 +1076,54 @@ try {
     } else {
       console.log("SKIP video: define TELO_UI_VIDEO_FIXTURE con un MP4 o WebM local para probar la decodificación real.");
     }
-    await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("Haz una imagen de un colibrí");
+    assert.equal(await page.getByRole("button", { name: "Herramientas y comandos", exact: true }).count(), 1, "herramientas y comandos están en la barra superior");
+    assert.equal(await page.getByRole("button", { name: "Capacidades multimedia", exact: true }).count(), 0, "el compositor ya no muestra el panel antiguo de capacidades");
+    await page.getByRole("button", { name: "Configurar supervisor y modelos auxiliares", exact: true }).click();
+    const dialogoOrquestacion = page.getByRole("dialog", { name: "Supervisor del chat" });
+    await dialogoOrquestacion.waitFor();
+    await dialogoOrquestacion.getByLabel("Activar auxiliares para esta conversación").check();
+    assert.equal(await dialogoOrquestacion.getByRole("radio", { name: /Elegir según cada petición/ }).isChecked(), true);
+    assert.equal(await dialogoOrquestacion.locator(".tl-orquestacion-auxiliar").count(), 3, "el supervisor propone una lista dinámica de hasta tres modelos candidatos");
+    await dialogoOrquestacion.getByLabel("Función auxiliar 2").selectOption("arquitectura");
+    await dialogoOrquestacion.getByRole("button", { name: "Quitar auxiliar 3", exact: true }).click();
+    assert.equal(await dialogoOrquestacion.getByLabel("Modelo auxiliar 3").count(), 0, "se puede reducir la lista de modelos auxiliares");
+    await dialogoOrquestacion.getByRole("button", { name: "Añadir modelo", exact: true }).click();
+    const guardarOrquestacion = page.waitForRequest(request => request.url().endsWith("/api/conversations/c1") && request.method() === "PATCH");
+    await dialogoOrquestacion.getByRole("button", { name: "Guardar configuración", exact: true }).click();
+    const peticionOrquestacion = await guardarOrquestacion;
+    const configuracionGuardada = peticionOrquestacion.postDataJSON();
+    assert.equal(configuracionGuardada.orquestacion_habilitada, true);
+    assert.equal(configuracionGuardada.orquestacion_seleccion_automatica, true);
+    assert.equal(configuracionGuardada.orquestacion_trabajadores.length, 3, "se guarda la cantidad dinámica de modelos candidatos");
+    assert.equal(configuracionGuardada.orquestacion_trabajadores[0].model === configuracionGuardada.model, false, "el modelo supervisor no se duplica como auxiliar");
+    assert.equal(configuracionGuardada.orquestacion_trabajadores[0].rol, configuracionGuardada.orquestacion_trabajadores[1].rol, "se permiten varios candidatos con la misma función");
+    assert.equal(configuracionesOrquestacion.length > 0, true);
+
+    const mensaje = page.getByRole("textbox", { name: "Mensaje", exact: true });
+    await mensaje.fill("Haz un video de una ciudad al atardecer");
+    await page.locator(".tl-aviso-generacion-media").filter({ hasText: "Telo no tiene conectado un generador externo de video" }).waitFor();
+    assert.equal(await page.locator(".tl-aviso-generacion-media").filter({ hasText: "herramientas locales disponibles" }).count(), 1, "el aviso aclara que el agente puede usar herramientas locales");
+    await mensaje.fill("¿Podrías explicarme cómo hacer un video?");
+    assert.equal(await page.locator(".tl-aviso-generacion-media").count(), 0, "una pregunta informativa sobre video no activa el aviso de generación");
+    await mensaje.fill("Haz una imagen de un colibrí");
+    await page.locator(".tl-aviso-generacion-media").filter({ hasText: "Telo no tiene conectado un generador externo de imagen" }).waitFor();
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
+    await page.locator(".tl-aviso-generacion-media").waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Uso", exact: true }).click();
     const panelUso = page.getByRole("dialog", { name: "Uso del proveedor" });
     await panelUso.waitFor();
-    const medidoresUso = panelUso.locator('[role="meter"]');
-    await medidoresUso.nth(1).waitFor({ state: "visible" });
-    assert.equal(await medidoresUso.count(), 2);
-    assert.equal(await medidoresUso.nth(0).getAttribute("aria-valuenow"), "80");
-    assert.equal(await medidoresUso.nth(1).getAttribute("aria-valuenow"), "88.9");
-    assert.equal((await panelUso.textContent()).includes("US$ 0.50 · 11,1 %"), true);
-    assert.equal((await panelUso.textContent()).includes("US$ 4.00 · 88,9 %"), true);
+    await panelUso.getByText("Últimos 7 días", { exact: true }).waitFor();
+    const textoUso = await panelUso.textContent();
+    assert.equal(await panelUso.locator('[role="meter"]').count(), 0, "no se presentan porcentajes/cuotas ficticios");
+    assert.equal(textoUso.includes("Últimos 7 días"), true);
+    assert.equal(textoUso.includes("Últimas 5 horas"), true);
+    assert.equal(textoUso.includes("Mes actual (UTC)"), true);
+    assert.equal(textoUso.includes("Estimación de coste"), true);
+    assert.equal(textoUso.includes("saldo ni los límites efectivos"), true);
+    assert.equal(/\b(?:restantes|RPD|RPM|cuota restante)\b/i.test(textoUso), false);
     await page.keyboard.press("Escape");
-    await page.getByRole("button", { name: "Capacidades multimedia", exact: true }).click();
-    const panelMedios = page.getByRole("dialog", { name: "Capacidades multimedia" });
-    await panelMedios.waitFor();
-    const textoMedios = await panelMedios.textContent();
-    assert.equal(textoMedios.includes("Google Test"), true);
-    assert.equal(textoMedios.includes("VoiceStudio"), true);
-    assert.equal(textoMedios.includes("no llama generadores externos de pago"), true);
-    assert.equal(textoMedios.includes("Google Nano Banana 2.1"), false);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-    await page.screenshot({ path: `scratch/capturas-ci/medios-${width}.png` });
-    await page.keyboard.press("Escape");
+    await page.screenshot({ path: `scratch/capturas-ci/chat-uso-${width}.png` });
     task.status = "running";
     task.started_at = new Date(Date.now() - 12_000).toISOString();
     const pensando = page.locator(".tl-pensando");
@@ -1201,6 +1243,18 @@ try {
     await page.goto(`${base}/ajustes`);
     await page.getByRole("heading", { name: "Ajustes y Servidor", exact: true }).waitFor();
     assert.equal(await page.getByRole("heading", { name: "Cuenta de Google", exact: true }).count(), 0);
+    const proveedoresInferencia = page.getByRole("tablist", { name: "Proveedores de inferencia" });
+    await proveedoresInferencia.getByRole("tab", { name: "Google Gemini" }).waitFor();
+    assert.equal(await proveedoresInferencia.getByRole("tab").count(), 4);
+    const panelGemini = page.getByRole("tabpanel", { name: "Google Gemini" });
+    await panelGemini.getByRole("button", { name: "Editar", exact: true }).click();
+    assert.equal(await panelGemini.locator("input[type=password]").count(), 1, "la clave solo aparece al editarla");
+    await panelGemini.getByRole("button", { name: "Cancelar", exact: true }).click();
+    await panelGemini.locator(".aj-probar-proveedor").getByRole("button", { name: "Probar conexión", exact: true }).click();
+    await panelGemini.getByText(/Catálogo consultado: 7 modelos disponibles/).waitFor();
+    await proveedoresInferencia.getByRole("tab", { name: "OpenRouter" }).click();
+    await page.getByRole("tabpanel", { name: "OpenRouter" }).waitFor();
+    await page.screenshot({ path: `scratch/capturas-ci/proveedores-${width}.png` });
     await page.goto(`${base}/ajustes?pestana=personalizacion`);
     const tarjetaApariencia = page.locator('article[aria-labelledby="ajustes-apariencia"]');
     await tarjetaApariencia.waitFor();

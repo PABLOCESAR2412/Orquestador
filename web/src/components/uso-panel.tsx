@@ -1,10 +1,9 @@
 import { useRef, useState, type ReactNode, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type UsoProveedor } from "../api";
+import { api, type UsoProveedor, type UsoVentanaProveedor } from "../api";
 import { errorText, formatUsd, proveedorDeModelo } from "../lib/model";
 import { compact } from "./charts";
 import { useDialogo } from "./controls";
-import { CuotasPanel } from "./cuotas-panel";
 
 type Props = {
   // Id del modelo del chat ("proveedor/modelo"). null: el servidor elige el predeterminado.
@@ -14,12 +13,11 @@ type Props = {
   disparador?: RefObject<HTMLElement | null>;
 };
 
-type Ventana = { costoUsd: number; tokens: number; llamadas: number };
+type Ventana = UsoVentanaProveedor;
 
 export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [previo] = useState(() => document.activeElement as HTMLElement | null);
-  const [anotando, setAnotando] = useState(false);
   const proveedorId = proveedorDeModelo(modelo);
 
   const cerrar = () => {
@@ -33,7 +31,7 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
     queryKey: ["uso"],
     queryFn: api.usage,
     enabled: proveedorId !== null,
-    refetchInterval: 5_000,
+    refetchInterval: 30_000,
   });
   const proveedor: UsoProveedor | null =
     uso.data?.proveedores.find((p) => p.id === proveedorId) ?? null;
@@ -62,81 +60,51 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
     );
   } else {
     const googleLive = proveedor?.googleLive ?? (proveedorId === "google" ? uso.data?.googleLive : undefined);
-    const ultimos7d = proveedor?.ultimos7d ?? { costoUsd: 0, tokens: 0, llamadas: 0 };
-    const ultimas5h = proveedor?.ultimas5h ?? { costoUsd: 0, tokens: 0, llamadas: 0 };
+    const ventanaVacia: Ventana = { costoUsd: 0, costoEstimadoUsd: 0, costesEstimados: 0, costesNoDisponibles: 0, costesDesconocidos: 0, tokens: 0, tokensMedidos: 0, tokensEstimados: 0, tokensNoDisponibles: 0, tokensDesconocidos: 0, llamadasSinTokens: 0, llamadas: 0 };
+    const ultimos7d = proveedor?.ultimos7d ?? ventanaVacia;
+    const ultimas5h = proveedor?.ultimas5h ?? ventanaVacia;
+    const mesActual = proveedor?.mesActual ?? ventanaVacia;
     cuerpo = (
       <>
         {googleLive && (
-          <div className="usage-window" role="region" aria-label="API de Google Gemini en vivo" style={{ borderLeft: googleLive.conectado ? "3px solid var(--ok, #10b981)" : "3px solid var(--error, #ef4444)" }}>
+          <div className="usage-window" role="region" aria-label="Estado de conexión con Google AI Studio">
             <div className="usage-window-heading">
               <div className="usage-window-copy">
                 <span className="window-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span
-                    style={{
-                      display: "inline-block",
-                      width: "8px",
-                      height: "8px",
-                      borderRadius: "50%",
-                      backgroundColor: googleLive.conectado ? "var(--ok, #10b981)" : "var(--error, #ef4444)",
-                    }}
-                  />
-                  Google AI Studio (API en vivo)
+                  <span className={`usage-status-dot${googleLive.conectado ? " is-online" : ""}`} aria-hidden="true" />
+                  Comprobación de Google AI Studio
                 </span>
                 <span className="window-meta">{googleLive.mensaje}</span>
-              </div>
-              <div className="usage-remaining" aria-hidden="true">
-                <strong>{formatoPorcentaje(googleLive.porcentajeRestante)} %</strong>
-                <span style={{ fontSize: "11px", color: "var(--ink-2)", display: "block" }}>cuota RPD</span>
               </div>
             </div>
             <div className="usage-window-totals" style={{ marginTop: "8px" }}>
               <div>
-                <span>Peticiones hoy</span>
-                <strong>{googleLive.llamadasHoy} de {googleLive.limiteRpd} RPD</strong>
+                <span>Conexión</span>
+                <strong>{googleLive.conectado ? "Disponible" : "No confirmada"}</strong>
               </div>
               <div>
-                <span>Límite de ritmo</span>
-                <strong>{googleLive.limiteRpm} RPM</strong>
-              </div>
-              <div>
-                <span>Tokens hoy</span>
-                <strong>{compact(googleLive.tokensHoy)}</strong>
-              </div>
-              <div>
-                <span>Gasto estimado</span>
-                <strong>{formatUsd(googleLive.costoHoyUsd)}</strong>
+                <span>Última comprobación</span>
+                <strong>{new Intl.DateTimeFormat("es", { hour: "2-digit", minute: "2-digit" }).format(new Date(googleLive.ultimaComprobacion))}</strong>
               </div>
             </div>
           </div>
         )}
-        <VentanaSaldo
+        <VentanaUso
           titulo="Últimos 7 días"
           datos={ultimos7d}
-          saldoUsd={proveedor?.cuotaRestanteUsd ?? null}
-          porcentajeFijo={proveedorId === "google" && googleLive ? googleLive.porcentajeRestante : null}
-          textoSaldo={
-            proveedorId === "google" && googleLive && proveedor?.cuotaRestanteUsd === null
-              ? `${googleLive.restantesRpd} RPD disponibles`
-              : null
-          }
         />
-        <VentanaSaldo
+        <VentanaUso
           titulo="Últimas 5 horas"
           datos={ultimas5h}
-          saldoUsd={proveedor?.cuotaRestanteUsd ?? null}
-          porcentajeFijo={proveedorId === "google" && googleLive ? googleLive.porcentajeRestante : null}
-          textoSaldo={
-            proveedorId === "google" && googleLive && proveedor?.cuotaRestanteUsd === null
-              ? `${googleLive.restantesRpd} RPD disponibles`
-              : null
-          }
+        />
+        <VentanaUso
+          titulo="Mes actual (UTC)"
+          datos={mesActual}
         />
         <p className="usage-note">
           {proveedorId === "google"
-            ? "Métricas en vivo consultadas a Google AI Studio con cuota estándar gratuita (1,500 RPD / 15 RPM). El gasto estimado se calcula según las tarifas oficiales de Google Gemini ($0.075 / $0.30 por millón de tokens)."
-            : proveedor?.cuotaRestanteUsd === null || !proveedor
-            ? "Anota el saldo restante para ver porcentajes. Telo no consulta en vivo los límites ni el saldo del proveedor."
-            : "Los porcentajes comparan el costo registrado en cada ventana con ese gasto más el saldo anotado restante. Son una estimación de Telo, no la cuota real del proveedor."}
+            ? "Telo registra sus llamadas, no el uso total ni la cuota de Google. La comprobación en vivo solo valida la clave; aquí Google no devuelve el saldo ni los límites efectivos del proyecto y modelo."
+            : "Telo registra sus llamadas, no el uso hecho fuera de Telo. Aún no consulta las APIs oficiales de cuota de cada proveedor, así que no muestra cuánto saldo queda."}
         </p>
       </>
     );
@@ -157,104 +125,59 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
 
         {cuerpo}
 
-        <button
-          type="button"
-          className="ghost usage-toggle-saldos"
-          aria-expanded={anotando}
-          onClick={() => setAnotando((v) => !v)}
-        >
-          {anotando ? "Ocultar saldos" : "Anotar saldo"}
-        </button>
-        {anotando && <CuotasPanel onCerrar={() => setAnotando(false)} />}
       </div>
     </>
   );
 }
 
-function porcentajeGastado(costoUsd: number, saldoUsd: number | null): number | null {
-  if (saldoUsd === null) return null;
-  const gasto = Math.max(0, costoUsd);
-  const saldo = Math.max(0, saldoUsd);
-  const total = gasto + saldo;
-  if (total === 0) return null;
-  return Math.round((gasto / total) * 1000) / 10;
-}
-
-function formatoPorcentaje(valor: number): string {
-  return new Intl.NumberFormat("es", { maximumFractionDigits: 1 }).format(valor);
-}
-
-function VentanaSaldo({
+function VentanaUso({
   titulo,
   datos,
-  saldoUsd,
-  porcentajeFijo,
-  textoSaldo,
 }: {
   titulo: string;
   datos: Ventana | null;
-  saldoUsd: number | null;
-  porcentajeFijo?: number | null;
-  textoSaldo?: string | null;
 }) {
-  const gastoUsd = datos?.costoUsd ?? 0;
-  const gastadoCalc = porcentajeGastado(gastoUsd, saldoUsd);
-  const restante = porcentajeFijo !== undefined && porcentajeFijo !== null
-    ? porcentajeFijo
-    : gastadoCalc === null
-    ? null
-    : 100 - gastadoCalc;
-  const circunferencia = 2 * Math.PI * 8;
-  const etiquetaAccesible = restante === null
-    ? `${titulo}: ${saldoUsd === null ? "saldo sin anotar" : "porcentaje no disponible"}`
-    : `${titulo}: ${formatoPorcentaje(restante)} % restante`;
+  const gastoUsd = datos?.costoEstimadoUsd ?? 0;
+  const costosCompletos = Boolean(datos && datos.llamadas > 0 && datos.costesEstimados === datos.llamadas && datos.costesNoDisponibles === 0 && datos.costesDesconocidos === 0);
 
   const tieneUso = datos && (datos.tokens > 0 || datos.llamadas > 0);
+  const precisionTokens = datos
+    ? [
+        datos.tokensMedidos > 0 ? `${compact(datos.tokensMedidos)} medidos` : "",
+        datos.tokensEstimados > 0 ? `${compact(datos.tokensEstimados)} estimados` : "",
+        datos.llamadasSinTokens > 0 ? `${datos.llamadasSinTokens} llamadas sin tokens confirmados` : "",
+      ].filter(Boolean).join(" · ")
+    : "";
+  const etiquetaCoste = datos?.costesEstimados
+    ? `≈ ${formatUsd(gastoUsd)} estimado${costosCompletos ? "" : " (parcial)"}`
+    : "Sin dato fiable";
+  const promedioPorMil = datos && costosCompletos && datos.tokensMedidos === datos.tokens && datos.tokens > 0
+    ? gastoUsd / datos.tokens * 1000
+    : null;
+  const etiquetaPromedio = promedioPorMil === null
+    ? "No disponible"
+    : `≈ ${new Intl.NumberFormat("es", { minimumFractionDigits: 4, maximumFractionDigits: 6 }).format(promedioPorMil)} US$/1.000 tokens`;
 
   return (
-    <div
-      className="usage-window"
-      role={restante === null ? "group" : "meter"}
-      aria-label={etiquetaAccesible}
-      aria-valuemin={restante === null ? undefined : 0}
-      aria-valuemax={restante === null ? undefined : 100}
-      aria-valuenow={restante ?? undefined}
-    >
+    <div className="usage-window" role="group" aria-label={`${titulo}: uso registrado`}>
       <div className="usage-window-heading">
         <div className="usage-window-copy">
           <span className="window-label">{titulo}</span>
           <span className="window-meta">
             {tieneUso
-              ? `${compact(datos.tokens)} tokens · ${datos.llamadas} llamada${datos.llamadas === 1 ? "" : "s"}`
-              : "0 tokens · 0 llamadas"}
+              ? `${compact(datos.tokens)} tokens · ${datos.llamadas} llamada${datos.llamadas === 1 ? "" : "s"}${precisionTokens ? ` · ${precisionTokens}` : ""}`
+              : "0 tokens · 0 llamadas registradas"}
           </span>
-        </div>
-        <div className="usage-remaining" aria-hidden="true">
-          <strong>{restante === null ? "—" : `${formatoPorcentaje(restante)} %`}</strong>
-          {restante !== null && (
-            <svg className="usage-ring" viewBox="0 0 20 20">
-              <circle className="usage-ring-track" cx="10" cy="10" r="8" />
-              <circle
-                className="usage-ring-value"
-                cx="10"
-                cy="10"
-                r="8"
-                strokeDasharray={`${(restante / 100) * circunferencia} ${circunferencia}`}
-              />
-            </svg>
-          )}
         </div>
       </div>
       <div className="usage-window-totals">
         <div>
-          <span>Gastado</span>
-          <strong>{formatUsd(gastoUsd)}{gastadoCalc !== null && ` · ${formatoPorcentaje(gastadoCalc)} %`}</strong>
+          <span>Estimación de coste</span>
+          <strong>{etiquetaCoste}</strong>
         </div>
         <div>
-          <span>Saldo restante</span>
-          <strong>
-            {textoSaldo ?? (saldoUsd === null ? "Sin anotar" : `${formatUsd(saldoUsd)}${restante !== null ? ` · ${formatoPorcentaje(restante)} %` : ""}`)}
-          </strong>
+          <span>Estimación por 1.000 tokens</span>
+          <strong>{etiquetaPromedio}</strong>
         </div>
       </div>
     </div>

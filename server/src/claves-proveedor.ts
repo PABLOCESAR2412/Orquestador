@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { db } from "./db";
 import { claveMaestra, cifrar, descifrar } from "./secretos";
 
-// Claves de proveedor guardadas desde Ajustes (Groq, NVIDIA, Gemini). Se cifran con la misma clave maestra
+// Claves de proveedor guardadas desde Ajustes (Groq, NVIDIA, Gemini, OpenRouter). Se cifran con la misma clave maestra
 // que los secretos (AES-256-GCM, AAD "proveedor:<id>") y llegan a los agentes con el nombre de variable que
 // OpenCode espera. La API nunca devuelve el valor: solo dice si la clave está configurada.
 
@@ -18,6 +18,7 @@ export const PROVEEDORES_CON_CLAVE: ProveedorConClave[] = [
   { id: "groq", etiqueta: "Groq", variables: ["GROQ_API_KEY"] },
   { id: "nvidia", etiqueta: "NVIDIA", variables: ["NVIDIA_API_KEY"] },
   { id: "google", etiqueta: "Google (Gemini)", variables: ["GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"] },
+  { id: "openrouter", etiqueta: "OpenRouter", variables: ["OPENROUTER_API_KEY"] },
 ];
 
 const MIN_CLAVE = 8;

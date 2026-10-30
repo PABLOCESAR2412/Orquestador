@@ -75,9 +75,10 @@ export function crearDictador(opciones: {
   let activo = false;
   // El borrador tal como estaba al arrancar; el dictado se añade después de él.
   let base = "";
-  // Tramos ya confirmados por el motor y el tramo en curso (se reescribe con cada evento).
+  // Tramos ya confirmados por el motor y resultados interinos indexados por el navegador.
   let terminado = "";
   let enCurso = "";
+  const interinos = new Map<number, string>();
 
   const separador = (texto: string) => (texto && !/\s$/.test(texto) ? " " : "");
   const junta = (izquierda: string, derecha: string) => {
@@ -130,6 +131,7 @@ export function crearDictador(opciones: {
       base = borrador;
       terminado = "";
       enCurso = "";
+      interinos.clear();
       instancia = rec;
       activo = true;
       alCambiar(true);
@@ -139,20 +141,25 @@ export function crearDictador(opciones: {
       rec.onresult = (e) => {
         // Resultados de una instancia reemplazada o de un dictado ya cortado: fuera.
         if (!activo || instancia !== rec) return;
-        // Solo los tramos nuevos (desde resultIndex): los confirmados que el motor
-        // renueva con el mismo índice no deben escribirse dos veces.
+        // Actualiza los índices cambiados sin perder los interinos anteriores. El navegador
+        // puede entregar varias palabras interinas en índices distintos en un mismo evento.
         for (let i = Math.max(0, e.resultIndex); i < e.results.length; i++) {
           const segmento = e.results[i];
           const texto = segmento?.[0]?.transcript;
-          if (!texto) continue;
           if (segmento.isFinal) {
-            const limpio = texto.trim();
+            const limpio = texto?.trim() ?? "";
             if (limpio) terminado = junta(terminado, limpio);
-            enCurso = "";
+            interinos.delete(i);
           } else {
-            enCurso = texto.trim();
+            const limpio = texto?.trim() ?? "";
+            if (limpio) interinos.set(i, limpio);
+            else interinos.delete(i);
           }
         }
+        enCurso = Array.from(interinos.entries())
+          .sort(([a], [b]) => a - b)
+          .map(([, texto]) => texto)
+          .join(" ");
         pintar();
       };
       rec.onerror = (e) => {
@@ -166,6 +173,14 @@ export function crearDictador(opciones: {
         if (!activo) {
           cortar();
           return;
+        }
+        // Al reiniciar el motor, conserva cualquier resultado aún interino como parte
+        // del borrador y limpia sus índices, que vuelven a empezar en la nueva sesión.
+        if (interinos.size > 0) {
+          terminado = junta(terminado, Array.from(interinos.values()).join(" "));
+          interinos.clear();
+          enCurso = "";
+          pintar();
         }
         // El motor corta solo (silencio o un minuto): mientras el usuario siga dictando,
         // se vuelve a arrancar con el mismo texto acumulado.

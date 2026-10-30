@@ -7,6 +7,7 @@ import {
   leerSkill,
   listarSkills as listarSkillsArchivos,
   leerFrontmatter,
+  LIMITE_SKILL,
   type AmbitoSkills,
   SkillError as SkillArchivoError,
 } from "./skills";
@@ -23,7 +24,6 @@ export class SkillError extends Error {
   }
 }
 
-const MAX_CONTENIDO = 16_000;
 const CATALOGOS = [
   { repo: "anthropics/skills", prefix: "skills/" },
   { repo: "openai/skills", prefix: "skills/.curated/" },
@@ -182,7 +182,7 @@ export function guardarSkill(
   if (
     typeof input.content !== "string" ||
     !input.content.trim() ||
-    input.content.length > MAX_CONTENIDO
+    Buffer.byteLength(input.content, "utf8") > LIMITE_SKILL
   ) {
     throw new SkillError("invalid_skill_content");
   }
@@ -274,7 +274,7 @@ export async function buscarSkills(query: string): Promise<SkillEncontrada[]> {
 
 export async function importarSkill(projectId: string, url: string): Promise<SkillProyecto> {
   const documento = documentoGitHub(url);
-  const content = await descargar(documento.raw, MAX_CONTENIDO);
+  const content = await descargar(documento.raw, LIMITE_SKILL);
   return guardarSkill(projectId, { name: documento.name, content, source: documento.source });
 }
 
@@ -508,7 +508,7 @@ export async function instalarSkillComando(ambito: AmbitoSkills, comando: unknow
     }
     fuente = `https://github.com/${pedido.owner}/${pedido.repo}/blob/${rama}/${ruta}`;
     const raw = `https://raw.githubusercontent.com/${pedido.owner}/${pedido.repo}/${rama}/${ruta}`;
-    contenido = await descargar(raw, MAX_CONTENIDO);
+    contenido = await descargar(raw, LIMITE_SKILL);
   } catch (err) {
     if (copiaGlobal) {
       contenido = copiaGlobal.content;
@@ -528,7 +528,7 @@ export async function instalarSkillComando(ambito: AmbitoSkills, comando: unknow
       let exito = false;
       for (const urlRaw of urlsCdn) {
         try {
-          contenido = await descargar(urlRaw, MAX_CONTENIDO);
+          contenido = await descargar(urlRaw, LIMITE_SKILL);
           fuente = urlRaw.replace("raw.githubusercontent.com", "github.com").replace("/main/", "/blob/main/").replace("/master/", "/blob/master/");
           exito = true;
           break;

@@ -3,7 +3,7 @@ import { join, resolve, sep } from "node:path";
 import { config } from "./config";
 import { getModels } from "./models";
 
-const PETICION_DELEGAR = /\b(subagentes?|agentes?\s+(?:en\s+)?paralelo|deleg(?:a|ar|ando)|llama\s+a\s+(?:varios|m[aá]s\s+de\s+uno|un\s+subagente))\b/i;
+const PETICION_DELEGAR = /\b(?:subagentes?|agentes?\s+(?:en\s+)?paralelo|por\s+medio\s+de\s+(?:sus?\s+)?agentes?|(?:usa|utiliza|crea|lanza|activa|emplea)\s+(?:tus?\s+)?agentes?|agentes?\s+(?:para\s+que|que)\s+(?:revisen|analicen|investiguen|trabajen|verifiquen)|deleg(?:a|ar|ando)|llama\s+a\s+(?:varios|m[aá]s\s+de\s+uno|un\s+subagente))\b/i;
 const MAX_MODELOS = 4;
 
 export type PreparacionSubagentes = {
@@ -100,7 +100,7 @@ export async function prepararSubagentes(opts: {
         "mode: subagent",
         `model: ${idModelo}`,
         "---",
-        "Trabajas como subagente de Telo. Atiende únicamente la tarea que te asignó el agente principal, devuelve hallazgos concretos y aclara qué comprobaste. No inicies otros subagentes. Conserva las reglas e instrucciones del workspace.",
+        "Trabajas como subagente de Telo. Atiende únicamente la tarea que te asignó el agente principal y conserva las reglas del workspace. Si un comando, prueba o cambio falla, revisa el error, corrige la causa dentro del encargo y repite la comprobación fallida; limita la autocorrección a dos intentos. Si no se resuelve, devuelve el error y lo que intentaste. No inicies otros subagentes.",
         "",
       ].join("\n"),
       { encoding: "utf8", flag: "wx" },
@@ -109,6 +109,19 @@ export async function prepararSubagentes(opts: {
   });
 
   const detalle = alias.map((a) => `- ${a.nombre}: ${a.modelo} (${a.id})`).join("\n");
+  // En `opencode run` no hay una persona atendiendo solicitudes interactivas de permiso.
+  // Autoriza la herramienta task solo para los perfiles efímeros creados para esta petición;
+  // los demás subagentes siguen sujetos a la política global de OpenCode.
+  const permisosTask: Record<string, string> = { "*": "deny" };
+  for (const agente of alias) permisosTask[agente.nombre] = "allow";
+  writeFileSync(
+    join(directorio, "opencode.json"),
+    JSON.stringify({
+      $schema: "https://opencode.ai/config.json",
+      permission: { task: permisosTask },
+    }),
+    { encoding: "utf8", flag: "wx", mode: 0o600 },
+  );
   const plugin = `import { appendFileSync } from "node:fs";
 
 const salida = ${JSON.stringify(rutaCaptura)};
@@ -254,7 +267,7 @@ function emitError(sessionId, error) {
     rutaCaptura,
     instruccion: [
       "El usuario pidió expresamente delegar esta tarea en subagentes.",
-      "Usa el mecanismo de subagentes disponible y lanza trabajo independiente en paralelo cuando sea posible. Para el mismo modelo puedes llamar varias veces al perfil correspondiente.",
+      "Explica qué encargo asignas a cada perfil y lanza trabajos independientes en paralelo cuando sea posible. Usa cada perfil una vez inicialmente; si una sesión informa un error sin resolver, continúa esa misma sesión con una instrucción de corrección concreta una sola vez. No crees un reemplazo ni repitas un trabajo ya completado. Si la corrección no resuelve el error, toma el control si está dentro del alcance o informa el bloqueo con evidencia.",
       "Perfiles temporales disponibles:",
       detalle,
       "Al terminar, integra las respuestas y verifica cada afirmación y cambio de los subagentes contra el workspace o fuentes fiables. Informa qué comprobaste, qué pruebas ejecutaste y qué no pudiste verificar; no afirmes que algo pasó sin evidencia.",

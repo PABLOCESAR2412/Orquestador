@@ -40,11 +40,22 @@ describe("subagentes solicitados por el usuario", () => {
     });
     expect(perfiles?.instruccion).toContain("openai/gpt-4.1-mini");
     expect(perfiles?.instruccion).toContain("deepseek/deepseek-v4-flash");
+    expect(perfiles?.instruccion).toContain("continúa esa misma sesión con una instrucción de corrección concreta una sola vez");
+    expect(perfiles?.instruccion).toContain("No crees un reemplazo");
     const agentes = readdirSync(join(DATA_PRUEBA, "perfiles-subagente", "ejecucion-prueba", "agents"));
     expect(agentes).toHaveLength(2);
     const perfilesMd = agentes.map((archivo) => readFileSync(join(DATA_PRUEBA, "perfiles-subagente", "ejecucion-prueba", "agents", archivo), "utf8"));
+    expect(perfilesMd.every((contenido) => contenido.includes("limita la autocorrección a dos intentos"))).toBe(true);
     expect(perfilesMd.some((contenido) => contenido.includes('model: "openai/gpt-4.1-mini#high"'))).toBe(true);
     expect(perfilesMd.some((contenido) => contenido.includes('model: "deepseek/deepseek-v4-flash#high"'))).toBe(true);
+    const config = JSON.parse(readFileSync(join(DATA_PRUEBA, "perfiles-subagente", "ejecucion-prueba", "opencode.json"), "utf8")) as {
+      permission: { task: Record<string, string> };
+    };
+    expect(config.permission.task).toEqual({
+      "*": "deny",
+      "telo-deepseek-v4-flash-1": "allow",
+      "telo-gpt-4-1-mini-2": "allow",
+    });
     const plugin = readFileSync(join(DATA_PRUEBA, "perfiles-subagente", "ejecucion-prueba", "plugins", "telo-subagentes.js"), "utf8");
     expect(plugin).toContain("if (!hijos.has(id))");
     expect(plugin).toContain("const LIMITE_BYTES = 8 * 1024 * 1024");

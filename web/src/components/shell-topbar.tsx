@@ -27,7 +27,7 @@ export function ShellTopbar({
   drawerOpen: boolean;
   onMenu: () => void;
 }) {
-  const { triggerConfig, activeProjectId } = useShell();
+  const { triggerConfig, triggerPalette, activeProjectId } = useShell();
   const enChat = useRouterState({ select: (r) => r.location.pathname === "/chat" });
   const sinConexion = latencia.estado === "sin_conexion";
   const midiendo = latencia.estado === "midiendo";
@@ -58,6 +58,17 @@ export function ShellTopbar({
       </div>
 
       <div className="tl-top-acciones">
+        <button
+          type="button"
+          className="tl-boton tl-boton-icono tl-herramientas-global"
+          aria-label="Herramientas y comandos"
+          title="Herramientas y comandos · Ctrl+K"
+          onClick={triggerPalette}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94L14.7 6.3z" />
+          </svg>
+        </button>
         {enChat && !activeProjectId ? (
           <button
             type="button"

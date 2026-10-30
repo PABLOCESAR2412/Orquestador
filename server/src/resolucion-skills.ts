@@ -77,8 +77,9 @@ function skillsAutomaticas(texto: string): string[] {
   if (mencionaImagen && creaImagen) resultado.push("image-design");
 
   const mencionaMovimiento = /\b(animaci[oó]n(?:es)?|animad[oa]s?|movimiento|video(?:s)?|v[ií]deo(?:s)?|mp4|gif|webp animad[oa]|motion design)\b/i.test(texto);
-  const creaMovimiento = /\b(crea(?:r|ci[oó]n)?|gener(?:a|ar|aci[oó]n)|haz(?:me)?|diseñ(?:a|ar|o)|anima(?:r)?|edita(?:r)?|convierte|produce|mejora(?:r)?|corrige|arregla|revisa)\b/i.test(texto);
-  if (mencionaMovimiento && creaMovimiento) resultado.push("motion-design");
+  const creaMovimiento = /\b(crea(?:r|ci[oó]n)?|gener(?:a|ar|aci[oó]n)|haz(?:me)?|hacer|diseñ(?:a|ar|o)|anima(?:r)?|edita(?:r)?|convierte|produce|mejora(?:r)?|corrige|arregla|revisa)\b/i.test(texto);
+  const pideMovimiento = /\b(?:quiero|quisiera|necesito|me gustar[ií]a|puedes|podr[ií]as)\b[\s\S]{0,100}\b(?:hacer|crear|generar|producir|editar|animar|convertir)\b[\s\S]{0,100}\b(?:animaci[oó]n|video|v[ií]deo|mp4|gif)\b|\b(?:quiero|quisiera|necesito|me gustar[ií]a)\b[\s\S]{0,80}\b(?:un|una)\s+(?:video|v[ií]deo|animaci[oó]n)\b/i.test(texto);
+  if (mencionaMovimiento && (creaMovimiento || pideMovimiento)) resultado.push("motion-design", "hyperframes-video");
 
   const cambioAcotado = texto.length <= 4_000 &&
     /\b(corrige|arregla|fix|bug|error|implementa|añade|agrega|actualiza|cambia|refactoriza)\b/i.test(texto) &&

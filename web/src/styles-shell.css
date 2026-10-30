@@ -1336,6 +1336,14 @@
   gap: 6px;
   flex-shrink: 0;
 }
+.tl-top .tl-herramientas-global {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  min-height: 34px;
+  height: 34px;
+  padding: 0;
+}
 .tl-top .tema-boton.ghost {
   display: grid;
   place-items: center;
@@ -1379,6 +1387,7 @@
     height: calc(52px + env(safe-area-inset-top));
     padding-top: env(safe-area-inset-top);
   }
+  .tl-top .tl-herramientas-global { width: 40px; min-height: 40px; height: 40px; }
   .tl-nuevo,
   .tl-rail .sidebar-link,
   .tl-rail .sidebar-conv,

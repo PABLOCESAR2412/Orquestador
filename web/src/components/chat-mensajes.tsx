@@ -63,6 +63,13 @@ function textoParaVoz(texto: string): string {
     .trim();
 }
 
+function fechaUtcMs(valor: string | null): number | null {
+  if (!valor) return null;
+  const tieneZona = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(valor);
+  const fecha = new Date(tieneZona ? valor : `${valor.replace(" ", "T")}Z`).getTime();
+  return Number.isFinite(fecha) ? fecha : null;
+}
+
 function vozEspanola(): SpeechSynthesisVoice | undefined {
   const idioma = navigator.language.toLowerCase();
   const voces = window.speechSynthesis
@@ -473,6 +480,105 @@ function promptCorreccion(reporte: NonNullable<ReturnType<typeof interpretarResp
   ].filter(Boolean).join("\n\n");
 }
 
+type RolAuxiliarVivo = "arquitectura" | "seguridad" | "verificacion";
+type AuxiliarVivo = {
+  rol: RolAuxiliarVivo;
+  modelo: string;
+  estado: "running" | "done" | "failed" | "cancelled";
+  avance: string;
+  instruccion: string | null;
+  pasos: PasoActividad[];
+};
+
+function auxiliaresEnVivo(pasos: PasoActividad[]): AuxiliarVivo[] {
+  const auxiliares = new Map<RolAuxiliarVivo, AuxiliarVivo>();
+  const hito = /^Auxiliar (arquitectura|seguridad|verificacion) \(([^)]+)\):\s*(.+)$/i;
+  const accion = /^\[(arquitectura|seguridad|verificacion)\]\s*(.+)$/i;
+  for (const paso of pasos) {
+    const texto = paso.tipo === "texto" ? paso.titulo : "";
+    const resultadoHito = texto.match(hito);
+    const resultadoAccion = paso.tipo === "accion" ? paso.titulo.match(accion) : null;
+    const rol = (resultadoHito?.[1] ?? resultadoAccion?.[1]) as RolAuxiliarVivo | undefined;
+    if (!rol) continue;
+    let auxiliar = auxiliares.get(rol);
+    if (!auxiliar) {
+      auxiliar = {
+        rol,
+        modelo: resultadoHito?.[2] ?? "Modelo auxiliar",
+        estado: "running",
+        avance: "Preparando revisión de solo lectura",
+        instruccion: null,
+        pasos: [],
+      };
+      auxiliares.set(rol, auxiliar);
+    }
+    if (resultadoHito) {
+      const detalle = resultadoHito[3].replace(/[.!]+$/, "");
+      if (/^encargo del supervisor:/i.test(detalle)) {
+        auxiliar.instruccion = detalle.replace(/^encargo del supervisor:\s*/i, "");
+        continue;
+      }
+      auxiliar.avance = detalle;
+      if (/termin[oó] la revisi[oó]n/i.test(detalle)) auxiliar.estado = "done";
+      else if (/fall[oó]:/i.test(detalle)) auxiliar.estado = "failed";
+      else if (/cancel[oó]/i.test(detalle)) auxiliar.estado = "cancelled";
+      else auxiliar.estado = "running";
+    } else if (resultadoAccion && paso.tipo === "accion") {
+      auxiliar.pasos.push({ ...paso, titulo: resultadoAccion[2] });
+      auxiliar.avance = paso.titulo.replace(/^\[[^\]]+\]\s*/, "");
+      if (paso.estado === "error") auxiliar.estado = "failed";
+    }
+  }
+  return [...auxiliares.values()];
+}
+
+function PanelAuxiliaresVivos({ auxiliares }: { auxiliares: AuxiliarVivo[] }) {
+  const [abierto, setAbierto] = useState(true);
+  if (!auxiliares.length) return null;
+  const activos = auxiliares.filter((auxiliar) => auxiliar.estado === "running").length;
+  const estadoEtiqueta = (estado: AuxiliarVivo["estado"]) => ({
+    running: "Analizando",
+    done: "Completado",
+    failed: "Falló",
+    cancelled: "Cancelado",
+  })[estado];
+  return (
+    <details className="tl-auxiliares-vivo" open={abierto} onToggle={(event) => setAbierto(event.currentTarget.open)}>
+      <summary className="tl-auxiliares-vivo-resumen">
+        <strong>Auxiliares de análisis · solo lectura</strong>
+        <span>{activos ? `${activos} de ${auxiliares.length} analizando` : `${auxiliares.length} revisión${auxiliares.length === 1 ? "" : "es"} terminada${auxiliares.length === 1 ? "" : "s"}`}</span>
+      </summary>
+      <div className="tl-auxiliares-vivo-lista">
+        {auxiliares.map((auxiliar) => (
+          <article key={auxiliar.rol} className={`tl-auxiliar-vivo is-${auxiliar.estado}`}>
+            <header>
+              <span className="tl-auxiliar-vivo-punto" aria-hidden="true" />
+              <span className="tl-auxiliar-vivo-identidad">
+                <strong>{auxiliar.rol}</strong>
+                <small>{auxiliar.modelo}</small>
+              </span>
+              <span className={`tl-auxiliar-vivo-estado is-${auxiliar.estado}`} role="status">{estadoEtiqueta(auxiliar.estado)}</span>
+            </header>
+            {auxiliar.instruccion && (
+              <div className="tl-auxiliar-vivo-encargo">
+                <strong>Encargo del Supervisor</strong>
+                <p>{auxiliar.instruccion}</p>
+              </div>
+            )}
+            <p>{auxiliar.avance}</p>
+            {auxiliar.pasos.length > 0 && (
+              <details className="tl-auxiliar-vivo-pasos">
+                <summary>Ver actividad · {auxiliar.pasos.length}</summary>
+                <ProcesoAgente pasos={auxiliar.pasos} enCurso={auxiliar.estado === "running"} actor={auxiliar.rol} />
+              </details>
+            )}
+          </article>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 function etiquetaCambio(tipo: string): string {
   const normalizado = tipo.toLocaleLowerCase();
   if (normalizado === "crear" || normalizado === "nuevo") return "Creó";
@@ -565,53 +671,114 @@ function InformeTarea({
   );
 }
 
-// Mientras el agente trabaja: "Pensando…" y, debajo, cada paso en cuanto ocurre.
+// Mientras el agente trabaja: estado observable arriba y acciones/marcas de fase debajo.
 export function IndicadorPensando({
   modelo,
   vivo = [],
   desde = null,
+  fase,
   conversacionId,
   turnoId,
   mostrarSubagentes = false,
+  orquestacionActiva = false,
   onAbrirSubchat,
 }: {
   modelo: string;
   vivo?: PasoActividad[];
   desde?: string | null;
+  fase?: "queued" | "analyzing" | "running" | "connecting";
   conversacionId?: string;
   turnoId?: string;
   mostrarSubagentes?: boolean;
+  orquestacionActiva?: boolean;
   onAbrirSubchat?: (id: string) => void;
 }) {
   const [ahora, setAhora] = useState(Date.now());
+  const [ultimaActividadVista, setUltimaActividadVista] = useState(() => fechaUtcMs(desde) ?? Date.now());
+  const [actividadAbierta, setActividadAbierta] = useState(true);
   useEffect(() => {
     const temporizador = window.setInterval(() => setAhora(Date.now()), 1000);
     return () => window.clearInterval(temporizador);
   }, []);
+  const firmaActividad = vivo.map((paso) => `${paso.seq}:${paso.estado}`).join(",");
+  useEffect(() => {
+    setActividadAbierta(true);
+    setUltimaActividadVista(firmaActividad ? Date.now() : fechaUtcMs(desde) ?? Date.now());
+  }, [turnoId, desde]);
+  useEffect(() => {
+    if (firmaActividad) setUltimaActividadVista(Date.now());
+  }, [firmaActividad]);
   const transcurrido = tiempoTranscurrido(desde, ahora);
-  const ultimaAccion = [...vivo].reverse().find((paso) => paso.tipo === "accion" && paso.estado === "en_curso");
-  const ultimaNarracion = [...vivo].reverse().find((paso) => paso.tipo === "texto")?.titulo.split("\n", 1)[0]?.slice(0, 120);
-  let estado = ultimaAccion?.titulo || ultimaNarracion || "Escribiendo";
+  const silencioMs = Math.max(0, ahora - ultimaActividadVista);
+  const silencioVisible = silencioMs >= 120_000;
+  const silencioTexto = tiempoTranscurrido(new Date(ultimaActividadVista).toISOString(), ahora) ?? "2 min";
+  const auxiliares = auxiliaresEnVivo(vivo);
+  const pasosSupervisor = vivo.filter((paso) => !(paso.tipo === "accion" && /^\[(arquitectura|seguridad|verificacion)\]/i.test(paso.titulo)) && !(paso.tipo === "texto" && /^Auxiliar (arquitectura|seguridad|verificacion) \(/i.test(paso.titulo)));
+  const ultimaAccion = [...pasosSupervisor].reverse().find((paso) => paso.tipo === "accion" && paso.estado === "en_curso");
+  const ultimaNarracion = [...pasosSupervisor].reverse().find((paso) => paso.tipo === "texto")?.titulo.split("\n", 1)[0]?.slice(0, 120);
+  const auxiliarActivo = [...auxiliares].reverse().find((auxiliar) => auxiliar.estado === "running");
+  const ultimaHerramienta = (ultimaAccion?.herramienta ?? "").toLowerCase();
+  const etiquetaHerramienta = (herramienta: string): string => {
+    if (/^(github|gh)(?:[._-]|$)/i.test(herramienta)) return "Consultando GitHub";
+    if (herramienta.startsWith("skill") || herramienta.includes("skill")) return "Aplicando una skill";
+    if (/^(agent|subagent|sub_agent|spawn|delegate)/i.test(herramienta)) return "Delegando trabajo";
+    if (["write", "edit", "patch", "apply_patch"].includes(herramienta)) return "Editando archivos";
+    if (["read", "list"].includes(herramienta)) return "Leyendo archivos";
+    if (["glob", "grep"].includes(herramienta)) return "Buscando en el proyecto";
+    if (herramienta === "bash") return "Ejecutando un comando";
+    if (/^(websearch|web_search|search_web|webfetch|fetch_url)$/.test(herramienta)) return "Consultando la web";
+    if (herramienta.includes("compact")) return "Compactando contexto";
+    return "Ejecutando una acción";
+  };
+  const etiquetasFase = {
+    queued: "En cola",
+    analyzing: "Analizando y preparando el plan",
+    running: "Ejecutando el plan",
+    connecting: "Esperando actividad del proveedor",
+  } as const;
+  let estado = ultimaAccion?.titulo || ultimaNarracion || (
+    fase === "queued" ? "Esperando que la tarea inicie"
+      : fase === "analyzing" ? "Analizando la solicitud y preparando el plan"
+        : fase === "running" ? "El plan sigue ejecutándose; esperando el siguiente paso observable"
+          : "Preparando contexto; el proveedor todavía no ha enviado actividad observable"
+  );
   if (ultimaAccion) {
-    const h = (ultimaAccion.herramienta ?? "").toLowerCase();
+    const h = ultimaHerramienta;
     if (/^(github|gh)(?:[._-]|$)/i.test(h)) {
-      estado = ultimaAccion.titulo || "Usando GitHub";
+      estado = `Acción de GitHub · ${ultimaAccion.titulo}`;
     } else if (h.startsWith("skill") || h.includes("skill")) {
-      estado = ultimaAccion.titulo || "Aplicando skill";
+      estado = `Aplicando skill · ${ultimaAccion.titulo}`;
     } else if (/^(agent|subagent|sub_agent|spawn|delegate)/i.test(h)) {
-      estado = ultimaAccion.titulo || "Subagente activo";
+      estado = `Agente auxiliar · ${ultimaAccion.titulo}`;
     } else if (["write", "edit", "patch", "apply_patch"].includes(h)) {
-      estado = ultimaAccion.titulo || "Editando archivos";
+      estado = `Modificando archivos · ${ultimaAccion.titulo}`;
     } else if (["read", "list", "glob", "grep"].includes(h)) {
-      estado = ultimaAccion.titulo || "Investigando archivos";
+      estado = `Leyendo o buscando archivos · ${ultimaAccion.titulo}`;
     } else if (h === "bash") {
-      estado = ultimaAccion.titulo || "Ejecutando comando";
+      estado = `Ejecutando comando · ${ultimaAccion.titulo}`;
     } else if (/^(websearch|web_search|search_web|webfetch|fetch_url)$/.test(h)) {
-      estado = ultimaAccion.titulo || "Buscando en la web";
+      estado = `Consultando la web · ${ultimaAccion.titulo}`;
     } else {
-      estado = ultimaAccion.titulo || "Trabajando";
+      estado = ultimaAccion.titulo;
     }
   }
+  const etapaVisible = ultimaAccion
+    ? etiquetaHerramienta(ultimaHerramienta)
+    : ultimaNarracion?.startsWith("Solicitud recibida")
+      ? "Preparando contexto"
+    : ultimaNarracion?.startsWith("Supervisor ") && ultimaNarracion.includes("está eligiendo")
+      ? "Eligiendo auxiliares"
+        : auxiliarActivo
+          ? "Auxiliares trabajando en paralelo"
+        : ultimaNarracion?.startsWith("Los auxiliares terminaron")
+          ? "Integrando análisis"
+        : ultimaNarracion?.startsWith("Contexto preparado")
+          ? "Esperando actividad del proveedor"
+          : ultimaNarracion?.startsWith("El modelo ") && ultimaNarracion.includes("terminó")
+            ? "Guardando respuesta"
+          : ultimaNarracion
+            ? "Preparando la respuesta"
+            : fase ? etiquetasFase[fase] : "Preparando contexto";
   return (
     <article className="tl-msg tl-msg-agente" aria-live="polite">
       <div className="tl-msg-agente-cabecera">
@@ -623,35 +790,53 @@ export function IndicadorPensando({
           {transcurrido ? <span className="tl-msg-duracion">Procesando desde hace {transcurrido}</span> : null}
         </span>
       </div>
-      <div className="tl-pensando" title={ultimaAccion?.titulo ?? estado}>
-        <span className="tl-pensando-texto">{estado}</span>
-        <span className="tl-escribiendo-puntos" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </span>
-      </div>
-      {mostrarSubagentes && conversacionId && turnoId && (
-        <SubagentesTurno
-          conversacionId={conversacionId}
-          turnoId={turnoId}
-          onAbrir={onAbrirSubchat}
-          enCurso
-          mostrarEspera
-        />
-      )}
-      {vivo.length > 0 && (
-        <section className="tl-actividad-live" aria-label="Actividad del agente">
-          <div className="tl-actividad-live-cabecera">
-            <span className="tl-actividad-live-icono" aria-hidden="true">{ICONO_AGENTE}</span>
-            <span>Actividad del agente</span>
-            <span className="tl-actividad-live-contador">{vivo.filter((paso) => paso.tipo === "accion").length} acciones</span>
+      <details
+        className="tl-actividad-live"
+        open={actividadAbierta}
+        onToggle={(event) => setActividadAbierta(event.currentTarget.open)}
+      >
+        <summary className="tl-actividad-live-cabecera">
+          <span className="tl-actividad-live-icono" aria-hidden="true">{ICONO_AGENTE}</span>
+          <span>Actividad en vivo</span>
+          <span className={`tl-actividad-live-fase${silencioVisible ? " is-sin-actividad" : ""}`}>{silencioVisible ? `Sin actividad nueva · ${silencioTexto}` : etapaVisible}</span>
+          <span className="tl-actividad-live-contador">
+            {pasosSupervisor.filter((paso) => paso.tipo === "accion").length} acciones del supervisor
+            {auxiliares.length ? ` · ${auxiliares.length} auxiliares` : ""}
+          </span>
+        </summary>
+        <div className="tl-actividad-live-cuerpo">
+          <div className="tl-pensando" title={ultimaAccion?.titulo ?? estado} aria-live="polite">
+            <span className="tl-pensando-texto">{estado}</span>
+            {(ultimaAccion || orquestacionActiva) && <span className="tl-paso-spinner" role="img" aria-label={orquestacionActiva ? "Supervisor en curso" : "Acción en curso"} />}
           </div>
-          <div className="tl-actividad-live-cuerpo">
-            <ProcesoAgente pasos={vivo} enCurso />
-          </div>
-        </section>
-      )}
+            {silencioVisible && (
+              <p className="tl-actividad-live-inactiva" role="status">
+                No llegan pasos nuevos desde hace {silencioTexto}. El turno sigue activo, pero esta vista no puede confirmar que el proveedor avance. Si no responde, puedes detenerlo desde el chat.
+              </p>
+            )}
+            {mostrarSubagentes && conversacionId && turnoId && (
+            <SubagentesTurno
+              conversacionId={conversacionId}
+              turnoId={turnoId}
+              onAbrir={onAbrirSubchat}
+              enCurso
+              mostrarEspera
+            />
+          )}
+          <PanelAuxiliaresVivos auxiliares={auxiliares} />
+          {pasosSupervisor.length > 0
+            ? <ProcesoAgente pasos={pasosSupervisor} enCurso actor="Supervisor" />
+            : auxiliarActivo
+              ? <p className="tl-actividad-live-espera">Los auxiliares están trabajando. El supervisor incorporará sus resultados cuando terminen; la tarea sigue activa.</p>
+              : mostrarSubagentes
+                ? <p className="tl-actividad-live-espera">El modelo principal aún no confirmó subchats mediante la herramienta task. Las plantillas de Agentes no los crean; configura el Supervisor para ejecutar modelos auxiliares.</p>
+                : orquestacionActiva && ultimaNarracion?.startsWith("Supervisor ") && ultimaNarracion.includes("está eligiendo")
+                  ? <p className="tl-actividad-live-espera">El supervisor está eligiendo auxiliares. Si el proveedor no responde, Telo iniciará los modelos configurados automáticamente.</p>
+                  : orquestacionActiva
+                    ? <p className="tl-actividad-live-espera">El supervisor y sus auxiliares siguen trabajando. Aquí aparecerán sus acciones observables; puedes detener el turno desde el chat.</p>
+                    : <p className="tl-actividad-live-espera">Aún no llega una acción observable del agente. El turno sigue activo; puedes detenerlo desde el chat.</p>}
+        </div>
+      </details>
     </article>
   );
 }

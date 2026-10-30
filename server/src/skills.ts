@@ -7,6 +7,7 @@ import {
   mkdirSync,
   openSync,
   readdirSync,
+  readFileSync,
   readSync,
   renameSync,
   rmdirSync,
@@ -445,23 +446,27 @@ Convierte procedimientos repetidos en instrucciones reutilizables, específicas 
 Una skill lista tiene un disparador claro, un objetivo único, pasos accionables, criterios de éxito verificables, manejo de límites y casos de prueba. Si una sección solo repite conocimiento general del modelo, elimínala.
 `;
 
-export const SKILL_CONTEXT7_CONTENIDO = `---
-name: context7
-description: Consulta documentación actual y ejemplos de bibliotecas, frameworks, SDK, APIs y herramientas de línea de comandos al implementarlos, configurarlos, migrarlos o depurarlos.
----
+const SKILLS_UPSTREAM = [
+  "brainstorming", "context7-mcp", "documentation-lookup", "harvey", "hyperframes",
+  "hyperframes-cli", "hyperframes-registry", "ig-caption", "ig-carousel", "ig-human",
+  "ig-plan", "ig-reel", "ig-story", "job-application-assistant", "media-use", "obsidian-cli",
+  "obsidian-markdown", "orca-cli", "orchestration", "prospecting", "strategic-compact",
+  "subagent-driven-development", "systematic-debugging", "test-driven-development",
+  "using-superpowers", "verification-before-completion",
+] as const;
 
-# Documentación técnica actual
-
-Usa Context7 cuando la tarea dependa de la API, configuración, versión o comportamiento actual de una biblioteca o servicio. No lo uses para responder preguntas que el código del repositorio ya resuelve por sí mismo.
-
-## Consulta
-
-1. Llama a \`resolve-library-id\` con el nombre exacto de la biblioteca y la pregunta concreta. Elige el resultado oficial o el que coincida con la versión indicada.
-2. Llama a \`query-docs\` con el ID elegido y una sola pregunta específica. Separa conceptos diferentes en consultas distintas.
-3. Contrasta la documentación con las versiones y los patrones presentes en el repositorio antes de cambiar código.
-
-Envía solo el nombre de la tecnología y preguntas conceptuales. No envíes código privado del proyecto, credenciales, datos de usuarios ni contenido de archivos. Si Context7 no está disponible o limita la consulta, continúa con fuentes oficiales accesibles y deja claro qué verificaste.
-`;
+const SKILLS_LEGADAS = {
+  context7: "Consulta documentación actual y ejemplos de bibliotecas, frameworks, SDK, APIs y herramientas de línea de comandos al implementarlos, configurarlos, migrarlos o depurarlos.",
+  "hyperframes-video": "Crea y verifica animaciones y videos basados en HTML con HyperFrames cuando se pide un video, motion graphic, captions o animación.",
+  "instagram-agent": "Planifica y prepara contenido para Instagram, incluyendo publicaciones, Reels, Stories, calendario y métricas.",
+  "obsidian-vault": "Organiza ideas, notas y conocimiento en un vault de Obsidian con enlaces y Markdown.",
+  superpowers: "Aplica prácticas de desarrollo guiado por pruebas, diseño incremental, depuración sistemática y revisión de código cuando se solicite trabajo de ingeniería.",
+  "ecc-workflows": "Aplica de forma selectiva buenas prácticas de Everything Claude Code para contexto, agentes, revisión y flujos de ingeniería.",
+  "harvey-legal": "Ayuda a estructurar investigación, revisión y borradores legales con fuentes, jurisdicción y límites explícitos.",
+  "orca-agent-builder": "Diseña una especificación local de agente para el producto Orca que el usuario identifique.",
+  "ai-job-search": "Busca oportunidades laborales y adapta materiales de postulación con información verificable y consentimiento.",
+  "find-clients": "Identifica clientes potenciales y prepara propuestas de servicio y mensajes de acercamiento personalizados.",
+} as const;
 
 // Crea la carpeta de skills globales si falta. Se llama al arrancar: así bubblewrap siempre puede montarla en
 // solo lectura (si no existiera, el agente podría crearla dentro de ~/.config/opencode, que sí es escribible).
@@ -476,7 +481,6 @@ export function prepararCarpetaGlobal(): void {
     ["image-design", SKILL_IMAGE_DESIGN_CONTENIDO],
     ["motion-design", SKILL_MOTION_DESIGN_CONTENIDO],
     ["skill-authoring", SKILL_AUTORIA_CONTENIDO],
-    ["context7", SKILL_CONTEXT7_CONTENIDO],
   ] as const;
   for (const [nombre, contenido] of predeterminadas) {
     try {
@@ -487,5 +491,34 @@ export function prepararCarpetaGlobal(): void {
       if (datosCarpeta && (!datosCarpeta.isDirectory() || datosCarpeta.isSymbolicLink())) continue;
       guardarSkill({ ambito: "global" }, nombre, contenido);
     } catch { /* no bloquea el arranque ni reemplaza una skill existente que no pueda leerse */ }
+  }
+
+  // Las skills upstream se copian byte por byte y solo si no hay una skill local con ese nombre.
+  // Así no se sobrescriben personalizaciones existentes y la fuente original sigue disponible en el repo.
+  for (const nombre of SKILLS_UPSTREAM) {
+    try {
+      const dir = carpetaSegura(ancla, tramos, false);
+      const carpeta = dir ? join(dir, nombre) : null;
+      if (!carpeta || lstatORNull(carpeta) || lstatORNull(join(carpeta, ARCHIVO))) continue;
+      const origen = join(import.meta.dir, "..", "skills-upstream", nombre, ARCHIVO);
+      const contenido = readFileSync(origen, "utf8");
+      guardarSkill({ ambito: "global" }, nombre, contenido);
+    } catch { /* la skill incorrecta o ausente se muestra como no disponible, sin romper el arranque */ }
+  }
+
+  // Retira solo las descripciones sembradas originalmente por Telo; preserva cualquier versión editada.
+  for (const [nombre, descripcion] of Object.entries(SKILLS_LEGADAS)) {
+    try {
+      const dir = carpetaSegura(ancla, tramos, false);
+      const archivo = dir ? join(dir, nombre, ARCHIVO) : null;
+      if (!archivo) continue;
+      const stat = lstatORNull(archivo);
+      if (!stat?.isFile() || stat.isSymbolicLink()) continue;
+      const texto = readFileSync(archivo, "utf8");
+      if (leerFrontmatter(texto)?.description !== descripcion) continue;
+      unlinkSync(archivo);
+      const carpeta = join(dir!, nombre);
+      if (readdirSync(carpeta).length === 0) rmdirSync(carpeta);
+    } catch { /* solo se limpia una skill antigua idéntica; no se afecta una personalizada */ }
   }
 }

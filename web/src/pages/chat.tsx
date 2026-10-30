@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, reintentarConsultaTransitoria, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad } from "../api";
+import { api, ApiError, reintentarConsultaTransitoria, type Conversation, type Documento, type FormatoDocumento, type Message, type ModelInfo, type PasoActividad, type TrabajadorOrquestacion } from "../api";
 import { useEventosVivos } from "../lib/eventos-vivos";
 import { ModelPicker } from "../components/model-picker";
 import { UsoPanel } from "../components/uso-panel";
 import { ChatContexto } from "../components/chat-contexto";
-import { CapacidadesMedios } from "../components/capacidades-medios";
+import { OrquestacionChat } from "../components/orquestacion-chat";
+import { AgentesPredefinidosChat } from "../components/agentes-predefinidos-chat";
 import { IndicadorPensando, MensajeAgente, MensajeUsuario } from "../components/chat-mensajes";
 import { ProcesoAgente } from "../components/chat-proceso";
 import { copiarTexto, type ReferenciaArchivo } from "../components/chat-contenido";
@@ -48,7 +49,15 @@ import { actualizarVentanaMensajes } from "../lib/chat-mensajes";
 import "../styles-chat.css";
 import "../styles-flujo.css";
 
-type Patch = { model?: string | null; effort?: string | null; title?: string; pinned?: boolean };
+type Patch = {
+  model?: string | null;
+  effort?: string | null;
+  title?: string;
+  pinned?: boolean;
+  orquestacion_habilitada?: boolean;
+  orquestacion_seleccion_automatica?: boolean;
+  orquestacion_trabajadores?: TrabajadorOrquestacion[];
+};
 
 // Un archivo adjunto en el compositor, antes de enviar el mensaje.
 type Pendiente = { key: string; lectura: ArchivoLeido };
@@ -62,6 +71,20 @@ const sinTildes = (texto: string) => texto.normalize("NFD").replace(/\p{Diacriti
 function etiquetaPrompt(texto: string): string {
   const limpio = texto.replace(/\s+/g, " ").trim() || "Mensaje con adjuntos";
   return limpio.length > 120 ? `${limpio.slice(0, 120)}…` : limpio;
+}
+
+function tipoGeneracionMultimedia(texto: string): "imagen" | "video" | "imagen o video" | null {
+  const mensaje = sinTildes(texto);
+  const pideImagen = /\b(?:imagen(?:es)?|foto(?:s)?|ilustracion(?:es)?)\b/.test(mensaje);
+  const pideVideo = /\b(?:video(?:s)?|animacion(?:es)?|clip(?:s)?)\b/.test(mensaje);
+  if (!pideImagen && !pideVideo) return null;
+  const pideCrear = /\b(?:genera(?:r)?|crea(?:r)?|haz(?:me|lo)?|produce|dibuja|arma|realiza|generate|create|make|draw|animate|render)\b/.test(mensaje);
+  const expresaDeseo = /\b(?:quiero|quisiera|necesito|me gustaria)\b.{0,50}\b(?:un|una|el|la|hacer|crear|generar|producir|diseñar|a)\b/.test(mensaje);
+  if (!pideCrear && !expresaDeseo) return null;
+  if (pideImagen && pideVideo) return "imagen o video";
+  if (pideVideo) return "video";
+  if (pideImagen) return "imagen";
+  return null;
 }
 
 function promptDerivarSkill(respuesta: string): string {
@@ -105,7 +128,6 @@ export function ChatPage() {
   const {
     selectedConversationId,
     setSelectedConversationId,
-    triggerPalette,
     configAbierta,
     setConfigAbierta,
     setActiveProjectId,
@@ -165,7 +187,9 @@ export function ChatPage() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [usoAbierto, setUsoAbierto] = useState(false);
   const [contextoAbierto, setContextoAbierto] = useState(false);
-  const [mediosAbierto, setMediosAbierto] = useState(false);
+  const [orquestacionAbierta, setOrquestacionAbierta] = useState(false);
+  const [orquestacionDesdeAgente, setOrquestacionDesdeAgente] = useState(false);
+  const [agentesAbiertos, setAgentesAbiertos] = useState(false);
   const [pendientes, setPendientes] = useState<Pendiente[]>([]);
   const pendientesPorChatRef = useRef<Record<string, Pendiente[]>>({});
   const cambiarPendientes = (id: string, transformar: (anteriores: Pendiente[]) => Pendiente[]) => {
@@ -310,7 +334,7 @@ export function ChatPage() {
   const chipRef = useRef<HTMLButtonElement>(null);
   const usoRef = useRef<HTMLButtonElement>(null);
   const contextoRef = useRef<HTMLButtonElement>(null);
-  const mediosRef = useRef<HTMLButtonElement>(null);
+  const agentesRef = useRef<HTMLButtonElement>(null);
   const abrirArchivo = useCallback((referencia: ReferenciaArchivo, triggerId: string) => {
     archivoDisparadorRef.current = triggerId;
     setArchivoAbierto(referencia);
@@ -375,6 +399,7 @@ export function ChatPage() {
     setPendientes(selectedId ? pendientesPorChatRef.current[selectedId] ?? [] : []);
     setArchivoAbierto(null);
     setContextoAbierto(false);
+    setOrquestacionAbierta(false);
   }, [selectedId]);
 
   // Al salir del chat se corta el dictado.
@@ -529,6 +554,9 @@ export function ChatPage() {
                 model: patch.model !== undefined ? patch.model : c.model,
                 effort: patch.effort !== undefined ? patch.effort : c.effort,
                 title: patch.title !== undefined ? patch.title : c.title,
+                orquestacion_habilitada: patch.orquestacion_habilitada !== undefined ? patch.orquestacion_habilitada : c.orquestacion_habilitada,
+                orquestacion_seleccion_automatica: patch.orquestacion_seleccion_automatica !== undefined ? patch.orquestacion_seleccion_automatica : c.orquestacion_seleccion_automatica,
+                orquestacion_trabajadores: patch.orquestacion_trabajadores !== undefined ? patch.orquestacion_trabajadores : c.orquestacion_trabajadores,
               }
             : c,
         ),
@@ -1625,6 +1653,26 @@ export function ChatPage() {
                 </svg>
                 <span className="tl-boton-texto">Exportar</span>
               </button>
+              {current && !current.parent_conversation_id && (
+                <button
+                  type="button"
+                  className="tl-boton"
+                  aria-label="Configurar supervisor y modelos auxiliares"
+                  aria-haspopup="dialog"
+                  aria-expanded={orquestacionAbierta}
+                  title="Configurar el supervisor y los modelos auxiliares de este chat"
+                  onClick={() => {
+                    setOrquestacionDesdeAgente(false);
+                    setOrquestacionAbierta(true);
+                  }}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="5" cy="6" r="2" /><circle cx="19" cy="6" r="2" /><circle cx="12" cy="18" r="2" />
+                    <path d="M7 6h10M7 7.5l3.5 8M17 7.5l-3.5 8" />
+                  </svg>
+                  <span className="tl-boton-texto">Supervisor</span>
+                </button>
+              )}
               <button
                 type="button"
                 className="tl-boton"
@@ -1800,10 +1848,12 @@ export function ChatPage() {
                 <IndicadorPensando
                   modelo={nombreAgente}
                   desde={inicioPensando}
+                  fase={tareaActiva ? tareaChat?.status as "queued" | "analyzing" | "running" : "connecting"}
                   vivo={(selectedId && vivos[selectedId]?.pasos) || []}
                   conversacionId={selectedId ?? undefined}
                   turnoId={selectedId ? vivos[selectedId]?.turnoId ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.id : undefined}
-                    mostrarSubagentes={!current?.model?.startsWith("codex/") && /\b(subagentes?|agentes?\s+(?:en\s+)?paralelo|deleg(?:a|ar|ando)|llama\s+a\s+(?:varios|m[aá]s\s+de\s+uno|un\s+subagente))\b/i.test(envioActual?.content ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.content ?? "")}
+                  mostrarSubagentes={!current?.model?.startsWith("codex/") && !Boolean(current?.orquestacion_habilitada) && /\b(subagentes?|agentes?\s+(?:en\s+)?paralelo|deleg(?:a|ar|ando)|llama\s+a\s+(?:varios|m[aá]s\s+de\s+uno|un\s+subagente))\b/i.test(envioActual?.content ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.content ?? "")}
+                  orquestacionActiva={Boolean(current?.orquestacion_habilitada)}
                   onAbrirSubchat={setSelectedId}
                 />
               )}
@@ -2132,15 +2182,6 @@ export function ChatPage() {
                 />
               )}
 
-              {mediosAbierto && (
-                <CapacidadesMedios
-                  modelo={current?.model ?? null}
-                  nombreModelo={modelInfo?.name ?? null}
-                  onCerrar={() => setMediosAbierto(false)}
-                  disparador={mediosRef}
-                />
-              )}
-
               {pendientes.length > 0 && (
                 <ul className="tl-adjuntos-pendientes" aria-label="Archivos del mensaje">
                   {pendientes.map((p) => {
@@ -2231,7 +2272,9 @@ export function ChatPage() {
                     ? `comando-chat-${comandosFiltrados[indiceSlash]?.id}`
                     : undefined
                 }
-                onChange={(e) => cambiarBorrador(e.target.value)}
+                onChange={(e) => {
+                  cambiarBorrador(e.target.value);
+                }}
                 onPaste={alPegar}
                 onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
                   if (e.nativeEvent.isComposing) return;
@@ -2287,6 +2330,12 @@ export function ChatPage() {
                 }}
               />
 
+              {tipoGeneracionMultimedia(draft) && (
+                <p className="tl-aviso-generacion-media" role="status">
+                  Telo no tiene conectado un generador externo de {tipoGeneracionMultimedia(draft)}. Puedes enviar la solicitud: el agente probará las herramientas locales disponibles y te avisará si no bastan. Cambiar de modelo no activa esa capacidad.
+                </p>
+              )}
+
               <input
                 ref={fileRef}
                 type="file"
@@ -2298,7 +2347,7 @@ export function ChatPage() {
                 }}
               />
 
-              {/* Herramientas, selector conjunto de modelo y esfuerzo, botón de uso y envío. */}
+              {/* Selector conjunto de modelo y esfuerzo, uso y envío. */}
               <div className="tl-composer-barra">
                 <div className="tl-composer-izq">
                   <button
@@ -2310,17 +2359,6 @@ export function ChatPage() {
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    className="tl-accion-icono"
-                    aria-label="Herramientas y comandos"
-                    title="Herramientas y comandos (Ctrl+K)"
-                    onClick={triggerPalette}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
                     </svg>
                   </button>
                   <button
@@ -2339,6 +2377,21 @@ export function ChatPage() {
                   </button>
 
                   <button
+                    ref={agentesRef}
+                    type="button"
+                    className="tl-boton tl-boton-compacto tl-agentes-boton"
+                    aria-haspopup="dialog"
+                    aria-expanded={agentesAbiertos}
+                    onClick={() => {
+                      setPickerOpen(false);
+                      setUsoAbierto(false);
+                      setAgentesAbiertos(true);
+                    }}
+                  >
+                    Agentes
+                  </button>
+
+                  <button
                     ref={chipRef}
                     type="button"
                     className="tl-modelo-boton"
@@ -2346,7 +2399,6 @@ export function ChatPage() {
                     aria-expanded={pickerOpen}
                     onClick={() => {
                       setUsoAbierto(false);
-                      setMediosAbierto(false);
                       setPickerOpen((o) => !o);
                     }}
                   >
@@ -2366,33 +2418,12 @@ export function ChatPage() {
                     aria-expanded={usoAbierto}
                     onClick={() => {
                       setPickerOpen(false);
-                      setMediosAbierto(false);
                       setUsoAbierto((o) => !o);
                     }}
                   >
                     Uso
                   </button>
 
-                  <button
-                    ref={mediosRef}
-                    type="button"
-                    className="tl-boton tl-boton-compacto tl-uso tl-medios-boton"
-                    aria-label="Capacidades multimedia"
-                    title="Capacidades multimedia"
-                    aria-haspopup="dialog"
-                    aria-expanded={mediosAbierto}
-                    onClick={() => {
-                      setPickerOpen(false);
-                      setUsoAbierto(false);
-                      setMediosAbierto((o) => !o);
-                    }}
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <rect x="3" y="5" width="18" height="14" rx="2" />
-                      <path d="m10 9 5 3-5 3z" />
-                    </svg>
-                    <span className="tl-medios-boton-texto">Medios</span>
-                  </button>
                 </div>
 
                 <div className="tl-composer-der">
@@ -2518,6 +2549,48 @@ export function ChatPage() {
               models={modelList}
               onClose={() => setContextoAbierto(false)}
               disparador={contextoRef}
+            />
+          )}
+
+          {agentesAbiertos && (
+            <AgentesPredefinidosChat
+              messages={messages.data ?? []}
+              draft={draft}
+              onClose={() => setAgentesAbiertos(false)}
+              disparador={agentesRef}
+              onApply={(texto) => {
+                cambiarBorrador(texto);
+                setAgentesAbiertos(false);
+              }}
+              onConfigureSupervisor={(texto) => {
+                cambiarBorrador(texto);
+                setAgentesAbiertos(false);
+                setOrquestacionDesdeAgente(true);
+                setOrquestacionAbierta(true);
+              }}
+            />
+          )}
+
+          {orquestacionAbierta && current && !current.parent_conversation_id && (
+            <OrquestacionChat
+              key={current.id}
+              modelo={current.model}
+              esfuerzo={current.effort}
+              habilitada={Boolean(current.orquestacion_habilitada)}
+              preactivarAuxiliares={orquestacionDesdeAgente}
+              seleccionAutomatica={current.orquestacion_seleccion_automatica ?? true}
+              trabajadores={current.orquestacion_trabajadores ?? []}
+              modelos={modelList}
+              guardando={configure.isPending}
+              error={settingsError}
+              onCerrar={() => {
+                setOrquestacionAbierta(false);
+                setOrquestacionDesdeAgente(false);
+              }}
+              onGuardar={(config) => configure.mutate(config, { onSuccess: () => {
+                setOrquestacionAbierta(false);
+                setOrquestacionDesdeAgente(false);
+              } })}
             />
           )}
 
