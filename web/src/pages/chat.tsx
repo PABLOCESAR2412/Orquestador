@@ -1289,7 +1289,7 @@ export function ChatPage() {
   const nuevoChat = () => {
     if (creandoChat) return;
     setCreandoChat(true);
-    api.createConversation(null).then(
+    api.createConversation(current?.project_id ?? null).then(
       (conv) => {
         void qc.invalidateQueries({ queryKey: ["conversations"] });
         setSelectedId(conv.id);

@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-30", "tipo": "minimo", "titulo": "Chat: conserva el repositorio del proyecto al crear chats desde comandos", "pr": 140 },
     { "fecha": "2026-10-30", "tipo": "mediano", "titulo": "Despliegue: aplica cambios visuales y documentación sin interrumpir tareas; reserva la pausa para cambios de runtime", "pr": null },
     { "fecha": "2026-10-30", "tipo": "mediano", "titulo": "Ajustes: corrige escala y alineación, añade OpenCode, instala skills fuente y aclara la integración MCP de Harvey", "pr": null },
     { "fecha": "2026-10-30", "tipo": "mediano", "titulo": "Agentes: reconoce solicitudes explícitas, acelera la selección y permite análisis delegados en solo lectura", "pr": 139 },

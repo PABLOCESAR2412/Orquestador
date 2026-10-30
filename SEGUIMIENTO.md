@@ -4,6 +4,12 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 30 de octubre de
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Contexto Git al crear chats — 30 de octubre de 2026
+
+- [~] **La paleta y el comando «Nuevo chat» podían crear una conversación libre dentro de un proyecto activo.** Esas rutas enviaban `projectId: null`, por lo que los turnos no recibían `project_id` y el worker no preparaba la copia Git del proyecto. La paleta y el comando del chat ahora heredan el proyecto seleccionado. «Nuevo chat libre» sigue creando una conversación independiente; los botones del proyecto ya vinculaban su `project_id`.
+- [x] **La paleta anunciaba Ctrl+N para «Nuevo chat», aunque ese atajo abre «Nuevo proyecto».** Se quitó la etiqueta engañosa del atajo.
+- Validación: `cd web && bun run build` (TypeScript y Vite) completó correctamente. La advertencia de tamaño de chunk ya existía; queda pendiente comprobar el flujo visual en la VM después del despliegue.
+
 ## Política de despliegue refinada — 30 de octubre de 2026
 
 - [~] **Las tareas ya no se pausan por cambios visuales o documentación.** `deploy/actualizar.sh` reconoce commits limitados a CSS, el registro de cambios y los documentos operativos; los CSS se construyen en staging y se publican con los assets antes que `index.html`, sin reiniciar el servicio. Cambios de API, workers, runners, interfaz funcional, dependencias, configuración o migraciones siguen usando el drenado y la pausa reanudable por precaución.
