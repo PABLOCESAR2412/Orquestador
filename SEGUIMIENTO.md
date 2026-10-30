@@ -6,7 +6,7 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 
 ## Inicialización de perfiles de subagentes — 30 de octubre de 2026
 
-- [~] **OpenCode fallaba al iniciar subagentes (`FileSystem.writeFile .../.gitignore`).** El perfil temporal se montaba completo en solo lectura, pero OpenCode escribe `.gitignore` al inicializar su configuración. Ahora Telo precrea ese archivo y monta solo él en lectura/escritura; el JSON, los prompts y plugins permanecen de solo lectura, y el registro NDJSON conserva su montaje separado. `aislamiento.test.ts` comprueba el montaje puntual en Linux; falta el resultado de CI porque este equipo Windows no permite crear el enlace simbólico requerido por esa suite.
+- [x] **OpenCode fallaba al iniciar subagentes (`FileSystem.writeFile .../.gitignore`).** El perfil temporal se montaba completo en solo lectura, pero OpenCode escribe `.gitignore` al inicializar su configuración. Ahora Telo precrea ese archivo y monta solo él en lectura/escritura; el JSON, los prompts y plugins permanecen de solo lectura, y el registro NDJSON conserva su montaje separado. `aislamiento.test.ts` comprueba el montaje puntual; la suite completa de servidor pasó en CI Linux. La prueba local queda limitada por el permiso de symlinks de Windows.
 
 
 ## Revisión de seguridad y flujos — 30 de octubre de 2026
