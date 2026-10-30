@@ -1,4 +1,10 @@
-import type { Conversation } from "../api";
+import type { Conversation, Task } from "../api";
+
+export function tareaVisibleDelChat(tareas: Task[] = []): Task | undefined {
+  return tareas.find((tarea) => ["running", "analyzing", "waiting_approval"].includes(tarea.status))
+    ?? tareas.find((tarea) => tarea.status === "queued")
+    ?? tareas.at(-1);
+}
 
 const claveAprobacionVista = (id: string) => `telo_aprobacion_vista:${id}`;
 export const marcaAprobacion = (conv: Conversation) => conv.estado_tarea_id

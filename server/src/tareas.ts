@@ -14,6 +14,7 @@ export type NuevaTarea = {
   // Tarea original cuando esta es un reintento.
   retryOf?: string | null;
   conversationId?: string | null;
+  messageId?: string | null;
   providerSessionId?: string | null;
   providerSessionModel?: string | null;
   sourceBranch?: string | null;
@@ -35,8 +36,12 @@ export function crearTarea(opts: NuevaTarea): string {
       : `Modelo ${opts.model}`;
 
   db.transaction(() => {
+    const messageId = opts.conversationId && opts.messageId
+      ? db.query<{ id: string }, [string, string]>("SELECT id FROM messages WHERE id=? AND conversation_id=? AND role='user'")
+        .get(opts.messageId, opts.conversationId)?.id ?? null
+      : null;
     db.query(
-      "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id, retry_of, conversation_id, provider_session_id, provider_session_model, source_branch, source_base_branch, source_pr_number) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id, retry_of, conversation_id, message_id, provider_session_id, provider_session_model, source_branch, source_base_branch, source_pr_number) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ).run(
       id,
       titulo,
@@ -46,6 +51,7 @@ export function crearTarea(opts: NuevaTarea): string {
       opts.projectId,
       retryOf,
       opts.conversationId ?? null,
+      messageId,
       opts.providerSessionId ?? null,
       opts.providerSessionModel ?? null,
       opts.sourceBranch ?? null,

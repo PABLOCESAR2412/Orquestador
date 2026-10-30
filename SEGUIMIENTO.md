@@ -4,6 +4,25 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 30 de octubre de
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Revisión de seguridad y flujos — 30 de octubre de 2026
+
+Correcciones preparadas en [PR #140](https://github.com/PABLOCESAR2412/Orquestador/pull/140); estos resultados locales no certifican su despliegue en la VM.
+
+- [x] **S01 · La copia de skills podía escribir fuera del workspace (alta).** Un enlace en el destino o en sus ancestros redirigía la escritura del servidor; un enlace duro permitía modificar otro archivo. Se validan destinos, se reemplazan archivos atómicamente y se verifica `.opencode` antes de escribir. Cinco regresiones fallaron antes y pasan después en `skills-seguras.test.ts`.
+- [x] **S02 · Otra aplicación en distinto puerto del mismo host podía mutar la API con la cookie (media).** `SameSite=Strict` no separa esos puertos. Se valida Origin antes de las mutaciones, se rechaza el origen opaco y los metadatos de otro sitio; siguen disponibles clientes CLI sin Origin y el callback OAuth GET. Pruebas sobre revocación de sesiones real y proxy simulado en `seguridad-origen.test.ts`.
+- [x] **S03 · Una sesión inactiva más de 60 días podía renovarse (media).** Ahora se rechaza y elimina antes de actualizar su actividad. Regresión rojo→verde en `sesiones-dispositivos.test.ts`.
+- [x] **S04 · HTML descargado conservaba código activo que omitía el filtro de texto (media).** Se usa el parser HTML nativo, se retiran atributos ejecutables y URLs inseguras y se antepone una CSP dentro del archivo. Las descargas antiguas se vuelven a proteger. `documentos.test.ts` y Chrome verifican los casos normal, NBSP, VT y doctype malformado, con código posterior al filtro bloqueado y sin peticiones externas.
+- [x] **F01 · «Detener» cancelaba el último turno en cola y dejaba ejecutándose el anterior.** Ahora aborta la tarea activa y cancela todas las pendientes de ese chat; conserva las sesiones y los workspaces. Regresión en `chat-cola.test.ts`.
+- [x] **F02 · Un turno en cola ocultaba el plan que esperaba aprobación.** Backend e interfaz priorizan la tarea activa o pendiente de aprobación y después la cola FIFO. Regresiones en `chat-cola.test.ts` y `web/tests/chat-tareas.test.ts`.
+- [x] **F03 · Actividad, subchats y tarjetas Git podían aparecer bajo otro mensaje.** Migración aditiva `049_task_message`: cada tarea nueva guarda su mensaje origen, validado contra su conversación. Se conserva en Seguir y en reparación de conflictos. Las tareas antiguas quedan sin asociación, sin inventar vínculos; las cadenas commit→push→PR respetan el null explícito. `worker-turnos.test.ts` ejecuta el worker real con runner simulado; `migracion-turno-tarea.test.ts` comprueba base anterior, respaldo, idempotencia, escritor antiguo y FK SET NULL. Volver al binario previo conserva la columna nullable y los datos.
+- [x] **F04 · Las lecturas Git privadas omitían el helper de credenciales.** Los tres fetch reciben ahora helper y entorno; sin instalación App se intenta también la sesión global antes del token del proyecto. Dos regresiones sin red comprueban actualización, rama PR y diagnóstico de conflictos; el token no aparece en argumentos.
+- [x] **F05 · La cancelación de una tarea quedaba bloqueada durante mantenimiento.** La puerta admitía detener/cancelar pero omitía la ruta real `/api/tasks/:id/cancel`. Regresión rojo→verde en `despliegue.test.ts`.
+- Evidencia local: 12 suites de seguridad/planes/programadas **119 pass, 3 skip**; pase de Git/cola/migraciones/worker **81 pass, 14 skip** y cinco casos dirigidos finales; Git+skills **42 pass**; web **62 pass**; typecheck servidor y build web correctos. Playwright pasa en 390/1440 px y las exportaciones HTML superan cuatro casos de seguridad. Las omisiones corresponden a procesos/aislamiento que requieren Linux o recursos de prueba.
+- Cobertura revisada sin otro fallo confirmado: lectura de archivos y streams, previews con origen opaco, aprobaciones ligadas al diff, secretos/cifrado/redacción, OAuth Drive, medios, MCP, subagentes, retención, planificador y coordinación de mantenimiento.
+- [ ] **S05 · Separar el estado global de Codex por conversación (prioridad alta).** `aislamiento.ts` expone `~/.codex` en lectura a todos los runners: si hay historiales/configuración globales, el agente puede leerlos. El runner Codex tampoco tiene perfil propio; hay que diseñar la migración de sesiones y respaldos, y validar escritura/renovación de credenciales con Codex real en Linux antes de cambiar ese montaje. No está resuelto por este PR.
+- [ ] **Validación de producción:** comprobar Origin con el proxy HTTPS real, arranque con migración 049, lectura de un repositorio privado real y un flujo de dos turnos con subagentes. No se accedió a credenciales ni se desplegó en la VM desde esta revisión.
+- [ ] **Siguientes mejoras recomendadas:** política de permisos MCP por tarea y proxy de egreso para separar la red del sandbox. Son brechas de arquitectura ya registradas en la revisión del harness; requieren conservar el acceso de los proveedores y no imponer un corte fijo de tareas largas.
+
 ## Contexto Git al crear chats — 30 de octubre de 2026
 
 - [~] **La paleta y el comando «Nuevo chat» podían crear una conversación libre dentro de un proyecto activo.** Esas rutas enviaban `projectId: null`, por lo que los turnos no recibían `project_id` y el worker no preparaba la copia Git del proyecto. La paleta y el comando del chat ahora heredan el proyecto seleccionado. «Nuevo chat libre» sigue creando una conversación independiente; los botones del proyecto ya vinculaban su `project_id`.
@@ -29,7 +48,7 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 - [x] **Google Drive en la VM:** el usuario confirma que el flujo funciona.
 - [x] **Restauración desde R2:** el usuario confirma que funciona.
 - [ ] **Web Push en Android:** no funciona; sigue pendiente la entrega real en el dispositivo.
-- [ ] **Aislamiento y recursos en Linux:** siguen pendientes las pruebas con procesos reales.
+- [x] **Aislamiento y recursos en Linux:** el usuario confirma que funcionan. Esta revisión local en Windows no repitió esas pruebas.
 - [x] **Otras verificaciones operativas anotadas:** el usuario confirma que están bien.
 - [~] **Integraciones externas:** el usuario está comprobándolas; actualizar cada integración cuando confirme el resultado.
 - [~] **Arranque de tareas largas:** el usuario reporta que las tareas no llegan a iniciar. En el código, el estado sigue `queued` durante la preparación del clon; esto explica la falta de actividad visible, pero no demuestra que la demora real de VM/proveedor tenga la misma causa. Falta registrar duración por fase y reproducirlo en la VM.

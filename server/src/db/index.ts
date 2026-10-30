@@ -888,6 +888,11 @@ const migrations: Migration[] = [
       ALTER TABLE conversations ADD COLUMN orquestacion_seleccion_automatica INTEGER NOT NULL DEFAULT 0 CHECK (orquestacion_seleccion_automatica IN (0,1));
     `,
   },
+  {
+    // Las tareas anteriores quedan sin asociación: el último mensaje puede ser otro turno en cola.
+    name: "049_task_message",
+    sql: `ALTER TABLE tasks ADD COLUMN message_id TEXT REFERENCES messages(id) ON DELETE SET NULL;`,
+  },
 ];
 
 function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {

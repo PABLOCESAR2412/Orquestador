@@ -66,10 +66,10 @@ repositoryActions.get("/conversations/:id/acciones", (c) =>
     db
       .query(
         `SELECT a.id,a.action,a.payload,a.state,a.result,a.task_id,
-          COALESCE(json_extract(a.payload,'$.messageId'),
+          CASE WHEN json_type(a.payload,'$.messageId') IS NOT NULL THEN json_extract(a.payload,'$.messageId') ELSE
             (SELECT m.id FROM messages m WHERE m.conversation_id=a.conversation_id
              AND m.role='user' AND m.created_at<=a.created_at
-             ORDER BY m.created_at DESC,m.rowid DESC LIMIT 1)) AS message_id
+             ORDER BY m.created_at DESC,m.rowid DESC LIMIT 1) END AS message_id
          FROM repository_actions a WHERE a.conversation_id=? ORDER BY a.created_at,a.rowid`,
       )
       .all(c.req.param("id")),
@@ -83,7 +83,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
     action: string;
     conversationId?: string;
     taskId?: string;
-    messageId?: string;
+    messageId?: string | null;
     message?: string;
     title?: string;
     pr_number?: number;
@@ -104,7 +104,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
       .get(b.conversationId, projectId)
   )
     return c.json({ error: "conversation_not_found" }, 404);
-  if (b.messageId !== undefined && (typeof b.messageId !== "string" || !b.conversationId ||
+  if (b.messageId !== undefined && b.messageId !== null && (typeof b.messageId !== "string" || !b.conversationId ||
     !db.query("SELECT 1 FROM messages WHERE id=? AND conversation_id=? AND role='user'").get(b.messageId, b.conversationId)))
     return c.json({ error: "invalid_body" }, 400);
   const tarea = b.taskId
@@ -134,7 +134,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
   if (b.action === "merge" && !b.pr_number && (!numeroPrUrlNumerico || !Number.isSafeInteger(numeroPrUrlNumerico)))
     return c.json({ error: "invalid_body" }, 400);
   try {
-    const messageId = b.messageId ?? (b.conversationId
+    const messageId = b.messageId !== undefined ? b.messageId : (b.conversationId
       ? db.query<{ id: string }, [string]>("SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(b.conversationId)?.id ?? null
       : null);
     const diff = (b.action === "init" || b.action === "merge") ? null : await diffDeTarea(tarea!.id);
@@ -615,7 +615,7 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
               action: siguiente,
               conversationId: t.conversation_id,
               taskId: row.task_id,
-              messageId: p.messageId ?? undefined,
+              messageId: p.messageId ?? null,
               pr_number: prRes?.number,
               pr_url: prRes?.html_url,
               title: `Merge pull request #${prRes?.number ?? ""} en ${p.base}`,
@@ -694,10 +694,9 @@ repositoryActions.post("/acciones/:id/resolver-conflictos", async (c) => {
     "No hagas commit ni push: Telo pedirá aprobación después de mostrar los cambios.",
   ].join("\n\n");
   const repairMessageId = typeof payload.messageId === "string"
-    ? payload.messageId
-    : db.query<{ id: string }, [string]>(
-        "SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1",
-      ).get(accion.conversation_id)?.id ?? null;
+    ? db.query<{ id: string }, [string, string]>("SELECT id FROM messages WHERE id=? AND conversation_id=? AND role='user'")
+      .get(payload.messageId, accion.conversation_id)?.id ?? null
+    : null;
   const actividadHasta = repairMessageId
     ? db.query<{ seq: number }, [string, string]>(
         "SELECT COALESCE(MAX(seq),0) AS seq FROM chat_actividad WHERE conversation_id=? AND turno_id=?",
@@ -710,6 +709,7 @@ repositoryActions.post("/acciones/:id/resolver-conflictos", async (c) => {
     projectId: accion.project_id,
     titulo: `Resolver conflictos PR #${diagnostico.pr_number}`,
     conversationId: accion.conversation_id,
+    messageId: repairMessageId,
     sourceBranch: diagnostico.rama_fuente,
     sourceBaseBranch: diagnostico.rama_base,
     sourcePrNumber: diagnostico.pr_number,

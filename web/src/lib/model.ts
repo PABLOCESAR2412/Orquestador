@@ -657,6 +657,8 @@ export function errorText(err: unknown): string {
         return "Demasiados intentos. Espera 15 minutos antes de volver a intentar.";
       case "login_required":
         return "Tu sesión terminó. Vuelve a entrar.";
+      case "origen_no_permitido":
+        return "Esta solicitud viene de otra dirección. Abre Telo desde su dirección habitual y vuelve a intentar.";
     }
     // Los códigos de archivos y adjuntos pueden llegar por mutaciones (abrir adjuntos, revisar
     // entregables); sin su caso esta vista cae al aviso genérico de 404 que empuja a recargar sin motivo.

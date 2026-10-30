@@ -47,6 +47,7 @@ export function crearSesionDispositivo(opts: { userAgent?: string; ip?: string }
 
 const ultimasVistas = new Map<string, number>();
 const INTERVALO_ACTUALIZACION_SESION_MS = 5 * 60_000;
+const DIAS_INACTIVIDAD_SESION = 60;
 
 // Solo acepta sesiones registradas: todas pueden revocarse.
 export function sesionValida(valor: string | undefined): boolean {
@@ -56,8 +57,15 @@ export function sesionValida(valor: string | undefined): boolean {
   // 1. Búsqueda en auth_sessions por hash del token
   try {
     const th = hashToken(valor);
-    const row = db.query<{ id: string }, [string]>("SELECT id FROM auth_sessions WHERE token_hash = ?").get(th);
+    const row = db.query<{ id: string; vigente: number }, [number, string]>(
+      "SELECT id, last_seen_at > datetime('now', '-' || ? || ' days') AS vigente FROM auth_sessions WHERE token_hash = ?",
+    ).get(DIAS_INACTIVIDAD_SESION, th);
     if (row) {
+      if (row.vigente !== 1) {
+        db.query("DELETE FROM auth_sessions WHERE id = ?").run(row.id);
+        ultimasVistas.delete(row.id);
+        return false;
+      }
       const ahora = Date.now();
       const ultima = ultimasVistas.get(row.id) ?? 0;
       if (ahora - ultima >= INTERVALO_ACTUALIZACION_SESION_MS) {
@@ -139,7 +147,7 @@ export function cerrarSesionPorToken(token: string): void {
 }
 
 // Limpia sesiones que no han tenido actividad en más de N días (por defecto 60).
-export function limpiarSesionesAntiguas(dias = 60): number {
+export function limpiarSesionesAntiguas(dias = DIAS_INACTIVIDAD_SESION): number {
   try {
     const res = db
       .query("DELETE FROM auth_sessions WHERE last_seen_at < datetime('now', '-' || ? || ' days')")

@@ -161,7 +161,11 @@ chat.get("/conversations", (c) => {
           FROM messages GROUP BY conversation_id
       ), latest_tasks AS (
         SELECT id, conversation_id, status, finished_at, plan_hash, provider_session_id,
-               ROW_NUMBER() OVER (PARTITION BY conversation_id ORDER BY created_at DESC, rowid DESC) AS rn
+               ROW_NUMBER() OVER (PARTITION BY conversation_id ORDER BY
+                 CASE WHEN status IN ('running','analyzing','waiting_approval') THEN 0 WHEN status='queued' THEN 1 ELSE 2 END,
+                 CASE WHEN status='queued' THEN created_at END ASC,
+                 CASE WHEN status='queued' THEN rowid END ASC,
+                 created_at DESC, rowid DESC) AS rn
           FROM tasks WHERE conversation_id IS NOT NULL
       )
       SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name,
@@ -204,8 +208,8 @@ chat.get("/conversations", (c) => {
         ? { id: r.task_id, status: r.task_status!, finished_at: r.task_finished_at, plan_hash: r.task_plan_hash }
         : null;
 
-      const enCurso = conversacionEnCurso(r.id) || (tarea ? ["queued", "analyzing", "running"].includes(tarea.status) : false);
       const pendienteAprobacion = tarea?.status === "waiting_approval";
+      const enCurso = !pendienteAprobacion && (conversacionEnCurso(r.id) || (tarea ? ["queued", "analyzing", "running"].includes(tarea.status) : false));
       const completada = tarea?.status === "done";
 
       let trabajadores: TrabajadorOrquestacion[] = [];
@@ -910,18 +914,19 @@ function tareaDelChat(id: string) {
 }
 
 // Una conversación conserva su clon y sesión; cada nueva petición crea una tarea nueva preservando el historial.
-function encolarTurno(conv: ConversationRow, prompt: string, model: string): string {
+function encolarTurno(conv: ConversationRow, turno: TurnoUsuario, model: string): string {
   const anterior = tareaDelChat(conv.id);
   if (anterior) {
     db.query("UPDATE repository_actions SET state='superseded' WHERE task_id=? AND state='pending'").run(anterior.id);
   }
   db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(conv.id);
   return crearTarea({
-    prompt,
+    prompt: turno.content,
     model,
     effort: conv.effort,
     projectId: conv.project_id,
     conversationId: conv.id,
+    messageId: turno.id,
     providerSessionId: conv.runner_session_id || null,
     providerSessionModel: conv.runner_session_model,
   });
@@ -1005,9 +1010,12 @@ chat.post("/conversations/:id/detener", c => {
     }
     return c.json({ outcome: "cancelling" }, 202);
   }
-  const tarea = tareaDelChat(conv.id);
-  if (tarea && ["queued", "analyzing", "running", "waiting_approval"].includes(tarea.status)) {
-    const outcome = cancelTask(tarea.id);
+  const tareas = db.query<{ id: string }, [string]>(
+    "SELECT id FROM tasks WHERE conversation_id=? AND status IN ('queued','analyzing','running','waiting_approval')",
+  ).all(conv.id);
+  if (tareas.length) {
+    const resultados = tareas.map((tarea) => cancelTask(tarea.id));
+    const outcome = resultados.includes("cancelling") ? "cancelling" : "cancelled";
     return c.json({ outcome }, outcome === "cancelling" ? 202 : 200);
   }
   // Nada activo registrado, pero el chat figura ocupado: la ocupación quedó huérfana (p. ej. el
@@ -1530,7 +1538,7 @@ chat.post("/conversations/:id/messages", async (c) => {
     if (conv.project_id) {
       // Los chats de proyecto encolan con su cola propia de tareas: el worker las corre en orden.
       const turno = guardarMensajeUsuario(conversationId, content);
-      const taskId = encolarTurno(conv, content, model);
+      const taskId = encolarTurno(conv, turno, model);
       return c.json({ messages: [turno], taskId }, 202);
     }
     const turno = guardarMensajeUsuario(conversationId, content);
@@ -1590,7 +1598,7 @@ chat.post("/conversations/:id/messages", async (c) => {
   const turno = reintento?.turno ?? guardarMensajeUsuario(conversationId, content);
   limpiarAvisosReintentados(conversationId, reintento?.rowid);
   if (conv.project_id && !conv.parent_conversation_id) {
-    const taskId = encolarTurno(conv, content, model);
+    const taskId = encolarTurno(conv, turno, model);
     publicarChat(conversationId, "en_curso");
     return c.json({ messages: [turno], taskId }, 202);
   }
@@ -1640,8 +1648,8 @@ chat.post("/conversations/:id/seguir", async (c) => {
     if (!tarea || tarea.status !== "sin_cuota") return c.json({ error: "chat_sin_cuota" }, 409);
     const turno = guardarMensajeUsuario(conversationId, SEGUIR_VISIBLE);
     db.transaction(() => {
-      db.query("UPDATE tasks SET status='queued',model=?,effort=?,modelo_agotado=NULL,error=NULL,finished_at=NULL,continuar=1 WHERE id=?")
-        .run(model, conv.effort, tarea.id);
+      db.query("UPDATE tasks SET status='queued',model=?,effort=?,modelo_agotado=NULL,error=NULL,finished_at=NULL,continuar=1,message_id=? WHERE id=?")
+        .run(model, conv.effort, turno.id, tarea.id);
       db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(conversationId);
       registrarEvento(tarea.id, "seguida", `Modelo ${model}`);
     })();
