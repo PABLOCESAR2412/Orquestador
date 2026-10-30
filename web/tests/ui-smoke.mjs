@@ -1247,11 +1247,12 @@ try {
     await proveedoresInferencia.getByRole("tab", { name: "Google Gemini" }).waitFor();
     assert.equal(await proveedoresInferencia.getByRole("tab").count(), 5);
     const panelGemini = page.getByRole("tabpanel", { name: "Google Gemini" });
+    await panelGemini.getByRole("button", { name: "Mostrar ajustes", exact: true }).click();
     await panelGemini.getByRole("button", { name: "Editar", exact: true }).click();
     assert.equal(await panelGemini.locator("input[type=password]").count(), 1, "la clave solo aparece al editarla");
     await panelGemini.getByRole("button", { name: "Cancelar", exact: true }).click();
     await panelGemini.locator(".aj-probar-proveedor").getByRole("button", { name: "Probar conexión", exact: true }).click();
-    await panelGemini.getByText(/Catálogo consultado: 7 modelos disponibles/).waitFor();
+    await panelGemini.getByText("Catálogo consultado. No se generó texto ni se consumieron tokens.", { exact: true }).waitFor();
     await proveedoresInferencia.getByRole("tab", { name: "OpenRouter" }).click();
     await page.getByRole("tabpanel", { name: "OpenRouter" }).waitFor();
     await page.screenshot({ path: `scratch/capturas-ci/proveedores-${width}.png` });
