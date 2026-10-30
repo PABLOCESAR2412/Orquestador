@@ -384,7 +384,7 @@ try {
       else if (path.includes("eventos-vivos/poll")) {
         const esperaPollUsada = Number(new URL(route.request().url()).searchParams.get("espera"));
         esperasPollUsadas.push(esperaPollUsada);
-        if (esperaPollUsada >= 8000) resolverEsperaPollLarga();
+        if (esperaPollUsada >= 4000) resolverEsperaPollLarga();
         data = { cursor: 0, eventos: [] };
       }
       else if (path.includes("eventos-vivos")) return route.fulfill({ contentType: "text/event-stream", body: ": alive\n\n" });
@@ -432,14 +432,14 @@ try {
     let timeoutPollLargo;
     await Promise.race([
       pollLargoObservado,
-      new Promise((_, reject) => { timeoutPollLargo = setTimeout(() => reject(new Error("no se observó el sondeo largo de eventos")), 10_000); }),
+      new Promise((_, reject) => { timeoutPollLargo = setTimeout(() => reject(new Error("no se observó el sondeo de 4 s de eventos")), 10_000); }),
     ]).finally(() => clearTimeout(timeoutPollLargo));
-    assert.ok(esperasPollUsadas.includes(8000), "el sondeo vivo deja margen al límite del proxy HTTP/2");
+    assert.ok(esperasPollUsadas.includes(4000), "el sondeo vivo usa 4 s para dejar margen frente al proxy HTTP/2");
     const mensajeSupervisor = page.locator(".tl-msg-agente").filter({ hasText: "Faltan dependencias" }).first();
     await mensajeSupervisor.getByText("Se creó 1 subagente", { exact: true }).waitFor();
     await mensajeSupervisor.getByText("1 trabajando", { exact: true }).waitFor();
     await mensajeSupervisor.getByText("Encargo del Supervisor:", { exact: false }).waitFor();
-    await mensajeSupervisor.getByText("Revisa las rutas y reporta riesgos", { exact: false }).waitFor();
+    await mensajeSupervisor.locator(".tl-subagente-encargo").filter({ hasText: "Revisa las rutas y reporta riesgos" }).waitFor();
     await mensajeSupervisor.locator(".tl-proceso-boton").click();
     await mensajeSupervisor.getByText("Ejecutando git status", { exact: true }).first().waitFor();
     await mensajeSupervisor.getByRole("button", { name: "Abrir subchat", exact: true }).click();
@@ -1353,12 +1353,13 @@ try {
     codexSesionEnPicker = true;
     await page.reload();
     await page.locator(".model-chip").click();
-    await page.getByRole("heading", { name: "OpenCode", exact: true }).waitFor();
-    await page.getByRole("heading", { name: "NVIDIA API", exact: true }).waitFor();
-    await page.getByRole("heading", { name: "Groq API", exact: true }).waitFor();
-    await page.getByRole("heading", { name: "Cuenta Codex", exact: true }).waitFor();
-    await page.locator(".picker").evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)));
-    assert.equal(await page.getByRole("button", { name: /GPT-5 Codex/ }).isDisabled(), true);
+    const selectorModelos = page.getByRole("dialog", { name: "Elegir modelo" });
+    await selectorModelos.getByRole("heading", { name: "OpenCode", exact: true }).waitFor();
+    await selectorModelos.getByRole("heading", { name: "NVIDIA API", exact: true }).waitFor();
+    await selectorModelos.getByRole("heading", { name: "Groq API", exact: true }).waitFor();
+    await selectorModelos.getByRole("heading", { name: "Cuenta Codex", exact: true }).waitFor();
+    await selectorModelos.evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)));
+    assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).isDisabled(), true);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/modelos-${width}.png` });
     console.log(`${width}px: código de acceso comprobado`);
