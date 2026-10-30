@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
+import { LIMITE_SKILL } from "../src/skills";
 
 const raiz = mkdtempSync(join(tmpdir(), "telo-skills-proyecto-"));
 process.env.DATA_DIR = join(raiz, "data");
@@ -55,7 +56,7 @@ test("valida nombres, contenido y existencia del proyecto", () => {
   for (const name of ["", "../skill", "Mi Skill", "-skill", "skill-", "a".repeat(65)]) {
     expect(() => guardarSkill(id, { name, content: "texto" })).toThrow("invalid_skill_name");
   }
-  for (const content of ["", " \n", "a".repeat(16_001)]) {
+  for (const content of ["", " \n", "a".repeat(LIMITE_SKILL + 1)]) {
     expect(() => guardarSkill(id, { name: "skill", content })).toThrow("invalid_skill_content");
   }
   expect(() => guardarSkill("inexistente", { name: "skill", content: "texto" })).toThrow(
@@ -114,7 +115,7 @@ test("importa Markdown de GitHub sin ejecutar scripts ni seguir redirects", asyn
 
 test("limita la descarga y no guarda documentos truncados o fallidos", async () => {
   const id = proyecto();
-  globalThis.fetch = (async () => new Response("a".repeat(16_001))) as unknown as typeof fetch;
+  globalThis.fetch = (async () => new Response("a".repeat(LIMITE_SKILL + 1))) as unknown as typeof fetch;
   await expect(importarSkill(id, URL_SKILL)).rejects.toThrow("skill_too_large");
   globalThis.fetch = (async () => new Response("error", { status: 404 })) as unknown as typeof fetch;
   await expect(importarSkill(id, URL_SKILL)).rejects.toThrow("skill_download_failed");

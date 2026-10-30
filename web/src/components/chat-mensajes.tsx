@@ -831,7 +831,7 @@ export function IndicadorPensando({
               : mostrarSubagentes
                 ? <p className="tl-actividad-live-espera">El modelo principal aún no confirmó subchats mediante la herramienta task. Las plantillas de Agentes no los crean; configura el Supervisor para ejecutar modelos auxiliares.</p>
                 : orquestacionActiva && ultimaNarracion?.startsWith("Supervisor ") && ultimaNarracion.includes("está eligiendo")
-                  ? <p className="tl-actividad-live-espera">El supervisor está eligiendo auxiliares. Si el proveedor no responde, Telo iniciará los modelos configurados automáticamente.</p>
+                  ? <p className="tl-actividad-live-espera">El supervisor está eligiendo auxiliares. Si la selección tarda más de 15 segundos, Telo continuará sin auxiliares para que responda el modelo principal.</p>
                   : orquestacionActiva
                     ? <p className="tl-actividad-live-espera">El supervisor y sus auxiliares siguen trabajando. Aquí aparecerán sus acciones observables; puedes detener el turno desde el chat.</p>
                     : <p className="tl-actividad-live-espera">Aún no llega una acción observable del agente. El turno sigue activo; puedes detenerlo desde el chat.</p>}

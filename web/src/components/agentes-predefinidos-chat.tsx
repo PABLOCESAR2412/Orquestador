@@ -139,7 +139,7 @@ function escaparRegExp(valor: string): string {
 function valorExplicito(textos: string[], aliases: string[] = []): string {
   for (const texto of textos) {
     for (const alias of aliases) {
-      const patron = new RegExp(`(?:^|[\\n;])\\s*(?:${escaparRegExp(alias)})\\s*[:=]\\s*([^\\n;]{1,500})`, "i");
+      const patron = new RegExp(`(?:^|[\n;])\\s*(?:${escaparRegExp(alias)})\\s*[:=]\\s*([^\n;]{1,500})`, "i");
       const valor = texto.match(patron)?.[1]?.trim();
       if (valor) return valor;
     }
@@ -251,10 +251,10 @@ export function AgentesPredefinidosChat({
               );
             })}
             <div className="tl-agentes-pie">
-              <p className="tl-orquestacion-nota">La plantilla por sí sola solo prepara instrucciones. Para que Telo inicie auxiliares de verdad, configura el Supervisor y añade modelos; usarán las conexiones de proveedor guardadas en Configuración → Proveedores IA, sin credenciales separadas por agente. No se enviará nada hasta que revises y mandes el mensaje.</p>
+              <p className="tl-orquestacion-nota">La plantilla prepara un borrador; no lo envía, publica ni escribe en servicios externos. Para que Telo inicie auxiliares, configura el Supervisor y añade modelos. Usarán las conexiones guardadas en Configuración → Proveedores IA, sin credenciales separadas por agente. Revisa y envía el mensaje manualmente.</p>
               <div className="tl-dialogo-acciones">
                 <button type="button" className="primary" onClick={() => onConfigureSupervisor(prepararBorrador())} disabled={agente.campos.some((campo) => campo.requerido && !valores[`${agente.id}:${campo.id}`]?.trim())}>Configurar Supervisor y auxiliares</button>
-                <button type="button" className="tl-boton" onClick={() => onApply(prepararBorrador())} disabled={agente.campos.some((campo) => campo.requerido && !valores[`${agente.id}:${campo.id}`]?.trim())}>Insertar solo la plantilla</button>
+                <button type="button" className="tl-boton" onClick={() => onApply(prepararBorrador())} disabled={agente.campos.some((campo) => campo.requerido && !valores[`${agente.id}:${campo.id}`]?.trim())}>Usar en el chat</button>
               </div>
             </div>
           </div>

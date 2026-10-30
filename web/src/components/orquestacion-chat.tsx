@@ -193,7 +193,7 @@ export function OrquestacionChat({
                   <button type="button" className="tl-boton tl-orquestacion-quitar" aria-label={`Quitar auxiliar ${indice + 1}`} onClick={() => setAuxiliares((actuales) => actuales.filter((_item, actual) => actual !== indice))}>Quitar modelo</button>
                 </div>
               ))}
-              {!auxiliares.length && <p className="tl-orquestacion-costo" role="alert">Todavía no hay modelos auxiliares seleccionados. Telo no iniciará agentes hasta que añadas al menos un modelo y guardes la configuración. Si no aparecen modelos gratis, puedes mostrar los que pueden tener costo.</p>}
+              {!auxiliares.length && <p className="tl-orquestacion-costo" role="note">{recomendaciones.length ? "Todavía no hay modelos auxiliares seleccionados. El supervisor puede responder sin análisis auxiliares." : "El catálogo no tiene modelos marcados como gratis disponibles para auxiliares. Puedes mostrar modelos con posible costo y añadirlos manualmente, o guardar el supervisor sin auxiliares."}</p>}
               <label className="tl-orquestacion-toggle tl-orquestacion-incluir-costo">
                 <input type="checkbox" checked={verModelosConCosto} onChange={(event) => setVerModelosConCosto(event.target.checked)} />
                 <span>Mostrar modelos que pueden tener costo</span>
@@ -217,7 +217,7 @@ export function OrquestacionChat({
           <p className="tl-orquestacion-costo" role="note">El modo automático añade una consulta al supervisor y las llamadas de los auxiliares elegidos. Aumenta consumo y demora. “Gratis” es solo la etiqueta del catálogo de Telo; cuotas y límites dependen del proveedor.</p>
           <div className="tl-dialogo-acciones tl-orquestacion-acciones">
             <button type="button" className="tl-boton" onClick={onCerrar}>Cancelar</button>
-            <button type="button" className="tl-boton tl-boton-primario" onClick={guardar} disabled={guardando || !coordinador || (activa && !auxiliares.length)}>
+            <button type="button" className="tl-boton tl-boton-primario" onClick={guardar} disabled={guardando || !coordinador}>
               {guardando ? "Guardando…" : "Guardar configuración"}
             </button>
           </div>

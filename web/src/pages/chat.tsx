@@ -1852,7 +1852,7 @@ export function ChatPage() {
                   vivo={(selectedId && vivos[selectedId]?.pasos) || []}
                   conversacionId={selectedId ?? undefined}
                   turnoId={selectedId ? vivos[selectedId]?.turnoId ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.id : undefined}
-                  mostrarSubagentes={!current?.model?.startsWith("codex/") && !Boolean(current?.orquestacion_habilitada) && /\b(subagentes?|agentes?\s+(?:en\s+)?paralelo|deleg(?:a|ar|ando)|llama\s+a\s+(?:varios|m[aá]s\s+de\s+uno|un\s+subagente))\b/i.test(envioActual?.content ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.content ?? "")}
+                  mostrarSubagentes={!current?.model?.startsWith("codex/") && (Boolean(current?.orquestacion_habilitada) || /\b(subagentes?|agentes?\s+(?:en\s+)?paralelo|deleg(?:a|ar|ando)|llama\s+a\s+(?:varios|m[aá]s\s+de\s+uno|un\s+subagente))\b/i.test(envioActual?.content ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.content ?? ""))}
                   orquestacionActiva={Boolean(current?.orquestacion_habilitada)}
                   onAbrirSubchat={setSelectedId}
                 />

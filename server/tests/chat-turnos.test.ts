@@ -363,11 +363,7 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
 
   test("si la selección automática falla, el chat sigue sin esperar ni ejecutar auxiliares opcionales", async () => {
     const id = conversacion();
-    db.query(`UPDATE conversations
-                 SET orquestacion_habilitada=1,
-                     orquestacion_seleccion_automatica=1,
-                     orquestacion_trabajadores=?
-               WHERE id=?`).run(JSON.stringify([
+    db.query("UPDATE conversations SET orquestacion_habilitada=1, orquestacion_seleccion_automatica=1, orquestacion_trabajadores=? WHERE id=?").run(JSON.stringify([
       { rol: "arquitectura", model: "openai/gpt-4.1-mini" },
       { rol: "verificacion", model: "google/gemini-test" },
     ]), id);
@@ -375,9 +371,7 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     const response = await enviar(id, "Revisa una pregunta sencilla");
     expect(response.status).toBe(202);
     await esperar(() => mensajes(id).some((mensaje) => mensaje.role === "assistant"));
-    const actividad = db.query<{ titulo: string }, [string]>(
-      "SELECT titulo FROM chat_actividad WHERE conversation_id=? ORDER BY seq",
-    ).all(id).map((paso) => paso.titulo).join("\n");
+    const actividad = db.query<{ titulo: string }, [string]>("SELECT titulo FROM chat_actividad WHERE conversation_id=? ORDER BY seq").all(id).map((paso) => paso.titulo).join("\n");
     expect(actividad).toContain("La selección automática no devolvió una respuesta válida");
     expect(actividad).not.toContain("inició la revisión de solo lectura");
     expect(mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content).toBe("Respuesta lista.");
