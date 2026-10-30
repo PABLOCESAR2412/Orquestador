@@ -1281,7 +1281,6 @@ async function ejecutarAnalisisOrquestado(
           "Petición del usuario:", prompt,
         ].join("\n\n"),
         model: modeloCoordinador,
-        variant: conv.effort,
         cwd,
         timeoutMs: null,
         tiempoSinActividadMs: null,

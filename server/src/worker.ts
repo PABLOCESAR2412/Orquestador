@@ -223,7 +223,7 @@ function leerPlan(respuesta: { text: string; textoFinal: string }): Validacion<P
 }
 
 // Una llamada del analizador u obrero: puede durar lo necesario y registra su uso.
-async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise<ResultadoAgente> {
+async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizarConSubagentes = false): Promise<ResultadoAgente> {
   const { task, controller, salida } = ctx;
   // Una cancelación entre dos llamadas evita lanzar la siguiente: el runner no la vería abortada.
   if (controller.signal.aborted) throw new Error("Tarea cancelada.");
@@ -237,7 +237,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
     ? db.query<{ id: string }, [string]>("SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(task.conversation_id)
     : null;
   try {
-    if (aprender) {
+    if (aprender || analizarConSubagentes) {
       perfilesSubagente = await prepararSubagentes({
         // El prompt de la fase obrero ya incluye el plan, pero la autorización para delegar
         // viene de la petición original del usuario.
@@ -245,6 +245,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
         modelo: task.model,
         esfuerzo: task.effort,
         idEjecucion: crypto.randomUUID(),
+        soloLectura: analizarConSubagentes,
       });
     }
     const promptAvisos = ctx.avisos?.length
@@ -361,11 +362,11 @@ async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Pr
     ? { planAnterior: planGuardado(task.id), motivo: replanificacion.motivo }
     : undefined;
 
-  let respuesta = await llamar(ctx, promptDeFase(ctx, promptAnalizador(task.prompt, contexto)), false);
+  let respuesta = await llamar(ctx, promptDeFase(ctx, promptAnalizador(task.prompt, contexto)), false, true);
   let validacion = leerPlan(respuesta);
   if (!validacion.ok) {
     // Una reparación en la misma sesión: el analizador ya tiene el contexto de su respuesta.
-    respuesta = await llamar(ctx, promptReparacion(validacion.motivo), false);
+    respuesta = await llamar(ctx, promptReparacion(validacion.motivo), false, true);
     validacion = leerPlan(respuesta);
     if (!validacion.ok) throw new ErrorFase(`El analizador no produjo un plan válido: ${validacion.motivo}.`);
   }
