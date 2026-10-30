@@ -4,7 +4,7 @@ import { COOKIE_SESION, sesionValida } from "../auth";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { config } from "../config";
-import { registrarTrabajo } from "../despliegue";
+import { pausaTareasPorDespliegue, registrarPausaActiva, registrarTrabajo } from "../despliegue";
 import { db } from "../db";
 import { publicar } from "../bus";
 import { AislamientoError, eliminarPerfilOpenCode } from "../runners/aislamiento";
@@ -169,7 +169,7 @@ chat.get("/conversations", (c) => {
              c.orquestacion_habilitada, c.orquestacion_seleccion_automatica, c.orquestacion_trabajadores,
              c.runner_session_id IS NOT NULL AS tiene_sesion,
              t.id AS task_id, t.status AS task_status, t.finished_at AS task_finished_at,
-             t.plan_hash AS task_plan_hash, t.provider_session_id IS NOT NULL AS task_reanudable,
+             t.plan_hash AS task_plan_hash, (t.provider_session_id IS NOT NULL OR t.status = 'interrupted') AS task_reanudable,
              (SELECT role FROM messages WHERE conversation_id=c.id ORDER BY created_at DESC,rowid DESC LIMIT 1) AS ultimo_rol
         FROM conversations c
         LEFT JOIN projects p ON p.id = c.project_id
@@ -986,6 +986,7 @@ const TIEMPO_SIN_ACTIVIDAD_MS = null;
 // Este límite aplica solo al selector, no al trabajo principal ni a los análisis.
 const TIEMPO_SELECCION_AUXILIARES_MS = 15_000;
 const controlesTurno = new Map<string, AbortController>();
+const pausasDespliegueTurnos = new Set<string>();
 
 chat.post("/conversations/:id/detener", c => {
   const conv = leerConversacion(c.req.param("id"));
@@ -1112,6 +1113,10 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
     });
     turnoTerminado = true;
   } catch (err) {
+    if (pausasDespliegueTurnos.has(conversationId)) {
+      guardarAviso(conversationId, "La respuesta se pausó para aplicar una actualización. El mensaje, los cambios y la sesión disponible se conservan; cuando el servidor vuelva, pulsa Continuar donde quedó.");
+      return;
+    }
     if (signal.aborted) {
       guardarAviso(conversationId, "Ejecución detenida por ti. El trabajo y la sesión disponibles se conservan; puedes continuar donde quedó.");
       return;
@@ -1281,7 +1286,6 @@ async function ejecutarAnalisisOrquestado(
           "Petición del usuario:", prompt,
         ].join("\n\n"),
         model: modeloCoordinador,
-        variant: conv.effort,
         cwd,
         timeoutMs: null,
         tiempoSinActividadMs: null,
@@ -1411,6 +1415,11 @@ function iniciarTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: string
   const finalizarTrabajo = registrarTrabajo();
   const control = new AbortController();
   controlesTurno.set(conv.id, control);
+  const dejarDePausar = registrarPausaActiva(() => {
+    if (control.signal.aborted) return;
+    pausasDespliegueTurnos.add(conv.id);
+    control.abort();
+  });
   ocuparConversacion(conv.id);
   publicarChat(conv.id, "en_curso");
   void correrTurno(conv, turno, prompt, model, control.signal)
@@ -1421,7 +1430,9 @@ function iniciarTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: string
     })
     .finally(() => {
       finalizarTrabajo();
+      dejarDePausar();
       controlesTurno.delete(conv.id);
+      pausasDespliegueTurnos.delete(conv.id);
       liberarConversacion(conv.id);
       publicarChat(conv.id, "terminado");
       notifyWorker();
@@ -1447,6 +1458,7 @@ function limpiarCola(conversationId: string): void {
 // reinicio del servidor no llega aquí: los avisos de arranque limpian la bandera antes, así
 // que un pendiente jamás se ejecuta solo tras reiniciar.
 export function arrancarSiguienteEnCola(conversationId: string): void {
+  if (pausaTareasPorDespliegue()) return;
   const conv = leerConversacion(conversationId);
   if (!conv || conversacionEnCurso(conversationId)) return;
   const pendiente = db

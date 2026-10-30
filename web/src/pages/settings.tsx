@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent as TeclaReact, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { api, reintentarConsultaTransitoria, type ModelInfo, type Preferences, type ProviderStatus, type UsoVentanaProveedor } from "../api";
+import { api, reintentarConsultaTransitoria, type ModelInfo, type Preferences, type ProviderStatus } from "../api";
 import { EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
 import { useEventosVivos } from "../lib/eventos-vivos";
 import { isIOS, isStandalone, useInstallPrompt } from "../lib/install";
-import { errorText, formatUsd } from "../lib/model";
+import { errorText } from "../lib/model";
 import { AlmacenamientoServidor, ErrorConReintento, EstadoServidor, useMuestrasLatencia } from "./servidor";
 import "../styles-ajustes.css";
 import { InstalarHerramienta } from "../components/instalar-herramienta";
@@ -36,6 +36,7 @@ const PESTANAS_PROVEEDOR = [
   { id: "groq", texto: "Groq Cloud" },
   { id: "nvidia", texto: "NVIDIA NIM" },
   { id: "openrouter", texto: "OpenRouter" },
+  { id: "opencode", texto: "OpenCode" },
 ] as const;
 
 function proveedorDeModelo(modelo: string | null | undefined): string | null {
@@ -53,7 +54,6 @@ export function SettingsPage() {
   const models = useQuery({ queryKey: ["models"], queryFn: api.listModels, staleTime: 5 * 60_000 });
   const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000, retry: reintentarConsultaTransitoria });
   const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders });
-  const uso = useQuery({ queryKey: ["uso"], queryFn: api.usage, refetchInterval: 60_000 });
   const latencia = useMuestrasLatencia();
   const install = useInstallPrompt();
 
@@ -156,10 +156,7 @@ export function SettingsPage() {
   const etiquetaDe = (p: ProviderStatus): string | null =>
     p.id === primarioId ? "Primario" : p.id === respaldoId ? "Respaldo" : p.variable === null ? "Local" : null;
 
-  const usoMesDe = (id: string): UsoVentanaProveedor | null =>
-    uso.data?.proveedores.find((p) => p.id === id)?.mesActual ?? null;
-
-  // Diagnóstico por proveedor: cuántos modelos ve OpenCode y cuántos llegan al selector del chat.
+  // Diagnóstico interno para distinguir una clave que no expone modelos de una conexión válida.
   const modelosDe = (id: string): { total: number; enSelector: number } | null => {
     if (!models.isSuccess) return null;
     const del = models.data.models.filter((m) => proveedorDeModelo(m.id) === id);
@@ -202,7 +199,7 @@ export function SettingsPage() {
           <div className="aj-cabecera-texto">
             {eyebrow && <p className="aj-eyebrow">{eyebrow}</p>}
             <h1 className="aj-titulo">Ajustes y Servidor</h1>
-            <p className="aj-descripcion">Personaliza Telo y administra sus motores de IA, claves y telemetría.</p>
+            <p className="aj-descripcion">Personaliza Telo y administra sus motores de inferencia y credenciales.</p>
           </div>
         </header>
 
@@ -328,7 +325,6 @@ export function SettingsPage() {
                         key={proveedorActivo.id}
                         p={proveedorActivo}
                         etiqueta={etiquetaDe(proveedorActivo)}
-                        usoMes={usoMesDe(proveedorActivo.id)}
                         modelos={modelosDe(proveedorActivo.id)}
                         tabId={`aj-proveedor-panel-${proveedorActivo.id}`}
                         tabLabelId={`aj-proveedor-tab-${proveedorActivo.id}`}
@@ -337,7 +333,7 @@ export function SettingsPage() {
                     {proveedoresAdicionales.length > 0 && (
                       <div className="aj-proveedores-adicionales" aria-label="Acceso local y otros proveedores">
                         {proveedoresAdicionales.map((p) => (
-                          <TarjetaProveedor key={p.id} p={p} etiqueta={etiquetaDe(p)} usoMes={usoMesDe(p.id)} modelos={modelosDe(p.id)} />
+                          <TarjetaProveedor key={p.id} p={p} etiqueta={etiquetaDe(p)} modelos={modelosDe(p.id)} />
                         ))}
                       </div>
                     )}
@@ -463,10 +459,6 @@ export function SettingsPage() {
                       </div>
                     </div>
 
-                    <p className="aj-nota">
-                      Gastado en el mes en curso:{" "}
-                      {datos ? formatUsd(datos.costos.mesUsd) : "—"}.
-                    </p>
                     {localError && (
                       <p className="aj-error" role="alert">
                         {localError}
@@ -653,28 +645,26 @@ function Kpi({
 function TarjetaProveedor({
   p,
   etiqueta,
-  usoMes,
   modelos,
   tabId,
   tabLabelId,
 }: {
   p: ProviderStatus;
   etiqueta: string | null;
-  usoMes: UsoVentanaProveedor | null;
   // Modelos del proveedor en el catálogo de OpenCode (total) y los que salen en el selector del chat.
   modelos: { total: number; enSelector: number } | null;
   tabId?: string;
   tabLabelId?: string;
 }) {
   // Codex está activo cuando hay sesión autenticada; los otros motores requieren clave disponible para agentes.
-  const listo = p.id === "codex" ? p.configured : p.configured && p.enAgente;
+  const listo = p.id === "codex" || p.id === "opencode" ? p.configured : p.configured && p.enAgente;
   const sinClave = p.variable === null;
-  const tieneUsoMes = Boolean(usoMes?.llamadas);
-  const costeCompleto = Boolean(usoMes && usoMes.llamadas > 0 && usoMes.costesEstimados === usoMes.llamadas && usoMes.costesNoDisponibles === 0 && usoMes.costesDesconocidos === 0);
-  const gastoMes = costeCompleto ? usoMes!.costoEstimadoUsd : null;
   const nota = notaEstado(p, modelos);
-  const tituloSinControl = "La clave vive en el servidor y la app no la recibe.";
-  const esMotorDirecto = PESTANAS_PROVEEDOR.some((tab) => tab.id === p.id);
+  const esMotorDirecto = p.id !== "opencode" && p.id !== "codex" && PESTANAS_PROVEEDOR.some((tab) => tab.id === p.id);
+  const [credencialesAbiertas, setCredencialesAbiertas] = useState(!p.configured);
+  useEffect(() => {
+    if (p.configured) setCredencialesAbiertas(false);
+  }, [p.configured]);
   const prueba = useMutation({ mutationFn: () => api.testProvider(p.id) });
   const estadoPrueba = prueba.data?.ok
     ? p.enAgente ? "Conexión comprobada" : "API responde · clave no llega al agente"
@@ -714,7 +704,12 @@ function TarjetaProveedor({
             <p className="aj-descripcion-tarjeta">{p.hint}</p>
           </div>
         </div>
-        {esMotorDirecto ? (
+        {p.id === "opencode" ? (
+          <div className={`aj-estado-proveedor${p.configured ? " is-conectado" : " is-error"}`} role="status">
+            <span className="aj-proveedor-punto" aria-hidden="true" />
+            {p.configured ? "CLI instalado en el servidor" : "CLI no instalado"}
+          </div>
+        ) : esMotorDirecto ? (
           <div className={`aj-estado-proveedor${prueba.data?.ok ? " is-conectado" : errorPrueba ? " is-error" : ""}`} role="status">
             <span className="aj-proveedor-punto" aria-hidden="true" />
             {prueba.isPending ? "Probando conexión…" : estadoPrueba}
@@ -731,18 +726,24 @@ function TarjetaProveedor({
               disabled
               title={p.id === "codex"
                 ? "Refleja si el servidor tiene una sesión de Codex iniciada."
-                : sinClave
-                  ? "Se activa al instalar el CLI de OpenCode en el servidor. La app no lo cambia."
-                  : p.guardable
-                    ? "Se activa al guardar la clave aquí o al configurarla en el archivo de entorno del servidor. La app no lo apaga."
-                    : `Se activa al configurar ${p.variable} en el archivo de entorno del servidor. La app no lo cambia.`
-              }
+                : "Se activa al guardar la clave aquí o al configurarla en el archivo de entorno del servidor. La app no lo apaga."}
             />
           </div>
         )}
+        {p.guardable && (
+          <button
+            type="button"
+            className="aj-texto-btn"
+            aria-expanded={credencialesAbiertas}
+            aria-controls={`aj-prov-campos-${p.id}`}
+            onClick={() => setCredencialesAbiertas((abiertas) => !abiertas)}
+          >
+            {credencialesAbiertas ? "Ocultar ajustes" : "Mostrar ajustes"}
+          </button>
+        )}
       </div>
 
-      <div className="aj-campos">
+      {(credencialesAbiertas || !p.guardable) && <div className="aj-campos" id={`aj-prov-campos-${p.id}`}>
         {p.id === "codex" ? (
           <div className="aj-campo">
             <div className="aj-campo-etiqueta"><span>Sesión de Codex</span></div>
@@ -752,17 +753,12 @@ function TarjetaProveedor({
           </div>
         ) : p.guardable ? (
           <CampoClave p={p} />
-        ) : (
+        ) : p.id !== "opencode" ? (
           <div className="aj-campo">
             <div className="aj-campo-etiqueta">
               <span>
                 Clave API{p.variable ? <> · <span className="aj-mono">{p.variable}</span></> : null}
               </span>
-              {!sinClave && (
-                <button type="button" className="aj-texto-btn" disabled title={tituloSinControl}>
-                  Mostrar
-                </button>
-              )}
             </div>
             <div className="aj-entrada">
               <span className={p.configured || sinClave ? "" : "aj-entrada-vacia"}>
@@ -772,52 +768,25 @@ function TarjetaProveedor({
                     ? "•".repeat(24)
                     : "Sin clave configurada"}
               </span>
-              {!sinClave && (
-                <button type="button" className="aj-icono-btn" disabled title={tituloSinControl} aria-label="Copiar clave">
-                  <IconoCopia />
-                </button>
-              )}
             </div>
           </div>
-        )}
+        ) : null}
 
         {p.id !== "codex" && <div className="aj-campo">
           <div className="aj-campo-etiqueta">
-            <span>Endpoint base</span>
+            <span>{p.id === "opencode" ? "Tipo de conexión" : "Endpoint base"}</span>
           </div>
           <div className="aj-entrada aj-entrada-vacia">
-            <span>{sinClave ? "No aplica: corre en el servidor" : endpoints[p.id] ?? "Gestionado por el servidor"}</span>
+            <span>{p.id === "opencode" ? "CLI local del servidor; las claves se configuran por proveedor" : sinClave ? "No aplica: corre en el servidor" : endpoints[p.id] ?? "Gestionado por el servidor"}</span>
           </div>
         </div>}
-      </div>
-
-      <div className="aj-presupuesto">
-        <div className="aj-campo-etiqueta">
-          <span>Estimación de coste este mes (UTC)</span>
-          <span className="aj-mono">
-            {gastoMes !== null ? `≈ ${formatUsd(gastoMes)}` : tieneUsoMes ? "Sin dato completo" : "Sin uso registrado"}
-          </span>
-        </div>
-        <p className="aj-nota">
-          {gastoMes !== null
-            ? "Estimación basada en las llamadas que Telo registró; no es la factura ni el saldo oficial del proveedor."
-            : tieneUsoMes
-              ? "Telo registró llamadas, pero faltan datos fiables para calcular su coste total."
-              : "Telo aún no registra llamadas de este proveedor este mes."}
-        </p>
-      </div>
-
-      {p.enAgente && modelos && modelos.total > 0 && (
-        <p className="aj-nota">
-          {modelos.enSelector === 1 ? "1 modelo" : `${modelos.enSelector} modelos`} en el selector del chat.
-        </p>
-      )}
+      </div>}
       {esMotorDirecto && (
         <div className="aj-probar-proveedor">
           <button type="button" className="aj-btn" disabled={!p.configured || prueba.isPending} onClick={() => prueba.mutate()}>
             {prueba.isPending ? "Probando…" : "Probar conexión"}
           </button>
-          {prueba.data?.ok && <p className="aj-nota" role="status">Catálogo consultado{prueba.data.modelos === null ? "." : `: ${prueba.data.modelos} modelos disponibles.`} No se generó texto ni se consumieron tokens.</p>}
+          {prueba.data?.ok && <p className="aj-nota" role="status">Catálogo consultado. No se generó texto ni se consumieron tokens.</p>}
           {errorPrueba && <p className="aj-error" role="alert">{errorPrueba}</p>}
         </div>
       )}
@@ -921,8 +890,15 @@ function CampoClave({ p }: { p: ProviderStatus }) {
               enviar();
             }}
           />
-          <button type="button" className="aj-texto-btn" onClick={() => setVerValor((v) => !v)} aria-pressed={verValor}>
-            {verValor ? "Ocultar" : "Mostrar"}
+          <button
+            type="button"
+            className="aj-icono-btn"
+            onClick={() => setVerValor((v) => !v)}
+            aria-label={verValor ? "Ocultar clave escrita" : "Mostrar clave escrita"}
+            aria-pressed={verValor}
+            title={verValor ? "Ocultar clave" : "Mostrar clave"}
+          >
+            <IconoVisibilidad visible={verValor} />
           </button>
           <button type="button" className="aj-btn aj-btn-primario" onClick={enviar} disabled={!valor.trim() || ocupado}>
             {guardar.isPending ? "Guardando…" : "Guardar clave"}
@@ -947,12 +923,15 @@ function JevPanel() {
   const estado = useQuery({ queryKey: ["jev"], queryFn: api.getJev });
   const [valor, setValor] = useState("");
   const [visible, setVisible] = useState(false);
+  const [configuracionAbiertaManual, setConfiguracionAbiertaManual] = useState<boolean | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const guardar = useMutation({
     mutationFn: api.setJevKey,
     onSuccess: () => {
       setValor("");
+      setVisible(false);
+      setConfiguracionAbiertaManual(false);
       setError(null);
       setAviso("Clave guardada cifrada en el servidor. Jev se activará en las próximas evaluaciones.");
       qc.removeQueries({ queryKey: ["jev-recomendaciones"] });
@@ -989,6 +968,7 @@ function JevPanel() {
     },
   });
   const ocupado = guardar.isPending || quitar.isPending || probar.isPending;
+  const configuracionAbierta = configuracionAbiertaManual ?? !estado.data?.configurada;
   const enviar = () => {
     if (!valor.trim() || ocupado || !estado.data?.disponible) return;
     setAviso(null);
@@ -998,17 +978,35 @@ function JevPanel() {
 
   return (
     <article className="aj-tarjeta aj-jev" aria-labelledby="aj-jev-titulo">
-      <div>
+      <div className="aj-jev-cabecera">
         <h3 id="aj-jev-titulo" className="aj-tarjeta-titulo-simple">TypeSafe Jev</h3>
+        <button
+          type="button"
+          className="aj-texto-btn"
+          aria-expanded={configuracionAbierta}
+          aria-controls="aj-jev-configuracion"
+          onClick={() => setConfiguracionAbiertaManual((abierta) => !(abierta ?? !estado.data?.configurada))}
+        >
+          {configuracionAbierta ? "Ocultar configuración" : "Editar configuración"}
+        </button>
+      </div>
+      <div>
         <p className="aj-nota">
           Jev ordenará sugerencias, puntuará propuestas de memoria y recomendará una categoría para tareas. Telo decide qué guardar; el modelo, los permisos y las aprobaciones de Git siguen bajo sus reglas.
         </p>
       </div>
-      <div className="aj-campo">
+      {configuracionAbierta && <div className="aj-campo" id="aj-jev-configuracion">
         <div className="aj-campo-etiqueta">
           <label htmlFor="aj-jev-clave">Clave API</label>
-          <button type="button" className="aj-texto-btn" onClick={() => setVisible((v) => !v)}>
-            {visible ? "Ocultar" : "Mostrar"}
+          <button
+            type="button"
+            className="aj-icono-btn"
+            onClick={() => setVisible((v) => !v)}
+            aria-label={visible ? "Ocultar clave escrita" : "Mostrar clave escrita"}
+            aria-pressed={visible}
+            title={visible ? "Ocultar clave" : "Mostrar clave"}
+          >
+            <IconoVisibilidad visible={visible} />
           </button>
         </div>
         <div className="aj-clave-fila">
@@ -1042,7 +1040,8 @@ function JevPanel() {
               : "Falta TELO_CLAVE_CIFRADO en el servidor para guardar secretos."}
         </p>
         {estado.data?.actualizada_en && <p className="aj-nota">Actualizada: {new Date(estado.data.actualizada_en).toLocaleString("es")}</p>}
-      </div>
+      </div>}
+      {!configuracionAbierta && <p className="aj-nota" role="status">{estado.isPending ? "Consultando estado…" : estado.data?.configurada ? "Clave guardada cifrada; el valor permanece oculto." : "Sin clave configurada."}</p>}
       <p className="aj-nota">
         Si guardas la clave, Telo enviará a TypeSafe AI los últimos mensajes del chat, el texto de cada tarea y la propuesta de memoria necesaria para evaluarla. No enviará credenciales conocidas. Puedes quitar la clave aquí cuando quieras.
       </p>
@@ -1061,6 +1060,16 @@ function JevPanel() {
       </div>
       <p className="aj-nota">La prueba envía una evaluación mínima y puede consumir tokens. El uso de Jev aparece separado en Analíticas.</p>
     </article>
+  );
+}
+
+function IconoVisibilidad({ visible }: { visible: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+      {!visible && <path d="m3 3 18 18" />}
+    </svg>
   );
 }
 

@@ -6,12 +6,39 @@ import type { MiddlewareHandler } from "hono";
 // bloqueada la app si el actualizador fue terminado sin ejecutar su trap.
 const CONCESION_MS = 30 * 60_000;
 let activas = 0;
+const pausasActivas = new Set<() => void>();
+let vigilarPausas: ReturnType<typeof setInterval> | null = null;
 export function enMantenimiento(): boolean {
   const ruta = process.env.TELO_MARCA_DESPLIEGUE || resolve(import.meta.dir, "../../.git/telo-mantenimiento");
   try {
     const marca = lstatSync(ruta);
     return !marca.isSymbolicLink() && Date.now() - marca.mtimeMs < CONCESION_MS;
   } catch { return false; }
+}
+// Solo el actualizador crea esta marca. Los respaldos comparten la marca general de
+// mantenimiento, pero no deben interrumpir tareas que pueden seguir trabajando.
+export function pausaTareasPorDespliegue(): boolean {
+  const ruta = process.env.TELO_MARCA_PAUSA_DESPLIEGUE || resolve(import.meta.dir, "../../.git/telo-pausar-tareas");
+  try {
+    const marca = lstatSync(ruta);
+    return !marca.isSymbolicLink() && Date.now() - marca.mtimeMs < CONCESION_MS;
+  } catch { return false; }
+}
+export function registrarPausaActiva(pausar: () => void): () => void {
+  pausasActivas.add(pausar);
+  if (!vigilarPausas) {
+    vigilarPausas = setInterval(() => {
+      if (!pausaTareasPorDespliegue()) return;
+      for (const callback of pausasActivas) callback();
+    }, 500);
+  }
+  return () => {
+    pausasActivas.delete(pausar);
+    if (!pausasActivas.size && vigilarPausas) {
+      clearInterval(vigilarPausas);
+      vigilarPausas = null;
+    }
+  };
 }
 export function registrarTrabajo(): () => void {
   activas++;

@@ -45,7 +45,7 @@ import {
   type RegistroSalida,
 } from "./workspace";
 import { avisarPush } from "./push";
-import { enMantenimiento, registrarTrabajo } from "./despliegue";
+import { enMantenimiento, registrarPausaActiva, registrarTrabajo } from "./despliegue";
 
 // Un worker coordina hasta diez tareas independientes en orden de llegada.
 // Corre dentro del mismo proceso que la API, así que sigue activo aunque
@@ -55,6 +55,7 @@ import { enMantenimiento, registrarTrabajo } from "./despliegue";
 // Entre ambas, si el plan necesita aprobación, la tarea espera en `waiting_approval` sin ocupar el worker.
 
 const MENSAJE_INTERRUMPIDA = "El servidor se reinició mientras la tarea corría. Puedes reanudarla o reintentarla.";
+const MENSAJE_PAUSA_DESPLIEGUE = "Tarea pausada para aplicar una actualización. Se conservó el espacio de trabajo y la sesión del proveedor, si ya existía; puedes continuarla cuando el servidor vuelva.";
 // Iniciativa del obrero: tras un reporte con fallo, el mismo agente corrige en su sesión hasta
 // este tope de ciclos antes de fallar la tarea. TELO_CICLOS_OBRERO lo ajusta; 0 desactiva
 // la iniciativa y falla con el primer reporte, como antes.
@@ -65,6 +66,7 @@ export const MAX_NOTAS = 2000;
 
 const controllers = new Map<string, AbortController>();
 const cancelRequested = new Set<string>();
+const pausaDespliegueSolicitada = new Set<string>();
 const tareasEnEjecucion = new Set<string>();
 const proyectosEnEjecucion = new Set<string>();
 let wake: (() => void) | null = null;
@@ -129,7 +131,7 @@ function estadoActual(id: string): string | null {
 
 function finish(
   id: string,
-  status: "done" | "failed" | "cancelled",
+  status: "done" | "failed" | "cancelled" | "interrupted",
   fields: { result?: string; error?: string; reporte?: Reporte },
 ): boolean {
   const terminado = db.transaction(() => {
@@ -143,7 +145,7 @@ function finish(
       id,
     );
     if (cambio.changes !== 1) return false;
-    registrarEvento(id, "terminada", fields.error ? `${status}: ${fields.error}` : status);
+    registrarEvento(id, status === "interrupted" ? "interrumpida" : "terminada", fields.error ? `${status}: ${fields.error}` : status);
     return true;
   })();
   if (!terminado) return false;
@@ -223,7 +225,7 @@ function leerPlan(respuesta: { text: string; textoFinal: string }): Validacion<P
 }
 
 // Una llamada del analizador u obrero: puede durar lo necesario y registra su uso.
-async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise<ResultadoAgente> {
+async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizarConSubagentes = false): Promise<ResultadoAgente> {
   const { task, controller, salida } = ctx;
   // Una cancelación entre dos llamadas evita lanzar la siguiente: el runner no la vería abortada.
   if (controller.signal.aborted) throw new Error("Tarea cancelada.");
@@ -237,7 +239,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
     ? db.query<{ id: string }, [string]>("SELECT id FROM messages WHERE conversation_id=? AND role='user' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(task.conversation_id)
     : null;
   try {
-    if (aprender) {
+    if (aprender || analizarConSubagentes) {
       perfilesSubagente = await prepararSubagentes({
         // El prompt de la fase obrero ya incluye el plan, pero la autorización para delegar
         // viene de la petición original del usuario.
@@ -245,6 +247,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean): Promise
         modelo: task.model,
         esfuerzo: task.effort,
         idEjecucion: crypto.randomUUID(),
+        soloLectura: analizarConSubagentes,
       });
     }
     const promptAvisos = ctx.avisos?.length
@@ -361,11 +364,11 @@ async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Pr
     ? { planAnterior: planGuardado(task.id), motivo: replanificacion.motivo }
     : undefined;
 
-  let respuesta = await llamar(ctx, promptDeFase(ctx, promptAnalizador(task.prompt, contexto)), false);
+  let respuesta = await llamar(ctx, promptDeFase(ctx, promptAnalizador(task.prompt, contexto)), false, true);
   let validacion = leerPlan(respuesta);
   if (!validacion.ok) {
     // Una reparación en la misma sesión: el analizador ya tiene el contexto de su respuesta.
-    respuesta = await llamar(ctx, promptReparacion(validacion.motivo), false);
+    respuesta = await llamar(ctx, promptReparacion(validacion.motivo), false, true);
     validacion = leerPlan(respuesta);
     if (!validacion.ok) throw new ErrorFase(`El analizador no produjo un plan válido: ${validacion.motivo}.`);
   }
@@ -495,6 +498,11 @@ async function ejecutarTarea(task: QueuedTask) {
 
   const controller = new AbortController();
   controllers.set(task.id, controller);
+  const dejarDePausar = registrarPausaActiva(() => {
+    if (controller.signal.aborted) return;
+    pausaDespliegueSolicitada.add(task.id);
+    controller.abort();
+  });
 
   // Jev clasifica cada tarea una vez; la sugerencia no cambia el modelo ni los permisos.
   if (!db.query(
@@ -597,6 +605,8 @@ async function ejecutarTarea(task: QueuedTask) {
       if (finish(task.id, "cancelled", { error: "Cancelada por el usuario." })) {
         avisarChat(task.id, "La tarea fue cancelada.", { model: task.model, effort: task.effort });
       }
+    } else if (pausaDespliegueSolicitada.has(task.id)) {
+      finish(task.id, "interrupted", { error: MENSAJE_PAUSA_DESPLIEGUE });
     } else if (err instanceof ErrorCuota) {
       pausarPorCuota(task.id, err, task.provider_session_id !== null, task.conversation_id);
     } else if (err instanceof ErrorFase) {
@@ -610,8 +620,10 @@ async function ejecutarTarea(task: QueuedTask) {
     }
   } finally {
     salida.cerrar();
+    dejarDePausar();
     controllers.delete(task.id);
     cancelRequested.delete(task.id);
+    pausaDespliegueSolicitada.delete(task.id);
   }
 }
 

@@ -3,7 +3,8 @@ import { join, resolve, sep } from "node:path";
 import { config } from "./config";
 import { getModels } from "./models";
 
-const PETICION_DELEGAR = /\b(?:subagentes?|agentes?\s+(?:en\s+)?paralelo|por\s+medio\s+de\s+(?:sus?\s+)?agentes?|(?:usa|utiliza|crea|lanza|activa|emplea)\s+(?:tus?\s+)?agentes?|agentes?\s+(?:para\s+que|que)\s+(?:revisen|analicen|investiguen|trabajen|verifiquen)|deleg(?:a|ar|ando)|llama\s+a\s+(?:varios|m[aá]s\s+de\s+uno|un\s+subagente))\b/i;
+const PETICION_DELEGAR = /\b(?:subagentes?|(?:varios?|varias?|dos|tres|cuatro|m[uú]ltiples?)\s+agentes?|agentes?\s+(?:en\s+)?paralelo|por\s+medio\s+de\s+(?:sus?\s+)?agentes?|(?:usa(?:r|s)?|us(?:e|es|en)|utiliz(?:a|ar|as|an|e|es|en)|cre(?:a|ar|as|an|e|es|en)|lanz(?:a|ar|as|an)|lance|lances|lancen|activ(?:a|ar|as|an|e|es|en)|emple(?:a|ar|as|an|e|es|en))\s+(?:(?:tus?|varios?|varias?|dos|tres|cuatro|m[uú]ltiples?)\s+)?(?:agentes?|subagentes?|auxiliares?)|agentes?\s+(?:para\s+que|que)\s+(?:revisen|analicen|investiguen|trabajen|verifiquen)|deleg(?:a|ar|ando)|llama\s+a\s+(?:varios|m[aá]s\s+de\s+uno|un\s+subagente))\b/i;
+const PETICION_REPARTIDA_POR_ROLES = /\b(?:usa(?:r|s)?|us(?:e|es|en)|utiliz(?:a|ar|as|an|e|es|en))\s+(?:dos|tres|varios?|varias?)\s+urgentes?\b[\s\S]{0,240}\buno\s+se\s+encarga\b[\s\S]{0,240}\b(?:otro|encarga\s+de)\b/i;
 const MAX_MODELOS = 4;
 
 export type PreparacionSubagentes = {
@@ -23,7 +24,7 @@ export function eliminarPerfilSubagentes(directorio: string | null | undefined):
 }
 
 export function pideSubagentes(prompt: string): boolean {
-  return PETICION_DELEGAR.test(prompt);
+  return PETICION_DELEGAR.test(prompt) || PETICION_REPARTIDA_POR_ROLES.test(prompt);
 }
 
 function slug(valor: string): string {
@@ -51,6 +52,7 @@ export async function prepararSubagentes(opts: {
   modelo: string;
   esfuerzo?: string | null;
   idEjecucion: string;
+  soloLectura?: boolean;
   listarModelos?: typeof getModels;
   directorioBase?: string;
 }): Promise<PreparacionSubagentes | null> {
@@ -85,6 +87,9 @@ export async function prepararSubagentes(opts: {
   const carpetaAgentes = join(directorio, "agents");
   const carpetaPlugins = join(directorio, "plugins");
   const rutaCaptura = join(directorio, "subagentes.ndjson");
+  const guiaSubagente = opts.soloLectura
+    ? "Trabajas como subagente de análisis de Telo. Inspecciona el workspace y devuelve hallazgos con rutas y evidencia. No modifiques archivos, no ejecutes comandos que cambien estado ni inicies otros subagentes."
+    : "Trabajas como subagente de Telo. Atiende únicamente la tarea que te asignó el agente principal y conserva las reglas del workspace. Si un comando, prueba o cambio falla, revisa el error, corrige la causa dentro del encargo y repite la comprobación fallida; limita la autocorrección a dos intentos. Si no se resuelve, devuelve el error y lo que intentaste. No inicies otros subagentes.";
   mkdirSync(carpetaAgentes, { recursive: true });
   mkdirSync(carpetaPlugins, { recursive: true });
   const alias = seleccionados.map((modelo, indice) => {
@@ -100,7 +105,7 @@ export async function prepararSubagentes(opts: {
         "mode: subagent",
         `model: ${idModelo}`,
         "---",
-        "Trabajas como subagente de Telo. Atiende únicamente la tarea que te asignó el agente principal y conserva las reglas del workspace. Si un comando, prueba o cambio falla, revisa el error, corrige la causa dentro del encargo y repite la comprobación fallida; limita la autocorrección a dos intentos. Si no se resuelve, devuelve el error y lo que intentaste. No inicies otros subagentes.",
+        guiaSubagente,
         "",
       ].join("\n"),
       { encoding: "utf8", flag: "wx" },
@@ -266,11 +271,17 @@ function emitError(sessionId, error) {
     directorio,
     rutaCaptura,
     instruccion: [
-      "El usuario pidió expresamente delegar esta tarea en subagentes.",
-      "Explica qué encargo asignas a cada perfil y lanza trabajos independientes en paralelo cuando sea posible. Usa cada perfil una vez inicialmente; si una sesión informa un error sin resolver, continúa esa misma sesión con una instrucción de corrección concreta una sola vez. No crees un reemplazo ni repitas un trabajo ya completado. Si la corrección no resuelve el error, toma el control si está dentro del alcance o informa el bloqueo con evidencia.",
+      opts.soloLectura
+        ? "El usuario pidió expresamente delegar el análisis en subagentes de solo lectura. Divide la inspección en perspectivas independientes, como arquitectura, seguridad y redundancias."
+        : "El usuario pidió expresamente delegar esta tarea en subagentes.",
+      opts.soloLectura
+        ? "Lanza los encargos independientes en paralelo cuando sea posible. Si hay un solo perfil disponible y el usuario pidió varios agentes, úsalo para varios encargos distintos. No edites archivos ni ejecutes acciones que cambien estado. Integra los hallazgos con rutas y evidencia; no afirmes nada que no hayas comprobado."
+        : "Explica qué encargo asignas a cada perfil y lanza trabajos independientes en paralelo cuando sea posible. Usa cada perfil una vez inicialmente; si una sesión informa un error sin resolver, continúa esa misma sesión con una instrucción de corrección concreta una sola vez. No crees un reemplazo ni repitas un trabajo ya completado. Si la corrección no resuelve el error, toma el control si está dentro del alcance o informa el bloqueo con evidencia.",
       "Perfiles temporales disponibles:",
       detalle,
-      "Al terminar, integra las respuestas y verifica cada afirmación y cambio de los subagentes contra el workspace o fuentes fiables. Informa qué comprobaste, qué pruebas ejecutaste y qué no pudiste verificar; no afirmes que algo pasó sin evidencia.",
+      opts.soloLectura
+        ? "Al terminar, entrega hallazgos con rutas, líneas cuando estén disponibles y evidencia. No propongas cambios como ya realizados."
+        : "Al terminar, integra las respuestas y verifica cada afirmación y cambio de los subagentes contra el workspace o fuentes fiables. Informa qué comprobaste, qué pruebas ejecutaste y qué no pudiste verificar; no afirmes que algo pasó sin evidencia.",
     ].join("\n"),
     finalizarCaptura: () => {
       rmSync(pluginPath, { force: true });

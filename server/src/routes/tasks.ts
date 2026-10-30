@@ -47,12 +47,12 @@ type TaskRow = {
   finished_at: string | null;
 };
 
-// reanudable: la tarea tiene la sesión del agente, así que puede continuar donde quedó.
+// reanudable: tiene una sesión de agente o quedó interrumpida y puede volver a ejecutar su fase guardada.
 // rama y base_commit: solo tareas de un proyecto con Git.
 // plan, reporte y plan_aprobado_en: el plan del analizador, el reporte del obrero y cuándo se aprobó el plan.
 // modelo_agotado: el modelo que se quedó sin cuota (solo en tareas 'sin_cuota').
 const COLUMNS =
-  "t.id, t.title, t.prompt, t.model, t.effort, t.status, t.result, t.error, t.project_id, t.retry_of, (t.provider_session_id IS NOT NULL) AS reanudable, t.rama, t.base_commit, t.plan, t.reporte, t.plan_aprobado_en, t.plan_hash, t.approved_hash, t.conversation_id, t.modelo_agotado, p.name AS project_name, t.created_at, t.started_at, t.finished_at";
+  "t.id, t.title, t.prompt, t.model, t.effort, t.status, t.result, t.error, t.project_id, t.retry_of, (t.provider_session_id IS NOT NULL OR t.status = 'interrupted') AS reanudable, t.rama, t.base_commit, t.plan, t.reporte, t.plan_aprobado_en, t.plan_hash, t.approved_hash, t.conversation_id, t.modelo_agotado, p.name AS project_name, t.created_at, t.started_at, t.finished_at";
 const DESDE = "FROM tasks t LEFT JOIN projects p ON p.id = t.project_id";
 
 const ESTADOS_REANUDABLES = ["interrupted", "failed"];
@@ -322,7 +322,7 @@ tasks.post("/tasks/:id/reanudar", (c) => {
     bloqueoFinal = bloqueoContinuacionDrive(id);
     if (bloqueoFinal) return;
     db.query(
-      "UPDATE tasks SET status = 'queued', result = NULL, error = NULL, finished_at = NULL, continuar = 1 WHERE id = ?",
+      "UPDATE tasks SET status = 'queued', result = NULL, error = NULL, finished_at = NULL, continuar = CASE WHEN provider_session_id IS NULL THEN 0 ELSE 1 END WHERE id = ?",
     ).run(id);
     registrarEvento(id, "reanudada", `Estaba ${row.status === "interrupted" ? "interrumpida" : "fallida"}`);
   })();

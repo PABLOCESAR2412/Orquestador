@@ -3,6 +3,9 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-30", "tipo": "mediano", "titulo": "Despliegue: aplica cambios visuales y documentación sin interrumpir tareas; reserva la pausa para cambios de runtime", "pr": null },
+    { "fecha": "2026-10-30", "tipo": "mediano", "titulo": "Ajustes: corrige escala y alineación, añade OpenCode, instala skills fuente y aclara la integración MCP de Harvey", "pr": null },
+    { "fecha": "2026-10-30", "tipo": "mediano", "titulo": "Agentes: reconoce solicitudes explícitas, acelera la selección y permite análisis delegados en solo lectura", "pr": 139 },
     { "fecha": "2026-10-30", "tipo": "mediano", "titulo": "Agentes: limita la espera del selector, muestra encargos y actividad por rama, guía la autocorrección, agrupa cuatro proveedores y documenta la evaluación del harness", "pr": 137 },
     {"fecha":"2026-10-29","tipo":"minimo","titulo":"Chat: identifica fases por acciones observables y separa el progreso del supervisor, auxiliares y subagentes","pr":136},
     {"fecha":"2026-10-29","tipo":"minimo","titulo":"Chat: permite plegar la actividad de subagentes y reduce el sondeo detallado mientras está cerrada","pr":136},

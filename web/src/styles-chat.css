@@ -342,11 +342,13 @@
 .tl-hilo-columna {
   --tl-hilo-gutter: 72px;
   position: relative;
-  width: min(100%, calc(var(--ancho-contenido) + 56px));
+  width: min(100%, calc(var(--ancho-contenido) + 144px));
+  min-height: 100%;
   margin: 0 auto;
-  padding: 28px 16px 28px var(--tl-hilo-gutter);
+  padding: 28px var(--tl-hilo-gutter) 14px;
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   gap: 28px;
 }
 .tl-hilo-columna:has(.tl-hilo-hito)::before {
