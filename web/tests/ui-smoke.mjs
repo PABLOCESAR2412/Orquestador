@@ -439,7 +439,7 @@ try {
     await mensajeSupervisor.getByText("Se creó 1 subagente", { exact: true }).waitFor();
     await mensajeSupervisor.getByText("1 trabajando", { exact: true }).waitFor();
     await mensajeSupervisor.getByText("Encargo del Supervisor:", { exact: false }).waitFor();
-    await mensajeSupervisor.getByText("Revisa las rutas y reporta riesgos", { exact: true }).waitFor();
+    await mensajeSupervisor.locator(".tl-subagente-encargo").filter({ hasText: "Revisa las rutas y reporta riesgos" }).waitFor();
     await mensajeSupervisor.locator(".tl-proceso-boton").click();
     await mensajeSupervisor.getByText("Ejecutando git status", { exact: true }).first().waitFor();
     await mensajeSupervisor.getByRole("button", { name: "Abrir subchat", exact: true }).click();
