@@ -145,7 +145,7 @@ function leerProyecto(id: string): ProjectRow | null {
 // Tarea tal como la ve la API (mismos campos que Task del contrato).
 const TAREA_API =
   "t.id, t.title, t.prompt, t.model, t.effort, t.status, t.result, t.error, t.project_id, t.retry_of, " +
-  "(t.provider_session_id IS NOT NULL) AS reanudable, t.created_at, t.started_at, t.finished_at, " +
+  "(t.provider_session_id IS NOT NULL OR t.status = 'interrupted') AS reanudable, t.created_at, t.started_at, t.finished_at, " +
   "t.rama, t.base_commit, p.name AS project_name";
 
 export function leerTareaApi(id: string) {

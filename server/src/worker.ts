@@ -45,7 +45,7 @@ import {
   type RegistroSalida,
 } from "./workspace";
 import { avisarPush } from "./push";
-import { enMantenimiento, registrarTrabajo } from "./despliegue";
+import { enMantenimiento, registrarPausaActiva, registrarTrabajo } from "./despliegue";
 
 // Un worker coordina hasta diez tareas independientes en orden de llegada.
 // Corre dentro del mismo proceso que la API, así que sigue activo aunque
@@ -55,6 +55,7 @@ import { enMantenimiento, registrarTrabajo } from "./despliegue";
 // Entre ambas, si el plan necesita aprobación, la tarea espera en `waiting_approval` sin ocupar el worker.
 
 const MENSAJE_INTERRUMPIDA = "El servidor se reinició mientras la tarea corría. Puedes reanudarla o reintentarla.";
+const MENSAJE_PAUSA_DESPLIEGUE = "Tarea pausada para aplicar una actualización. Se conservó el espacio de trabajo y la sesión del proveedor, si ya existía; puedes continuarla cuando el servidor vuelva.";
 // Iniciativa del obrero: tras un reporte con fallo, el mismo agente corrige en su sesión hasta
 // este tope de ciclos antes de fallar la tarea. TELO_CICLOS_OBRERO lo ajusta; 0 desactiva
 // la iniciativa y falla con el primer reporte, como antes.
@@ -65,6 +66,7 @@ export const MAX_NOTAS = 2000;
 
 const controllers = new Map<string, AbortController>();
 const cancelRequested = new Set<string>();
+const pausaDespliegueSolicitada = new Set<string>();
 const tareasEnEjecucion = new Set<string>();
 const proyectosEnEjecucion = new Set<string>();
 let wake: (() => void) | null = null;
@@ -129,7 +131,7 @@ function estadoActual(id: string): string | null {
 
 function finish(
   id: string,
-  status: "done" | "failed" | "cancelled",
+  status: "done" | "failed" | "cancelled" | "interrupted",
   fields: { result?: string; error?: string; reporte?: Reporte },
 ): boolean {
   const terminado = db.transaction(() => {
@@ -143,7 +145,7 @@ function finish(
       id,
     );
     if (cambio.changes !== 1) return false;
-    registrarEvento(id, "terminada", fields.error ? `${status}: ${fields.error}` : status);
+    registrarEvento(id, status === "interrupted" ? "interrumpida" : "terminada", fields.error ? `${status}: ${fields.error}` : status);
     return true;
   })();
   if (!terminado) return false;
@@ -496,6 +498,11 @@ async function ejecutarTarea(task: QueuedTask) {
 
   const controller = new AbortController();
   controllers.set(task.id, controller);
+  const dejarDePausar = registrarPausaActiva(() => {
+    if (controller.signal.aborted) return;
+    pausaDespliegueSolicitada.add(task.id);
+    controller.abort();
+  });
 
   // Jev clasifica cada tarea una vez; la sugerencia no cambia el modelo ni los permisos.
   if (!db.query(
@@ -598,6 +605,8 @@ async function ejecutarTarea(task: QueuedTask) {
       if (finish(task.id, "cancelled", { error: "Cancelada por el usuario." })) {
         avisarChat(task.id, "La tarea fue cancelada.", { model: task.model, effort: task.effort });
       }
+    } else if (pausaDespliegueSolicitada.has(task.id)) {
+      finish(task.id, "interrupted", { error: MENSAJE_PAUSA_DESPLIEGUE });
     } else if (err instanceof ErrorCuota) {
       pausarPorCuota(task.id, err, task.provider_session_id !== null, task.conversation_id);
     } else if (err instanceof ErrorFase) {
@@ -611,8 +620,10 @@ async function ejecutarTarea(task: QueuedTask) {
     }
   } finally {
     salida.cerrar();
+    dejarDePausar();
     controllers.delete(task.id);
     cancelRequested.delete(task.id);
+    pausaDespliegueSolicitada.delete(task.id);
   }
 }
 

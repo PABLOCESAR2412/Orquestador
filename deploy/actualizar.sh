@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cierra admisión, drena ejecuciones y publica API e interfaz con el servicio parado.
+# Cierra admisión, pausa ejecuciones reanudables y publica API e interfaz con el servicio parado.
 set -euo pipefail
 REPO="${TELO_REPO:-/home/orquestador/orquestador}"
 API="${TELO_API:-http://127.0.0.1:3000}"
@@ -9,7 +9,10 @@ REPO=$(pwd -P)
 MARCA="$REPO/.git/telo-arranque"
 FALLIDA="$REPO/.git/telo-fallida"
 MANTENIMIENTO="$REPO/.git/telo-mantenimiento"
+PAUSA_TAREAS="$REPO/.git/telo-pausar-tareas"
 PARADO=0
+IDENTIDAD=""
+IDENTIDAD_PAUSA=""
 log() { echo "[actualizar $(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 compilar() { (cd web && bun install --frozen-lockfile && bun run build); }
 instalar_servidor() { (cd server && bun install --frozen-lockfile); }
@@ -23,6 +26,7 @@ servidor_arriba() {
 }
 liberar() {
   if [ "$PARADO" = 1 ]; then sudo -n systemctl start "$SERVICIO" || true; fi
+  if [ "$(stat -c '%d:%i' "$PAUSA_TAREAS" 2>/dev/null || true)" = "$IDENTIDAD_PAUSA" ]; then rmdir -- "$PAUSA_TAREAS" 2>/dev/null || true; fi
   if [ "$(stat -c '%d:%i' "$MANTENIMIENTO" 2>/dev/null || true)" = "$IDENTIDAD" ]; then rmdir -- "$MANTENIMIENTO" 2>/dev/null || true; fi
 }
 revertir() {
@@ -55,14 +59,22 @@ fi
 IDENTIDAD=$(stat -c '%d:%i' "$MANTENIMIENTO")
 trap liberar EXIT
 
+# A diferencia del respaldo, una actualización pausa las tareas activas para
+# dejarlas reanudables con la versión nueva. La API ya bloquea nuevas admisiones.
+if ! mkdir -- "$PAUSA_TAREAS" 2>/dev/null; then
+  log "Existe una señal de pausa de tareas; se pospone la operación."
+  exit 0
+fi
+IDENTIDAD_PAUSA=$(stat -c '%d:%i' "$PAUSA_TAREAS")
+
 # Mientras existe la marca no arrancan slots nuevos ni se aceptan mutaciones.
 # Un servidor anterior sin este protocolo requiere actualización manual inicial.
 DRENADO=0
-for intento in $(seq 1 5); do
+for intento in $(seq 1 15); do
   if curl -fsS --max-time 3 "$API/api/health" | bun -e 'const e=JSON.parse(await Bun.stdin.text());process.exit(e.ok===true&&e.despliegue?.mantenimiento===true&&e.despliegue.activas===0?0:1)' >/dev/null 2>&1; then DRENADO=1; break; fi
   sleep 2
 done
-if [ "$DRENADO" != 1 ]; then log "Hay trabajos activos o falta el protocolo de mantenimiento; se pospone."; exit 0; fi
+if [ "$DRENADO" != 1 ]; then log "Quedan trabajos activos o falta el protocolo de pausa; se pospone sin detener el servicio."; exit 0; fi
 if pgrep -f '(^|/)opencode run( |$)|(^|/)codex( .*)? exec( |$)' >/dev/null 2>&1; then
   log "Hay agentes externos activos; se pospone."; exit 0
 else
