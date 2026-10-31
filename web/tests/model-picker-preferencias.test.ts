@@ -7,6 +7,7 @@ describe("identificadores del índice de Artificial Analysis", () => {
     expect(normalizarIdAnalisis("opencode/anthropic/claude-sonnet-5-high")).toBe("claudesonnet5");
     expect(normalizarIdAnalisis("claude-sonnet-5")).toBe("claudesonnet5");
     expect(normalizarIdAnalisis("openrouter/meta/llama-4-scout:free")).toBe("llama4scout");
+    expect(normalizarIdAnalisis("opencode/model-preview-free")).toBe("model");
   });
 
   test("una versión revisada nueva vuelve a marcar el chat pendiente", () => {

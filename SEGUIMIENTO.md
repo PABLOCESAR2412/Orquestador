@@ -10,6 +10,9 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 - [ ] Pendientes de auditoría: verificación y fijación de instaladores, validación de CI o pruebas antes de desplegar, auditoría de dependencias y fallos de pruebas en un solo proceso.
 - [~] La ejecución registra tiempos de preparación del workspace y de primera salida del agente; falta desplegar y medir una reanudación real para identificar y corregir su causa.
 - [~] Auditoría del 31/10: `bun audit` informa 1 aviso moderado en servidor y 10 en web (6 moderados, 4 bajos). La suite única en Windows produjo 509 aprobadas, 73 omitidas y 89 fallidas; no es comparable con los cinco fallos observados en Linux. Pruebas focalizadas del filtro local y typecheck del servidor aprobados.
+- [~] El cerebro permite importar durante la sesión un graph.json de Graphify, explorar sus nodos y consultar el archivo de origen; la importación no indexa automáticamente los proyectos ni persiste el grafo.
+- [~] El selector compacta precio e índice, muestra opciones de esfuerzo y amplía coincidencias no ambiguas por nombre; falta validar cobertura contra el catálogo real y el flujo en la VM.
+- [ ] HyperFrames: instalar y verificar Chrome Headless Shell en la VM. Las herramientas locales de transcripción, voz y música son opcionales y requieren evaluación de recursos antes de instalarlas.
 - [~] Integraciones plegadas por defecto, selector de esfuerzo en barra, oficina pixelada y mapa de chats agrupados por proyecto. Validación local de interfaz a 390 y 1440 px; faltan casos reales en VM.
 - [~] El catálogo de OpenCode tiene un límite de espera y consume stderr para evitar esperas indefinidas. La causa del retraso reportado requiere registros de la VM.
 - [ ] El mapa de chats muestra pertenencia, no relaciones semánticas Graphify. Queda pendiente integrar indexación por proyecto y recuperación de contexto, así como equivalentes de precio fiables para sesiones de suscripción.

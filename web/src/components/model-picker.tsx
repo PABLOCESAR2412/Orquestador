@@ -4,7 +4,7 @@ import { api, type ModeloCodex, type ModelInfo } from "../api";
 import { effortLabel, formatPrice, nombreProveedor } from "../lib/model";
 import { coincideModelo, agruparPorProveedor, normalizaBusca } from "../lib/busca-modelos";
 import { guardarPreferenciasSelector, leerPreferenciasSelector, normalizarIdAnalisis, type PreferenciasSelectorModelos } from "../lib/model-picker-preferencias";
-import { CostMeter, useDialogo } from "./controls";
+import { useDialogo } from "./controls";
 import "../styles-picker.css";
 
 type Props = {
@@ -79,6 +79,7 @@ export function ModelPicker({
   const [draftId, setDraftId] = useState(currentId);
   const [draftSeleccionado, setDraftSeleccionado] = useState<ModelInfo | null>(null);
   const [draftEffort, setDraftEffort] = useState(currentEffort);
+  const [eligiendoEsfuerzo, setEligiendoEsfuerzo] = useState(false);
   const draftModel = models.find((m) => m.id === draftId) ?? (draftSeleccionado?.id === draftId ? draftSeleccionado : null);
   const esfuerzoValido = draftEffort && draftModel?.variants.includes(draftEffort) ? draftEffort : null;
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -168,10 +169,17 @@ export function ModelPicker({
       .slice(0, 3);
     return [...fijados, ...masUsados];
   }, [candidatos, preferencias, usosModelos.data]);
-  const puntajes = useMemo(() => new Map(
-    (inteligencia.data?.modelos ?? []).map((modelo) => [normalizarIdAnalisis(modelo.slug), modelo]),
-  ), [inteligencia.data]);
-  const puntajeDe = (id: string) => puntajes.get(normalizarIdAnalisis(id)) ?? null;
+  const puntajes = useMemo(() => {
+    const mapa = new Map<string, (NonNullable<typeof inteligencia.data>["modelos"])[number] | null>();
+    for (const modelo of inteligencia.data?.modelos ?? []) {
+      for (const clave of new Set([normalizarIdAnalisis(modelo.slug), normalizarIdAnalisis(modelo.name)])) {
+        const anterior = mapa.get(clave);
+        mapa.set(clave, anterior === undefined || anterior?.slug === modelo.slug ? modelo : null);
+      }
+    }
+    return mapa;
+  }, [inteligencia.data]);
+  const puntajeDe = (id: string, nombre?: string) => puntajes.get(normalizarIdAnalisis(id)) ?? (nombre ? puntajes.get(normalizarIdAnalisis(nombre)) : null) ?? null;
 
   const seleccionar = (m: ModelInfo | null) => {
     if (!m) return elegir(null, null);
@@ -179,6 +187,7 @@ export function ModelPicker({
     setDraftSeleccionado(m);
     setDraftId(m.id);
     setDraftEffort((v) => (v && m.variants.includes(v) ? v : null));
+    setEligiendoEsfuerzo(true);
   };
   const esActual = (m: ModelInfo) => m.id === currentId;
 
@@ -234,7 +243,7 @@ export function ModelPicker({
   // Fila de un modelo: nombre con "✓ Activo" si es el actual; precio arriba y costo abajo.
   const fila = (m: ModelInfo, mostrarIntegracion = false) => {
     const fijado = preferencias.fijados.includes(m.id);
-    const indice = puntajeDe(m.id);
+    const indice = puntajeDe(m.id, m.name);
     return (
       <div className="picker-modelo-fila">
         <button type="button" className="picker-item" aria-current={esActual(m) || undefined} aria-pressed={conEsfuerzo ? m.id === draftId : undefined} onClick={() => seleccionar(m)}>
@@ -252,10 +261,6 @@ export function ModelPicker({
             {indice && <span className="picker-intelligence" title={`Artificial Analysis Intelligence Index v${inteligencia.data?.version ?? "?"}`}>
               AA {indice.score.toLocaleString("es", { maximumFractionDigits: 1 })}
             </span>}
-            <span className="picker-costo">
-              <span className="picker-costo-etiqueta">Costo</span>
-              <CostMeter tier={m.costTier} />
-            </span>
           </span>
         </button>
         <button
@@ -278,7 +283,7 @@ export function ModelPicker({
     <>
       <div className="scrim" onClick={cerrar} />
       <div className={`picker${conEsfuerzo ? " picker-con-esfuerzo" : ""}`} role="dialog" aria-modal="true" aria-label="Elegir modelo" ref={dialogRef}>
-        <div className="picker-head">
+        {!eligiendoEsfuerzo && <><div className="picker-head">
           <label className="picker-buscar">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <circle cx="11" cy="11" r="7" />
@@ -448,7 +453,8 @@ export function ModelPicker({
             </section>
           )}
         </div>
-        {conEsfuerzo && draftModel && draftModel.variants.length > 0 && (
+        </>}
+        {eligiendoEsfuerzo && conEsfuerzo && draftModel && draftModel.variants.length > 0 && (
           <div className="picker-configuracion">
             <div className="picker-eleccion">
               <strong title={draftModel.name}>
@@ -458,11 +464,14 @@ export function ModelPicker({
             </div>
             <div className="picker-esfuerzo-barra">
               <strong aria-hidden="true">{esfuerzoValido ? effortLabel(esfuerzoValido) : "Auto"}</strong>
-              <input type="range" min="0" max={draftModel.variants.length} step="1"
-                value={esfuerzoValido ? draftModel.variants.indexOf(esfuerzoValido) + 1 : 0}
-                aria-label="Nivel de esfuerzo" aria-valuetext={esfuerzoValido ? effortLabel(esfuerzoValido) : "Auto"}
-                onChange={(event) => setDraftEffort(draftModel.variants[Number(event.target.value) - 1] ?? null)} />
-              <button type="button" className="btn-primary" onClick={() => elegir(draftModel, esfuerzoValido)}>Usar modelo</button>
+              <div className="picker-esfuerzo-niveles" role="group" aria-label="Nivel de esfuerzo">
+                {[null, ...draftModel.variants].map((nivel) => (
+                  <button key={nivel ?? "auto"} type="button" aria-label={nivel ? effortLabel(nivel) : "Auto"}
+                    aria-pressed={nivel === esfuerzoValido} title={nivel ? effortLabel(nivel) : "Auto"}
+                    onClick={() => elegir(draftModel, nivel)}><span aria-hidden="true" /></button>
+                ))}
+              </div>
+              <button type="button" className="ghost" onClick={() => setEligiendoEsfuerzo(false)}>Volver a modelos</button>
             </div>
           </div>
         )}
@@ -521,4 +530,3 @@ function FilaCodex({
     </button>
   );
 }
-
