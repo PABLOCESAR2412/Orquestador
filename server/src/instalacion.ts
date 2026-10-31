@@ -42,9 +42,9 @@ const ACCIONES = {
   },
   antigravity: {
     nombre: "Antigravity CLI",
-    comando: "curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --skip-aliases --skip-path",
+    comando: "curl -fsSL https://antigravity.google/cli/install.sh | bash",
     programa: "bash",
-    argv: () => ["-o", "pipefail", "-c", "curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --skip-aliases --skip-path"],
+    argv: () => ["-o", "pipefail", "-c", "curl -fsSL https://antigravity.google/cli/install.sh | bash"],
     ejecutable: () => join(carpetaHome(), ".local", "bin", "agy"),
     binario: "agy",
   },
