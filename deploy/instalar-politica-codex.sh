@@ -31,7 +31,7 @@ elif [[ -e "$policy_dir" ]]; then
   fi
   dir_owner="$(stat -c '%u' -- "$policy_dir")"
   dir_mode="$(stat -c '%a' -- "$policy_dir")"
-  if [[ "$dir_owner" != "0" || ! "$dir_mode" =~ ^[0-7]{3,4}$ ]] || (( (8#$dir_mode & 0o22) != 0 )); then
+  if [[ "$dir_owner" != "0" || ! "$dir_mode" =~ ^[0-7]{3,4}$ ]] || (( (8#$dir_mode & 022) != 0 )); then
     echo "$policy_dir debe pertenecer a root y no permitir escritura a grupo u otros." >&2
     exit 1
   fi
