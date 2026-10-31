@@ -6,6 +6,7 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 
 ## Selector y oficina — 31 de octubre de 2026
 
+- [~] La oficina muestra todos los chats y utiliza una hoja de personajes aportada por el usuario; las nuevas salas son una maqueta. Quedan pendientes el modo Planear/Construir real, nombres de agentes, rutas y animaciones hacia reuniones y validación visual.
 - [~] Seguridad: `TELO_SIN_CLAVE` exige escucha loopback y rechaza solicitudes con host no local o cabeceras de proxy. No usarlo detrás de un proxy que elimine esas cabeceras; validar en Linux y VM. Se ignoran archivos de claves privadas habituales en Git.
 - [ ] Pendientes de auditoría: verificación y fijación de instaladores, validación de CI o pruebas antes de desplegar, auditoría de dependencias y fallos de pruebas en un solo proceso.
 - [~] La ejecución registra tiempos de preparación del workspace y de primera salida del agente; falta desplegar y medir una reanudación real para identificar y corregir su causa.
