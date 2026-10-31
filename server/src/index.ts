@@ -31,6 +31,7 @@ import { uso } from "./routes/uso";
 import { media, reanudarGeneracionesMedios } from "./routes/media";
 import { googleDriveOAuth } from "./routes/google-drive-oauth";
 import { googleDriveArchives, iniciarGoogleDriveArchives } from "./routes/google-drive-archives";
+import { cerebro } from "./routes/cerebro";
 import { jevRoute } from "./routes/jev";
 import { conexiones } from "./routes/conexiones";
 import { push } from "./routes/push";
@@ -174,6 +175,7 @@ app.route("/api", github);
 app.route("/api", media);
 app.route("/api", googleDriveOAuth);
 app.route("/api", googleDriveArchives);
+app.route("/api", cerebro);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
 // El CLI de OpenCode instalado desde la app vuelve a estar en PATH tras un reinicio.

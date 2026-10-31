@@ -12,6 +12,7 @@ const ChatPage = lazy(() => import("./pages/chat").then((m) => ({ default: m.Cha
 const LoginPage = lazy(() => import("./pages/login").then((m) => ({ default: m.LoginPage })));
 const TasksPage = lazy(() => import("./pages/tasks").then((m) => ({ default: m.TasksPage })));
 const AnalyticsPage = lazy(() => import("./pages/analytics").then((m) => ({ default: m.AnalyticsPage })));
+const BrainPage = lazy(() => import("./pages/cerebro").then((m) => ({ default: m.BrainPage })));
 const OfficePage = lazy(() => import("./pages/oficina").then((m) => ({ default: m.OfficePage })));
 const SettingsPage = lazy(() => import("./pages/settings").then((m) => ({ default: m.SettingsPage })));
 const ProjectsPage = lazy(() => import("./pages/proyectos").then((m) => ({ default: m.ProjectsPage })));
@@ -69,6 +70,7 @@ const projectDetailRoute = createRoute({
   path: "/proyectos/$id",
   component: ProjectDetailPage,
 });
+const brainRoute = createRoute({ getParentRoute: () => rootRoute, path: "/cerebro", component: BrainPage });
 const officeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/oficina", component: OfficePage });
 const analyticsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/analiticas", component: AnalyticsPage });
 // La pestaña va en la URL (?pestana=) para que se pueda enlazar y el redirect de /servidor la abra.
@@ -97,6 +99,7 @@ const routeTree = rootRoute.addChildren([
   projectsRoute,
   projectDetailRoute,
   analyticsRoute,
+  brainRoute,
   officeRoute,
   settingsRoute,
 ]);
