@@ -81,6 +81,11 @@ describe("líneas del agente", () => {
     expect(itemDeLinea(linea)).toMatchObject({ tipo: "accion", herramienta: "bash", estado: "en_curso" });
   });
 
+  test("una llamada invalid no se marca hecha aunque OpenCode la complete", () => {
+    expect(itemDeLinea(herramienta("invalid", { output: "Invalid arguments: JSON incompleto" })))
+      .toMatchObject({ estado: "error", titulo: "El modelo envió una llamada de herramienta inválida" });
+  });
+
   test("los eventos de Codex convierten comandos y cambios de archivo en actividad", () => {
     const comandoInicio = itemDeLinea(JSON.stringify({
       type: "item.started",
@@ -224,5 +229,13 @@ describe("registro por turno", () => {
     }
     expect(registrarActividad(CONVERSACION, turno, { tipo: "texto", texto: "de más" })).toBeNull();
     expect(actividadDelTurno(CONVERSACION, turno)).toHaveLength(300);
+  });
+
+  test("un inicio tardío del plugin no revierte una herramienta ya terminada", () => {
+    const turno = "orden-plugin-stdout";
+    registrarActividad(CONVERSACION, turno, itemDeLinea(herramienta("bash", { output: "Prueba terminada" }))!);
+    registrarActividad(CONVERSACION, turno, itemDeLinea(herramienta("bash", { status: "running" }))!);
+    expect(actividadDelTurno(CONVERSACION, turno)).toHaveLength(1);
+    expect(actividadDelTurno(CONVERSACION, turno)[0]).toMatchObject({ estado: "hecha", detalle: "Prueba terminada" });
   });
 });

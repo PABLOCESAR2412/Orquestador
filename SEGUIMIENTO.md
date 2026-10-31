@@ -4,6 +4,15 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 30 de octubre de
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Esperas del proveedor y consultas de diff — 30 de octubre de 2026
+
+- [x] **409 repetidos en chats.** La API de la VM confirmó `task_without_repo` para dos tareas antiguas fallidas, distintas de las ejecuciones actuales. Aunque conservaban rama/base en la base de datos, ya no había clon utilizable. La consulta de diff devuelve HTTP 200 con `estado: sin_repo`; las aprobaciones de escritura conservan su rechazo. La interfaz deja de sondear al recibir ese estado o un error persistente, también en reparaciones de conflictos.
+- [x] **Estados ocultos por la CLI.** Un plugin local por ejecución recoge herramientas en curso y estados de proveedor (`busy`, generación, reintento, `idle`) que `opencode run --format json` omite. Solo cuenta señales de generación, sin copiar texto parcial ni razonamiento, agrupa las frecuentes y limita bytes/eventos. No añade llamadas al proveedor. El JSON y el plugin se montan de solo lectura; solo su captura temporal permite escritura. Reutiliza el lector y los identificadores de actividad existentes; un inicio atrasado no revierte una acción terminada.
+- [x] **Reintentos internos sin fin visible.** Al tercer reintento interno consecutivo informado por OpenCode se termina el grupo con error recuperable, conservando sesión y archivos. No se corta por duración ni por silencio. Una herramienta `invalid` queda marcada como error y el indicador de inactividad reconoce también cambios de contenido dentro del mismo paso.
+- Evidencia: 50 pruebas dirigidas pasan, typecheck del servidor y build web pasan. Playwright completo pasa en 390/1440 px y verifica que un diff sin clon no se repita tras el intervalo de sondeo. La suite adicional de aislamiento requiere Linux; el caso previo que crea un enlace falla con EPERM en este Windows restringido y queda para CI, sin relajar la protección.
+- [ ] **Confirmación operativa de las pausas.** El análisis actual de Apex-Suite y el video usan GLM gratuito con esfuerzo máximo. El análisis emitió búsquedas, lectura y un `todowrite`; el video alcanzó diez acciones y una herramienta inválida. Esto no demuestra por sí solo un bloqueo del proceso. La VM confirma CLI y bubblewrap disponibles; SSH rechaza la autenticación por clave pública. Tras desplegar hay que comprobar el plugin con el OpenCode instalado y observar si la pausa corresponde a reintentos, generación o falta real de eventos. No se han cancelado ni reiniciado trabajos del usuario durante esta revisión.
+- Referencias del protocolo: [salida JSON de la CLI](https://github.com/anomalyco/opencode/blob/v1.19.4/packages/opencode/src/cli/cmd/run.ts), [estados de sesión](https://github.com/anomalyco/opencode/blob/v1.19.4/packages/schema/src/session-status-event.ts), [eventos de plugins](https://github.com/anomalyco/opencode/blob/v1.19.4/packages/opencode/src/plugin/index.ts).
+
 ## Compactación fuera de la respuesta — 30 de octubre de 2026
 
 - [x] **El resumen interno aparecía como entrega.** La plantilla `Objective / Important Details / Work State / Next Move / Relevant Files` coincide con el resumen de OpenCode. Su CLI emite los bloques de texto sin incluir siempre los metadatos `summary` del mensaje. Telo reconoce la plantilla completa o los metadatos explícitos, guarda el resumen como actividad de compactación y lo excluye de la respuesta final; conserva sesión y contabilidad de uso. Si el proceso termina solo con compactación, avisa que todavía falta la respuesta final.
@@ -21,7 +30,6 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 ## Inicialización de perfiles de subagentes — 30 de octubre de 2026
 
 - [x] **OpenCode fallaba al iniciar subagentes (`FileSystem.writeFile .../.gitignore`).** El perfil temporal se montaba completo en solo lectura, pero OpenCode escribe `.gitignore` al inicializar su configuración. Ahora Telo precrea ese archivo y monta solo él en lectura/escritura; el JSON, los prompts y plugins permanecen de solo lectura, y el registro NDJSON conserva su montaje separado. `aislamiento.test.ts` comprueba el montaje puntual; la suite completa de servidor pasó en CI Linux. La prueba local queda limitada por el permiso de symlinks de Windows.
-
 
 ## Revisión de seguridad y flujos — 30 de octubre de 2026
 

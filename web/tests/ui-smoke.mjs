@@ -113,6 +113,7 @@ try {
     let skillsGuardadas = [];
     let adjuntosChatSubidos = 0;
     let diffRequests = 0;
+    let diffSinRepo = false;
     let taskListRequests = 0;
     const esperasPollUsadas = [];
     let resolverEsperaPollLarga;
@@ -293,7 +294,9 @@ try {
       }
       else if (path === "/api/tasks/t1/diff") {
         diffRequests++;
-        data = diffRequests === 1
+        data = diffSinRepo
+          ? { estado: "sin_repo", rama: null, base_commit: null, commit: null, archivos: [], diff: "", truncado: false, hash: null, remoto: false, aprobaciones: { commit: null, push: null } }
+          : diffRequests === 1
           ? { estado: "en_curso" }
           : { estado: "con_cambios", rama: "telo/prueba", base_commit: null, commit: "abcdef012345", archivos: [{ ruta: "src/app.ts", estado: "modificado", adiciones: 2, eliminaciones: 1, binario: false, sensible: false }], hash: "0123456789abcdef", diff: "diff de prueba", truncado: false, remoto: true, aprobaciones: { commit: null, push: null } };
       }
@@ -1435,6 +1438,17 @@ try {
     await botonDetener.click();
     assert.equal(chatDetenido, true);
     assert.equal(await page.evaluate(() => localStorage.getItem("telo:cola-activa:c1")), "false");
+
+    diffSinRepo = true; task.status = "failed";
+    const respuestaSinRepo = page.waitForResponse(r => r.url().endsWith("/api/tasks/t1/diff"));
+    await page.goto(`${base}/chat?conversacion=c1`);
+    assert.equal((await (await respuestaSinRepo).json()).estado, "sin_repo");
+    const consultasSinRepo = diffRequests;
+    await page.waitForTimeout(4500);
+    assert.equal(diffRequests, consultasSinRepo, "una copia Git inexistente no se vuelve a consultar cada cuatro segundos");
+    assert.equal(await page.getByText("Esta tarea no tiene copia de Git, así que no hay cambios que revisar.", { exact: true }).count(), 0);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/diff-sin-repo-${width}.png` });
 
     await page.goto(`${base}/ajustes?pestana=almacenamiento`);
     const disco = page.locator('section[aria-labelledby="disco-mantenimiento"]');
