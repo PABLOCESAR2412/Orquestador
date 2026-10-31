@@ -314,6 +314,7 @@ try {
       else if (path === "/api/models/usage") data = { counts: { "groq/llama-test": 12, "google/prueba": 5, "nvidia/nemotron-test": 3 } };
       else if (path === "/api/models") data = { models: [
         { id: "opencode/claude-fable-5", provider: "opencode", name: "Claude Fable 5", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Claude", recommended: true },
+        { id: "codex/gpt-5-codex", provider: "codex", name: "GPT-5 Codex", inputUsd: 0, outputUsd: 0, context: 100000, variants: ["high"], free: false, costTier: "medio", costWarning: null, group: "Codex", recommended: true },
         { id: "google/prueba", provider: "google", name: "Google Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Gemini", recommended: true },
         { id: "nvidia/nemotron-test", provider: "nvidia", name: "Nemotron Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Nemotron", recommended: true },
         { id: "nvidia/llama-test", provider: "nvidia", name: "NVIDIA Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Llama", recommended: true },
@@ -323,7 +324,7 @@ try {
       else if (path === "/api/preferences") data = { defaultModel: null, defaultEffort: null, monthlyBudgetUsd: null, budgetAlertPercent: 80 };
       else if (path === "/api/providers") data = [
         { id: "opencode", name: "OpenCode", configured: true, implemented: true, hint: "CLI instalado.", variable: null, enAgente: true, guardable: false, guardada: false, sesion: false },
-        { id: "codex", name: "Codex", configured: codexSesionEnPicker, implemented: true, hint: "Sesión de Codex.", variable: "OPENAI_API_KEY", enAgente: false, guardable: false, guardada: false, sesion: codexSesionEnPicker },
+        { id: "codex", name: "Codex", configured: codexSesionEnPicker, implemented: true, hint: "Sesión de Codex.", variable: null, enAgente: codexSesionEnPicker, guardable: false, guardada: false, sesion: codexSesionEnPicker },
         { id: "google", name: "Google (Gemini)", configured: true, implemented: true, hint: "Clave de prueba.", variable: "GOOGLE_GENERATIVE_AI_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
         { id: "groq", name: "Groq", configured: false, implemented: true, hint: "Clave de prueba.", variable: "GROQ_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
         { id: "nvidia", name: "NVIDIA", configured: true, implemented: true, hint: "Clave de prueba.", variable: "NVIDIA_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
@@ -1402,9 +1403,25 @@ try {
     await selectorModelos.getByRole("heading", { name: "OpenCode", exact: true }).waitFor();
     await selectorModelos.getByRole("heading", { name: "NVIDIA API", exact: true }).waitFor();
     await selectorModelos.getByRole("heading", { name: "Groq API", exact: true }).waitFor();
-    await selectorModelos.getByRole("heading", { name: "Cuenta Codex", exact: true }).waitFor();
+    await selectorModelos.getByRole("heading", { name: "Codex CLI · sesión de ChatGPT", exact: true }).waitFor();
     await selectorModelos.evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)));
-    assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).isDisabled(), true);
+    const gruposGroq = selectorModelos.locator("#picker-integracion-groq");
+    await selectorModelos.getByRole("button", { name: "Ocultar modelos de Groq API", exact: true }).click();
+    assert.equal(await gruposGroq.isHidden(), true, "se puede plegar el catálogo completo de una integración");
+    await selectorModelos.getByRole("button", { name: "Mostrar modelos de Groq API", exact: true }).click();
+    assert.equal(await gruposGroq.isVisible(), true, "se puede volver a expandir la integración");
+    const gruposCodex = selectorModelos.locator("#picker-integracion-codex-sesion");
+    const conteoConCodex = await selectorModelos.locator(".picker-conteo").textContent();
+    await selectorModelos.getByRole("button", { name: "Ocultar modelos de Codex CLI · sesión de ChatGPT", exact: true }).click();
+    assert.equal(await gruposCodex.isHidden(), true, "Codex conserva su propia sección plegable");
+    await selectorModelos.getByRole("button", { name: "Mostrar modelos de Codex CLI · sesión de ChatGPT", exact: true }).click();
+    assert.equal(await gruposCodex.isVisible(), true);
+    await selectorModelos.getByRole("button", { name: "Solo gratis", exact: true }).click();
+    const modelosGratis = await selectorModelos.locator(".picker-conteo").textContent();
+    assert.equal(Number(conteoConCodex?.match(/[0-9]+/)?.[0]) - Number(modelosGratis?.match(/[0-9]+/)?.[0]), 1, "Codex no aparece como gratis ni infla el conteo");
+    await selectorModelos.getByRole("button", { name: "Solo gratis", exact: true }).click();
+    assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).isDisabled(), false);
+    assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).count(), 1, "Codex no se duplica entre los dos catálogos");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/modelos-${width}.png` });
     console.log(`${width}px: código de acceso comprobado`);

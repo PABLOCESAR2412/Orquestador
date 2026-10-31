@@ -78,8 +78,9 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
       hint: sesionCodex
         ? "Sesión conectada con ChatGPT. Los modelos de Codex están disponibles en el selector."
         : "Inicia sesión con tu cuenta de ChatGPT usando el código de dispositivo.",
-      variable: "OPENAI_API_KEY",
-      enAgente: enAgente.has("OPENAI_API_KEY"),
+      variable: null,
+      // Este proveedor se ejecuta con el CLI autenticado, no con OPENAI_API_KEY.
+      enAgente: sesionCodex,
       guardable: false,
       guardada: false,
       sesion: sesionCodex,

@@ -109,10 +109,11 @@ describe.skipIf(process.platform === "win32")("login de Codex", () => {
     expect(cuerpo).not.toContain(TOKEN);
   });
 
-  test("el proveedor codex refleja la sesión sin cambiar a activo (los agentes aún no lo usan)", async () => {
-    const lista = (await (await servidor.request("/providers")).json()) as { id: string; configured: boolean; enAgente: boolean }[];
+  test("el proveedor Codex habilita sus modelos con la sesión autenticada del CLI", async () => {
+    const lista = (await (await servidor.request("/providers")).json()) as { id: string; configured: boolean; enAgente: boolean; variable: string | null }[];
     const codex = lista.find((p) => p.id === "codex");
     expect(codex?.configured).toBe(true);
-    expect(codex?.enAgente).toBe(false);
+    expect(codex?.enAgente).toBe(true);
+    expect(codex?.variable).toBeNull();
   });
 });

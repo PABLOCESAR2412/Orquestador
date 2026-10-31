@@ -1,6 +1,6 @@
 # Seguimiento de Telo
 
-Registro central de fases, revisiones y hallazgos. Actualizado: 30 de octubre de 2026.
+Registro central de fases, revisiones y hallazgos. Actualizado: 31 de octubre de 2026.
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
@@ -11,9 +11,20 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 - [x] HTTP 402 sin mensaje también se clasifica como cuota agotada; el aviso de OpenRouter por máximo de tokens de una sola solicitud sigue como presupuesto insuficiente, no como cuota. Los 429 temporales se reintentan, salvo que el proveedor indique un límite diario o de plan agotado.
 - Evidencia local: `server bun test tests/cuota.test.ts tests/codex-tokens-registro.test.ts` (28 pruebas pasaron) y `server bun run typecheck` pasaron.
 
+## Catálogo del chat por integración — 31 de octubre de 2026
+
+- [x] **Codex ya aparece y ejecuta modelos desde el chat.** El repositorio contiene el runner `codex exec`, `GET /api/providers/codex/models` y la consulta de catálogo de la sesión. Por tanto, la nota de fase 3 que decía «los agentes todavía no usan Codex» ya no describe el código actual; era un estado histórico.
+- [x] El selector separa los catálogos por integración (`Groq API`, `NVIDIA API`, `OpenRouter`, `OpenAI API`, `OpenCode`, etc.) y permite plegar cada lista. Codex queda en su propia sección: **Codex CLI · sesión de ChatGPT**. OpenAI API es una conexión distinta y sigue usando su clave API.
+- [x] Corregido el estado de Codex: el runner usa el login del CLI y no `OPENAI_API_KEY`; la sesión conectada habilita sus modelos sin etiquetarlos como catálogo informativo. La lista dedicada ya no duplica Codex que también aparece en `/api/models`.
+- [x] «Solo gratis» omite Codex y el contador lo refleja, porque el uso de la sesión depende del plan y su cuota, no de que el catálogo marque coste API cero.
+- [~] Las pruebas de servidor y build verifican el código; la prueba de navegador queda agregada, pero no se pudo ejecutar localmente porque este entorno no tiene Chromium de Playwright. El CI puede correrla con el navegador disponible.
+- [ ] La prueba de inicio de sesión y ejecución real debe repetirse tras desplegarlo en la VM.
+
+
 ## Instalación de Antigravity CLI — 31 de octubre de 2026
 
-- [x] Ajustes permite instalar el CLI oficial (`agy`) desde la VM en `~/.local/bin`, usando el instalador oficial con `--skip-aliases --skip-path` para no modificar perfiles de shell. La API solo acepta el identificador fijo `antigravity` y requiere confirmación explícita.
+- [x] Ajustes permite instalar el CLI oficial (`agy`) desde la VM en `~/.local/bin`. La instalación usa el comando oficial sin opciones que el script no admite; la API solo acepta el identificador fijo `antigravity` y requiere confirmación explícita.
+- [x] Corregidos `--skip-aliases` y `--skip-path`: la CLI 1.4.12 instalada en la VM confirmó que el script solo acepta `--dir` y `--help`.
 - [x] La tarjeta junto a Codex explica el acceso OAuth soportado por SSH: iniciar `~/.local/bin/agy` en terminal interactiva como `orquestador`, abrir la URL en el equipo y devolver el código a esa terminal. La sesión no se transmite a Telo.
 - [ ] Este cambio solo instala y guía el inicio de sesión. Antigravity aún no ejecuta chats ni tareas de Telo. Antes de habilitarlo como runner hay que validar disponibilidad de la sesión/keyring para el servicio systemd, invocación headless `agy -p`, eventos `stream-json`, límites de cuenta, cancelación y aislamiento Bubblewrap.
 - Fuente primaria: [instalación y autenticación remota](https://antigravity.google/docs/install?tab=cli), [modo headless](https://antigravity.google/docs/cli/headless/).
@@ -726,7 +737,7 @@ Estado detallado en `FASE3.md`. Resumen:
 - [~] **Estado y registros del servidor** en Ajustes. Hecho: estado de la unidad y registros con redacción. Requiere en el VM: `usermod -aG systemd-journal orquestador` (ver `deploy/README.md`). Pendiente: gasto de Azure (decisión del usuario).
 - [ ] **Skills configurables** (tarea 7). Bloqueada: hay que confirmar en el VM dónde lee OpenCode las skills, y decidir si son globales o por proyecto.
 - [ ] **Claves y botón "Instalar"** (tarea 9). Bloqueada: instalar software en el VM necesita aprobación explícita.
-- [ ] **Codex, Gemini y Claude gratis** (tarea 10). Bloqueada: decidir si se acepta el login de dispositivo de Codex en el VM y si Claude se conecta solo con clave de API.
+- [ ] **Registro histórico de la fase 3: Codex, Gemini y Claude gratis** (tarea 10). Entonces estaba pendiente aceptar el login de dispositivo de Codex; la integración Codex CLI actual se documenta al inicio de este archivo. Claude gratis continúa sin implementar.
 
 Corrección de la nota de Gemini: ver sección B.
 
@@ -734,7 +745,7 @@ Corrección de la nota de Gemini: ver sección B.
 
 - Skills globales y por proyecto, editables desde Ajustes y desde el proyecto. Pendiente en el VM: confirmar que OpenCode las lista.
 - OpenCode se puede instalar desde Ajustes con confirmación (comando fijo, `npm install -g --prefix ~/.opencode opencode-ai`). Pendiente: `npm` en el PATH del servicio.
-- Codex: inicio de sesión por código de dispositivo desde Ajustes. Pendiente: confirmar el comando `codex login --device-auth` y el archivo de sesión en el VM. Los agentes todavía no usan Codex.
+- Codex: estado histórico antes de integrar el runner. Hoy el selector consulta el catálogo de la sesión y `codex/*` se ejecuta con `codex exec`; ver «Catálogo del chat por integración» al inicio. La verificación de despliegue real sigue pendiente.
 - Claude gratis: sin decisión; no se implementa.
 
 
@@ -794,7 +805,7 @@ Lista de control. Se marca lo hecho en cada tarea y aquí a la vez.
 - [x] **Tarea 7.** Skills globales y por proyecto, editables desde la app. Verificada en navegador a 390 y 1440 px, y en `skills.test.ts`. **Pendiente en el VM:** confirmar que OpenCode las lista.
 - [x] **Tarea 8.** Memoria del proyecto editable desde la app (`PUT /api/projects/:id/memoria`, con redacción y límite de 4 000 caracteres; botones Editar, Escribir, Guardar, Cancelar y Borrar). Verificada en el navegador a 390 y 1440 px, y en `proyectos.test.ts`. Supuesto confirmado en el código: "memoria" = memoria aprendida por proyecto.
 - [x] **Tarea 9.** Botón "Instalar" de OpenCode con confirmación en dos pasos y comando fijo, verificado con npm falso (`instalacion.test.ts`) y en navegador. **Pendiente en el VM:** que `npm` exista para el servicio, y que `opencode models` liste los modelos de la clave guardada.
-- [~] **Tarea 10.** Codex: login por código de dispositivo, verificado con CLI falso (`login-codex.test.ts`) y en navegador; **pendiente en el VM:** el comando exacto y el archivo de sesión. Instalar Codex desde Ajustes: hecho (misma tarjeta que el login, verificado en navegador a 390 y 1440 px). Gemini: clave de AI Studio (tarea 3). Claude: **investigado, no implementado** (ver tarea 10, punto b).
+- [~] **Tarea 10 (registro histórico).** Codex: login por código de dispositivo e instalación desde Ajustes. El runner Codex CLI y el catálogo del chat se añadieron después; ver «Catálogo del chat por integración». Gemini: clave de AI Studio (tarea 3). Claude: **investigado, no implementado** (ver tarea 10, punto b).
 - [~] **Tarea 11.** Acciones git desde los chats (commit, subir rama y abrir PR, siempre con aprobación). En `main` desde los PR 36 a 42. En esta rama se quitan la fusión local y el push directo a `main`, el PR usa solo `GITHUB_PR_TOKEN` y las notas del plan dejan de romper la aprobación (ver Tarea 11). La protección de `main` en GitHub ya está hecha.
 - [x] **Tarea 12.** Cola de mensajes del chat: si envías más mientras el agente responde, se ejecutan en orden. Hecha en el PR #127 (ver «Tarea 12: cola de mensajes del chat»).
 - [ ] **Tarea 13.** Wrangler (Cloudflare) instalable desde Ajustes, con inicio de sesión por código. Pendiente de dos decisiones (ver Tarea 13).
@@ -1027,7 +1038,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 - **El token no se lee ni se muestra.** La salida se redacta. El éxito se decide por salida 0 y porque exista el archivo de sesión; ese archivo solo se comprueba, nunca se abre.
 - `~/.codex` está en `HERRAMIENTAS` de `server/src/runners/aislamiento.ts` y se monta en solo lectura.
 - En la tarjeta de Codex: «Iniciar sesión» → enlace y código → «Sesión iniciada en el servidor». «Ya lo hice» comprueba el estado y mantiene el enlace mientras el CLI espera.
-- Codex **no** es todavía proveedor de los agentes. La tarjeta lo dice.
+- Esta nota era anterior al runner Codex y está superada: ahora los modelos `codex/*` se listan con la sesión y se ejecutan con `codex exec`. Ver el estado actualizado al inicio de `SEGUIMIENTO.md`.
 
 **Verificado.** `server/tests/login-codex.test.ts` (4 pruebas) con un CLI falso que imprime un token de prueba: el token no aparece en ninguna respuesta, cancelar no deja procesos y sin CLI responde `codex_no_instalado`. En navegador: enlace, código, «Ya lo hice» y sesión iniciada, a 390 y 1440 px.
 

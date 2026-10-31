@@ -73,6 +73,7 @@ export function ModelPicker({
   });
   const [onlyFree, setOnlyFree] = useState(false);
   const [textoBusca, setTextoBusca] = useState("");
+  const [integracionesAbiertas, setIntegracionesAbiertas] = useState<Record<string, boolean>>({});
   const buscando = textoBusca.trim().length > 0;
   const [preferencias, setPreferencias] = useState<PreferenciasSelectorModelos>(leerPreferenciasSelector);
   const [draftId, setDraftId] = useState(currentId);
@@ -128,8 +129,31 @@ export function ModelPicker({
     guardarPreferenciasSelector(siguiente);
   };
 
+  const integracionAbierta = (id: string) => buscando || integracionesAbiertas[id] !== false;
+  const alternarIntegracion = (id: string) => setIntegracionesAbiertas((actual) => ({ ...actual, [id]: actual[id] === false }));
+  const cabeceraIntegracion = (id: string, nombre: string, cantidad: number) => (
+    <div className="picker-integracion-heading">
+      <h3 className="group-title picker-integracion-titulo">{nombre}</h3>
+      <button
+        type="button"
+        className="picker-integracion-cabecera"
+        aria-expanded={integracionAbierta(id)}
+        aria-controls={`picker-integracion-${id}`}
+        aria-label={`${integracionAbierta(id) ? "Ocultar" : "Mostrar"} modelos de ${nombre}`}
+        disabled={buscando}
+        onClick={() => alternarIntegracion(id)}
+      >
+        <span className="picker-integracion-conteo">{plural(cantidad)}</span>
+        <svg className="picker-integracion-flecha" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+    </div>
+  );
+
   const candidatos = useMemo(
-    () => models.filter((m) => m.recommended && (!onlyFree || m.free)),
+    // Codex se muestra desde su catálogo de sesión abajo, sin duplicar los mismos IDs del catálogo general.
+    () => models.filter((m) => m.recommended && m.provider !== "codex" && (!onlyFree || m.free)),
     [models, onlyFree],
   );
   const destacados = useMemo(() => {
@@ -178,8 +202,8 @@ export function ModelPicker({
 
   // Modelos listados tras filtrar: es el contador "N modelos disponibles".
   const listados = useMemo(
-    () => destacados.length + groups.reduce((total, [, familias]) => total + familias.reduce((n, [, items]) => n + items.length, 0), 0),
-    [groups, destacados],
+    () => destacados.length + groups.reduce((total, [, familias]) => total + familias.reduce((n, [, items]) => n + items.length, 0), 0) + (!onlyFree && codexConectado ? catalogoCodex.data?.models.length ?? 0 : 0),
+    [groups, destacados, onlyFree, codexConectado, catalogoCodex.data],
   );
 
   // Resultados del buscador: coinciden por nombre, id, familia o proveedor visible;
@@ -194,15 +218,16 @@ export function ModelPicker({
     [hallazgos],
   );
   const ocultos = hallazgos ? hallazgos.total - hallazgos.visibles.length : 0;
-  const listadosVisibles = hallazgos ? hallazgos.visibles.length : listados;
 
   // La sección Codex también responde al buscador: sus filas se filtran mientras escribes.
   const codexVisibles = useMemo(() => {
+    if (onlyFree) return [];
     if (!buscando || !catalogoCodex.data) return catalogoCodex.data?.models ?? [];
     return catalogoCodex.data.models.filter((modelo) =>
-      coincideModelo({ name: modelo.name, id: `codex/${modelo.id}`, group: "Codex", provider: "codex" }, textoBusca),
+      coincideModelo({ name: modelo.name, id: `codex/${modelo.id}`, group: "Codex CLI · sesión de ChatGPT", provider: "codex" }, textoBusca),
     );
-  }, [buscando, catalogoCodex.data, textoBusca]);
+  }, [onlyFree, buscando, catalogoCodex.data, textoBusca]);
+  const listadosVisibles = hallazgos ? hallazgos.visibles.length + codexVisibles.length : listados;
 
   // Fila de un modelo: nombre con "✓ Activo" si es el actual; precio arriba y costo abajo.
   const fila = (m: ModelInfo) => {
@@ -360,7 +385,7 @@ export function ModelPicker({
             </p>
           )}
 
-          {!cargando && !error && !buscando && groups.length === 0 && (
+          {!cargando && !error && !buscando && groups.length === 0 && codexVisibles.length === 0 && (
             <p className="muted-note pad">Ningún modelo disponible en este momento.</p>
           )}
 
@@ -369,22 +394,26 @@ export function ModelPicker({
             (buscando
               ? gruposBusca.map(([proveedor, items]) => (
                   <section key={proveedor} className="picker-proveedor">
-                    <h3 className="group-title">{nombreProveedor(proveedor)}</h3>
-                    {items.map((m) => <div key={m.id} className="picker-modelo">{fila(m)}</div>)}
+                    {cabeceraIntegracion(proveedor, nombreProveedor(proveedor), items.length)}
+                    <div id={`picker-integracion-${proveedor}`} hidden={!integracionAbierta(proveedor)}>
+                      {items.map((m) => <div key={m.id} className="picker-modelo">{fila(m)}</div>)}
+                    </div>
                   </section>
                 ))
               : groups.map(([proveedor, familias]) => (
               <section key={proveedor} className="picker-proveedor">
-                <h3 className="group-title">{nombreProveedor(proveedor)}</h3>
-                {familias.map(([familia, items]) => (
-                  <div key={familia} className="picker-familia">
-                    <div className="picker-familia-cabecera">
-                      <h4 className="picker-familia-titulo">{familia}</h4>
-                      <span className="picker-familia-conteo">{plural(items.length)}</span>
+                {cabeceraIntegracion(proveedor, nombreProveedor(proveedor), familias.reduce((n, [, items]) => n + items.length, 0))}
+                <div id={`picker-integracion-${proveedor}`} hidden={!integracionAbierta(proveedor)}>
+                  {familias.map(([familia, items]) => (
+                    <div key={familia} className="picker-familia">
+                      <div className="picker-familia-cabecera">
+                        <h4 className="picker-familia-titulo">{familia}</h4>
+                        <span className="picker-familia-conteo">{plural(items.length)}</span>
+                      </div>
+                      {items.map((m) => <div key={m.id} className="picker-modelo">{fila(m)}</div>)}
                     </div>
-                    {items.map((m) => <div key={m.id} className="picker-modelo">{fila(m)}</div>)}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </section>
             )))}
 
@@ -395,26 +424,26 @@ export function ModelPicker({
           )}
 
           {!cargando && !error && codexConectado && (!buscando || codexVisibles.length > 0) && (
-            <section className="picker-proveedor" aria-labelledby="picker-codex-titulo">
-              <h3 id="picker-codex-titulo" className="group-title">Cuenta Codex</h3>
-              <p className="picker-proveedor-nota">
-                {catalogoCodex.isError
-                  ? "No se pudo consultar el catálogo de Codex. Revisa la sesión en Ajustes."
-                  : codexEnAgente
-                    ? "Modelos disponibles a través de tu sesión activa con ChatGPT."
-                    : "Modelos de tu sesión. Telo todavía ejecuta agentes con OpenCode; esta lista es informativa."}
-              </p>
-              {catalogoCodex.isPending && <p className="picker-cargando" role="status">Consultando modelos de Codex…</p>}
-              {codexVisibles.map((modelo) => (
-                <FilaCodex
-                  key={modelo.id}
-                  modelo={modelo}
-                  deshabilitado={!codexEnAgente}
-                  onSelect={seleccionar}
-                  esActual={currentId === `codex/${modelo.id}` || currentId === modelo.id}
-                  esDraft={draftId === `codex/${modelo.id}` || draftId === modelo.id}
-                />
-              ))}
+            <section className="picker-proveedor" aria-label="Codex CLI con sesión de ChatGPT">
+              {cabeceraIntegracion("codex-sesion", "Codex CLI · sesión de ChatGPT", codexVisibles.length)}
+              <div id="picker-integracion-codex-sesion" hidden={!integracionAbierta("codex-sesion")}>
+                <p className="picker-proveedor-nota">
+                  {catalogoCodex.isError
+                    ? "No se pudo consultar el catálogo de Codex. Revisa la sesión en Ajustes."
+                    : "Modelos de la integración Codex CLI, autenticada con tu sesión de ChatGPT."}
+                </p>
+                {catalogoCodex.isPending && <p className="picker-cargando" role="status">Consultando modelos de Codex…</p>}
+                {codexVisibles.map((modelo) => (
+                  <FilaCodex
+                    key={modelo.id}
+                    modelo={modelo}
+                    deshabilitado={!codexEnAgente}
+                    onSelect={seleccionar}
+                    esActual={currentId === `codex/${modelo.id}` || currentId === modelo.id}
+                    esDraft={draftId === `codex/${modelo.id}` || draftId === modelo.id}
+                  />
+                ))}
+              </div>
             </section>
           )}
         </div>

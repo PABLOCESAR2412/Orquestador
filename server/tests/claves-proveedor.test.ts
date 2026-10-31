@@ -364,7 +364,7 @@ describe("GET /providers", () => {
       guardada: false,
       variable: "OPENROUTER_API_KEY",
     });
-    expect(lista.find((p) => p.id === "codex")).toMatchObject({ guardable: false, variable: "OPENAI_API_KEY" });
+    expect(lista.find((p) => p.id === "codex")).toMatchObject({ guardable: false, variable: null });
   });
 
   test("prueba los cuatro catálogos sin generar texto ni exponer claves", async () => {
