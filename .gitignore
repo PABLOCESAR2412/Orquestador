@@ -11,3 +11,11 @@ server/tests/.test-data-*
 .codex-pr-prep/
 .codex-remote-attachments/
 *.tsbuildinfo
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_ed25519
