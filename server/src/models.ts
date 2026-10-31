@@ -144,10 +144,24 @@ export async function getModels(force = false): Promise<ModelInfo[]> {
     stderr: "pipe",
     env: entornoDelCli(),
   });
-  const [out, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    proc.exited,
-  ]);
+  // La validación del modelo ocurre antes de crear la tarea: un CLI detenido no debe bloquear el envío indefinidamente.
+  let limite: ReturnType<typeof setTimeout> | undefined;
+  let out: string;
+  let code: number;
+  try {
+    [out, code] = await Promise.race([
+      Promise.all([new Response(proc.stdout).text(), proc.exited, new Response(proc.stderr).text()]),
+      new Promise<never>((_, rechazar) => {
+        limite = setTimeout(() => {
+          try { proc.kill(); } catch { /* El CLI ya terminó. */ }
+          rechazar(new Error("opencode models no respondió en 15 segundos"));
+        }, 15_000);
+      }),
+    ]);
+  } catch (error) {
+    if (cache) return cache.models;
+    throw error;
+  } finally { if (limite) clearTimeout(limite); }
 
   if (code !== 0) {
     // Si falla la actualización, se usa la última lista buena
@@ -202,3 +216,4 @@ export async function validateSelection(
   }
   return { ok: true, info };
 }
+

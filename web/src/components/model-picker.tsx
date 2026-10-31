@@ -1,10 +1,10 @@
 import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type ModeloCodex, type ModelInfo } from "../api";
-import { formatPrice, nombreProveedor } from "../lib/model";
+import { effortLabel, formatPrice, nombreProveedor } from "../lib/model";
 import { coincideModelo, agruparPorProveedor, normalizaBusca } from "../lib/busca-modelos";
 import { guardarPreferenciasSelector, leerPreferenciasSelector, normalizarIdAnalisis, type PreferenciasSelectorModelos } from "../lib/model-picker-preferencias";
-import { CostMeter, EffortControl, useDialogo } from "./controls";
+import { CostMeter, useDialogo } from "./controls";
 import "../styles-picker.css";
 
 type Props = {
@@ -77,8 +77,9 @@ export function ModelPicker({
   const buscando = textoBusca.trim().length > 0;
   const [preferencias, setPreferencias] = useState<PreferenciasSelectorModelos>(leerPreferenciasSelector);
   const [draftId, setDraftId] = useState(currentId);
+  const [draftSeleccionado, setDraftSeleccionado] = useState<ModelInfo | null>(null);
   const [draftEffort, setDraftEffort] = useState(currentEffort);
-  const draftModel = models.find((m) => m.id === draftId) ?? null;
+  const draftModel = models.find((m) => m.id === draftId) ?? (draftSeleccionado?.id === draftId ? draftSeleccionado : null);
   const esfuerzoValido = draftEffort && draftModel?.variants.includes(draftEffort) ? draftEffort : null;
   const dialogRef = useRef<HTMLDivElement>(null);
   // Si no hay disparador, vuelve el elemento que tenía el foco al abrir.
@@ -129,8 +130,8 @@ export function ModelPicker({
     guardarPreferenciasSelector(siguiente);
   };
 
-  const integracionAbierta = (id: string) => buscando || integracionesAbiertas[id] !== false;
-  const alternarIntegracion = (id: string) => setIntegracionesAbiertas((actual) => ({ ...actual, [id]: actual[id] === false }));
+  const integracionAbierta = (id: string) => buscando || integracionesAbiertas[id] === true;
+  const alternarIntegracion = (id: string) => setIntegracionesAbiertas((actual) => ({ ...actual, [id]: !actual[id] }));
   const cabeceraIntegracion = (id: string, nombre: string, cantidad: number) => (
     <div className="picker-integracion-heading">
       <h3 className="group-title picker-integracion-titulo">{nombre}</h3>
@@ -175,6 +176,7 @@ export function ModelPicker({
   const seleccionar = (m: ModelInfo | null) => {
     if (!m) return elegir(null, null);
     if (!conEsfuerzo || !m.variants || m.variants.length === 0) return elegir(m, null);
+    setDraftSeleccionado(m);
     setDraftId(m.id);
     setDraftEffort((v) => (v && m.variants.includes(v) ? v : null));
   };
@@ -230,7 +232,7 @@ export function ModelPicker({
   const listadosVisibles = hallazgos ? hallazgos.visibles.length + codexVisibles.length : listados;
 
   // Fila de un modelo: nombre con "✓ Activo" si es el actual; precio arriba y costo abajo.
-  const fila = (m: ModelInfo) => {
+  const fila = (m: ModelInfo, mostrarIntegracion = false) => {
     const fijado = preferencias.fijados.includes(m.id);
     const indice = puntajeDe(m.id);
     return (
@@ -239,10 +241,9 @@ export function ModelPicker({
           <span className="picker-main">
             <span className="picker-nombre-linea">
               <span className="picker-name">{m.name}</span>
-              <span className="picker-proveedor-chip">{nombreProveedor(m.provider)}</span>
+              {mostrarIntegracion && <span className="picker-proveedor-chip">{nombreProveedor(m.provider)}</span>}
               {esActual(m) && <span className="picker-activo">✓ Activo</span>}
             </span>
-            <span className="picker-id">{m.id}</span>
           </span>
           <span className="picker-meta">
             <span className="picker-price" title="Precio de entrada / salida por millón de tokens">
@@ -341,7 +342,7 @@ export function ModelPicker({
             <section className="picker-proveedor picker-tus-modelos" aria-labelledby="picker-tus-modelos">
               <h3 className="group-title" id="picker-tus-modelos">Tus modelos</h3>
               {preferencias.fijados.some((id) => candidatos.some((m) => m.id === id)) && <p className="picker-proveedor-nota">Anclados y más usados</p>}
-              {destacados.map((m) => <div key={m.id} className="picker-modelo">{fila(m)}</div>)}
+              {destacados.map((m) => <div key={m.id} className="picker-modelo">{fila(m, true)}</div>)}
             </section>
           )}
           {!buscando && (
@@ -455,12 +456,14 @@ export function ModelPicker({
               </strong>
               <span>Nivel de esfuerzo:</span>
             </div>
-            <EffortControl
-              variants={draftModel.variants}
-              value={esfuerzoValido}
-              disabled={!draftModel}
-              onChange={(nuevoEsfuerzo) => elegir(draftModel, nuevoEsfuerzo)}
-            />
+            <div className="picker-esfuerzo-barra">
+              <strong aria-hidden="true">{esfuerzoValido ? effortLabel(esfuerzoValido) : "Auto"}</strong>
+              <input type="range" min="0" max={draftModel.variants.length} step="1"
+                value={esfuerzoValido ? draftModel.variants.indexOf(esfuerzoValido) + 1 : 0}
+                aria-label="Nivel de esfuerzo" aria-valuetext={esfuerzoValido ? effortLabel(esfuerzoValido) : "Auto"}
+                onChange={(event) => setDraftEffort(draftModel.variants[Number(event.target.value) - 1] ?? null)} />
+              <button type="button" className="btn-primary" onClick={() => elegir(draftModel, esfuerzoValido)}>Usar modelo</button>
+            </div>
           </div>
         )}
       </div>
@@ -508,10 +511,8 @@ function FilaCodex({
       <span className="picker-main">
         <span className="picker-nombre-linea">
           <span className="picker-name">{modelo.name}</span>
-          <span className="picker-proveedor-chip">Codex</span>
           {esActual && <span className="picker-activo">✓ Activo</span>}
         </span>
-        <span className="picker-id">{modelInfo.id}</span>
       </span>
       <span className="picker-meta">
         <span className="picker-price">{deshabilitado ? "Solo catálogo" : "Cuenta ChatGPT"}</span>
@@ -520,3 +521,4 @@ function FilaCodex({
     </button>
   );
 }
+

@@ -4,6 +4,12 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 31 de octubre de
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Selector y oficina — 31 de octubre de 2026
+
+- [~] Integraciones plegadas por defecto, selector de esfuerzo en barra, oficina pixelada y mapa de chats agrupados por proyecto. Validación local de interfaz a 390 y 1440 px; faltan casos reales en VM.
+- [~] El catálogo de OpenCode tiene un límite de espera y consume stderr para evitar esperas indefinidas. La causa del retraso reportado requiere registros de la VM.
+- [ ] El mapa de chats muestra pertenencia, no relaciones semánticas Graphify. Queda pendiente integrar indexación por proyecto y recuperación de contexto, así como equivalentes de precio fiables para sesiones de suscripción.
+
 ## Oficina y cerebro — 31 de octubre de 2026
 
 - [~] La oficina presenta conversaciones principales y subchats existentes; las animaciones son decorativas y no crean agentes. Pendiente revisión visual y operativa en la VM.
