@@ -20,6 +20,13 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 - [~] Las pruebas de servidor y build verifican el código; la prueba de navegador queda agregada, pero no se pudo ejecutar localmente porque este entorno no tiene Chromium de Playwright. El CI puede correrla con el navegador disponible.
 - [ ] La prueba de inicio de sesión y ejecución real debe repetirse tras desplegarlo en la VM.
 
+## Codex CLI: perfil por chat y aislamiento de credenciales — PR 150
+
+- [x] Codex usa un `CODEX_HOME` escribible por chat/tarea y conserva allí su sesión sin exponer las sesiones de otros chats.
+- [x] Quitado `--dangerously-bypass-approvals-and-sandbox`; el runner usa `workspace-write` y Bubblewrap conserva el límite externo.
+- [x] El runner exige la política administrada del sistema para denegar lectura de las rutas visibles de `auth.json` y `config.toml`. El instalador valida el directorio y no reemplaza una política existente.
+- [ ] Pendiente instalar la política en la VM y confirmar allí login, inicio del runner, reanudación y herramientas dentro de Bubblewrap.
+
 
 ## Instalación de Antigravity CLI — 31 de octubre de 2026
 
