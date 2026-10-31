@@ -187,15 +187,20 @@ export function detalleDelProveedor(stdout: string, stderr: string, events: Open
     const evento = registro(errorEvent);
     const error = registro(evento?.error);
     const data = registro(error?.data);
-    const statusCode = typeof data?.statusCode === "number"
-      ? data.statusCode
-      : typeof error?.statusCode === "number" ? error.statusCode : null;
-    const message = typeof data?.message === "string"
-      ? data.message
-      : typeof error?.message === "string" ? error.message : "";
-    // Conserva lo necesario para clasificar el error sin perder el código si el evento trae
-    // metadatos grandes (por ejemplo, cabeceras o IDs de sesión) al final del JSON.
-    return JSON.stringify({ type: "error", statusCode, message: message.slice(0, 500) });
+    const dataError = registro(data?.error);
+    const candidatos = [data, dataError, error, evento].filter((valor): valor is Record<string, unknown> => valor !== null);
+    const statusCode = candidatos
+      .map((valor) => valor.statusCode ?? valor.status ?? valor.httpStatus)
+      .find((valor) => typeof valor === "number" || (typeof valor === "string" && /^\d{3}$/.test(valor))) ?? null;
+    const code = candidatos
+      .map((valor) => valor.code ?? valor.errorCode)
+      .find((valor): valor is string => typeof valor === "string") ?? null;
+    const message = candidatos
+      .map((valor) => valor.message ?? valor.detail)
+      .find((valor): valor is string => typeof valor === "string") ?? "";
+    // Conserva estado, código y mensaje para clasificar proveedores con formatos distintos,
+    // sin copiar cabeceras, IDs de sesión ni otros metadatos del evento.
+    return JSON.stringify({ type: "error", statusCode, code, message: message.slice(0, 500) });
   }
   return (stderr || stdout).trim().slice(-800).replace(/\S*[\\/]\S*/g, " ");
 }
