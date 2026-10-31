@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent as TeclaReact, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent as TeclaReact, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { api, reintentarConsultaTransitoria, type ModelInfo, type Preferences, type ProviderStatus } from "../api";
@@ -10,6 +10,7 @@ import { errorText } from "../lib/model";
 import { AlmacenamientoServidor, ErrorConReintento, EstadoServidor, useMuestrasLatencia } from "./servidor";
 import "../styles-ajustes.css";
 import { InstalarHerramienta } from "../components/instalar-herramienta";
+import { AntigravityCard } from "../components/antigravity";
 import { LoginCodexPanel } from "../components/login-codex";
 import { SkillsEditor } from "../components/skills-editor";
 import { TemaPanel } from "../components/settings/panel-tema";
@@ -333,7 +334,10 @@ export function SettingsPage() {
                     {proveedoresAdicionales.length > 0 && (
                       <div className="aj-proveedores-adicionales" aria-label="Acceso local y otros proveedores">
                         {proveedoresAdicionales.map((p) => (
-                          <TarjetaProveedor key={p.id} p={p} etiqueta={etiquetaDe(p)} modelos={modelosDe(p.id)} />
+                          <Fragment key={p.id}>
+                            <TarjetaProveedor p={p} etiqueta={etiquetaDe(p)} modelos={modelosDe(p.id)} />
+                            {p.id === "codex" && <AntigravityCard />}
+                          </Fragment>
                         ))}
                       </div>
                     )}

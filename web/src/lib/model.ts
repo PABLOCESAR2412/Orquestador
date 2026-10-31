@@ -473,6 +473,10 @@ export function errorText(err: unknown): string {
         return "Ya hay una instalación en marcha. Espera a que termine.";
       case "npm_no_disponible":
         return "No encuentro npm en el servidor. Hace falta Node.js (que trae npm) instalado en el VM.";
+      case "bash_no_disponible":
+        return "No encuentro bash en el servidor. Antigravity necesita bash para instalarse.";
+      case "curl_no_disponible":
+        return "No encuentro curl en el servidor. Instálalo en la VM e inténtalo de nuevo.";
       case "ya_instalada":
         return "OpenCode ya está instalado en el servidor.";
       case "herramienta_desconocida":
