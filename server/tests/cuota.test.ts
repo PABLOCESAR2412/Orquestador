@@ -81,6 +81,8 @@ describe("diff de una tarea activa", () => {
 describe("clasificación de cuota agotada", () => {
   test("el rate limit temporal no se confunde con una cuota agotada", () => {
     expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"message":"Rate limit exceeded (429)"}}'))).toBe(false);
+    expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"message":"Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day"}}'))).toBe(true);
+    expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"message":"Monthly free model request limit reached"}}'))).toBe(true);
     expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"message":"429 Too Many Requests"}}'))).toBe(false);
     expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"message":"Quota exceeded for this model"}}'))).toBe(true);
     expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"code":"insufficient_quota"}}'))).toBe(true);
