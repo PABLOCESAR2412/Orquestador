@@ -7,7 +7,7 @@ import { capturarAlcance, comprobarAlcance } from "./alcance-plan";
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { config } from "./config";
-import { MAX_TAREAS_SIMULTANEAS } from "./limites";
+import { limiteProveedor, MAX_TAREAS_SIMULTANEAS, proveedorAgente } from "./limites";
 import { db } from "./db";
 import { prepararSubagentes } from "./subagentes";
 import { cerrarSubagentesDelTurno, registrarEventoSubagente } from "./subagentes-chat";
@@ -69,6 +69,7 @@ const cancelRequested = new Set<string>();
 const pausaDespliegueSolicitada = new Set<string>();
 const tareasEnEjecucion = new Set<string>();
 const proyectosEnEjecucion = new Set<string>();
+const proveedoresEnEjecucion = new Map<string, number>();
 let wake: (() => void) | null = null;
 
 // Error del analizador u obrero con texto pensado para el usuario.
@@ -107,6 +108,19 @@ export function notifyWorker() {
   wake?.();
 }
 
+function avisarCapacidad(task: Pick<QueuedTask, "id" | "conversation_id" | "message_id" | "model">, estado: "waiting" | "ready" | "cancelled"): void {
+  if (!task.conversation_id || !task.message_id) return;
+  const callId = `queue:task-${task.id}`;
+  const anterior = db.query<{ estado: string }, [string, string, string]>(
+    "SELECT estado FROM chat_actividad WHERE conversation_id=? AND turno_id=? AND call_id=?",
+  ).get(task.conversation_id, task.message_id, callId);
+  const destino = estado === "waiting" ? "en_curso" : estado === "ready" ? "hecha" : "error";
+  if ((!anterior && estado !== "waiting") || anterior?.estado === destino || (estado === "cancelled" && anterior?.estado !== "en_curso")) return;
+  if (!turnoDeTarea(task)) return;
+  const item = itemDeLinea(JSON.stringify({ type: "telo.queue", id: `task-${task.id}`, proveedor: proveedorAgente(task.model), estado }));
+  if (item) registrarActividad(task.conversation_id, task.message_id, item);
+}
+
 function nextQueued(): QueuedTask | null {
   if (enMantenimiento()) return null;
   const pendientes = db
@@ -114,11 +128,16 @@ function nextQueued(): QueuedTask | null {
       "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, t.provider_session_model, t.conversation_id, t.message_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado, t.continuar FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC",
     )
     .all();
-  const candidata = pendientes.find((task) =>
-    !tareasEnEjecucion.has(task.id) &&
-    (!task.project_id || (!proyectosEnEjecucion.has(task.project_id) && !proyectoOcupado(task.project_id))),
-  );
+  const candidata = pendientes.find((task) => {
+    if (tareasEnEjecucion.has(task.id)) return false;
+    const ocupado = (proveedoresEnEjecucion.get(proveedorAgente(task.model)) ?? 0) >= limiteProveedor(task.model);
+    if (ocupado) avisarCapacidad(task, "waiting");
+    return !ocupado && (!task.project_id || (!proyectosEnEjecucion.has(task.project_id) && !proyectoOcupado(task.project_id)));
+  });
   if (!candidata) return null;
+  avisarCapacidad(candidata, "ready");
+  const proveedor = proveedorAgente(candidata.model);
+  proveedoresEnEjecucion.set(proveedor, (proveedoresEnEjecucion.get(proveedor) ?? 0) + 1);
   if (candidata.project_id) {
     proyectosEnEjecucion.add(candidata.project_id);
     reservarProyecto(candidata.project_id);
@@ -150,6 +169,12 @@ function finish(
     return true;
   })();
   if (!terminado) return false;
+  if (status !== "done") {
+    const task = db.query<Pick<QueuedTask, "id" | "conversation_id" | "message_id" | "model">, [string]>(
+      "SELECT id,conversation_id,message_id,model FROM tasks WHERE id=?",
+    ).get(id);
+    if (task) avisarCapacidad(task, "cancelled");
+  }
   publicarEstado(id);
   if (status === "done" || status === "failed") {
     void avisarPush(
@@ -225,7 +250,7 @@ function leerPlan(respuesta: { text: string; textoFinal: string }): Validacion<P
   return { ok: false, motivo };
 }
 
-function turnoDeTarea(task: QueuedTask): { id: string } | null {
+function turnoDeTarea(task: Pick<QueuedTask, "conversation_id" | "message_id">): { id: string } | null {
   return task.conversation_id && task.message_id
     ? db.query<{ id: string }, [string, string]>("SELECT id FROM messages WHERE id=? AND conversation_id=? AND role='user'")
       .get(task.message_id, task.conversation_id)
@@ -632,6 +657,7 @@ async function ejecutarTarea(task: QueuedTask) {
 }
 
 async function ejecutarSlot(task: QueuedTask): Promise<void> {
+  const proveedor = proveedorAgente(task.model);
   const finalizarTrabajo = registrarTrabajo();
   try {
     await runTask(task);
@@ -648,6 +674,8 @@ async function ejecutarSlot(task: QueuedTask): Promise<void> {
   } finally {
     finalizarTrabajo();
     tareasEnEjecucion.delete(task.id);
+    const restantes = (proveedoresEnEjecucion.get(proveedor) ?? 1) - 1;
+    if (restantes) proveedoresEnEjecucion.set(proveedor, restantes); else proveedoresEnEjecucion.delete(proveedor);
     if (task.project_id) {
       proyectosEnEjecucion.delete(task.project_id);
       soltarProyecto(task.project_id);

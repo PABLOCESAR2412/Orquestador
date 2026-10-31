@@ -114,6 +114,8 @@ try {
     let adjuntosChatSubidos = 0;
     let diffRequests = 0;
     let diffSinRepo = false;
+    let probarColaProveedor = false;
+    let lecturasColaProveedor = 0;
     let taskListRequests = 0;
     const esperasPollUsadas = [];
     let resolverEsperaPollLarga;
@@ -170,6 +172,13 @@ try {
       else if (path === "/api/conversations/c1/turnos/u1/subagentes") data = [
         { id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true },
       ];
+      else if (path === "/api/conversations/c1/turnos/u-capacidad/actividad") {
+        lecturasColaProveedor++;
+        data = lecturasColaProveedor === 1
+          ? [{ seq: 1, tipo: "accion", herramienta: "capacity", titulo: "En cola: esperando capacidad de opencode", detalle: null, estado: "en_curso" }]
+          : [{ seq: 1, tipo: "accion", herramienta: "capacity", titulo: "Capacidad disponible en opencode", detalle: null, estado: "hecha" },
+              { seq: 2, tipo: "accion", herramienta: "bash", titulo: "Ejecutó comprobación tras la espera", detalle: "$ bun test", estado: "en_curso" }];
+      }
       else if (path === "/api/conversations/c1/turnos/u-compact-new/actividad") data = [
         { seq: 1, tipo: "accion", herramienta: "compaction", titulo: "Contexto compactado automáticamente", detalle: resumenCompactacion, estado: "hecha" },
       ];
@@ -393,6 +402,7 @@ try {
         byTask: [{ taskId: "t1", calls: 1, tokens: sinDatos ? 0 : 10, cost: 0, tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 }],
       };
       else if (path.includes("eventos-vivos/poll")) {
+        if (probarColaProveedor) return route.fulfill({ status: 503, json: { error: "canal_no_disponible_fixture" } });
         const esperaPollUsada = Number(new URL(route.request().url()).searchParams.get("espera"));
         esperasPollUsadas.push(esperaPollUsada);
         if (esperaPollUsada >= 4000) resolverEsperaPollLarga();
@@ -1449,6 +1459,17 @@ try {
     assert.equal(await page.getByText("Esta tarea no tiene copia de Git, así que no hay cambios que revisar.", { exact: true }).count(), 0);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/diff-sin-repo-${width}.png` });
+
+    probarColaProveedor = true; task.status = "analyzing";
+    messages.push({ id: "u-capacidad", role: "user", content: "Revisar con proveedor ocupado", created_at: now });
+    await page.goto(`${base}/chat?conversacion=c1`);
+    await page.locator(".tl-actividad-live").getByText("En cola: esperando capacidad de opencode", { exact: true }).first().waitFor();
+    await page.locator(".tl-actividad-live").getByText("Capacidad disponible en opencode", { exact: true }).waitFor();
+    await page.locator(".tl-actividad-live").getByText("Ejecutó comprobación tras la espera", { exact: true }).waitFor();
+    assert.ok(lecturasColaProveedor >= 2, "el sondeo continúa actualizando el mismo turno cuando el canal de eventos falla");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/cola-proveedor-${width}.png` });
+    probarColaProveedor = false;
 
     await page.goto(`${base}/ajustes?pestana=almacenamiento`);
     const disco = page.locator('section[aria-labelledby="disco-mantenimiento"]');

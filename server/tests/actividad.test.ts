@@ -34,6 +34,17 @@ function herramienta(nombre: string, estado: Record<string, unknown>): string {
 }
 
 describe("líneas del agente", () => {
+  test("la cola del proveedor explica la espera y completa el mismo paso al admitir", () => {
+    const fila = (estado: string) => itemDeLinea(JSON.stringify({ type: "telo.queue", id: "espera-1", proveedor: "opencode", estado }));
+    expect(fila("waiting")).toMatchObject({ herramienta: "capacity", callId: "queue:espera-1", estado: "en_curso", titulo: "En cola: esperando capacidad de opencode" });
+    expect(fila("ready")).toMatchObject({ callId: "queue:espera-1", estado: "hecha" });
+    expect(fila("cancelled")).toMatchObject({ estado: "error" });
+    const turno = "turno-capacidad-reanudada";
+    registrarActividad(CONVERSACION, turno, fila("ready")!);
+    registrarActividad(CONVERSACION, turno, fila("waiting")!);
+    expect(actividadDelTurno(CONVERSACION, turno)).toHaveLength(1);
+    expect(actividadDelTurno(CONVERSACION, turno)[0].estado).toBe("en_curso");
+  });
   test("el texto intermedio pasa como paso de texto", () => {
     const linea = JSON.stringify({ type: "text", part: { type: "text", text: "  Voy a leer el archivo.  " } });
     expect(itemDeLinea(linea)).toEqual({ tipo: "texto", texto: "Voy a leer el archivo." });

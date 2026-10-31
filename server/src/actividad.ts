@@ -198,6 +198,13 @@ export function itemDeLinea(linea: string): ItemActividad | null {
     return null;
   }
   if (!esRegistro(evento)) return null;
+  if (evento.type === "telo.queue" && cadena(evento.id) && cadena(evento.proveedor) && ["waiting", "ready", "cancelled"].includes(String(evento.estado))) {
+    const proveedor = recortar(cadena(evento.proveedor)!, 60);
+    return { tipo: "accion", herramienta: "capacity", callId: `queue:${evento.id}`,
+      titulo: evento.estado === "waiting" ? `En cola: esperando capacidad de ${proveedor}`
+        : evento.estado === "ready" ? `Capacidad disponible en ${proveedor}` : `Espera cancelada en ${proveedor}`,
+      detalle: null, estado: evento.estado === "waiting" ? "en_curso" : evento.estado === "ready" ? "hecha" : "error" };
+  }
   if (evento.type === "telo.provider" && cadena(evento.sessionID)) {
     const status = cadena(evento.status);
     if (!["busy", "generating", "retry", "idle"].includes(status ?? "")) return null;
@@ -344,7 +351,7 @@ export function registrarActividad(conversacionId: string, turnoId: string, item
     ).get(conversacionId, turnoId, callId);
     if (existente) {
       // El sondeo del plugin puede entregar un inicio después del final recibido por stdout.
-      if (item.tipo === "accion" && item.herramienta !== "provider" && item.estado === "en_curso" && existente.estado !== "en_curso") return existente.seq;
+      if (item.tipo === "accion" && !["provider", "capacity"].includes(item.herramienta) && item.estado === "en_curso" && existente.estado !== "en_curso") return existente.seq;
       const { titulo, detalle } = item.tipo === "accion"
         ? { titulo: item.titulo, detalle: item.detalle }
         : { titulo: item.texto, detalle: null };

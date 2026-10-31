@@ -18,6 +18,8 @@ import { imagenesDelPrompt } from "./chat-adjuntos";
 import { configuracionMcpParaAgente } from "./conexiones-mcp";
 import { carpetaEntregables } from "./entregables";
 import { mkdirSync } from "node:fs";
+import { reservarAgente } from "./capacidad-agentes";
+import { proveedorAgente } from "./limites";
 
 // Longitud mínima de un valor de secreto para ocultarlo en la salida. Más corto, aparecería en texto normal.
 const MINIMO_OCULTAR = 4;
@@ -77,42 +79,6 @@ export const CONTRATO_EJECUCION = [
 export function conContratoEjecucion(prompt: string, workspace?: string): string {
   const destino = workspace ? `\nCarpeta de entregables independientes (fuera del repositorio): ${carpetaEntregables(workspace)}. Enlaza los archivos por su nombre relativo a esta carpeta.` : "";
   return `${CONTRATO_EJECUCION}${destino}\n---\n${prompt}`;
-}
-
-// Un único límite para chats y tareas, sin depender del proveedor elegido.
-const MAX_AGENTES_SIMULTANEOS = 10;
-let agentesActivos = 0;
-const colaAgentes: { signal?: AbortSignal; resolve: () => void; reject: (error: Error) => void; cancelar?: () => void }[] = [];
-
-function liberarAgente(): void {
-  const siguiente = colaAgentes.shift();
-  if (siguiente) {
-    if (siguiente.cancelar) siguiente.signal?.removeEventListener("abort", siguiente.cancelar);
-    siguiente.resolve();
-    return;
-  }
-  agentesActivos -= 1;
-}
-
-async function reservarAgente(signal?: AbortSignal): Promise<() => void> {
-  if (signal?.aborted) throw new Error("Ejecución cancelada.");
-  if (agentesActivos < MAX_AGENTES_SIMULTANEOS && colaAgentes.length === 0) {
-    agentesActivos += 1;
-    return liberarAgente;
-  }
-  await new Promise<void>((resolve, reject) => {
-    const espera: (typeof colaAgentes)[number] = { signal, resolve, reject };
-    if (signal) {
-      espera.cancelar = () => {
-        const indice = colaAgentes.indexOf(espera);
-        if (indice !== -1) colaAgentes.splice(indice, 1);
-        reject(new Error("Ejecución cancelada."));
-      };
-      signal.addEventListener("abort", espera.cancelar, { once: true });
-    }
-    colaAgentes.push(espera);
-  });
-  return liberarAgente;
 }
 
 export function canonicalizarModelo(modelo: string): string {
@@ -589,14 +555,18 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     return { ...r, text: opts.aprender ? quitarBloqueMemoria(texto) : texto, textoFinal: opts.aprender ? quitarBloqueMemoria(textoFinal) : textoFinal, modelo, variante };
   };
 
+  let inicio = Date.now();
   async function ejecutarConRunner(modelo: string, params: Parameters<typeof runOpenCode>[0]): Promise<RunResult> {
-    if (modelo.startsWith("codex/")) {
-      return runCodex(params);
-    }
-    return runOpenCode(params);
+    const id = crypto.randomUUID();
+    const liberar = await reservarAgente(modelo, opts.signal, (estado) => opts.onLinea?.(JSON.stringify({
+      type: "telo.queue", id, proveedor: proveedorAgente(modelo), estado,
+    })));
+    inicio = Date.now();
+    try {
+      return await (modelo.startsWith("codex/") ? runCodex(params) : runOpenCode(params));
+    } finally { liberar(); }
   }
 
-  const inicio = Date.now();
   const varianteInicial = opts.variant ?? undefined;
   const sesionUsada = sesion;
   try {
@@ -730,10 +700,5 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
 }
 
 export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAgente> {
-  const liberar = await reservarAgente(opts.signal);
-  try {
-    return await ejecutarAgenteReservado(opts);
-  } finally {
-    liberar();
-  }
+  return ejecutarAgenteReservado(opts);
 }

@@ -724,7 +724,7 @@ export function IndicadorPensando({
   const auxiliarActivo = [...auxiliares].reverse().find((auxiliar) => auxiliar.estado === "running");
   const ultimaHerramienta = (ultimaAccion?.herramienta ?? "").toLowerCase();
   const etiquetaHerramienta = (herramienta: string): string => {
-    if (herramienta === "provider") return ultimaAccion?.titulo ?? "Esperando actividad del proveedor";
+    if (herramienta === "provider" || herramienta === "capacity") return ultimaAccion?.titulo ?? "Esperando actividad del proveedor";
     if (/^(github|gh)(?:[._-]|$)/i.test(herramienta)) return "Consultando GitHub";
     if (herramienta.startsWith("skill") || herramienta.includes("skill")) return "Aplicando una skill";
     if (/^(agent|subagent|sub_agent|spawn|delegate)/i.test(herramienta)) return "Delegando trabajo";

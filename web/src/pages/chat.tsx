@@ -47,7 +47,7 @@ import { leerBorrador, guardarBorrador, leerEnvio, guardarEnvio, borrarEnvio } f
 import { crearDictador, ctorVoz, type Dictador } from "../lib/chat-dictado";
 import { PLANTILLAS_GAUNTLET } from "../lib/plantillas-gauntlet";
 import { actualizarVentanaMensajes } from "../lib/chat-mensajes";
-import { tareaVisibleDelChat } from "../lib/actividad-chat";
+import { integrarActividadGuardada, tareaVisibleDelChat } from "../lib/actividad-chat";
 import "../styles-chat.css";
 import "../styles-flujo.css";
 
@@ -1123,8 +1123,10 @@ export function ChatPage() {
   useEffect(() => {
     if (!selectedId || !turnoEnCurso || !actividadGuardada.data?.length) return;
     setVivos((prev) => {
-      if (prev[selectedId]?.turnoId === turnoEnCurso) return prev;
-      return { ...prev, [selectedId]: { turnoId: turnoEnCurso, pasos: actividadGuardada.data! } };
+      const actuales = prev[selectedId]?.turnoId === turnoEnCurso ? prev[selectedId].pasos : [];
+      const pasos = integrarActividadGuardada(actuales, actividadGuardada.data!);
+      if (JSON.stringify(actuales) === JSON.stringify(pasos)) return prev;
+      return { ...prev, [selectedId]: { turnoId: turnoEnCurso, pasos } };
     });
   }, [selectedId, turnoEnCurso, actividadGuardada.data]);
   const candidatasSugerencia = useMemo(() => sugerenciasChat(lista), [lista]);
