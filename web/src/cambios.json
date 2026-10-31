@@ -3,7 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
-    { "fecha": "2026-10-31", "tipo": "minimo", "titulo": "Agentes: unifica la detección de cuota agotada en OpenCode y Codex y conserva los errores temporales", "pr": null },
+    { "fecha": "2026-10-31", "tipo": "minimo", "titulo": "Agentes: unifica la detección de cuota agotada en OpenCode y Codex y conserva los errores temporales", "pr": 148 },
     { "fecha": "2026-10-31", "tipo": "mediano", "titulo": "Ajustes: instala Antigravity CLI en la VM y guía el acceso OAuth remoto para un piloto", "pr": null },
     { "fecha": "2026-10-30", "tipo": "minimo", "titulo": "Agentes: reconoce el límite diario de modelos gratis para evitar reintentos y respaldos innecesarios", "pr": 144 },
     { "fecha": "2026-10-30", "tipo": "minimo", "titulo": "Agentes: limita concurrencia por proveedor, evita bloquear otras tareas y recupera actualizaciones de actividad por sondeo", "pr": 143 },
@@ -16,7 +16,7 @@
     { "fecha": "2026-10-30", "tipo": "mediano", "titulo": "Chat: conserva aprobación y cola, detiene todos los turnos y vincula la actividad a su mensaje de origen", "pr": 140 },
     { "fecha": "2026-10-30", "tipo": "minimo", "titulo": "Git y documentos: autentica lecturas privadas, permite cancelar en mantenimiento y protege HTML descargado", "pr": 140 },
     { "fecha": "2026-10-30", "tipo": "minimo", "titulo": "Chat: conserva el repositorio del proyecto al crear chats desde comandos", "pr": 140 },
-    { "fecha": "2026-10-30", "tipo": "mediano", "titulo": "Despliegue: aplica cambios visuales y documentación sin interrumpir tareas; reserva la pausa para cambios de runtime", "pr": 148 },
+    { "fecha": "2026-10-30", "tipo": "mediano", "titulo": "Despliegue: aplica cambios visuales y documentación sin interrumpir tareas; reserva la pausa para cambios de runtime", "pr": null },
     { "fecha": "2026-10-30", "tipo": "mediano", "titulo": "Ajustes: corrige escala y alineación, añade OpenCode, instala skills fuente y aclara la integración MCP de Harvey", "pr": null },
     { "fecha": "2026-10-30", "tipo": "mediano", "titulo": "Agentes: reconoce solicitudes explícitas, acelera la selección y permite análisis delegados en solo lectura", "pr": 139 },
     { "fecha": "2026-10-30", "tipo": "mediano", "titulo": "Agentes: limita la espera del selector, muestra encargos y actividad por rama, guía la autocorrección, agrupa cuatro proveedores y documenta la evaluación del harness", "pr": 137 },
