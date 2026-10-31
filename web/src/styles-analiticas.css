@@ -181,6 +181,19 @@ main.an-principal {
 .an-leyenda > span { display: inline-flex; align-items: center; gap: 6px; }
 .an-leyenda-punto { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--bar); }
 .an-leyenda-punto.is-hoy { background: var(--ink); }
+.an-dia-detalle { display: grid; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.an-dia-detalle-cabeza { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.an-dia-detalle-cabeza > div { display: grid; gap: 4px; }
+.an-dia-detalle-cabeza > div strong { color: var(--ink); font-size: 14px; }
+.an-dia-detalle-cabeza > div span { color: var(--ink-2); font-family: var(--font-mono); font-size: 12px; }
+.an-dia-filtro { flex-basis: 220px; }
+.an-dia-modelos { display: grid; gap: 6px; max-height: 240px; overflow-y: auto; margin: 0; padding: 0 6px 0 0; list-style: none; }
+.an-dia-modelos li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.an-dia-modelos li > span { display: grid; gap: 2px; min-width: 0; }
+.an-dia-modelos b { overflow-wrap: anywhere; font-size: 13px; font-weight: 500; }
+.an-dia-modelos small { color: var(--ink-2); font-family: var(--font-mono); font-size: 11px; }
+.an-dia-modelos li > strong { flex: 0 0 auto; color: var(--ink-2); font-family: var(--font-mono); font-size: 12px; font-weight: 500; }
+.an-modelos { max-height: 360px; overflow-y: auto; padding-right: 8px; scrollbar-gutter: stable; }
 
 /* Rejilla de dos paneles cuando hay presupuesto; en móvil, uno debajo de otro */
 .an-rejilla { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
@@ -200,8 +213,8 @@ main.an-principal {
 .an-tooltip-dia {
   position: absolute;
   z-index: 2;
-  width: min(280px, calc(100% - 16px));
-  max-height: 208px;
+  width: min(220px, calc(100% - 16px));
+  max-height: 130px;
   overflow: auto;
   padding: 12px;
   border: 1px solid var(--line-strong);
@@ -293,6 +306,8 @@ main.an-principal {
 /* Móvil: la tabla pasa a tarjetas con etiqueta encima de cada dato, sin scroll horizontal */
 @media (max-width: 640px) {
   .an-kpis { grid-template-columns: minmax(0, 1fr); }
+  .an-dia-detalle-cabeza { align-items: stretch; }
+  .an-dia-filtro { flex-basis: 100%; }
   .an-kpi-valor { font-size: 30px; }
   .an-tabla thead { display: none; }
   .an-tabla,
