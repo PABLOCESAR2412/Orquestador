@@ -3841,6 +3841,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   .skills-nueva-acciones { align-items: flex-start; }
   .skills-texto { min-height: 220px; }
 }
+.skills-explorador { display: grid; gap: 10px; min-width: 0; }
 .skills-lista {
   display: grid;
   gap: 6px;
@@ -3879,7 +3880,13 @@ button:disabled { opacity: 0.4; cursor: default; }
   font-size: 13px;
   line-height: 1.4;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
+.skills-pie { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.skills-paginacion-estado { color: var(--ink-2); font-family: var(--font-mono); font-size: 12px; }
 .skills-fila-texto.is-aviso {
   color: var(--signal);
 }

@@ -45,7 +45,7 @@ function indicesEtiquetados(n: number): Set<number> {
   return indices;
 }
 
-export function VolumenLlamadas({ data, titulo }: { data: DiaLlamadas[]; titulo: string }) {
+export function VolumenLlamadas({ data, titulo, diaSeleccionado, onSeleccionDia }: { data: DiaLlamadas[]; titulo: string; diaSeleccionado?: string | null; onSeleccionDia?: (day: string) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [ancho, setAncho] = useState(640);
   const [detalle, setDetalle] = useState<{ day: string; x: number; y: number } | null>(null);
@@ -69,8 +69,8 @@ export function VolumenLlamadas({ data, titulo }: { data: DiaLlamadas[]; titulo:
   const vacio = data.every((d) => d.calls === 0);
   const hoy = n - 1;
   const diaDetalle = detalle ? data.find((d) => d.day === detalle.day) : null;
-  const tooltipX = detalle ? Math.max(8, Math.min(detalle.x, ancho - 288)) : 0;
-  const tooltipY = detalle ? Math.max(8, Math.min(detalle.y, ALTO - 148)) : 0;
+  const tooltipX = detalle ? Math.max(8, Math.min(detalle.x, ancho - 228)) : 0;
+  const tooltipY = detalle ? Math.max(8, Math.min(detalle.y, ALTO - 110)) : 0;
 
   const mostrarDetalle = (day: string, x: number, y: number) => setDetalle({ day, x, y });
 
@@ -87,13 +87,21 @@ export function VolumenLlamadas({ data, titulo }: { data: DiaLlamadas[]; titulo:
           return (
             <g
               key={d.day}
-              className={seleccionado ? "an-barra-grupo is-activo" : "an-barra-grupo"}
-              role="img"
-              aria-label={`${diaCompleto(d.day)}: ${d.calls} ${d.calls === 1 ? "llamada" : "llamadas"}, ${d.tokens ?? 0} tokens`}
+              className={seleccionado || diaSeleccionado === d.day ? "an-barra-grupo is-activo" : "an-barra-grupo"}
+              role="button"
+              aria-label={`${diaCompleto(d.day)}: ${d.calls} ${d.calls === 1 ? "llamada" : "llamadas"}`}
+              aria-pressed={diaSeleccionado === d.day}
               tabIndex={d.calls > 0 ? 0 : -1}
               onPointerEnter={(event) => mostrarDetalle(d.day, event.clientX - ref.current!.getBoundingClientRect().left, event.clientY - ref.current!.getBoundingClientRect().top)}
               onPointerMove={(event) => mostrarDetalle(d.day, event.clientX - ref.current!.getBoundingClientRect().left, event.clientY - ref.current!.getBoundingClientRect().top)}
               onPointerLeave={() => setDetalle(null)}
+              onClick={() => onSeleccionDia?.(d.day)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSeleccionDia?.(d.day);
+                }
+              }}
               onFocus={() => mostrarDetalle(d.day, x + anchoBarra / 2, Math.max(PAD.top, base - h))}
               onBlur={() => setDetalle(null)}
             >
@@ -128,14 +136,12 @@ export function VolumenLlamadas({ data, titulo }: { data: DiaLlamadas[]; titulo:
         <div className="an-tooltip-dia" role="tooltip" style={{ left: tooltipX, top: tooltipY }}>
           <strong>{diaCompleto(diaDetalle.day)}</strong>
           <div className="an-tooltip-total"><span>Llamadas</span><b>{diaDetalle.calls}</b></div>
-          <div className="an-tooltip-total"><span>Tokens procesados</span><b>{new Intl.NumberFormat("es").format(diaDetalle.tokens ?? 0)}</b></div>
-          {diaDetalle.tokensEstimados ? <small>{diaDetalle.tokensEstimados} registros con tokens estimados</small> : null}
           {diaDetalle.modelos && diaDetalle.modelos.length > 0 && (
             <ul>
-              {[...diaDetalle.modelos].sort((a, b) => b.tokens - a.tokens).slice(0, 5).map((modelo) => (
+              {[...diaDetalle.modelos].sort((a, b) => b.calls - a.calls).slice(0, 5).map((modelo) => (
                 <li key={`${modelo.provider}/${modelo.model}`}>
                   <span>{modelo.provider} · {modelo.model}</span>
-                  <b>{new Intl.NumberFormat("es").format(modelo.tokens)} tok · {modelo.calls} {modelo.calls === 1 ? "llamada" : "llamadas"}</b>
+                  <b>{modelo.calls} {modelo.calls === 1 ? "llamada" : "llamadas"}</b>
                 </li>
               ))}
               {diaDetalle.modelos.length > 5 && <li className="an-tooltip-mas">y {diaDetalle.modelos.length - 5} modelos más</li>}

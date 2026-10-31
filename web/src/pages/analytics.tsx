@@ -11,7 +11,7 @@ import { errorText, formatUsd } from "../lib/model";
 import "../styles-analiticas.css";
 
 const PERIODS = [7, 30, 90] as const;
-const FILAS_POR_PAGINA = 10;
+const FILAS_POR_PAGINA = 5;
 const DIA_MS = 86_400_000;
 
 export const usd = (n: number) => {
@@ -104,6 +104,8 @@ export function AnalyticsPage() {
   const [proyecto, setProyecto] = useState("");
   const [modelo, setModelo] = useState("");
   const [pagina, setPagina] = useState(1);
+  const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null);
+  const [modeloDia, setModeloDia] = useState("");
 
   const query = useQuery({
     queryKey: ["analytics", days, proyecto, modelo],
@@ -139,6 +141,13 @@ export function AnalyticsPage() {
   const rango = primerDia && ultimoDia ? `Del ${diaCompleto(primerDia)} al ${diaCompleto(ultimoDia)}` : "";
   const maxModelo = data ? Math.max(0, ...data.byModel.map((r) => r.tokens)) : 0;
   const totalCosto = data ? data.byModel.reduce((s, r) => s + r.cost, 0) : 0;
+  const diaActivo = data?.byDay.find((d) => d.day === diaSeleccionado) ?? data?.byDay.at(-1) ?? null;
+  const modelosDia = diaActivo?.modelos ?? [];
+  const opcionesModeloDia = [...new Set(modelosDia.map((m) => `${m.provider}/${m.model}`))];
+  const modeloDiaActivo = opcionesModeloDia.includes(modeloDia) ? modeloDia : "";
+  const modelosDiaFiltrados = modelosDia
+    .filter((m) => !modeloDiaActivo || `${m.provider}/${m.model}` === modeloDiaActivo)
+    .sort((a, b) => b.calls - a.calls);
 
   // Totales de uso interno de Telo (Jev)
   const jevTotales = useMemo(() => {
@@ -175,6 +184,8 @@ export function AnalyticsPage() {
                   onClick={() => {
                     setDays(p);
                     setPagina(1);
+                    setDiaSeleccionado(null);
+                    setModeloDia("");
                   }}
                 >
                   {p}d
@@ -373,7 +384,36 @@ export function AnalyticsPage() {
               <VolumenLlamadas
                 data={data.byDay}
                 titulo={`Llamadas por día en los últimos ${data.days} días`}
+                diaSeleccionado={diaActivo?.day}
+                onSeleccionDia={setDiaSeleccionado}
               />
+              <div className="an-dia-detalle" aria-live="polite">
+                <div className="an-dia-detalle-cabeza">
+                  <div>
+                    <strong>{diaActivo ? diaCompleto(diaActivo.day) : "Sin días registrados"}</strong>
+                    <span>{diaActivo ? `${diaActivo.calls} ${diaActivo.calls === 1 ? "llamada" : "llamadas"} en total` : "Selecciona un día de la gráfica."}</span>
+                  </div>
+                  <label className="an-campo an-dia-filtro">
+                    <span className="an-campo-etiqueta">Modelo del día</span>
+                    <select className="an-select" value={modeloDiaActivo} onChange={(event) => setModeloDia(event.target.value)}>
+                      <option value="">Todos los modelos</option>
+                      {opcionesModeloDia.map((id) => <option key={id} value={id}>{id}</option>)}
+                    </select>
+                  </label>
+                </div>
+                {!diaActivo || modelosDiaFiltrados.length === 0 ? (
+                  <p className="an-nota">{diaActivo?.calls ? "No hay detalle por modelo para este día." : "No se registraron llamadas en este día."}</p>
+                ) : (
+                  <ul className="an-dia-modelos" aria-label={`Llamadas por modelo el ${diaCompleto(diaActivo.day)}`}>
+                    {modelosDiaFiltrados.map((m) => (
+                      <li key={`${m.provider}/${m.model}`}>
+                        <span><b>{m.model}</b><small>{m.provider}</small></span>
+                        <strong>{m.calls} {m.calls === 1 ? "llamada" : "llamadas"}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </section>
 
             <div className={`an-rejilla${data.budget ? " es-doble" : ""}`}>

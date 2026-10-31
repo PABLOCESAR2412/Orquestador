@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { LoadingSkeleton } from "./loading-skeleton";
 import { errorText } from "../lib/model";
+import { Paginacion } from "./paginacion";
 
 const LIMITE_BYTES = 64 * 1024;
 const PLANTILLA_SKILL = `---
@@ -51,6 +52,7 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
   const [contenidoNuevo, setContenidoNuevo] = useState("");
   const [borrador, setBorrador] = useState("");
   const [confirmandoQuitar, setConfirmandoQuitar] = useState(false);
+  const [pagina, setPagina] = useState(1);
   const instalando = useRef(false);
 
   const lista = useQuery({ queryKey: ["skills", ambito], queryFn: () => api.listSkills(projectId) });
@@ -113,6 +115,8 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
   const cambiado = detalle.data ? borrador !== detalle.data.contenido : false;
 
   function abrir(nombre: string) {
+    const indice = skills.findIndex((skill) => skill.nombre === nombre);
+    if (indice >= 0) setPagina(Math.floor(indice / 5) + 1);
     setSeleccion(nombre);
     setConfirmandoQuitar(false);
     guardar.reset();
@@ -129,6 +133,10 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
     if (detalle.data) setBorrador(detalle.data.contenido);
   }
 
+  const skills = lista.data?.skills ?? [];
+  const totalPaginasSkills = Math.max(1, Math.ceil(skills.length / 5));
+  const paginaSkills = Math.min(pagina, totalPaginasSkills);
+  const skillsVisibles = skills.slice((paginaSkills - 1) * 5, paginaSkills * 5);
   const editorVisible = seleccion !== null && detalle.data !== undefined;
 
   return (
@@ -268,23 +276,31 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
       )}
       {lista.data && lista.data.skills.length === 0 && !creando && <p className="aj-nota">Todavía no hay skills.</p>}
       {lista.data && lista.data.skills.length > 0 && (
-        <ul className="skills-lista" aria-label="Skills">
-          {lista.data.skills.map((s) => (
-            <li key={s.nombre}>
-              <button
-                type="button"
-                className={`skills-fila${seleccion === s.nombre ? " is-activa" : ""}`}
-                aria-pressed={seleccion === s.nombre}
-                onClick={() => abrir(s.nombre)}
-              >
-                <span className="skills-fila-nombre">{s.nombre}</span>
-                <span className={`skills-fila-texto${s.valida ? "" : " is-aviso"}`}>
-                  {s.valida ? s.descripcion : "No válida: OpenCode no la carga hasta corregir la cabecera."}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="skills-explorador">
+          <ul className="skills-lista" aria-label="Skills">
+            {skillsVisibles.map((s) => (
+              <li key={s.nombre}>
+                <button
+                  type="button"
+                  className={`skills-fila${seleccion === s.nombre ? " is-activa" : ""}`}
+                  aria-pressed={seleccion === s.nombre}
+                  onClick={() => abrir(s.nombre)}
+                >
+                  <span className="skills-fila-nombre">{s.nombre}</span>
+                  <span className={`skills-fila-texto${s.valida ? "" : " is-aviso"}`}>
+                    {s.valida ? s.descripcion : "No válida: OpenCode no la carga hasta corregir la cabecera."}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="skills-pie">
+            <span className="skills-paginacion-estado">
+              Mostrando {(paginaSkills - 1) * 5 + 1}–{Math.min(paginaSkills * 5, skills.length)} de {skills.length}
+            </span>
+            <Paginacion pagina={paginaSkills} total={skills.length} porPagina={5} onCambio={setPagina} />
+          </div>
+        </div>
       )}
 
       {seleccion !== null && !editorVisible && detalle.isError && (
@@ -297,6 +313,7 @@ export function SkillsEditor({ projectId, ayuda, titulo }: { projectId?: string;
         <div className="skills-editor">
           <div className="skills-editor-cabecera">
             <h3 className="skills-editor-titulo">{seleccion}</h3>
+            <button type="button" className="aj-texto-btn" aria-label={`Cerrar editor de ${seleccion}`} onClick={() => setSeleccion(null)}>Cerrar</button>
           </div>
           <label className="skills-etiqueta" htmlFor="skills-contenido">
             <span>Contenido de SKILL.md</span>

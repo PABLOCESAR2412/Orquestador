@@ -1435,7 +1435,7 @@ try {
     const barraDia = page.locator(".an-barra-grupo[tabindex='0']").first();
     await barraDia.focus();
     const detalleDia = page.getByRole("tooltip");
-    await detalleDia.getByText("Tokens procesados", { exact: true }).waitFor();
+    await detalleDia.getByText("Llamadas", { exact: true }).waitFor();
     await detalleDia.getByText(/google · google\/prueba/).waitFor();
     await page.getByText(/registros con tokens medidos/).waitFor();
     const tablaModelos = page.locator(".an-tabla-modelos");
