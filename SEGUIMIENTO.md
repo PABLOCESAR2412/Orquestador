@@ -4,6 +4,11 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 30 de octubre de
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Inicialización de perfiles de subagentes — 30 de octubre de 2026
+
+- [x] **OpenCode fallaba al iniciar subagentes (`FileSystem.writeFile .../.gitignore`).** El perfil temporal se montaba completo en solo lectura, pero OpenCode escribe `.gitignore` al inicializar su configuración. Ahora Telo precrea ese archivo y monta solo él en lectura/escritura; el JSON, los prompts y plugins permanecen de solo lectura, y el registro NDJSON conserva su montaje separado. `aislamiento.test.ts` comprueba el montaje puntual; la suite completa de servidor pasó en CI Linux. La prueba local queda limitada por el permiso de symlinks de Windows.
+
+
 ## Revisión de seguridad y flujos — 30 de octubre de 2026
 
 Correcciones preparadas en [PR #140](https://github.com/PABLOCESAR2412/Orquestador/pull/140); estos resultados locales no certifican su despliegue en la VM.

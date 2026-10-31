@@ -67,6 +67,11 @@ test.skipIf(process.platform === "win32" || !Bun.which("bwrap"))("monta el perfi
   expect(args).toContain(join("/tmp/telo-opencode-profile", "data", "opencode", "auth.json"));
   expect(args).toContain(configSubagentes);
   expect(args).toContain("/tmp/telo-opencode-config");
+  const gitignore = join(configSubagentes, ".gitignore");
+  const gitignoreMount = args.indexOf(gitignore);
+  expect(existsSync(gitignore)).toBe(true);
+  expect(args[gitignoreMount - 1]).toBe("--bind");
+  expect(args[gitignoreMount + 1]).toBe("/tmp/telo-opencode-config/.gitignore");
   expect(args).toContain("--ro-bind");
   eliminarPerfilOpenCode("chat-con-bwrap");
 });
