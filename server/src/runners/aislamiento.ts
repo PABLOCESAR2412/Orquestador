@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { config } from "../config";
 import { carpetaEntregables } from "../entregables";
@@ -41,6 +41,44 @@ const HERRAMIENTAS = [".local/bin", ".opencode", ".bun", ".gitconfig", ".config/
 
 export function aislamientoActivo(): boolean {
   return process.env.TELO_AISLAMIENTO !== "desactivado";
+}
+
+export function requisitosCodexDenieganLecturaSensibles(contenido: string, home: string): boolean {
+  try {
+    const requisitos = Bun.TOML.parse(contenido) as {
+      permissions?: { filesystem?: { deny_read?: unknown } };
+    };
+    const denegaciones = requisitos.permissions?.filesystem?.deny_read;
+    const requeridas = [
+      join(resolve(home), ".codex", "auth.json"),
+      "/tmp/telo-codex-global/auth.json",
+      join(resolve(home), ".codex", "config.toml"),
+      "/tmp/telo-codex-global/config.toml",
+    ];
+    return Array.isArray(denegaciones) && requeridas.every((ruta) => denegaciones.includes(ruta));
+  } catch {
+    return false;
+  }
+}
+
+export function verificarPoliticaCredencialesCodex(home: string): void {
+  const ruta = "/etc/codex/requirements.toml";
+  try {
+    const directorio = lstatSync(dirname(ruta));
+    const stat = lstatSync(ruta);
+    if (
+      !directorio.isDirectory() || directorio.isSymbolicLink() || (directorio.mode & 0o022) !== 0 ||
+      !stat.isFile() || stat.isSymbolicLink() || (stat.mode & 0o022) !== 0 ||
+      (process.platform === "linux" && (directorio.uid !== 0 || stat.uid !== 0))
+    ) {
+      throw new Error("permisos no confiables");
+    }
+    if (requisitosCodexDenieganLecturaSensibles(readFileSync(ruta, "utf8"), home)) return;
+  } catch {
+    // Falla cerrado: si la política no está instalada o no es de solo lectura para el servicio,
+    // no se inicia Codex con la credencial expuesta a sus herramientas.
+  }
+  throw new Error("Codex requiere la política del sistema que impide leer su credencial desde las herramientas. Instálala con: sudo ./deploy/instalar-politica-codex.sh orquestador");
 }
 
 function rutaReal(ruta: string): string | null {
@@ -238,6 +276,7 @@ export function prefijoAislamiento(
   opencodeSubagentesTracePath?: string,
   opencodeMcpConfigPath?: string,
   opencodeActividadTracePath?: string,
+  perfilCodexDir?: string,
 ): string[] {
   if (!aislamientoActivo()) return [];
 
@@ -324,8 +363,10 @@ export function prefijoAislamiento(
     if (perfilCodexReal) {
       const destino = join(home, ".codex");
       args.push("--dir", destino, "--bind", perfilCodexReal, destino);
-      for (const { nombre } of configuracionCodexGlobal) {
-        args.push("--ro-bind", join("/tmp/telo-codex-global", nombre), join(destino, nombre));
+      for (const archivo of configuracionCodexGlobal) {
+        // Codex lee autenticación desde su perfil; el mismo archivo temporal es necesario
+        // porque HOME ya está oculto al montar las credenciales originales.
+        args.push("--ro-bind", join("/tmp/telo-codex-global", archivo.nombre), join(destino, archivo.nombre));
       }
     }
     if (perfilOpenCodeDir) {

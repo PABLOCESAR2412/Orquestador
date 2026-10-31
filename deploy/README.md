@@ -154,6 +154,13 @@ Sin ese permiso, la pestaña muestra un aviso en lugar de los registros. El gast
 
 - **Instalar OpenCode** usa `npm` del PATH de `orquestador.service`. Si no hay `npm`, el botón lo dice. Instala en `~/.opencode`, que el agente ya ve en solo lectura. El servidor añade esa carpeta a su PATH sin reiniciar. No hace falta sudo.
 - **Login de Codex** necesita el CLI `codex` en el servidor. Antes de usarlo, confirma con `codex login --help` que existe `--device-auth`, y mira qué archivo de sesión crea (la app espera `~/.codex/auth.json`; si es otro, hay que cambiarlo en `server/src/login-cli.ts`).
+- **Aislamiento de credenciales Codex:** antes de ejecutar modelos Codex en Telo, instala la política administrada que impide que los comandos del agente lean `auth.json` y `config.toml` desde sus dos rutas visibles dentro de Bubblewrap:
+
+  ```bash
+  sudo bash ./deploy/instalar-politica-codex.sh orquestador
+  ```
+
+  El script crea `/etc/codex/requirements.toml` solo si todavía no existe y lo deja propiedad de `root`; exige que el directorio también sea confiable. Si ya existe una política, no la reemplaza: añade las cuatro rutas a `permissions.filesystem.deny_read` y vuelve a ejecutar el script. Telo verifica la política y los permisos antes de lanzar Codex, y falla de forma cerrada si algo falta. El runner mantiene el sandbox `workspace-write`; Bubblewrap sigue imponiendo su propio límite al workspace.
 
 ## Google Drive para archivar espacios de tareas (una vez)
 
