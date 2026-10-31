@@ -58,6 +58,9 @@ test("Codex deja registrado el gasto real aunque el turno muera a medias, una so
     ]);
     // Una sola llamada al CLI: los reintentos y el respaldo viven a nivel ejecutar.
     expect(spawn).toHaveBeenCalledTimes(1);
+    const comando = (spawn.mock.calls[0]?.[0] as string[]).join(" ");
+    expect(comando).toContain("--sandbox workspace-write --ask-for-approval never");
+    expect(comando).not.toContain("--dangerously-bypass-approvals-and-sandbox");
   } finally {
     spawn.mockRestore();
     which.mockRestore();

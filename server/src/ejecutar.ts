@@ -5,7 +5,7 @@ import { getPreferences } from "./preferences";
 import { entornoDeProyecto } from "./secretos";
 import { entornoProveedores } from "./claves-proveedor";
 import { redactar } from "./redaccion";
-import { AislamientoError, aislamientoActivo, prepararPerfilOpenCode } from "./runners/aislamiento";
+import { AislamientoError, aislamientoActivo, prepararPerfilCodex, prepararPerfilOpenCode } from "./runners/aislamiento";
 import { ErrorAgente, runOpenCode, type RunResult, type Usage } from "./runners/opencode";
 import { runCodex } from "./runners/codex";
 import { promptConHistorial, sesionCompatible } from "./conversacion-contexto";
@@ -425,13 +425,17 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
         SELECT id FROM familia WHERE parent_conversation_id IS NULL LIMIT 1
       `).get(opts.conversationId)?.id ?? opts.conversationId
     : opts.taskId;
+  const sesionCodexInicial = sesionCompatible(opts.sessionId, opts.sessionModel, opts.model) ? opts.sessionId! : null;
   // El modelo de respaldo puede usar OpenCode aunque el primario sea Codex.
   const perfilOpenCodeDir = aislamientoActivo() && idPerfil
     ? prepararPerfilOpenCode(idPerfil)
     : undefined;
+  const perfilCodexDir = aislamientoActivo() && idPerfil && opts.model.startsWith("codex/")
+    ? await prepararPerfilCodex(idPerfil, sesionCodexInicial)
+    : undefined;
 
   // Una sesión solo conserva contexto si pertenece exactamente al modelo que se va a ejecutar.
-  let sesion = sesionCompatible(opts.sessionId, opts.sessionModel, opts.model) ? opts.sessionId! : null;
+  let sesion = sesionCodexInicial;
   let modeloSesion: string | null = sesion ? opts.sessionModel! : null;
   const alSesion = (id: string | null, modelo: string | null) => {
     sesion = id;
@@ -452,6 +456,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     opencodeConfigDir: opts.opencodeConfigDir,
     subagentesTracePath: opts.opencodeSubagentesTracePath,
     perfilOpenCodeDir,
+    perfilCodexDir,
     soloLectura: opts.soloLectura,
   };
 

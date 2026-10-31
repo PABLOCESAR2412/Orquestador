@@ -33,7 +33,7 @@ import { valorSecreto, valoresDeProyecto } from "./secretos";
 import { tokenGithubGlobal } from "./github-auth";
 import { tokenGithubAppParaRepo } from "./github-app";
 import { opcionesDeCredenciales } from "./git-credenciales";
-import { eliminarPerfilOpenCode, prepararDirectorioOpenCode } from "./runners/aislamiento";
+import { eliminarPerfilCodex, eliminarPerfilOpenCode, prepararDirectorioOpenCode } from "./runners/aislamiento";
 import { enMantenimiento, registrarTrabajo } from "./despliegue";
 export { opcionesDeCredenciales } from "./git-credenciales";
 
@@ -1179,7 +1179,10 @@ export async function limpiarCopias(): Promise<void> {
         )
         .get(id);
       if (muyVieja) {
-        if (!muyVieja.conversation_id) eliminarPerfilOpenCode(id);
+        if (!muyVieja.conversation_id) {
+          eliminarPerfilOpenCode(id);
+          eliminarPerfilCodex(id);
+        }
         if (existsSync(carpetaTarea(id)) && !existsSync(rutaClon(id))) {
           rmSync(carpetaTarea(id), { recursive: true, force: true });
         }

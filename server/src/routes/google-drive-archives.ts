@@ -45,7 +45,22 @@ class ArchivoError extends Error {
 const dataDir = () => resolve(config.dataDir);
 const tareaDir = (id: string) => join(dataDir(), "tasks", id);
 const perfilHash = (id: string) => createHash("sha256").update(id).digest("hex");
-const perfilDir = (id: string) => join(dataDir(), "perfiles-opencode", perfilHash(id));
+const perfilesTarea = (id: string) => ["perfiles-opencode", "perfiles-codex"].map((nombre) => ({
+  nombre,
+  ruta: join(dataDir(), nombre, perfilHash(id)),
+}));
+
+async function bytesPerfilesTarea(id: string): Promise<number> {
+  const perfiles = perfilesTarea(id).filter((perfil) => validarFuente(perfil.ruta));
+  const tamaños = await Promise.all(perfiles.map((perfil) => bytesEn(perfil.ruta)));
+  return tamaños.reduce((total, tamaño) => total + tamaño, 0);
+}
+
+function eliminarPerfilesTarea(id: string): void {
+  for (const perfil of perfilesTarea(id)) {
+    if (existsSync(perfil.ruta)) rmSync(perfil.ruta, { recursive: true, force: false });
+  }
+}
 
 function localDisponible(id: string): boolean {
   try { return lstatSync(tareaDir(id)).isDirectory() && !lstatSync(tareaDir(id)).isSymbolicLink() && realpathSync(tareaDir(id)) === tareaDir(id); }
@@ -90,7 +105,11 @@ function spawnTar(id: string, incluirPerfil: boolean) {
   // Normaliza propietario, mtimes y orden; permite comparar el mismo workspace antes de
   // volver a subirlo sin marcarlo modificado solo porque cambió la fecha del tar.
   const args = ["--sort=name", "--mtime=@0", "--owner=0", "--group=0", "--numeric-owner", "-czf", "-", "-C", dataDir(), `tasks/${id}`];
-  if (incluirPerfil) args.push("-C", join(dataDir(), "perfiles-opencode"), perfilHash(id));
+  if (incluirPerfil) {
+    for (const perfil of perfilesTarea(id)) {
+      if (validarFuente(perfil.ruta)) args.push("-C", join(dataDir(), perfil.nombre), perfilHash(id));
+    }
+  }
   const child = spawn("tar", args, { stdio: ["ignore", "pipe", "pipe"] });
   // Drain stderr so filesystem diagnostics cannot fill the pipe and stall tar.
   child.stderr?.resume();
@@ -389,8 +408,8 @@ async function restaurarDesdeDrive(archivo: ArchivoDrive): Promise<void> {
   const id = archivo.task_id;
   if (!esIdTarea(id)) throw new ArchivoError("task_restore_conflict");
   const sourceTask = tareaDir(id);
-  const profile = perfilDir(id);
-  if (existsSync(sourceTask) || (archivo.profile_included === 1 && existsSync(profile))) throw new ArchivoError("task_restore_conflict");
+  const profiles = perfilesTarea(id);
+  if (existsSync(sourceTask) || (archivo.profile_included === 1 && profiles.some((profile) => existsSync(profile.ruta)))) throw new ArchivoError("task_restore_conflict");
   const { file, bearer } = await metadatosDrive(archivo.drive_file_id, await token());
   if (file.trashed || file.appProperties?.teloTaskId !== id || file.appProperties?.teloFormat !== "1" || file.appProperties?.sha256 !== archivo.sha256 || Number(file.size) !== archivo.encrypted_bytes) {
     throw new ArchivoError("integrity_check_failed");
@@ -410,17 +429,24 @@ async function restaurarDesdeDrive(archivo: ArchivoDrive): Promise<void> {
     child.stdin?.end();
     await cerrado;
     const stagedTask = join(staging, "tasks", id);
-    const stagedProfile = join(staging, "perfiles-opencode", perfilHash(id));
-    if (!validarFuente(stagedTask) || (archivo.profile_included === 1 && !validarFuente(stagedProfile))) throw new ArchivoError("integrity_check_failed");
+    const stagedProfiles = profiles.map((profile) => ({ ...profile, staged: join(staging, profile.nombre, perfilHash(id)) }))
+      .filter((profile) => existsSync(profile.staged));
+    if (!validarFuente(stagedTask) || (archivo.profile_included === 1 && (!stagedProfiles.length || stagedProfiles.some((profile) => !validarFuente(profile.staged)))) ||
+      (archivo.profile_included !== 1 && stagedProfiles.length > 0)) {
+      throw new ArchivoError("integrity_check_failed");
+    }
     mkdirSync(join(dataDir(), "tasks"), { recursive: true, mode: 0o700 });
     renameSync(stagedTask, sourceTask);
+    const restaurados: string[] = [];
     try {
-      if (archivo.profile_included === 1) {
-        mkdirSync(join(dataDir(), "perfiles-opencode"), { recursive: true, mode: 0o700 });
-        renameSync(stagedProfile, profile);
+      for (const profile of stagedProfiles) {
+        mkdirSync(join(dataDir(), profile.nombre), { recursive: true, mode: 0o700 });
+        renameSync(profile.staged, profile.ruta);
+        restaurados.push(profile.ruta);
       }
     } catch (error) {
       rmSync(sourceTask, { recursive: true, force: true });
+      for (const profile of restaurados) rmSync(profile, { recursive: true, force: true });
       throw error;
     }
     db.query("UPDATE google_drive_archives SET local_removed_at=NULL WHERE task_id=?").run(id);
@@ -454,7 +480,7 @@ async function archivarTarea(id: string): Promise<void> {
       if (file.trashed || file.appProperties?.teloTaskId !== id || file.appProperties?.sha256 !== archive.sha256 || Number(file.size) !== archive.encrypted_bytes) throw new ArchivoError("integrity_check_failed");
       await verificarBytesRemotos(archive.drive_file_id, archive.encrypted_bytes, archive.sha256, bearer);
       db.query("UPDATE google_drive_archives SET cleanup_started_at=COALESCE(cleanup_started_at,datetime('now')) WHERE task_id=?").run(id);
-      if (archive.profile_included === 1 && existsSync(perfilDir(id))) rmSync(perfilDir(id), { recursive: true, force: false });
+      if (archive.profile_included === 1) eliminarPerfilesTarea(id);
       db.query("UPDATE google_drive_archives SET local_removed_at=datetime('now'),cleanup_started_at=NULL WHERE task_id=?").run(id);
       return;
     }
@@ -462,7 +488,7 @@ async function archivarTarea(id: string): Promise<void> {
       await borrarArchivoDrive(archive.previous_drive_file_id);
       db.query("UPDATE google_drive_archives SET previous_drive_file_id=NULL WHERE task_id=?").run(id);
     }
-    const tienePerfil = profileIncluded && validarFuente(perfilDir(id));
+    const tienePerfil = profileIncluded && perfilesTarea(id).some((profile) => validarFuente(profile.ruta));
     const fuenteActual = await medirTar(id, tienePerfil);
     if (archive.source_sha256 && archive.source_sha256 === fuenteActual.sha256) {
       const { file, bearer } = await metadatosDrive(archive.drive_file_id, await token());
@@ -481,7 +507,7 @@ async function archivarTarea(id: string): Promise<void> {
       // completa por otra incompleta ni borrar cambios locales del usuario.
       throw new ArchivoError("task_not_archivable");
     } else {
-      const sourceBytes = await bytesEn(tareaDir(id)) + (tienePerfil ? await bytesEn(perfilDir(id)) : 0);
+      const sourceBytes = await bytesEn(tareaDir(id)) + (tienePerfil ? await bytesPerfilesTarea(id) : 0);
       const uploaded = await subirArchivo(id, tienePerfil, fuenteActual);
       db.query(`UPDATE google_drive_archives SET drive_file_id=?,archive_name=?,encrypted_bytes=?,source_bytes=?,source_sha256=?,sha256=?,profile_included=?,previous_drive_file_id=?,archived_at=datetime('now') WHERE task_id=?`)
         .run(uploaded.fileId, uploaded.name, uploaded.bytes, sourceBytes, fuenteActual.sha256, uploaded.sha256, tienePerfil ? 1 : 0, archive.drive_file_id, id);
@@ -492,8 +518,8 @@ async function archivarTarea(id: string): Promise<void> {
     }
   } else {
     if (!localDisponible(id)) throw new ArchivoError("task_not_archivable");
-    profileIncluded = task.conversation_id === null && validarFuente(perfilDir(id));
-    const sourceBytes = await bytesEn(tareaDir(id)) + (profileIncluded ? await bytesEn(perfilDir(id)) : 0);
+    profileIncluded = task.conversation_id === null && perfilesTarea(id).some((profile) => validarFuente(profile.ruta));
+    const sourceBytes = await bytesEn(tareaDir(id)) + (profileIncluded ? await bytesPerfilesTarea(id) : 0);
     const fuente = await medirTar(id, profileIncluded);
     const uploaded = await subirArchivo(id, profileIncluded, fuente);
     // The encrypted, remotely verified copy is indexed before removing local data. A crash can leave
@@ -512,7 +538,7 @@ async function archivarTarea(id: string): Promise<void> {
   const job = db.query<{ id: string }, [string]>("SELECT id FROM google_drive_archive_jobs WHERE task_id=? AND action='archive' AND state='running' ORDER BY created_at DESC LIMIT 1").get(id);
   if (!job) throw new ArchivoError("task_not_archivable");
   db.query("UPDATE google_drive_archives SET cleanup_started_at=COALESCE(cleanup_started_at,datetime('now')) WHERE task_id=?").run(id);
-  if (profileIncluded && existsSync(perfilDir(id))) rmSync(perfilDir(id), { recursive: true, force: false });
+  if (profileIncluded) eliminarPerfilesTarea(id);
   rmSync(tareaDir(id), { recursive: true, force: false });
   db.query("UPDATE google_drive_archives SET local_removed_at=datetime('now'),cleanup_started_at=NULL WHERE task_id=?").run(id);
 }
@@ -609,7 +635,7 @@ googleDriveArchives.get("/google-drive/archives", (c) => {
     task_id: a.task_id, task_title: a.task_title, archive_name: a.archive_name, encrypted_bytes: a.encrypted_bytes,
     source_bytes: a.source_bytes, sha256: a.sha256, archived_at: a.archived_at, local_disponible: localDisponible(a.task_id),
     profile_included: a.profile_included === 1,
-    limpieza_pendiente: Boolean(a.cleanup_started_at || a.previous_drive_file_id || (!a.local_removed_at && a.profile_included === 1 && existsSync(perfilDir(a.task_id)))),
+    limpieza_pendiente: Boolean(a.cleanup_started_at || a.previous_drive_file_id || (!a.local_removed_at && a.profile_included === 1 && perfilesTarea(a.task_id).some((profile) => existsSync(profile.ruta)))),
   }));
   const jobs = db.query<Job, []>("SELECT id,task_id,action,state,error,created_at,updated_at FROM google_drive_archive_jobs ORDER BY created_at DESC LIMIT 12").all();
   return c.json({

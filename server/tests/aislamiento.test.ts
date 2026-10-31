@@ -21,9 +21,25 @@ mkdirSync(proyectos, { recursive: true });
 writeFileSync(join(home, ".local", "share", "opencode", "auth.json"), '{"openai":{"key":"credencial-local"}}');
 
 const { config } = await import("../src/config");
-const { eliminarPerfilOpenCode, prepararPerfilOpenCode, prefijoAislamiento, prepararDirectorioOpenCode } = await import("../src/runners/aislamiento");
+const { eliminarPerfilCodex, eliminarPerfilOpenCode, prepararPerfilCodex, prepararPerfilOpenCode, prefijoAislamiento, prepararDirectorioOpenCode, requisitosCodexDenieganLecturaSensibles } = await import("../src/runners/aislamiento");
 
-test("rechaza .opencode enlazado antes de permitir su runtime", () => {
+test("la política administrada de Codex debe denegar credenciales y configuración global en las rutas visibles", () => {
+  const home = join(raiz, "policy-home");
+  const authPath = join(home, ".codex", "auth.json");
+  const configPath = join(home, ".codex", "config.toml");
+  const rutasProtegidas = [authPath, "/tmp/telo-codex-global/auth.json", configPath, "/tmp/telo-codex-global/config.toml"];
+  expect(requisitosCodexDenieganLecturaSensibles(
+    `[permissions.filesystem]\ndeny_read = [${rutasProtegidas.map((ruta) => JSON.stringify(ruta)).join(", ")}]`,
+    home,
+  )).toBe(true);
+  expect(requisitosCodexDenieganLecturaSensibles(
+    `[permissions.filesystem]\ndeny_read = [${JSON.stringify(authPath)}]`,
+    home,
+  )).toBe(false);
+  expect(requisitosCodexDenieganLecturaSensibles("deny_read = [", home)).toBe(false);
+});
+
+test.skipIf(process.platform === "win32")("rechaza .opencode enlazado antes de permitir su runtime", () => {
   const carpeta = join(proyectos, "enlace-opencode");
   const destino = join(raiz, "fuera");
   mkdirSync(carpeta, { recursive: true }); mkdirSync(destino);
@@ -74,6 +90,26 @@ test.skipIf(process.platform === "win32" || !Bun.which("bwrap"))("monta el perfi
   expect(args[gitignoreMount + 1]).toBe("/tmp/telo-opencode-config/.gitignore");
   expect(args).toContain("--ro-bind");
   eliminarPerfilOpenCode("chat-con-bwrap");
+});
+
+test.skipIf(process.platform === "win32" || !Bun.which("bwrap"))("Codex monta su perfil persistente y no crea una segunda ruta de credenciales fuera de las rutas denegadas", async () => {
+  const workspace = join(proyectos, "codex");
+  mkdirSync(workspace, { recursive: true });
+  const carpetaGlobal = join(home, ".codex");
+  mkdirSync(carpetaGlobal, { recursive: true });
+  const auth = join(carpetaGlobal, "auth.json");
+  writeFileSync(auth, '{"tokens":{"access_token":"secreto"}}');
+  const perfil = await prepararPerfilCodex("chat-con-codex");
+  const args = prefijoAislamiento(workspace, false, [], undefined, undefined, undefined, undefined, undefined, perfil);
+  const authTemporal = "/tmp/telo-codex-global/auth.json";
+  const authDestino = join(home, ".codex", "auth.json");
+  expect(args).toContain(authTemporal);
+  expect(args).toContain(authDestino);
+  expect(args).toContain(auth);
+  expect(args).not.toContain("/tmp/telo-codex-global/config.toml");
+  expect(args.some((arg, indice) => arg === "--ro-bind" && args[indice + 1] === auth && args[indice + 2] === authTemporal)).toBe(true);
+  expect(args.some((arg, indice) => arg === "--ro-bind" && args[indice + 1] === authTemporal && args[indice + 2] === authDestino)).toBe(true);
+  eliminarPerfilCodex("chat-con-codex");
 });
 
 test.skipIf(process.platform === "win32" || !Bun.which("bwrap"))("oculta el archivo de entorno y la clave privada de la GitHub App, y no los reexpone por lectura extra", () => {

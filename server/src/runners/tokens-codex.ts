@@ -45,11 +45,11 @@ export function guardarTotalesSesion(id: string | null, totales: TotalesCodex): 
 
 // Se toma ANTES de lanzar resume. La primera medición de stdout ya incluye gasto nuevo.
 // Para sesiones anteriores a este registro se recupera el último acumulado del rollout.
-export async function leerTotalesSesion(id: string): Promise<TotalesCodex | null> {
+export async function leerTotalesSesion(id: string, perfilCodexDir?: string): Promise<TotalesCodex | null> {
   if (!/^[0-9a-fA-F-]{1,128}$/.test(id)) return null;
   let ultimo: TotalesCodex | null = null;
   try {
-    const carpeta = join(homedir(), ".codex", "sessions");
+    const carpeta = perfilCodexDir ? join(perfilCodexDir, "sessions") : join(homedir(), ".codex", "sessions");
     const patron = new Bun.Glob(`**/*${id}.jsonl`);
     for await (const archivo of patron.scan({ cwd: carpeta, absolute: true, onlyFiles: true, followSymlinks: false })) {
       await leerLineasAcotadas(Bun.file(archivo).stream(), 2 * 1024 * 1024, (linea) => {
