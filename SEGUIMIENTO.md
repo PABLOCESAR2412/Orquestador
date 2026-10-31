@@ -4,6 +4,13 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 30 de octubre de
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Instalación de Antigravity CLI — 31 de octubre de 2026
+
+- [x] Ajustes permite instalar el CLI oficial (`agy`) desde la VM en `~/.local/bin`, usando el instalador oficial con `--skip-aliases --skip-path` para no modificar perfiles de shell. La API solo acepta el identificador fijo `antigravity` y requiere confirmación explícita.
+- [x] La tarjeta junto a Codex explica el acceso OAuth soportado por SSH: iniciar `~/.local/bin/agy` en terminal interactiva como `orquestador`, abrir la URL en el equipo y devolver el código a esa terminal. La sesión no se transmite a Telo.
+- [ ] Este cambio solo instala y guía el inicio de sesión. Antigravity aún no ejecuta chats ni tareas de Telo. Antes de habilitarlo como runner hay que validar disponibilidad de la sesión/keyring para el servicio systemd, invocación headless `agy -p`, eventos `stream-json`, límites de cuenta, cancelación y aislamiento Bubblewrap.
+- Fuente primaria: [instalación y autenticación remota](https://antigravity.google/docs/install?tab=cli), [modo headless](https://antigravity.google/docs/cli/headless/).
+
 ## Concurrencia por proveedor y evaluación de Hermes — 30 de octubre de 2026
 
 - [x] **Admisión global sin presupuesto por proveedor.** Había diez puestos comunes; varias ejecuciones del mismo servicio podían ocuparlos incluso durante reintentos. Ahora las ejecuciones principales tienen límite por proveedor (OpenCode 1; demás 2; configurable con `TELO_CONCURRENCIA_PROVEEDORES`, valores 1–10), además del máximo global de diez. Las esperas no ocupan puestos, conservan orden por proveedor, se pueden cancelar sin afectar al agente activo y no impiden admitir otro proveedor. Cada intento reserva el proveedor real; se libera antes del backoff o de usar un respaldo.
