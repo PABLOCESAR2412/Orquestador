@@ -10,6 +10,7 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 - [x] **Consulta plegada.** «Ver compactación» queda cerrado al abrir el chat y carga el resumen desde la actividad al expandir. Los mensajes antiguos con la firma completa también se pliegan, sin modificar sus datos guardados. Respuestas normales y ejemplos dentro de bloques de código no se clasifican por unas pocas palabras sueltas.
 - Evidencia local: 24 pruebas dirigidas de compactación/actividad/marcas y typecheck del servidor pasan; build web correcto. El recorrido de navegador comprueba resumen antiguo, carga de un resumen nuevo y respuesta final separada en 390/1440 px. Falta confirmar el flujo con OpenCode real en la VM tras desplegar.
 - Fuente de la firma y del comportamiento de la CLI: [plantilla de OpenCode](https://github.com/anomalyco/opencode/blob/v1.19.4/packages/core/src/session/compaction.ts), [emisión de texto en la CLI](https://github.com/anomalyco/opencode/blob/v1.19.4/packages/opencode/src/cli/cmd/run.ts).
+- El primer CI expuso una carrera previa en `login-codex.test.ts`: el test recibía URL/código antes de la línea del token ficticio y comprobaba su redacción demasiado pronto. Ahora espera la salida comprobable y cancela en `finally` para no arrastrar el proceso al siguiente caso. No cambia el login del producto.
 
 ## Delegación explícita y dictado móvil — 30 de octubre de 2026
 
