@@ -8,6 +8,7 @@ const cwd = mkdtempSync(join(tmpdir(), "telo-codex-tokens-"));
 const dataOriginal = process.env.DATA_DIR;
 process.env.DATA_DIR = join(cwd, "data");
 const { runCodex } = await import("../src/runners/codex");
+const { ErrorAgente } = await import("../src/runners/opencode");
 const { guardarTotalesSesion } = await import("../src/runners/tokens-codex");
 const { db } = await import("../src/db");
 afterAll(() => { db.close(); rmSync(cwd, { recursive: true, force: true }); if (dataOriginal === undefined) delete process.env.DATA_DIR; else process.env.DATA_DIR = dataOriginal; });
@@ -75,6 +76,37 @@ test("resume resta el acumulado persistido antes de lanzar el CLI", async () => 
   try {
     await expect(runCodex({ prompt: "continua", model: "codex/prueba", cwd, sessionId: sid, onUso: (u) => usos.push(u) })).rejects.toThrow("Codex falló");
     expect(usos).toEqual([{ input: 20, output: 4, reasoning: 2, cacheRead: 2, cost: 0, tokensMedidos: true, costeDisponible: false }]);
+  } finally {
+    spawn.mockRestore(); which.mockRestore();
+    if (anterior === undefined) delete process.env.TELO_AISLAMIENTO; else process.env.TELO_AISLAMIENTO = anterior;
+  }
+});
+
+test("Codex conserva el código estructurado de cuota agotada en su error", async () => {
+  const which = spyOn(Bun, "which").mockReturnValue("codex-falso");
+  const spawn = spyOn(Bun, "spawn").mockImplementation((() => ({
+    stdout: salidaFalsa([
+      JSON.stringify({ type: "thread.started", thread_id: "11111111-2222-3333-4444-555555555555" }),
+      JSON.stringify({
+        type: "turn.failed",
+        error: { code: "usage_limit_reached", message: "You've hit your ChatGPT usage limit. Try again later." },
+      }),
+    ]),
+    stderr: salidaFalsa([]), exited: Promise.resolve(1), kill() {}, pid: 999_999_999,
+  })) as unknown as typeof Bun.spawn);
+  const anterior = process.env.TELO_AISLAMIENTO;
+  process.env.TELO_AISLAMIENTO = "desactivado";
+  try {
+    let fallo: unknown;
+    try {
+      await runCodex({ prompt: "continua", model: "codex/gpt-6-luna", cwd });
+    } catch (error) {
+      fallo = error;
+    }
+    expect(fallo).toBeInstanceOf(ErrorAgente);
+    expect((fallo as InstanceType<typeof ErrorAgente>).detalleProveedor).toContain("usage_limit_reached");
+    expect((fallo as InstanceType<typeof ErrorAgente>).detalleProveedor).toContain("You've hit your ChatGPT usage limit");
+    expect((fallo as InstanceType<typeof ErrorAgente>).detalleProveedor).not.toContain("11111111-2222-3333-4444-555555555555");
   } finally {
     spawn.mockRestore(); which.mockRestore();
     if (anterior === undefined) delete process.env.TELO_AISLAMIENTO; else process.env.TELO_AISLAMIENTO = anterior;

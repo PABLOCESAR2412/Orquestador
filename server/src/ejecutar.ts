@@ -160,7 +160,9 @@ export function registrarUsoAgente(
 // Saldo insuficiente: otro modelo no lo arregla, así que nunca se reintenta.
 const PATRON_MODELO_NO_ENCONTRADO = /model[_ ]not found|unknown model|no such model/i;
 // Solo límites definitivos (no cualquier 429): la tarea o el chat se detienen para que el usuario elija otro modelo.
-const PATRON_CUOTA = /(?:\b(?:quota|cuota)\b.*\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|reach(?:ed)?|agotad[ao]|consumid[ao])\b|\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|agotad[ao]|consumid[ao])\b.*\b(?:quota|cuota)\b|\busage limit\b.*\b(?:reach(?:ed)?|exceed(?:ed)?|exhaust(?:ed)?)\b|\bfree usage\b.*\b(?:exhaust(?:ed)?|reach(?:ed)?|exceed(?:ed)?)\b|\bfree[-_ ]models?[-_ ]per[-_ ](?:day|month)\b|\b(?:daily|monthly)\s+(?:free\s+)?(?:model\s+)?(?:request|usage)\s+limit\b|\bresource[_ ]exhausted\b|\binsufficient[_ ]quota\b|\binsufficient\s+(?:account\s+)?(?:funds|balance|credits?)\b|\b(?:sin|no hay)\s+(?:saldo|cr[eé]ditos)\b)/i;
+const PATRON_CUOTA = /(?:\b(?:quota|cuota)\b.*\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|reach(?:ed)?|agotad[ao]|consumid[ao])\b|\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|agotad[ao]|consumid[ao])\b.*\b(?:quota|cuota)\b|\busage limit\b.*\b(?:hit|reach(?:ed)?|exceed(?:ed)?|exhaust(?:ed)?)\b|\b(?:hit|reach(?:ed)?|exceed(?:ed)?|exhaust(?:ed)?)\b.*\busage limit\b|\b(?:you(?:'ve| have)?\s+)?(?:hit|reach(?:ed)?|exceed(?:ed)?)\s+(?:your\s+)?(?:daily|weekly|monthly|billing|usage|account|plan|subscription)\s+(?:free\s+)?(?:model\s+)?(?:request|call|token|usage)?\s*limit\b|\b(?:daily|weekly|monthly|billing|account|plan|subscription)\s+(?:free\s+)?(?:model\s+)?(?:request|call|token|usage)?\s*limit\s+(?:hit|reach(?:ed)?|exceed(?:ed)?|exhaust(?:ed)?)\b|\bfree usage\b.*\b(?:exhaust(?:ed)?|reach(?:ed)?|exceed(?:ed)?)\b|\bfree[-_ ]models?[-_ ]per[-_ ](?:day|month)\b|\b(?:daily|monthly)\s+(?:free\s+)?(?:model\s+)?(?:request|usage)\s+limit\b|\bresource[_ ]exhausted\b|\b(?:billing[_ .-]?)?hard[_ .-]?limit[_ .-]?(?:reached|exceeded)\b|\b(?:quota|usage)[_ .-]?(?:limit[_ .-]?)?(?:reached|exceeded|exhausted)\b|\binsufficient[_ .-]?(?:quota|balance|credits?)\b|\bcredit[_ .-]?balance[_ .-]?(?:exhausted|insufficient)\b|\binsufficient\s+(?:account\s+)?(?:funds|balance|credits?)\b|\b(?:sin|no hay)\s+(?:saldo|cr[eé]ditos)\b)/i;
+// OpenRouter y otros gateways pueden responder 402 cuando el prompt pide más tokens de los que caben en el presupuesto por solicitud; eso no agota la cuota de la cuenta.
+const PATRON_PRESUPUESTO_POR_SOLICITUD = /more credits|fewer max_tokens|can only afford|requested up to\s+[\d,]+/i;
 
 // Se lanza cuando el modelo se quedó sin cuota. `modelo` es el último que se intentó; `sessionId`, la
 // sesión del agente (si llegó a abrirse), para continuarla después con otro modelo.
@@ -177,7 +179,12 @@ export class ErrorCuota extends Error {
 export function esErrorDeCuota(err: unknown): boolean {
   if (err instanceof ErrorCuota) return true;
   if (err instanceof AislamientoError) return false;
-  return PATRON_CUOTA.test(textoDelProveedor(err));
+  const texto = textoDelProveedor(err);
+  if (PATRON_PRESUPUESTO_POR_SOLICITUD.test(texto)) return false;
+  if (PATRON_CUOTA.test(texto)) return true;
+  // Los proveedores no siempre incluyen un mensaje: HTTP 402 sí es una señal de saldo/cuota
+  // agotados, salvo el caso de presupuesto por solicitud filtrado arriba.
+  return codigoHttpDelProveedor(err) === 402;
 }
 
 function mensajeDe(err: unknown): string {
@@ -233,9 +240,11 @@ export function codigoHttpDelProveedor(err: unknown): number | null {
       evento.error?.statusCode,
       evento.error?.status,
     ];
-    const codigo = candidatos.find((codigo): codigo is number =>
-      typeof codigo === "number" && Number.isInteger(codigo) && codigo >= 100 && codigo <= 599,
-    ) ?? null;
+    const codigo = candidatos
+      .map((valor) => typeof valor === "string" && /^\d{3}$/.test(valor) ? Number(valor) : valor)
+      .find((valor): valor is number =>
+        typeof valor === "number" && Number.isInteger(valor) && valor >= 100 && valor <= 599,
+      ) ?? null;
     if (codigo !== null) return codigo;
 
     // OpenCode a veces omite statusCode en su evento APIError para este fallo 5xx genérico.

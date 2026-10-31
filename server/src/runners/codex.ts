@@ -1,6 +1,6 @@
 import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
 import { hallarEjecutable } from "../ejecutable";
-import { entornoDelAgente, estimarUso, type RunResult, type Usage } from "./opencode";
+import { ErrorAgente, entornoDelAgente, estimarUso, type RunResult, type Usage } from "./opencode";
 import { iniciarVigilante, leerConTope, leerLineasAcotadas } from "./proteccion";
 import type { ImagenAgente } from "../chat-adjuntos";
 import { argumentosConfigMcpCodex, type ServidorMcpAgente } from "../conexiones-mcp";
@@ -9,6 +9,42 @@ import { deltaNoRegistrada, guardarTotalesSesion, leerTotalesSesion, sumarTotale
 // El texto que devuelve Codex rara vez pasa de 1 MB; si pasa, se conserva la cola.
 const TOPE_TEXTO_AGENTE = 1024 * 1024;
 const TOPE_STDERR_AGENTE = 1024 * 1024;
+
+function objeto(valor: unknown): Record<string, unknown> | null {
+  return valor !== null && typeof valor === "object" && !Array.isArray(valor)
+    ? valor as Record<string, unknown>
+    : null;
+}
+
+function normalizarErrorCodex(valor: unknown): { mensaje: string | null; detalleProveedor: string } {
+  const evento = objeto(valor);
+  const error = objeto(evento?.error);
+  const data = objeto(error?.data);
+  const item = objeto(evento?.item);
+  const errorItem = objeto(item?.error);
+  const mensajeInicial = [evento?.message, error?.message, data?.message, item?.message, errorItem?.message]
+    .find((campo): campo is string => typeof campo === "string") ?? null;
+  let embebido: Record<string, unknown> | null = null;
+  if (mensajeInicial) {
+    try { embebido = objeto(JSON.parse(mensajeInicial)); } catch { /* mensaje de texto normal */ }
+  }
+  const registros = [evento, error, data, objeto(data?.error), item, errorItem, embebido, objeto(embebido?.error), objeto(embebido?.data)]
+    .filter((registro): registro is Record<string, unknown> => registro !== null);
+  const mensaje = registros
+    .map((registro) => registro.message ?? registro.detail)
+    .find((campo): campo is string => typeof campo === "string") ?? mensajeInicial;
+  const statusCode = registros
+    .map((registro) => registro.statusCode ?? registro.status ?? registro.httpStatus)
+    .find((campo) => typeof campo === "number" || (typeof campo === "string" && /^\d{3}$/.test(campo))) ?? null;
+  const code = registros
+    .map((registro) => registro.code ?? registro.errorCode)
+    .find((campo): campo is string => typeof campo === "string") ?? null;
+  // No se guarda el evento completo: puede traer IDs de sesión, cabeceras u otros metadatos internos.
+  return {
+    mensaje,
+    detalleProveedor: JSON.stringify({ type: "error", statusCode, code, message: mensaje?.slice(0, 500) ?? "" }),
+  };
+}
 
 // Termina el grupo de procesos para que herramientas e hijos no queden como zombies huérfanos.
 function terminarGrupo(proc: { pid: number; kill: () => void }) {
@@ -121,6 +157,7 @@ async function intentoCodex(opts: OpcionesCodex & {
   let text = "";
   let usage: Usage | null = null;
   let ultimoError: string | null = null;
+  let ultimoErrorProveedor: string | null = null;
 
   // Contabilidad incremental (A-m2): los `token_count` traen la cuenta acumulada de la
   // sesión; los `turn.completed` ya se registran como deltas. Al acabar (éxito, fallo o
@@ -171,8 +208,10 @@ async function intentoCodex(opts: OpcionesCodex & {
               // Tope de RAM para la respuesta: si pasa, se conserva la cola.
               const siguiente = text + (text ? "\n\n" : "") + ev.item.text;
               text = siguiente.length > TOPE_TEXTO_AGENTE ? siguiente.slice(-TOPE_TEXTO_AGENTE) : siguiente;
-            } else if (ev.item?.type === "error" && typeof ev.item.message === "string") {
-              ultimoError = ev.item.message;
+            } else if (ev.item?.type === "error") {
+              const error = normalizarErrorCodex(ev);
+              ultimoError = error.mensaje ?? ultimoError;
+              ultimoErrorProveedor = error.detalleProveedor;
             } else if (ev.type === "turn.completed" && ev.usage) {
               const u = ev.usage;
               usage = {
@@ -196,15 +235,9 @@ async function intentoCodex(opts: OpcionesCodex & {
               }
             }
             if (ev.type === "error" || ev.type === "turn.failed") {
-              const msg = ev.message ?? ev.error?.message;
-              if (typeof msg === "string") {
-                try {
-                  const subJson = JSON.parse(msg);
-                  ultimoError = subJson.error?.message || subJson.message || msg;
-                } catch {
-                  ultimoError = msg;
-                }
-              }
+              const error = normalizarErrorCodex(ev);
+              ultimoError = error.mensaje ?? ultimoError;
+              ultimoErrorProveedor = error.detalleProveedor;
             }
           } catch {
             // Línea no JSON
@@ -252,7 +285,10 @@ async function intentoCodex(opts: OpcionesCodex & {
         || (vigilante.silenciado()
           ? `El proceso de Codex no emitió nada durante ${Math.round(((opts.tiempoSinActividadMs as number) ?? 0) / 60_000)} minutos y se cortó por silencio`
           : `Codex terminó con código ${code}`);
-      throw new Error(`Codex falló: ${detalle}`);
+      const detalleProveedor = ultimoErrorProveedor ?? JSON.stringify({
+        message: detalle.slice(-800).replace(/\S*[\\/]\S*/g, " "),
+      });
+      throw new ErrorAgente(`Codex falló: ${detalle}`, detalleProveedor);
     }
 
     let usoFinal = usage as Usage | null;
