@@ -1027,6 +1027,10 @@ try {
     await page.evaluate(() => window.__reconocimientoPrueba.onresult({ resultIndex: 0, results: [{ 0: { transcript: "dictado B" }, isFinal: true, length: 1 }] }));
     await page.waitForFunction(() => localStorage.getItem("telo:borrador:c2") === "Base B dictado B"
       && document.querySelector('textarea[aria-label="Mensaje"]')?.value === "Base B dictado B");
+    await page.evaluate(() => {
+      for (let i = 0; i < 3; i++) window.__reconocimientoPrueba.onresult({ resultIndex: 0, results: [{ 0: { transcript: "dictado B" }, isFinal: true, length: 1 }] });
+    });
+    assert.equal(await page.getByRole("textbox", { name: "Mensaje", exact: true }).inputValue(), "Base B dictado B", "reenviar finales móviles no duplica la transcripción");
     assert.equal(await page.evaluate(() => localStorage.getItem("telo:borrador:c2")), "Base B dictado B");
     assert.equal(await page.evaluate(() => localStorage.getItem("telo:borrador:c1")), "Base A dictado A");
     mostrarHistorialExtenso = true;
@@ -1081,8 +1085,8 @@ try {
     await page.getByRole("button", { name: "Configurar supervisor y modelos auxiliares", exact: true }).click();
     const dialogoOrquestacion = page.getByRole("dialog", { name: "Supervisor del chat" });
     await dialogoOrquestacion.waitFor();
-    await dialogoOrquestacion.getByLabel("Activar auxiliares para esta conversación").check();
-    assert.equal(await dialogoOrquestacion.getByRole("radio", { name: /Elegir según cada petición/ }).isChecked(), true);
+    await dialogoOrquestacion.getByLabel("Preparar auxiliares para peticiones explícitas").check();
+    assert.equal(await dialogoOrquestacion.getByRole("radio").count(), 0);
     assert.equal(await dialogoOrquestacion.locator(".tl-orquestacion-auxiliar").count(), 3, "el supervisor propone una lista dinámica de hasta tres modelos candidatos");
     await dialogoOrquestacion.getByLabel("Función auxiliar 2").selectOption("arquitectura");
     await dialogoOrquestacion.getByRole("button", { name: "Quitar auxiliar 3", exact: true }).click();
@@ -1093,7 +1097,7 @@ try {
     const peticionOrquestacion = await guardarOrquestacion;
     const configuracionGuardada = peticionOrquestacion.postDataJSON();
     assert.equal(configuracionGuardada.orquestacion_habilitada, true);
-    assert.equal(configuracionGuardada.orquestacion_seleccion_automatica, true);
+    assert.equal(configuracionGuardada.orquestacion_seleccion_automatica, false);
     assert.equal(configuracionGuardada.orquestacion_trabajadores.length, 3, "se guarda la cantidad dinámica de modelos candidatos");
     assert.equal(configuracionGuardada.orquestacion_trabajadores[0].model === configuracionGuardada.model, false, "el modelo supervisor no se duplica como auxiliar");
     assert.equal(configuracionGuardada.orquestacion_trabajadores[0].rol, configuracionGuardada.orquestacion_trabajadores[1].rol, "se permiten varios candidatos con la misma función");

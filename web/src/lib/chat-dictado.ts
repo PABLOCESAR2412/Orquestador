@@ -75,10 +75,9 @@ export function crearDictador(opciones: {
   let activo = false;
   // El borrador tal como estaba al arrancar; el dictado se añade después de él.
   let base = "";
-  // Tramos ya confirmados por el motor y resultados interinos indexados por el navegador.
+  // Sesiones anteriores y la transcripción completa de la sesión actual.
   let terminado = "";
   let enCurso = "";
-  const interinos = new Map<number, string>();
 
   const separador = (texto: string) => (texto && !/\s$/.test(texto) ? " " : "");
   const junta = (izquierda: string, derecha: string) => {
@@ -131,7 +130,6 @@ export function crearDictador(opciones: {
       base = borrador;
       terminado = "";
       enCurso = "";
-      interinos.clear();
       instancia = rec;
       activo = true;
       alCambiar(true);
@@ -141,25 +139,10 @@ export function crearDictador(opciones: {
       rec.onresult = (e) => {
         // Resultados de una instancia reemplazada o de un dictado ya cortado: fuera.
         if (!activo || instancia !== rec) return;
-        // Actualiza los índices cambiados sin perder los interinos anteriores. El navegador
-        // puede entregar varias palabras interinas en índices distintos en un mismo evento.
-        for (let i = Math.max(0, e.resultIndex); i < e.results.length; i++) {
-          const segmento = e.results[i];
-          const texto = segmento?.[0]?.transcript;
-          if (segmento.isFinal) {
-            const limpio = texto?.trim() ?? "";
-            if (limpio) terminado = junta(terminado, limpio);
-            interinos.delete(i);
-          } else {
-            const limpio = texto?.trim() ?? "";
-            if (limpio) interinos.set(i, limpio);
-            else interinos.delete(i);
-          }
-        }
-        enCurso = Array.from(interinos.entries())
-          .sort(([a], [b]) => a - b)
-          .map(([, texto]) => texto)
-          .join(" ");
+        // results es una foto completa, no texto nuevo. Android puede reenviar finales
+        // desde el índice cero y corregirlos; reemplazarlos evita acumular cada versión.
+        enCurso = Array.from(e.results, (segmento) => segmento?.[0]?.transcript?.trim() ?? "")
+          .filter(Boolean).join(" ");
         pintar();
       };
       rec.onerror = (e) => {
@@ -174,11 +157,9 @@ export function crearDictador(opciones: {
           cortar();
           return;
         }
-        // Al reiniciar el motor, conserva cualquier resultado aún interino como parte
-        // del borrador y limpia sus índices, que vuelven a empezar en la nueva sesión.
-        if (interinos.size > 0) {
-          terminado = junta(terminado, Array.from(interinos.values()).join(" "));
-          interinos.clear();
+        // Solo al reiniciar se consolida la sesión; la siguiente vuelve al índice cero.
+        if (enCurso) {
+          terminado = junta(terminado, enCurso);
           enCurso = "";
           pintar();
         }

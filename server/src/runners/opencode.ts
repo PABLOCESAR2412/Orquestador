@@ -1,4 +1,4 @@
-import { closeSync, fstatSync, openSync, readSync } from "node:fs";
+import { closeSync, fstatSync, openSync, readSync, readFileSync } from "node:fs";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
@@ -423,6 +423,7 @@ async function ejecutarOpenCode(opts: {
   // Un id de sesión que no cumple el patrón se ignora: ni se pasa a -s ni se reutiliza.
   const sesionPedida = sesionValida(opts.sessionId) ? opts.sessionId : null;
   const args = ["opencode", "run", "--format", "json", "-m", opts.model];
+  args.push("--agent", "build");
   if (opts.variant) args.push("--variant", opts.variant);
   if (sesionPedida) args.push("-s", sesionPedida);
   for (const imagen of opts.imagenes ?? []) args.push("--file", aislamientoActivo() ? imagen.rutaVisible : imagen.ruta);
@@ -432,6 +433,25 @@ async function ejecutarOpenCode(opts: {
   // `setsid` deja al agente como líder de su propio grupo (pgid == pid),
   // para poder cerrar todo su árbol de procesos de una vez.
   const env = entornoDelAgente(opts.extraEnv);
+  // La política del turno prevalece sobre el proyecto y sobre sesiones anteriores.
+  const autorizados: Record<string, string> = { "*": "deny" };
+  if (opts.opencodeConfigDir) {
+    const permisos = JSON.parse(readFileSync(join(opts.opencodeConfigDir, "opencode.json"), "utf8"))?.permission?.task;
+    for (const [alias, permiso] of Object.entries(permisos ?? {})) {
+      if (/^telo-[a-z0-9-]+$/.test(alias) && permiso === "allow") autorizados[alias] = "allow";
+    }
+  }
+  const inline = JSON.parse(env.OPENCODE_CONFIG_CONTENT || "{}");
+  // El escalar reemplaza mapas heredados; otro mapa conservaría sus reglas específicas.
+  const task = opts.opencodeConfigDir ? autorizados : "deny";
+  env.OPENCODE_CONFIG_CONTENT = JSON.stringify({
+    ...inline,
+    permission: { ...(typeof inline.permission === "object" ? inline.permission : {}), task },
+    agent: {
+      ...inline.agent,
+      build: { ...inline.agent?.build, permission: { ...(typeof inline.agent?.build?.permission === "object" ? inline.agent.build.permission : {}), task } },
+    },
+  });
   if (opts.perfilOpenCodeDir && aislamientoActivo()) {
     const destino = "/tmp/telo-opencode-profile";
     env.XDG_DATA_HOME = `${destino}/data`;

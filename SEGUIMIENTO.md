@@ -4,6 +4,12 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 30 de octubre de
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Delegación explícita y dictado móvil — 30 de octubre de 2026
+
+- [x] **Delegación por turno.** Guardar auxiliares en el Supervisor ya no inicia selección ni llamadas en peticiones normales. La solicitud actual debe pedir delegación; negaciones, consultas informativas y citas no la autorizan. Una función o modelo nombrado limita los auxiliares. OpenCode recibe `task: deny` en ejecuciones unitarias, también al reanudar sesiones; los perfiles autorizados permiten sus alias temporales y los hijos deniegan más delegación. Las plantillas aplican una especialidad al principal; la opción de auxiliares añade una petición explícita al borrador.
+- [x] **Dictado móvil duplicado.** Se reconstruye la transcripción desde la lista completa de resultados del navegador en vez de añadir cada resultado final de nuevo. Se conservan las sesiones anteriores al reiniciar el motor y las repeticiones realmente dictadas. Regresiones en `chat-dictado.test.ts` y en el compositor de Playwright.
+- Evidencia: pruebas dirigidas de delegación y runner, 64 pruebas web, typecheck de servidor y build web pasan. Los casos de chat con procesos requieren Linux y quedan para CI. Falta comprobar voz en el teléfono físico y un piloto real de subagentes en la VM; los runners de las pruebas son simulados. Estos fallos no justifican aún integrar Hermes.
+
 ## Inicialización de perfiles de subagentes — 30 de octubre de 2026
 
 - [x] **OpenCode fallaba al iniciar subagentes (`FileSystem.writeFile .../.gitignore`).** El perfil temporal se montaba completo en solo lectura, pero OpenCode escribe `.gitignore` al inicializar su configuración. Ahora Telo precrea ese archivo y monta solo él en lectura/escritura; el JSON, los prompts y plugins permanecen de solo lectura, y el registro NDJSON conserva su montaje separado. `aislamiento.test.ts` comprueba el montaje puntual; la suite completa de servidor pasó en CI Linux. La prueba local queda limitada por el permiso de symlinks de Windows.
