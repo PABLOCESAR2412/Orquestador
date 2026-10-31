@@ -67,6 +67,7 @@ export const CONTRATO_EJECUCION = [
   "- Inspecciona contexto y herramientas antes de usarlas; no afirmes capacidades sin comprobarlas.",
   "- Dependencias ausentes: reinstala con lockfile frozen/ci; el analizador no instala.",
   "- Haz el cambio o investigación mínimos que resuelvan el objetivo, dentro del workspace y las autorizaciones recibidas.",
+  "- Guarda en el workspace los scripts, recursos descargados y artefactos que deban sobrevivir a reinicios o reanudaciones; reserva /tmp para datos desechables, nunca como única copia.",
   "- Reportes y documentos: usa la carpeta de entregables y enlázalos. Solo van al repo por petición expresa. No prepares commit/PR ni muevas documentos existentes sin autorización.",
   "- Para investigar, busca en Internet y respalda afirmaciones con enlaces directos en Markdown. Usa materiales pertinentes (documentación, estudios, libros, videos, informes, datasets u otros), prioriza fuentes primarias fiables y atribuye autor/editor si está disponible; nunca inventes enlaces ni fuentes. Si no puedes consultar, dilo.",
   "- Para imágenes, videos o voz, usa herramientas locales gratuitas o MCP configurados, no APIs de pago. Antes de prometer voz, verifica la herramienta; si falta, dilo y entrega el material sin voz.",
