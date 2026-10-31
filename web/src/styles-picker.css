@@ -159,4 +159,7 @@
   .picker-configuracion .segmented { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; overflow: visible; }
   .picker-configuracion .segmented button { min-width: 0; min-height: 44px; padding: 6px 4px; border-radius: 8px; white-space: normal; overflow-wrap: anywhere; font-size: 12px; }
 }
+.picker-esfuerzo-barra { display: grid; gap: 8px; min-width: 0; text-align: center; }
+.picker-esfuerzo-barra input { width: 100%; accent-color: var(--primary); cursor: pointer; }
+.picker-esfuerzo-barra input:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 

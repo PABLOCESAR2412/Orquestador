@@ -619,7 +619,8 @@ try {
     await selectorModelo.locator(".picker-item").filter({ hasText: "Other Test" }).waitFor();
     assert.match(await selectorModelo.locator(".picker-conteo").innerText(), /1 modelo/);
     assert.equal(await selectorModelo.locator(".picker-item").filter({ hasText: "Llama Test" }).count(), 0);
-    assert.equal(await selectorModelo.locator(".picker-proveedor-chip").filter({ hasText: "Groq API" }).count(), 1);
+    assert.equal(await selectorModelo.getByRole("heading", { name: "Groq API", exact: true }).count(), 1);
+    assert.equal(await selectorModelo.locator(".picker-proveedor-chip").count(), 0);
     await campoBusca.fill("inexistente");
     assert.equal(await selectorModelo.locator(".picker-item").count(), 0);
     assert.match(await selectorModelo.locator(".muted-note").innerText(), /Sin resultados/);
@@ -628,6 +629,7 @@ try {
     const anclarGoogle = selectorModelo.getByRole("button", { name: "Anclar Google Test en favoritos", exact: true });
     await anclarGoogle.click();
     assert.equal(await selectorModelo.getByRole("button", { name: "Quitar Google Test de favoritos", exact: true }).getAttribute("aria-pressed"), "true");
+    await selectorModelo.getByRole("button", { name: "Mostrar modelos de Groq API", exact: true }).click();
     await selectorModelo.locator(".picker-item").filter({ hasText: "Other Test" }).click();
     await page.locator(".tl-modelo-boton .tl-modelo-nombre").filter({ hasText: "Other Test" }).waitFor();
     assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Llama Test" }).count(), 1);
@@ -1406,14 +1408,12 @@ try {
     await selectorModelos.getByRole("heading", { name: "Codex CLI · sesión de ChatGPT", exact: true }).waitFor();
     await selectorModelos.evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)));
     const gruposGroq = selectorModelos.locator("#picker-integracion-groq");
-    await selectorModelos.getByRole("button", { name: "Ocultar modelos de Groq API", exact: true }).click();
-    assert.equal(await gruposGroq.isHidden(), true, "se puede plegar el catálogo completo de una integración");
+    assert.equal(await gruposGroq.isHidden(), true, "las integraciones empiezan contraídas");
     await selectorModelos.getByRole("button", { name: "Mostrar modelos de Groq API", exact: true }).click();
     assert.equal(await gruposGroq.isVisible(), true, "se puede volver a expandir la integración");
     const gruposCodex = selectorModelos.locator("#picker-integracion-codex-sesion");
     const conteoConCodex = await selectorModelos.locator(".picker-conteo").textContent();
-    await selectorModelos.getByRole("button", { name: "Ocultar modelos de Codex CLI · sesión de ChatGPT", exact: true }).click();
-    assert.equal(await gruposCodex.isHidden(), true, "Codex conserva su propia sección plegable");
+    assert.equal(await gruposCodex.isHidden(), true, "Codex empieza plegado");
     await selectorModelos.getByRole("button", { name: "Mostrar modelos de Codex CLI · sesión de ChatGPT", exact: true }).click();
     assert.equal(await gruposCodex.isVisible(), true);
     await selectorModelos.getByRole("button", { name: "Solo gratis", exact: true }).click();
@@ -1510,6 +1510,11 @@ try {
     assert.equal(escriturasPreferencias, preferenciasAntesDisco);
     assert.equal(await page.locator(".aj-barra-guardado").count(), 0);
     await page.screenshot({ path: `scratch/capturas-ci/disco-${width}.png` });
+    await page.goto(`${base}/oficina`);
+    await page.getByRole("heading", { name: "Oficina", exact: true }).waitFor();
+    await page.locator(".oficina-plano").waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "la oficina cabe en el ancho disponible");
+    await page.screenshot({ path: `scratch/capturas-ci/oficina-${width}.png` });
     assert.deepEqual(errors, []);
     await context.close();
     console.log(`PASS ${width}px: login, mensajes, aprobación Git, código copiable y métricas.`);

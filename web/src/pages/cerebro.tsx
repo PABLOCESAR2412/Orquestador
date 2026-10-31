@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
+import { useShell } from "../components/shell-context";
 import { api, type BrainNote, type BrainNoteSummary } from "../api";
 import { errorText } from "../lib/model";
 import "../styles-cerebro.css";
@@ -66,6 +68,9 @@ function Grafo({
 }
 
 export function BrainPage() {
+  const navigate = useNavigate();
+  const { setSelectedConversationId } = useShell();
+  const [vistaGrafo, setVistaGrafo] = useState<"notas" | "chats">("chats");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -76,6 +81,7 @@ export function BrainPage() {
   const importRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const projects = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
+  const conversations = useQuery({ queryKey: ["conversations"], queryFn: api.listConversations });
   const notes = useQuery({ queryKey: ["brain-notes", projectId, query], queryFn: () => api.listBrainNotes(projectId, query) });
   const graph = useQuery({ queryKey: ["brain-graph", projectId], queryFn: () => api.brainGraph(projectId) });
   const selected = useQuery({
@@ -103,6 +109,17 @@ export function BrainPage() {
     },
   });
   const notaActual: BrainNote | undefined = selected.data;
+  const mapaChats = useMemo(() => {
+    const principales = (conversations.data ?? []).filter((chat) => !chat.parent_conversation_id && (!projectId || chat.project_id === projectId));
+    const limitados = principales.slice(0, 24);
+    const grupos = [...new Set(limitados.map((chat) => chat.project_id).filter((id): id is string => Boolean(id)))];
+    const nodos = [{ id: "raiz", title: projectId ? projects.data?.find((p) => p.id === projectId)?.name ?? "Proyecto" : "General" },
+      ...(!projectId ? grupos.map((id) => ({ id: `proyecto:${id}`, title: projects.data?.find((p) => p.id === id)?.name ?? "Proyecto" })) : []),
+      ...limitados.map((chat) => ({ id: `chat:${chat.id}`, title: chat.title }))];
+    const enlaces = [...(!projectId ? grupos.map((id) => ({ source: "raiz", target: `proyecto:${id}` })) : []),
+      ...limitados.map((chat) => ({ source: !projectId && chat.project_id ? `proyecto:${chat.project_id}` : "raiz", target: `chat:${chat.id}` }))];
+    return { nodos, enlaces, limitado: principales.length > limitados.length };
+  }, [conversations.data, projects.data, projectId]);
   const modificado = Boolean(notaActual && draftId === selectedId && (title !== notaActual.title || content !== notaActual.content));
   const elegirId = (id: string) => {
     if (id === selectedId) return;
@@ -214,10 +231,13 @@ export function BrainPage() {
         </section>
 
         <aside className="cerebro-grafo" aria-label="Grafo de notas">
-          <div className="cerebro-grafo-head"><strong>Enlaces</strong><span>{graph.data?.enlaces.length ?? 0} conexiones</span></div>
-          <Grafo nodos={graph.data?.nodos ?? []} enlaces={graph.data?.enlaces ?? []} seleccionado={selectedId} onSeleccionar={elegirId} />
-          {graph.data?.limitado && <p className="cerebro-vacio">Se muestran las 12 notas más recientes.</p>}
-          <p className="cerebro-vacio">El mapa refleja enlaces `[[...]]` que apuntan a notas existentes.</p>
+          <div className="cerebro-grafo-head"><strong>Mapa</strong><select aria-label="Contenido del mapa" value={vistaGrafo} onChange={(e) => setVistaGrafo(e.target.value as "notas" | "chats")}><option value="chats">Chats y proyectos</option><option value="notas">Enlaces entre notas</option></select></div>
+          {vistaGrafo === "notas" ? <><Grafo nodos={graph.data?.nodos ?? []} enlaces={graph.data?.enlaces ?? []} seleccionado={selectedId} onSeleccionar={elegirId} />
+            {graph.data?.limitado && <p className="cerebro-vacio">Se muestran las 12 notas más recientes.</p>}<p className="cerebro-vacio">El mapa refleja enlaces `[[...]]` entre notas existentes.</p></> : <>
+            <Grafo nodos={mapaChats.nodos} enlaces={mapaChats.enlaces} seleccionado={null} onSeleccionar={(id) => { if (id.startsWith("chat:")) { setSelectedConversationId(id.slice(5)); void navigate({ to: "/chat" }); } }} />
+            {conversations.isError && <p className="cerebro-error" role="alert">No se pudieron cargar los chats.</p>}
+            {mapaChats.limitado && <p className="cerebro-vacio">Se muestran los primeros 24 chats disponibles.</p>}
+            <p className="cerebro-vacio">Cada línea indica pertenencia a un proyecto, no una relación semántica. Selecciona un chat para abrirlo.</p></>}
         </aside>
       </div>
     </main>
