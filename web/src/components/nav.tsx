@@ -40,6 +40,11 @@ const ITEMS: NavItem[] = [
     ),
   },
   {
+    to: "/oficina",
+    label: "Oficina",
+    icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 10h18M10 10v11M15 3v7"/></svg>,
+  },
+  {
     to: "/ajustes",
     label: "Ajustes",
     icon: (

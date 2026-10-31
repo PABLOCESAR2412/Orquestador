@@ -4,6 +4,11 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 31 de octubre de
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Oficina interactiva — 31 de octubre de 2026
+
+- [~] Vista inicial de tareas con animaciones locales; Jev puede elegir una actividad bajo petición y se registran intentos y tokens informados. La estimación de coste es orientativa.
+- [ ] Validar Jev real y migración en la VM, y revisar la interfaz en móvil y escritorio. Quedan pendientes subagentes, salas y notificaciones.
+
 ## Detección unificada de cuota agotada — 31 de octubre de 2026
 
 - [x] Los errores de OpenCode conservan códigos y estados HTTP anidados del proveedor sin copiar IDs de sesión ni cabeceras. Esto permite identificar saldo/cuota de NVIDIA, DeepSeek, OpenRouter y otros adaptadores aunque cambie la forma de la respuesta.

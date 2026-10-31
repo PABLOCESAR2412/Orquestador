@@ -3,7 +3,7 @@ import { entornoProveedores, valorClaveJev } from "./claves-proveedor";
 import { redactar } from "./redaccion";
 import { valoresDeProyecto } from "./secretos";
 
-export type UsoJev = "recomendaciones_chat" | "memoria_proyecto" | "clasificacion_tarea" | "prueba_conexion";
+export type UsoJev = "recomendaciones_chat" | "memoria_proyecto" | "clasificacion_tarea" | "prueba_conexion" | "oficina";
 type PreguntaJev =
   | { type: "score"; instructions: string; criteria: string[] }
   | { type: "choice"; instructions: string; criteria: Record<string, string> }
@@ -62,6 +62,7 @@ export async function evaluarConJev(args: {
   conversacionId?: string | null;
   tareaId?: string | null;
   signal?: AbortSignal;
+  oficinaUsoId?: number;
 }): Promise<RespuestaJev | null> {
   const clave = valorClaveJev();
   if (!clave) return null;
@@ -100,7 +101,11 @@ export async function evaluarConJev(args: {
     const model = typeof datos.model === "string" && datos.model.length <= 100 ? datos.model : MODELO;
     const usage = esObjeto(datos.usage) ? datos.usage : {};
     try {
-      db.query(
+      if (args.tipo === "oficina" && args.oficinaUsoId) {
+        const valido = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : null;
+        db.query("UPDATE uso_jev_oficina SET estado = 'completada', modelo = ?, tokens_entrada = ?, tokens_salida = ? WHERE id = ?")
+          .run(model, valido(usage.input_tokens), valido(usage.output_tokens), args.oficinaUsoId);
+      } else db.query(
         `INSERT INTO uso_jev (tipo, proyecto_id, conversacion_id, tarea_id, modelo, tokens_entrada, tokens_salida)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
       ).run(
@@ -231,3 +236,4 @@ export async function clasificarTareaJev(args: {
     : 0;
   return { categoria: answer.choice, confianza: confidence };
 }
+
