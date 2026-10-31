@@ -27,7 +27,7 @@ jobs:
       - run: bun run typecheck
         working-directory: server
       # Una sola ejecución detecta contaminación entre suites que el aislamiento por archivo ocultaba.
-      - run: bun test --timeout 60000
+      - run: bun test --timeout 60000 --max-concurrency=1
         working-directory: server
       - run: bun run test:worker
         working-directory: server

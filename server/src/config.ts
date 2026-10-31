@@ -3,9 +3,13 @@ export const config = {
   // Solo escucha en local por defecto. Tailscale Serve entrega el tráfico desde este mismo equipo.
   // TELO_ESCUCHAR=0.0.0.0 solo si de verdad se necesita otra interfaz.
   hostname: process.env.TELO_ESCUCHAR?.trim() || "127.0.0.1",
-  dataDir: process.env.DATA_DIR ?? "./data",
+  get dataDir() {
+    return process.env.DATA_DIR ?? "./data";
+  },
   // Carpeta raíz de los proyectos del servidor. Sin ella, los proyectos quedan desactivados.
-  projectsDir: process.env.TELO_PROYECTOS_DIR ?? null,
+  get projectsDir() {
+    return process.env.TELO_PROYECTOS_DIR ?? null;
+  },
   // Clave de acceso a la app (archivo de entorno de systemd, nunca en el repo).
   clave: process.env.TELO_CLAVE?.trim() || null,
   // Clave de 32 bytes en base64 para cifrar los secretos de proyecto (AES-256-GCM).
