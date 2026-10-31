@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { config } from "../config";
 import { carpetaEntregables } from "../entregables";
 import { hallarEjecutable } from "../ejecutable";
@@ -8,8 +8,9 @@ import { hallarEjecutable } from "../ejecutable";
 
 // Aislamiento de los agentes con bubblewrap (bwrap). Cada ejecución ve:
 // - su carpeta de trabajo, con escritura (proyecto o carpeta temporal del chat o tarea);
-// - su perfil de OpenCode por conversación o tarea (sesiones; auth.json en solo lectura),
-//   y herramientas en solo lectura;
+// - perfiles de OpenCode y Codex por conversación o tarea; Codex conserva escritura para
+//   sus sesiones y su estado, mientras autenticación y configuración global quedan en solo lectura;
+//   las herramientas también quedan en solo lectura;
 // - el resto del sistema en solo lectura, sin el repo de Orquestador, sin DATA_DIR,
 //   sin otros proyectos, sin el resto del HOME (por ejemplo ~/.ssh), sin los procesos del
 //   servidor y sin los archivos sensibles del VM (archivo de entorno del servicio y clave
@@ -36,7 +37,7 @@ const ESTADO_OPENCODE = [
   ".cache/opencode",
 ];
 // Herramientas instaladas en el HOME: solo lectura.
-const HERRAMIENTAS = [".local/bin", ".opencode", ".bun", ".gitconfig", ".config/git", ".config/opencode", ".codex"];
+const HERRAMIENTAS = [".local/bin", ".opencode", ".bun", ".gitconfig", ".config/git", ".config/opencode"];
 
 export function aislamientoActivo(): boolean {
   return process.env.TELO_AISLAMIENTO !== "desactivado";
@@ -57,6 +58,80 @@ function dentro(ruta: string, raiz: string): boolean {
 function rutaPerfilOpenCode(id: string): string {
   const sello = createHash("sha256").update(id).digest("hex");
   return join(config.dataDir, "perfiles-opencode", sello);
+}
+
+function rutaPerfilCodex(id: string): string {
+  const sello = createHash("sha256").update(id).digest("hex");
+  return join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-codex", sello);
+}
+
+export async function prepararPerfilCodex(id: string, sessionId?: string | null): Promise<string> {
+  const raiz = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-codex");
+  mkdirSync(raiz, { recursive: true, mode: 0o700 });
+  const raizStat = lstatSync(raiz);
+  if (raizStat.isSymbolicLink() || !raizStat.isDirectory() || realpathSync(raiz) !== raiz) {
+    throw new AislamientoError("carpeta_no_permitida", "La carpeta de perfiles de Codex no es segura.");
+  }
+  const perfil = rutaPerfilCodex(id);
+  mkdirSync(perfil, { recursive: true, mode: 0o700 });
+  const stat = lstatSync(perfil);
+  if (stat.isSymbolicLink() || !stat.isDirectory() || realpathSync(perfil) !== perfil) {
+    throw new AislamientoError("carpeta_no_permitida", "El perfil de Codex no es seguro.");
+  }
+  if (sessionId && /^[0-9a-fA-F-]{1,128}$/.test(sessionId)) {
+    const home = process.env.HOME && process.env.HOME !== "/" ? process.env.HOME : "";
+    const codexHome = process.env.CODEX_HOME?.trim() ? resolve(process.env.CODEX_HOME) : home ? join(home, ".codex") : "";
+    const sesionesReales = codexHome ? rutaReal(join(codexHome, "sessions")) : null;
+    if (sesionesReales) {
+      for await (const archivo of new Bun.Glob(`**/*${sessionId}.jsonl`).scan({ cwd: sesionesReales, onlyFiles: true, followSymlinks: false })) {
+        const origen = join(sesionesReales, archivo);
+        const origenReal = rutaReal(origen);
+        const origenStat = lstatSync(origen);
+        if (!origenReal || !dentro(origenReal, sesionesReales) || !origenStat.isFile() || origenStat.isSymbolicLink()) continue;
+        const rutaRelativa = relative(sesionesReales, origenReal);
+        const destino = join(perfil, "sessions", rutaRelativa);
+        if (rutaRelativa.startsWith("..") || resolve(destino) !== destino) continue;
+        let directorio = perfil;
+        for (const parte of relative(perfil, dirname(destino)).split(sep).filter(Boolean)) {
+          directorio = join(directorio, parte);
+          try { mkdirSync(directorio, { mode: 0o700 }); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+          const directorioStat = lstatSync(directorio);
+          if (directorioStat.isSymbolicLink() || !directorioStat.isDirectory() || realpathSync(directorio) !== directorio) {
+            throw new AislamientoError("carpeta_no_permitida", "La ruta de sesión Codex no es segura.");
+          }
+        }
+        try {
+          const destinoStat = lstatSync(destino);
+          if (destinoStat.isSymbolicLink() || !destinoStat.isFile()) throw new AislamientoError("carpeta_no_permitida", "El archivo de sesión Codex no es seguro.");
+          continue;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
+        try {
+          copyFileSync(origenReal, destino, constants.COPYFILE_EXCL);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        }
+      }
+    }
+  }
+  return perfil;
+}
+
+export function eliminarPerfilCodex(id: string): void {
+  rmSync(rutaPerfilCodex(id), { recursive: true, force: true });
+}
+
+function archivoConfiguracionCodex(home: string, nombre: string): string | null {
+  const carpetaCodex = process.env.CODEX_HOME?.trim() ? resolve(process.env.CODEX_HOME) : join(home, ".codex");
+  const ruta = join(carpetaCodex, nombre);
+  try {
+    const stat = lstatSync(ruta);
+    return stat.isFile() && !stat.isSymbolicLink() ? rutaReal(ruta) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function prepararDirectorioOpenCode(carpeta: string): string {
@@ -181,6 +256,34 @@ export function prefijoAislamiento(
   }
 
   const home = process.env.HOME && process.env.HOME !== "/" ? process.env.HOME : "";
+  const configuracionCodexGlobal = perfilCodexDir && home
+    ? ["auth.json", "config.toml", "requirements.toml"].flatMap((nombre) => {
+      const ruta = archivoConfiguracionCodex(home, nombre);
+      return ruta ? [{ nombre, ruta }] : [];
+    })
+    : [];
+  let perfilCodexReal: string | null = null;
+  if (perfilCodexDir) {
+    const raizPerfiles = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-codex");
+    const perfilReal = rutaReal(perfilCodexDir);
+    const stat = lstatSync(perfilCodexDir);
+    if (!perfilReal || !dentro(perfilReal, raizPerfiles) || !stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new AislamientoError("carpeta_no_permitida", "El perfil de Codex no está dentro del almacenamiento de Telo.");
+    }
+    perfilCodexReal = perfilReal;
+    for (const { nombre } of configuracionCodexGlobal) {
+      const destinoArchivo = join(perfilReal, nombre);
+      try {
+        writeFileSync(destinoArchivo, "", { encoding: "utf8", flag: "wx", mode: 0o600 });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      }
+      const archivo = lstatSync(destinoArchivo);
+      if (!archivo.isFile() || archivo.isSymbolicLink() || archivo.nlink !== 1 || realpathSync(destinoArchivo) !== destinoArchivo) {
+        throw new AislamientoError("carpeta_no_permitida", `El archivo ${nombre} del perfil Codex no es seguro.`);
+      }
+    }
+  }
 
   // Se ocultan con un tmpfs vacío. El orden importa: primero lo oculto, luego lo que se monta encima.
   const ocultar = [config.dataDir, RAIZ_REPO, config.projectsDir, home]
@@ -203,6 +306,13 @@ export function prefijoAislamiento(
   // /tmp propio y vacío para cada ejecución. Sin esto, /tmp es de solo lectura dentro del sandbox y OpenCode
   // falla al escribir su TMPDIR. Va después de "--ro-bind / /" y antes de lo que se monta encima.
   args.push("--tmpfs", "/tmp");
+  if (perfilCodexReal && configuracionCodexGlobal.length) {
+    args.push("--dir", "/tmp/telo-codex-global");
+    for (const archivo of configuracionCodexGlobal) {
+      const destino = join("/tmp/telo-codex-global", archivo.nombre);
+      args.push("--bind", join(perfilCodexReal, archivo.nombre), destino, "--ro-bind", archivo.ruta, destino);
+    }
+  }
   for (const ruta of [...new Set([...ocultar, ...rutasSensibles()])]) args.push("--tmpfs", ruta);
 
   if (adjuntos.length > 0) {
@@ -211,6 +321,13 @@ export function prefijoAislamiento(
   }
 
   if (home) {
+    if (perfilCodexReal) {
+      const destino = join(home, ".codex");
+      args.push("--dir", destino, "--bind", perfilCodexReal, destino);
+      for (const { nombre } of configuracionCodexGlobal) {
+        args.push("--ro-bind", join("/tmp/telo-codex-global", nombre), join(destino, nombre));
+      }
+    }
     if (perfilOpenCodeDir) {
       const raizPerfiles = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-opencode");
       const perfilReal = rutaReal(perfilOpenCodeDir);

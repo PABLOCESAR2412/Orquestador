@@ -7,7 +7,7 @@ import { config } from "../config";
 import { pausaTareasPorDespliegue, registrarPausaActiva, registrarTrabajo } from "../despliegue";
 import { db } from "../db";
 import { publicar } from "../bus";
-import { AislamientoError, eliminarPerfilOpenCode } from "../runners/aislamiento";
+import { AislamientoError, eliminarPerfilCodex, eliminarPerfilOpenCode } from "../runners/aislamiento";
 import { ejecutarAgente, ErrorCuota, promptContinuacion, type ResultadoAgente } from "../ejecutar";
 import { sesionCompatible } from "../conversacion-contexto";
 import { getPreferences } from "../preferences";
@@ -326,6 +326,7 @@ chat.delete("/conversations/:id", (c) => {
   if (result.changes === 0) return c.json({ error: "conversation_not_found" }, 404);
   eliminarImagenesConversacion(id);
   eliminarPerfilOpenCode(id);
+  eliminarPerfilCodex(id);
   for (const perfil of perfilesHijos) eliminarPerfilSubagentes(perfil);
   return c.json({ ok: true });
 });

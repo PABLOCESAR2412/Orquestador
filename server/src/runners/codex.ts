@@ -4,6 +4,7 @@ import { ErrorAgente, entornoDelAgente, estimarUso, type RunResult, type Usage }
 import { iniciarVigilante, leerConTope, leerLineasAcotadas } from "./proteccion";
 import type { ImagenAgente } from "../chat-adjuntos";
 import { argumentosConfigMcpCodex, type ServidorMcpAgente } from "../conexiones-mcp";
+import { join } from "node:path";
 import { deltaNoRegistrada, guardarTotalesSesion, leerTotalesSesion, sumarTotales, totalesDelEventoTokenCount, type TotalesCodex } from "./tokens-codex";
 
 // El texto que devuelve Codex rara vez pasa de 1 MB; si pasa, se conserva la cola.
@@ -73,6 +74,7 @@ interface OpcionesCodex {
   model: string;
   sessionId?: string | null;
   cwd: string;
+  perfilCodexDir?: string;
   timeoutMs?: number | null;
   // Vigilante de inactividad: corta el grupo del proceso si lleva sin emitir nada más del
   // tope (misma protección que el runner de OpenCode, ver proteccion.ts).
@@ -99,7 +101,13 @@ export async function runCodex(opts: OpcionesCodex): Promise<RunResult> {
   // Quitar el prefijo "codex/" para obtener el nombre del modelo que espera Codex (ej: gpt-6-luna)
   const modeloCodex = opts.model.startsWith("codex/") ? opts.model.slice("codex/".length) : opts.model;
 
-  const aislamiento = prefijoAislamiento(opts.cwd, opts.soloLectura, opts.imagenes);
+  const aislamiento = prefijoAislamiento(opts.cwd, opts.soloLectura, opts.imagenes, undefined, undefined, undefined, undefined, undefined, opts.perfilCodexDir);
+  if (aislamientoActivo() && !opts.perfilCodexDir) {
+    throw new Error("Codex necesita un perfil persistente aislado por chat o tarea.");
+  }
+  if (aislamientoActivo() && !process.env.HOME) {
+    throw new Error("Codex necesita HOME configurado para iniciar dentro del aislamiento.");
+  }
   const rutasImagenes = (opts.imagenes ?? []).flatMap((imagen) => ["--image", aislamientoActivo() ? imagen.rutaVisible : imagen.ruta]);
 
   // Codex toma `-c` como prioridad de ejecución y lee MCP remoto desde la tabla mcp_servers.
@@ -119,7 +127,7 @@ async function intentoCodex(opts: OpcionesCodex & {
 }): Promise<RunResult> {
   const sesionPrevia = opts.sessionId && /^[0-9a-fA-F-]{1,128}$/.test(opts.sessionId) ? opts.sessionId : null;
   const cero: TotalesCodex = { input: 0, cached: 0, output: 0, reasoning: 0 };
-  const base = sesionPrevia ? await leerTotalesSesion(sesionPrevia) : cero;
+  const base = sesionPrevia ? await leerTotalesSesion(sesionPrevia, opts.perfilCodexDir) : cero;
   if (opts.signal?.aborted) throw new Error("Ejecución cancelada");
   const args: string[] = ["codex", ...opts.ajustesMcp];
   // El nivel de esfuerzo del modelo va como ajuste puntual del CLI, igual que los MCP.
@@ -134,6 +142,8 @@ async function intentoCodex(opts: OpcionesCodex & {
 
   // Aislar variables sensibles usando entornoDelAgente para nunca filtrar TELO_* ni secretos del servidor
   const env = entornoDelAgente(opts.extraEnv);
+  const home = env.HOME ?? process.env.HOME;
+  if (aislamientoActivo() && opts.perfilCodexDir && home) env.CODEX_HOME = join(home, ".codex");
 
   const proc = Bun.spawn(comandoCompleto, {
     cwd: opts.cwd,
