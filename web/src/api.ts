@@ -1126,6 +1126,8 @@ export const api = {
   deleteProviderKey: (id: string) =>
     request<{ ok: boolean }>(`/api/claves-proveedor/${encodeURIComponent(id)}`, { method: "DELETE" }),
   getJev: () => request<JevStatus>("/api/jev"),
+  getJevOficina: () => request<{ llamadas: number; completadas: number | null; entrada: number | null; salida: number | null; sin_datos: number | null }>("/api/jev/oficina"),
+  decidirJevOficina: () => request<{ actividad: "cafe" | "ventana" | "charla" }>("/api/jev/oficina", { method: "POST", body: "{}" }),
   setJevKey: (valor: string) => request<{ configurada: boolean; actualizada_en: string }>("/api/jev", {
     method: "PUT", body: JSON.stringify({ valor }),
   }),

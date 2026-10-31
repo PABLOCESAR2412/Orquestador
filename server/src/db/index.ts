@@ -893,6 +893,16 @@ const migrations: Migration[] = [
     name: "049_task_message",
     sql: `ALTER TABLE tasks ADD COLUMN message_id TEXT REFERENCES messages(id) ON DELETE SET NULL;`,
   },
+  {
+    name: "052_jev_oficina",
+    sql: `CREATE TABLE uso_jev_oficina (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      estado TEXT NOT NULL DEFAULT 'iniciada',
+      tokens_entrada INTEGER, tokens_salida INTEGER,
+      modelo TEXT
+    );`,
+  },
 ];
 
 function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {
