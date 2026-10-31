@@ -987,9 +987,6 @@ function limpiarAvisosReintentados(conversationId: string, rowid: number | undef
 // La duración o el silencio no cancelan el turno; el usuario conserva la cancelación explícita.
 const TIEMPO_TURNO_MS = null;
 const TIEMPO_SIN_ACTIVIDAD_MS = null;
-// Una selección atascada no debe bloquear indefinidamente el inicio de los auxiliares.
-// Este límite aplica solo al selector, no al trabajo principal ni a los análisis.
-const TIEMPO_SELECCION_AUXILIARES_MS = 15_000;
 const controlesTurno = new Map<string, AbortController>();
 const pausasDespliegueTurnos = new Set<string>();
 
@@ -1049,7 +1046,7 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
     const cwd = conv.subagent_workspace || join(chatWorkspace, conv.parent_conversation_id ?? conversationId);
     mkdirSync(cwd, { recursive: true });
     const delegacionSolicitada = pideSubagentes(prompt);
-    const analisisOrquestado = conv.orquestacion_habilitada && !conv.parent_conversation_id
+    const analisisOrquestado = conv.orquestacion_habilitada && delegacionSolicitada && !conv.parent_conversation_id
       ? await ejecutarAnalisisOrquestado(conv, turno.id, prompt, cwd, signal, model)
       : [];
     // Los subagentes no crean otra generación de subchats: el usuario sigue al supervisor y a sus hijos directos.
@@ -1255,95 +1252,13 @@ async function ejecutarAnalisisOrquestado(
       ].join("\n\n")
     : "Este es el primer mensaje del chat; no hay historial previo disponible.";
 
-  const delegacionSolicitada = pideSubagentes(prompt);
-  let seleccionNota = delegacionSolicitada
-    ? "Petición explícita de agentes: iniciaré los auxiliares configurados."
-    : "";
-  if (conv.orquestacion_seleccion_automatica && delegacionSolicitada) {
-    registrarActividad(conv.id, turnoId, {
-      tipo: "texto",
-      texto: `El usuario pidió agentes explícitamente; iniciaré los ${trabajadores.length} auxiliares configurados sin una llamada previa de selección.`,
-    });
-  } else if (conv.orquestacion_seleccion_automatica) {
-    registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `El supervisor ${modeloCoordinador} está eligiendo los auxiliares adecuados para esta petición.` });
-    const controlSeleccion = new AbortController();
-    const abortarPorTurno = () => controlSeleccion.abort(signal.reason);
-    let seleccionVencida = false;
-    let seleccionConActividad = false;
-    const inicioSeleccion = Date.now();
-    const timerAvisoSeleccion = setTimeout(() => {
-      if (!seleccionConActividad && !signal.aborted) {
-        registrarActividad(conv.id, turnoId, {
-          tipo: "texto",
-          texto: "El supervisor sigue esperando la selección del proveedor. Si tarda más de 15 segundos, continuará sin auxiliares para no retrasar este turno.",
-        });
-      }
-    }, 5_000);
-    const timerSeleccion = setTimeout(() => {
-      seleccionVencida = true;
-      controlSeleccion.abort(new Error("La selección de auxiliares superó 15 segundos"));
-    }, TIEMPO_SELECCION_AUXILIARES_MS);
-    signal.addEventListener("abort", abortarPorTurno, { once: true });
-    try {
-      const disponibles = trabajadores.map((trabajador, indice) => ({ indice, rol: trabajador.rol, model: trabajador.model }));
-      const decision = await ejecutarAgente({
-        prompt: [
-          "Eres el selector de auxiliares de Telo. Evalúa la petición actual y elige solo los modelos candidatos que aporten valor real.",
-          "Decide solo con la petición actual; no necesitas leer mensajes anteriores. Responde únicamente JSON válido con la forma {\"indices\":[0,2]}. Usa solo índices de la lista, sin repetirlos. Devuelve [] para una petición sencilla que no necesite análisis auxiliar. No inventes modelos ni índices.",
-          "Auxiliares disponibles:", JSON.stringify(disponibles),
-          "Petición del usuario:", prompt,
-        ].join("\n\n"),
-        model: modeloCoordinador,
-        cwd,
-        timeoutMs: null,
-        tiempoSinActividadMs: null,
-        signal: controlSeleccion.signal,
-        projectId: conv.project_id,
-        conversationId: conv.id,
-        estilo: "chat",
-        soloLectura: true,
-        onLinea: (linea) => {
-          seleccionConActividad = true;
-          const item = itemDeLinea(linea);
-          if (!item || item.tipo !== "accion") return;
-          registrarActividad(conv.id, turnoId, {
-            ...item,
-            titulo: `[Supervisor · selección] ${item.titulo}`.slice(0, 160),
-            ...(item.callId ? { callId: `supervisor-seleccion:${item.callId}` } : {}),
-          });
-        },
-      });
-      const bloque = decision.textoFinal.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]
-        ?? decision.textoFinal.match(/\{[\s\S]*\}/)?.[0];
-      const parsed: unknown = bloque ? JSON.parse(bloque) : null;
-      if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { indices?: unknown }).indices)) {
-        seleccionNota = `La selección automática no devolvió una respuesta válida en ${((Date.now() - inicioSeleccion) / 1000).toFixed(1)} s; continúo sin auxiliares opcionales.`;
-        trabajadores = [];
-      } else {
-        const indices = (parsed as { indices: unknown[] }).indices
-          .filter((indice): indice is number => typeof indice === "number" && Number.isInteger(indice) && indice >= 0 && indice < trabajadores.length);
-        const elegidos = new Set(indices);
-        const seleccionados = trabajadores.filter((_trabajador, indice) => elegidos.has(indice));
-        trabajadores = seleccionados;
-        seleccionNota = trabajadores.length
-          ? `El supervisor eligió ${trabajadores.map((trabajador) => `${trabajador.rol} (${trabajador.model})`).join(", ")} en ${((Date.now() - inicioSeleccion) / 1000).toFixed(1)} s.`
-          : `El supervisor decidió que esta petición no necesita auxiliares en ${((Date.now() - inicioSeleccion) / 1000).toFixed(1)} s.`;
-      }
-    } catch (error) {
-      if (signal.aborted) throw error;
-      const causa = seleccionVencida
-        ? "la selección no respondió en 15 segundos"
-        : `la selección falló: ${mensajeSeguro(error).slice(0, 180)}`;
-      seleccionNota = `${causa}; continúo sin auxiliares opcionales.`;
-      trabajadores = [];
-    } finally {
-      clearTimeout(timerAvisoSeleccion);
-      clearTimeout(timerSeleccion);
-      signal.removeEventListener("abort", abortarPorTurno);
-    }
-    registrarActividad(conv.id, turnoId, { tipo: "texto", texto: seleccionNota });
-    if (!trabajadores.length) return [];
-  }
+  // Una función o modelo nombrado limita el encargo a esos auxiliares.
+  const solicitud = prompt.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const funciones = [...solicitud.matchAll(/\b(?:agente|auxiliar)\s+(?:de\s+)?(arquitectura|seguridad|verificacion)\b/g)].map((m) => m[1]);
+  const nombrados = trabajadores.filter((t) => funciones.includes(t.rol) || solicitud.includes(t.model.toLowerCase()));
+  if (funciones.length || nombrados.length || /\b(?:agente|auxiliar)\s+de\s+/.test(solicitud)) trabajadores = nombrados;
+  if (!trabajadores.length) return [];
+  const seleccionNota = "Petición explícita de agentes: iniciaré los auxiliares solicitados.";
 
   registrarActividad(conv.id, turnoId, {
     tipo: "texto",

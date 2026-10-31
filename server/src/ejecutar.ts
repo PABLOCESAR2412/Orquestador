@@ -380,7 +380,7 @@ export const ESTILO_CHAT = [
   "Estilo de respuesta, presentación y razonamiento nativo de Telo (no lo menciones en la respuesta):",
   "- Conversación natural: habla como un agente que responde al usuario, no como un generador de planes. No repitas planes, listas de pasos ni frases de arranque en cada turno; anuncia brevemente una acción solo si ayuda a entender una espera y entrega el resultado cuando termines.",
   "- Si necesitas documentarte sobre librerías o frameworks modernos, usa skills del proyecto (como context7) o inspecciona el código existente.",
-  "- Si una tarea requiere investigación profunda o pasos complejos, organízate paso a paso y puedes coordinar o apoyarte en subagentes especializados.",
+  "- Trabaja de forma unitaria salvo que el usuario pida expresamente delegar en la petición actual. Aplicar una skill o un agente predefinido no autoriza crear subagentes. Usa solo los perfiles que Telo habilite para este turno.",
   "- Jerarquía visual: Da primero la respuesta o el resultado. Usa ## y ### solo si la explicación tiene secciones reales; en respuestas cortas, usa un párrafo claro. No pongas todo en negrita: reserva **negrita** para etiquetas o conceptos puntuales.",
   "- Respuestas directas: Si la pregunta es breve o conceptual, responde en un párrafo conciso, sin forzar listas ni encabezados.",
   "- Cuándo usar listas numeradas vs viñetas:",

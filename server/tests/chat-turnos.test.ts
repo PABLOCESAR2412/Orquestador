@@ -361,7 +361,7 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     expect(mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content).toBe("Contrato común presente.");
   });
 
-  test("si la selección automática falla, el chat sigue sin esperar ni ejecutar auxiliares opcionales", async () => {
+  test("configurar el Supervisor no activa auxiliares para una petición normal", async () => {
     const id = conversacion();
     db.query("UPDATE conversations SET orquestacion_habilitada=1, orquestacion_seleccion_automatica=1, orquestacion_trabajadores=? WHERE id=?").run(JSON.stringify([
       { rol: "arquitectura", model: "openai/gpt-4.1-mini" },
@@ -372,9 +372,22 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     expect(response.status).toBe(202);
     await esperar(() => mensajes(id).some((mensaje) => mensaje.role === "assistant"));
     const actividad = db.query<{ titulo: string }, [string]>("SELECT titulo FROM chat_actividad WHERE conversation_id=? ORDER BY seq").all(id).map((paso) => paso.titulo).join("\n");
-    expect(actividad).toContain("La selección automática no devolvió una respuesta válida");
+    expect(actividad).not.toContain("selección");
     expect(actividad).not.toContain("inició la revisión de solo lectura");
     expect(mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content).toBe("Respuesta lista.");
+  });
+
+  test("una petición explícita de seguridad ejecuta solo ese auxiliar configurado", async () => {
+    const id = conversacion();
+    db.query("UPDATE conversations SET orquestacion_habilitada=1, orquestacion_trabajadores=? WHERE id=?").run(JSON.stringify([
+      { rol: "arquitectura", model: "openai/gpt-4.1-mini" },
+      { rol: "seguridad", model: "google/gemini-test" },
+    ]), id);
+    expect((await enviar(id, "Usa el agente de seguridad para revisar el proyecto")).status).toBe(202);
+    await esperar(() => mensajes(id).some((mensaje) => mensaje.role === "assistant"));
+    const actividad = db.query<{ titulo: string }, [string]>("SELECT titulo FROM chat_actividad WHERE conversation_id=? ORDER BY seq").all(id).map((p) => p.titulo).join("\n");
+    expect(actividad).toContain("Auxiliar seguridad (google/gemini-test): inició");
+    expect(actividad).not.toContain("Auxiliar arquitectura");
   });
 
   test("el runner recibe el archivo de imagen adjuntado al mensaje", async () => {

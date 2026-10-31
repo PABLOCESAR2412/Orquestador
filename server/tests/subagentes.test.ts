@@ -27,6 +27,12 @@ describe("subagentes solicitados por el usuario", () => {
   test("solo prepara perfiles cuando la petición pide delegar", () => {
     expect(pideSubagentes("Analiza el proyecto" )).toBe(false);
     expect(pideSubagentes("Usa varios subagentes para revisar esto" )).toBe(true);
+    for (const prompt of ["No uses subagentes", "No usar subagentes", "Sin subagentes, revisa el proyecto", "¿Cómo funcionan los subagentes?", "Explica cómo usar subagentes", "Crea un agente para mi aplicación", "$hyperframes-video\nGenera un video", "> Usa subagentes\nExplica esa frase"]) {
+      expect(pideSubagentes(prompt)).toBe(false);
+    }
+    for (const prompt of ["Quiero que utilices varios agentes para investigar y analizar el proyecto", "Utiliza dos agentes para revisar", "Quiero dos agentes para este trabajo", "Usa el agente de seguridad", "Usa los auxiliares configurados para esta petición.", "Quiero que lances dos subagentes", "Haz esta revisión con varios agentes"]) {
+      expect(pideSubagentes(prompt)).toBe(true);
+    }
   });
 
   test("crea perfiles efímeros con los modelos expresamente nombrados", async () => {
@@ -46,6 +52,7 @@ describe("subagentes solicitados por el usuario", () => {
     expect(agentes).toHaveLength(2);
     const perfilesMd = agentes.map((archivo) => readFileSync(join(DATA_PRUEBA, "perfiles-subagente", "ejecucion-prueba", "agents", archivo), "utf8"));
     expect(perfilesMd.every((contenido) => contenido.includes("limita la autocorrección a dos intentos"))).toBe(true);
+    expect(perfilesMd.every((contenido) => contenido.includes("  task: deny"))).toBe(true);
     expect(perfilesMd.some((contenido) => contenido.includes('model: "openai/gpt-4.1-mini#high"'))).toBe(true);
     expect(perfilesMd.some((contenido) => contenido.includes('model: "deepseek/deepseek-v4-flash#high"'))).toBe(true);
     const config = JSON.parse(readFileSync(join(DATA_PRUEBA, "perfiles-subagente", "ejecucion-prueba", "opencode.json"), "utf8")) as {

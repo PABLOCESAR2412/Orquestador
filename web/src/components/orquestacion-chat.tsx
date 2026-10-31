@@ -33,7 +33,6 @@ export function OrquestacionChat({
   esfuerzo,
   habilitada,
   preactivarAuxiliares = false,
-  seleccionAutomatica,
   trabajadores,
   modelos,
   guardando,
@@ -45,7 +44,6 @@ export function OrquestacionChat({
   esfuerzo: string | null;
   habilitada: boolean;
   preactivarAuxiliares?: boolean;
-  seleccionAutomatica: boolean;
   trabajadores: TrabajadorOrquestacion[];
   modelos: ModelInfo[];
   guardando: boolean;
@@ -58,7 +56,6 @@ export function OrquestacionChat({
   const [coordinador, setCoordinador] = useState(modelo ?? "");
   const [esfuerzoActual, setEsfuerzoActual] = useState(esfuerzo);
   const [activa, setActiva] = useState(habilitada || preactivarAuxiliares);
-  const [seleccionAutomaticaActual, setSeleccionAutomaticaActual] = useState(preactivarAuxiliares ? true : seleccionAutomatica);
   const [auxiliares, setAuxiliares] = useState<TrabajadorOrquestacion[]>(() =>
     trabajadores.length
       ? trabajadores
@@ -108,7 +105,7 @@ export function OrquestacionChat({
       model: coordinador,
       effort: esfuerzoActual,
       orquestacion_habilitada: activa,
-      orquestacion_seleccion_automatica: seleccionAutomaticaActual,
+      orquestacion_seleccion_automatica: false,
       orquestacion_trabajadores: auxiliares,
     });
   };
@@ -152,11 +149,10 @@ export function OrquestacionChat({
               const habilitar = event.target.checked;
               setActiva(habilitar);
               if (habilitar) {
-                setSeleccionAutomaticaActual(true);
                 if (!auxiliares.length && recomendaciones.length) setAuxiliares(recomendaciones);
               }
             }} />
-            <span>Activar auxiliares para esta conversación</span>
+            <span>Preparar auxiliares para peticiones explícitas</span>
           </label>
 
           {activa && (
@@ -168,7 +164,7 @@ export function OrquestacionChat({
                   <button type="button" className="ghost task-mini-btn" onClick={agregarAuxiliar} disabled={auxiliares.length >= 3 || modelos.every((item) => (!item.free && !verModelosConCosto) || seleccionados.has(item.id))}>Añadir modelo</button>
                 </div>
               </div>
-              <p className="tl-orquestacion-nota">El supervisor evalúa el mensaje actual y el contexto reciente, y elige cuáles de estos modelos candidatos usar en cada petición. Puedes configurar hasta tres modelos auxiliares; el supervisor puede elegir ninguno, algunos o todos.</p>
+              <p className="tl-orquestacion-nota">Se ejecutan solo cuando los pides en el mensaje actual. Si nombras una función o modelo configurado, se utiliza ese auxiliar; en otro caso se usan los seleccionados. Guardar esta configuración no inicia agentes.</p>
               {auxiliares.map((trabajador, indice) => (
                 <div className="tl-orquestacion-auxiliar" key={`${indice}-${trabajador.model}`}>
                   <label className="tl-campo">
@@ -200,21 +196,11 @@ export function OrquestacionChat({
               </label>
               <p className="tl-campo-ayuda">Las sugerencias son reglas locales basadas en nombres y etiquetas del catálogo; no son una evaluación de la petición por un modelo.</p>
 
-              <fieldset className="tl-orquestacion-modo">
-                <legend>Cómo usar los auxiliares</legend>
-                <label className="tl-orquestacion-opcion">
-                  <input type="radio" name="orquestacion-modo" checked={seleccionAutomaticaActual} onChange={() => setSeleccionAutomaticaActual(true)} />
-                  <span><strong>Elegir según cada petición</strong><small>El supervisor consulta su modelo una vez para elegir qué funciones y modelos auxiliares ejecutar según el mensaje y el contexto reciente.</small></span>
-                </label>
-                <label className="tl-orquestacion-opcion">
-                  <input type="radio" name="orquestacion-modo" checked={!seleccionAutomaticaActual} onChange={() => setSeleccionAutomaticaActual(false)} />
-                  <span><strong>Ejecutar todos los seleccionados</strong><small>Usa cada modelo configurado en todos los turnos, sin una llamada de selección adicional.</small></span>
-                </label>
-              </fieldset>
+
             </section>
           )}
 
-          <p className="tl-orquestacion-costo" role="note">El modo automático añade una consulta al supervisor y las llamadas de los auxiliares elegidos. Aumenta consumo y demora. “Gratis” es solo la etiqueta del catálogo de Telo; cuotas y límites dependen del proveedor.</p>
+          <p className="tl-orquestacion-costo" role="note">Cada auxiliar solicitado añade una llamada al proveedor y puede aumentar consumo y demora. “Gratis” es solo la etiqueta del catálogo de Telo; cuotas y límites dependen del proveedor.</p>
           <div className="tl-dialogo-acciones tl-orquestacion-acciones">
             <button type="button" className="tl-boton" onClick={onCerrar}>Cancelar</button>
             <button type="button" className="tl-boton tl-boton-primario" onClick={guardar} disabled={guardando || !coordinador}>
