@@ -8,6 +8,7 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 
 - [~] Seguridad: `TELO_SIN_CLAVE` exige escucha loopback y rechaza solicitudes con host no local o cabeceras de proxy. No usarlo detrás de un proxy que elimine esas cabeceras; validar en Linux y VM. Se ignoran archivos de claves privadas habituales en Git.
 - [ ] Pendientes de auditoría: verificación y fijación de instaladores, validación de CI o pruebas antes de desplegar, auditoría de dependencias y fallos de pruebas en un solo proceso.
+- [~] La ejecución registra tiempos de preparación del workspace y de primera salida del agente; falta desplegar y medir una reanudación real para identificar y corregir su causa.
 - [~] Auditoría del 31/10: `bun audit` informa 1 aviso moderado en servidor y 10 en web (6 moderados, 4 bajos). La suite única en Windows produjo 509 aprobadas, 73 omitidas y 89 fallidas; no es comparable con los cinco fallos observados en Linux. Pruebas focalizadas del filtro local y typecheck del servidor aprobados.
 - [~] Integraciones plegadas por defecto, selector de esfuerzo en barra, oficina pixelada y mapa de chats agrupados por proyecto. Validación local de interfaz a 390 y 1440 px; faltan casos reales en VM.
 - [~] El catálogo de OpenCode tiene un límite de espera y consume stderr para evitar esperas indefinidas. La causa del retraso reportado requiere registros de la VM.
