@@ -32,8 +32,10 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 
 - [x] Ajustes permite instalar el CLI oficial (`agy`) desde la VM en `~/.local/bin`. La instalación usa el comando oficial sin opciones que el script no admite; la API solo acepta el identificador fijo `antigravity` y requiere confirmación explícita.
 - [x] Corregidos `--skip-aliases` y `--skip-path`: la CLI 1.4.12 instalada en la VM confirmó que el script solo acepta `--dir` y `--help`.
-- [x] La tarjeta junto a Codex explica el acceso OAuth soportado por SSH: iniciar `~/.local/bin/agy` en terminal interactiva como `orquestador`, abrir la URL en el equipo y devolver el código a esa terminal. La sesión no se transmite a Telo.
-- [ ] Este cambio solo instala y guía el inicio de sesión. Antigravity aún no ejecuta chats ni tareas de Telo. Antes de habilitarlo como runner hay que validar disponibilidad de la sesión/keyring para el servicio systemd, invocación headless `agy -p`, eventos `stream-json`, límites de cuenta, cancelación y aislamiento Bubblewrap.
+- [x] Ajustes inicia `agy` en un pseudo-terminal efímero, muestra la URL oficial de Google y permite devolver el código desde Telo. El CLI corre desde una carpeta temporal vacía, con entorno mínimo; el código solo vive en memoria y no se guarda ni se devuelve por API. Detecta una sesión existente desde el encabezado del CLI y cierra la TUI.
+- [x] La pantalla separa en pestañas CLIs instalados, FFmpeg/FFprobe y conexiones MCP de voz. El estado de TTS indica registro, no prueba la generación.
+- [ ] El login queda integrado en Ajustes, pero Antigravity aún no ejecuta chats ni tareas de Telo. Antes de habilitarlo como runner hay que validar disponibilidad de la sesión/keyring para el servicio systemd, invocación headless `agy -p`, eventos `stream-json`, límites de cuenta, cancelación y aislamiento Bubblewrap.
+- [ ] Falta desplegar y probar el login con Antigravity 1.4.12 en la VM: URL por pseudo-terminal, retorno del código, persistencia del keyring bajo systemd y confirmación de sesión. La sesión existente se reconoce si el CLI muestra un correo; no se consulta ni se expone la credencial.
 - Fuente primaria: [instalación y autenticación remota](https://antigravity.google/docs/install?tab=cli), [modo headless](https://antigravity.google/docs/cli/headless/).
 
 ## Concurrencia por proveedor y evaluación de Hermes — 30 de octubre de 2026
