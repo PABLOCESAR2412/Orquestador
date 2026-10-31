@@ -9,6 +9,7 @@ User=orquestador
 WorkingDirectory=/home/orquestador/orquestador
 # Ajusta PATH si `which bun` no da /home/orquestador/.bun/bin/bun
 Environment=PATH=/home/orquestador/.bun/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=-/etc/orquestador/deploy.env
 ExecStart=/home/orquestador/orquestador/deploy/actualizar.sh
 # El build y la instalación de dependencias pueden tardar varios minutos
 TimeoutStartSec=20min

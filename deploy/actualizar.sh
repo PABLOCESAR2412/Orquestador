@@ -14,6 +14,7 @@ PARADO=0
 IDENTIDAD=""
 IDENTIDAD_PAUSA=""
 STAGING=""
+CI_CONFIG=""
 INTERFAZ_CAMBIADA=0
 log() { echo "[actualizar $(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 compilar() { (cd web && bun install --frozen-lockfile && bun run build); }
@@ -65,6 +66,7 @@ servidor_arriba() {
   return 1
 }
 liberar() {
+  if [ -n "$CI_CONFIG" ]; then rm -f -- "$CI_CONFIG"; fi
   if [ -n "$STAGING" ]; then
     case "$STAGING" in "$REPO"/.git/telo-web-stage.*) rm -rf -- "$STAGING" ;; esac
   fi
@@ -96,6 +98,24 @@ command -v flock >/dev/null || { log "Falta flock: no se puede actualizar de for
 exec 9> "$REPO/.git/telo-operacion.lock"
 flock -n 9 || exit 0
 trap liberar EXIT
+
+# No se actualiza desde main hasta que GitHub Actions compruebe el mismo SHA.
+# La EnvironmentFile solo está en la unidad de despliegue; el token no entra en argumentos ni logs.
+if [ -z "${TELO_GITHUB_CI_TOKEN:-}" ] || [[ ! "$TELO_GITHUB_CI_TOKEN" =~ ^[A-Za-z0-9_]{20,}$ ]]; then
+  log "Falta un token de GitHub de solo lectura en TELO_GITHUB_CI_TOKEN; se cancela el despliegue."
+  exit 1
+fi
+umask 077
+CI_CONFIG=$(mktemp "$REPO/.git/telo-ci.XXXXXX")
+printf 'header = "Authorization: Bearer %s"\nheader = "Accept: application/vnd.github+json"\nheader = "X-GitHub-Api-Version: 2022-11-28"\n' "$TELO_GITHUB_CI_TOKEN" > "$CI_CONFIG"
+if ! curl --fail --silent --show-error --max-time 20 --config "$CI_CONFIG" \
+  "https://api.github.com/repos/PABLOCESAR2412/Orquestador/commits/$NUEVA/check-runs?filter=latest&per_page=100" \
+  | bun run "$REPO/deploy/verificar-ci.ts"; then
+  log "Los checks de servidor e interfaz no están aprobados para ${NUEVA:0:7}; se pospone el despliegue."
+  exit 0
+fi
+rm -f -- "$CI_CONFIG"
+CI_CONFIG=""
 
 # Los cambios visuales y documentación no tocan la API ni el proceso de agentes.
 # Si cambia CSS, se construye aparte; los assets se publican antes que index.html.

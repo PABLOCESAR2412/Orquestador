@@ -3,6 +3,7 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    {"fecha":"2026-10-31","tipo":"grande","titulo":"Despliegue: exige CI verde en el SHA de main y fija las versiones de CLIs instalables","pr":159},
     {"fecha":"2026-10-31","tipo":"minimo","titulo":"Seguridad: restringe el modo sin clave a conexiones locales y evita añadir llaves privadas","pr":159},
     {"fecha":"2026-10-31","tipo":"mediano","titulo":"Cerebro: permite explorar grafos JSON de Graphify y compacta el selector de modelos","pr":158},
     { "fecha": "2026-10-31", "tipo": "mediano", "titulo": "Selector y oficina: catálogos compactos, esfuerzo en barra y mapa de chats por proyecto", "pr": 157 },
