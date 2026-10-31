@@ -30,6 +30,6 @@ export function guardarPreferenciasSelector(preferencias: PreferenciasSelectorMo
 export function normalizarIdAnalisis(id: string): string {
   const nombre = (id.toLowerCase().split("/").at(-1) ?? id.toLowerCase()).split(":", 1)[0];
   return nombre
-    .replace(/[-.](?:free|latest|preview|thinking|reasoning|high|medium|low)$/i, "")
+    .replace(/(?:[-.](?:free|latest|preview|thinking|reasoning|high|medium|low))+$/i, "")
     .replace(/[^a-z0-9]/g, "");
 }

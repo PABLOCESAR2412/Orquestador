@@ -62,6 +62,10 @@
 .picker-aa-nota code { font-size: 11px; }
 .picker-modelo-fila { display: flex; align-items: stretch; gap: 2px; min-width: 0; }
 .picker-modelo-fila > .picker-item { flex: 1 1 auto; min-width: 0; }
+.picker-modelo-fila .picker-meta, .picker-item-codex .picker-meta { flex-direction: row; align-items: center; gap: 7px; }
+.picker-modelo-fila .picker-item, .picker-item-codex { gap: 8px; padding-top: 6px; padding-bottom: 6px; }
+.picker-modelo-fila .picker-nombre-linea { flex-wrap: wrap; gap: 4px; }
+.picker-item-codex .picker-codex-context { display: none; }
 .picker-intelligence { color: var(--signal); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .picker-fijar {
   flex: 0 0 34px;
@@ -162,4 +166,8 @@
 .picker-esfuerzo-barra { display: grid; gap: 8px; min-width: 0; text-align: center; }
 .picker-esfuerzo-barra input { width: 100%; accent-color: var(--primary); cursor: pointer; }
 .picker-esfuerzo-barra input:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
-
+.picker-esfuerzo-niveles { display: flex; align-items: center; border-radius: 999px; background: var(--surface-2); }
+.picker-esfuerzo-niveles button { display: grid; place-items: center; flex: 1 1 0; min-width: 0; min-height: 40px; padding: 0; border: 0; border-radius: 999px; background: transparent; cursor: pointer; }
+.picker-esfuerzo-niveles button span { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-2); }
+.picker-esfuerzo-niveles button[aria-pressed="true"] span { width: 16px; height: 16px; background: var(--signal); }
+.picker-esfuerzo-niveles button:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }

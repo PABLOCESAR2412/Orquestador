@@ -6,6 +6,9 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 
 ## Selector y oficina — 31 de octubre de 2026
 
+- [~] El cerebro permite importar durante la sesión un graph.json de Graphify, explorar sus nodos y consultar el archivo de origen; la importación no indexa automáticamente los proyectos ni persiste el grafo.
+- [~] El selector compacta precio e índice, muestra opciones de esfuerzo y amplía coincidencias no ambiguas por nombre; falta validar cobertura contra el catálogo real y el flujo en la VM.
+- [ ] HyperFrames: instalar y verificar Chrome Headless Shell en la VM. Las herramientas locales de transcripción, voz y música son opcionales y requieren evaluación de recursos antes de instalarlas.
 - [~] Integraciones plegadas por defecto, selector de esfuerzo en barra, oficina pixelada y mapa de chats agrupados por proyecto. Validación local de interfaz a 390 y 1440 px; faltan casos reales en VM.
 - [~] El catálogo de OpenCode tiene un límite de espera y consume stderr para evitar esperas indefinidas. La causa del retraso reportado requiere registros de la VM.
 - [ ] El mapa de chats muestra pertenencia, no relaciones semánticas Graphify. Queda pendiente integrar indexación por proyecto y recuperación de contexto, así como equivalentes de precio fiables para sesiones de suscripción.
