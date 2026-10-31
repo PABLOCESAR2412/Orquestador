@@ -20,6 +20,7 @@ const { config } = await import("../src/config");
 const { conversacionEnCurso, ocuparConversacion, liberarConversacion } = await import("../src/ocupacion");
 const { chat, avisarTurnosInterrumpidos } = await import("../src/routes/chat");
 const { guardarImagenAdjunta, imagenesDelPrompt } = await import("../src/chat-adjuntos");
+const { reservarAgente } = await import("../src/capacidad-agentes");
 
 const app = new Hono();
 app.route("/api", chat);
@@ -405,9 +406,9 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     expect(mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content).toBe("La imagen llegó al agente como archivo.");
   });
 
-  test("diez conversaciones responden en paralelo y cada una conserva su modelo y su mensaje", async () => {
+  test("diez conversaciones de proveedores independientes responden en paralelo sin mezclar modelos ni mensajes", async () => {
     const lote = Array.from({ length: 10 }, (_, i) => ({
-      id: conversacion(`opencode/modelo-${i % 3}`),
+      id: conversacion(`fixture-${i}/modelo-${i % 3}`),
       prompt: `CONCURRENTE-${i} LENTO`,
     }));
     const inicio = Date.now();
@@ -419,21 +420,51 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     for (let i = 0; i < lote.length; i++) {
       const { id, prompt } = lote[i]!;
       const respuesta = mensajes(id).find((mensaje) => mensaje.role === "assistant");
-      expect(respuesta?.content).toBe(`opencode/modelo-${i % 3}: ${i}`);
+      expect(respuesta?.content).toBe(`fixture-${i}/modelo-${i % 3}: ${i}`);
     }
   }, 15_000);
 
-  test("cinco chats pueden usar en paralelo el mismo modelo sin mezclar respuestas", async () => {
-    const lote = Array.from({ length: 5 }, (_, i) => ({ id: conversacion("opencode/prueba"), prompt: `CONCURRENTE-${i} LENTO` }));
-    const inicio = Date.now();
-    const respuestas = await Promise.all(lote.map(({ id, prompt }) => enviar(id, prompt)));
-    expect(respuestas.map((respuesta) => respuesta.status)).toEqual(Array(5).fill(202));
-    await esperar(() => lote.every(({ id }) => mensajes(id).some((mensaje) => mensaje.role === "assistant")));
-    expect(Date.now() - inicio).toBeLessThan(8_000);
-    lote.forEach(({ id, prompt }, i) => {
-      expect(mensajes(id).find((mensaje) => mensaje.role === "user")?.content).toBe(prompt);
-      expect(mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content).toBe(`opencode/prueba: ${i}`);
-    });
+  test("cinco chats pueden usar un proveedor con cupo cinco sin mezclar respuestas", async () => {
+    const concurrencia = process.env.TELO_CONCURRENCIA_PROVEEDORES;
+    process.env.TELO_CONCURRENCIA_PROVEEDORES = '{"opencode":5}';
+    try {
+      const lote = Array.from({ length: 5 }, (_, i) => ({ id: conversacion("opencode/prueba"), prompt: `CONCURRENTE-${i} LENTO` }));
+      const inicio = Date.now();
+      const respuestas = await Promise.all(lote.map(({ id, prompt }) => enviar(id, prompt)));
+      expect(respuestas.map((respuesta) => respuesta.status)).toEqual(Array(5).fill(202));
+      await esperar(() => lote.every(({ id }) => mensajes(id).some((mensaje) => mensaje.role === "assistant")));
+      expect(Date.now() - inicio).toBeLessThan(8_000);
+      lote.forEach(({ id, prompt }, i) => {
+        expect(mensajes(id).find((mensaje) => mensaje.role === "user")?.content).toBe(prompt);
+        expect(mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content).toBe(`opencode/prueba: ${i}`);
+      });
+    } finally {
+      if (concurrencia === undefined) delete process.env.TELO_CONCURRENCIA_PROVEEDORES;
+      else process.env.TELO_CONCURRENCIA_PROVEEDORES = concurrencia;
+    }
+  }, 15_000);
+
+  test("dos chats del mismo proveedor con cupo uno avanzan en orden y muestran la espera", async () => {
+    const concurrencia = process.env.TELO_CONCURRENCIA_PROVEEDORES;
+    process.env.TELO_CONCURRENCIA_PROVEEDORES = '{"opencode":1}';
+    const primero = conversacion(), segundo = conversacion();
+    const liberar = await reservarAgente("opencode/prueba");
+    try {
+      expect((await enviar(primero, "CONCURRENTE-1 LENTO")).status).toBe(202);
+      await esperar(() => !!db.query("SELECT 1 FROM chat_actividad WHERE conversation_id=? AND herramienta='capacity' AND estado='en_curso'").get(primero));
+      expect((await enviar(segundo, "CONCURRENTE-2 LENTO")).status).toBe(202);
+      await esperar(() => !!db.query("SELECT 1 FROM chat_actividad WHERE conversation_id=? AND herramienta='capacity' AND estado='en_curso'").get(segundo));
+      expect(mensajes(segundo).some(m => m.role === "assistant")).toBe(false);
+      liberar();
+      await esperar(() => mensajes(primero).some(m => m.role === "assistant"));
+      expect(mensajes(segundo).some(m => m.role === "assistant")).toBe(false);
+      await esperar(() => mensajes(segundo).some(m => m.role === "assistant"));
+      expect(db.query<{ estado: string }, [string]>("SELECT estado FROM chat_actividad WHERE conversation_id=? AND herramienta='capacity'").get(segundo)?.estado).toBe("hecha");
+    } finally {
+      liberar();
+      if (concurrencia === undefined) delete process.env.TELO_CONCURRENCIA_PROVEEDORES;
+      else process.env.TELO_CONCURRENCIA_PROVEEDORES = concurrencia;
+    }
   }, 15_000);
 
   test("el POST responde 202 antes de que el agente termine, y la respuesta llega después", async () => {
