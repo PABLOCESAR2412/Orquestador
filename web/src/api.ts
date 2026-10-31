@@ -715,6 +715,15 @@ export type LoginCodex = {
   iniciada: string | null;
 };
 
+export type LoginAntigravity = {
+  estado: "inactivo" | "esperando" | "verificando" | "conectado" | "fallido";
+  instalada: boolean;
+  conectada: boolean;
+  url: string | null;
+  motivo: string | null;
+  iniciada: string | null;
+};
+
 export type ModeloCodex = { id: string; name: string; context: number; variants: string[] };
 
 export type SkillResumen = {
@@ -1029,6 +1038,10 @@ export const api = {
   iniciarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "POST", body: "{}" }),
   cancelarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "DELETE" }),
   confirmarCodexLogin: () => request<LoginCodex>("/api/providers/codex/confirmar", { method: "POST" }),
+  antigravityLogin: () => request<LoginAntigravity>("/api/providers/antigravity/login"),
+  iniciarAntigravityLogin: () => request<LoginAntigravity>("/api/providers/antigravity/login", { method: "POST", body: "{}" }),
+  enviarCodigoAntigravity: (codigo: string) => request<LoginAntigravity>("/api/providers/antigravity/confirmar", { method: "POST", body: JSON.stringify({ codigo }) }),
+  cancelarAntigravityLogin: () => request<LoginAntigravity>("/api/providers/antigravity/login", { method: "DELETE" }),
   // Cuenta global de GitHub (en Ajustes) para operar sin claves SSH por proyecto.
   githubCuenta: () => request<GithubCuenta>("/api/github/cuenta"),
   listMcpConnections: () => request<ConexionesMcpEstado>("/api/conexiones"),

@@ -18,7 +18,9 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: sudo apt-get update && sudo apt-get install -y bubblewrap python3
-      - run: bash -n deploy/instalar-politica-codex.sh
+      - run: |
+          bash -n deploy/instalar-politica-codex.sh
+          bash -c 'dir_mode=755; (( (8#$dir_mode & 022) == 0 )); dir_mode=775; (( (8#$dir_mode & 022) != 0 ))'
       - run: bun install --frozen-lockfile
         working-directory: server
       - run: bun run typecheck
