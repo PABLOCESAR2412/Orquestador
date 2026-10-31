@@ -894,6 +894,21 @@ const migrations: Migration[] = [
     sql: `ALTER TABLE tasks ADD COLUMN message_id TEXT REFERENCES messages(id) ON DELETE SET NULL;`,
   },
   {
+    // Notas Markdown propias del baúl de Telo, separadas por proyecto.
+    name: "051_cerebro_notas",
+    sql: `
+      CREATE TABLE brain_notes (
+        id TEXT PRIMARY KEY,
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX brain_notes_scope_updated ON brain_notes(project_id, updated_at DESC);
+    `,
+  },
+  {
     name: "052_jev_oficina",
     sql: `CREATE TABLE uso_jev_oficina (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

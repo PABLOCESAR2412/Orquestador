@@ -124,6 +124,21 @@ export type ProjectDetail = {
   };
 };
 
+export type BrainNoteSummary = {
+  id: string;
+  project_id: string | null;
+  title: string;
+  resumen: string;
+  created_at: string;
+  updated_at: string;
+};
+export type BrainNote = BrainNoteSummary & { content: string };
+export type BrainGraph = {
+  nodos: { id: string; title: string }[];
+  enlaces: { source: string; target: string; label: string }[];
+  limitado: boolean;
+};
+
 export type ProjectFileEntry = {
   nombre: string;
   ruta: string;
@@ -967,6 +982,23 @@ export const api = {
   rejectTaskPlan: (id: string, body: { motivo?: string }) =>
     request<Task>(`/api/tasks/${id}/rechazar-plan`, { method: "POST", body: JSON.stringify(body) }),
   getProject: (id: string) => request<ProjectDetail>(`/api/projects/${id}`),
+  listBrainNotes: (projectId: string | null, q = "") => {
+    const params = new URLSearchParams();
+    if (projectId) params.set("project_id", projectId);
+    if (q.trim()) params.set("q", q.trim());
+    return request<{ notas: BrainNoteSummary[]; total: number; busqueda: "local" }>(`/api/cerebro/notas?${params}`);
+  },
+  brainGraph: (projectId: string | null) => {
+    const params = new URLSearchParams();
+    if (projectId) params.set("project_id", projectId);
+    return request<BrainGraph>(`/api/cerebro/grafo?${params}`);
+  },
+  getBrainNote: (id: string) => request<BrainNote>(`/api/cerebro/notas/${encodeURIComponent(id)}`),
+  createBrainNote: (body: { project_id: string | null; title: string; content: string }) =>
+    request<BrainNote>("/api/cerebro/notas", { method: "POST", body: JSON.stringify(body) }),
+  updateBrainNote: (id: string, body: { title: string; content: string }) =>
+    request<BrainNote>(`/api/cerebro/notas/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteBrainNote: (id: string) => request<{ ok: boolean }>(`/api/cerebro/notas/${encodeURIComponent(id)}`, { method: "DELETE"}),
   // Solo sugiere: el texto se revisa en el campo de instrucciones y se guarda desde ahí.
   suggestProjectInstructions: (id: string) =>
     request<{ texto: string; fuentes: string[] }>(`/api/projects/${id}/instrucciones/sugeridas`),

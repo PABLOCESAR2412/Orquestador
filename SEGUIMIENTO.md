@@ -4,6 +4,12 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 31 de octubre de
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Oficina y cerebro — 31 de octubre de 2026
+
+- [~] La oficina presenta conversaciones principales y subchats existentes; las animaciones son decorativas y no crean agentes. Pendiente revisión visual y operativa en la VM.
+- [~] El baúl interno admite notas Markdown globales y por proyecto, búsqueda local, importación de archivos y mapa de enlaces. No introduce notas en los prompts ni reduce tokens automáticamente.
+- [ ] Pendientes: importación y exportación del baúl completo conservando carpetas, selección de notas relevantes con presupuesto de contexto, creación de agentes desde la oficina y validación en dispositivos.
+
 ## Oficina interactiva — 31 de octubre de 2026
 
 - [~] Vista inicial de tareas con animaciones locales; Jev puede elegir una actividad bajo petición y se registran intentos y tokens informados. La estimación de coste es orientativa.
