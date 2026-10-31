@@ -158,6 +158,7 @@ async function intentoCodex(opts: OpcionesCodex & {
   let usage: Usage | null = null;
   let ultimoError: string | null = null;
   let ultimoErrorProveedor: string | null = null;
+  let falloFatalCodex = false;
 
   // Contabilidad incremental (A-m2): los `token_count` traen la cuenta acumulada de la
   // sesión; los `turn.completed` ya se registran como deltas. Al acabar (éxito, fallo o
@@ -211,7 +212,6 @@ async function intentoCodex(opts: OpcionesCodex & {
             } else if (ev.item?.type === "error") {
               const error = normalizarErrorCodex(ev);
               ultimoError = error.mensaje ?? ultimoError;
-              ultimoErrorProveedor = error.detalleProveedor;
             } else if (ev.type === "turn.completed" && ev.usage) {
               const u = ev.usage;
               usage = {
@@ -235,6 +235,7 @@ async function intentoCodex(opts: OpcionesCodex & {
               }
             }
             if (ev.type === "error" || ev.type === "turn.failed") {
+              falloFatalCodex = true;
               const error = normalizarErrorCodex(ev);
               ultimoError = error.mensaje ?? ultimoError;
               ultimoErrorProveedor = error.detalleProveedor;
@@ -279,12 +280,12 @@ async function intentoCodex(opts: OpcionesCodex & {
     stderr = res[1];
     code = res[2];
 
-    if (code !== 0) {
+    if (code !== 0 || falloFatalCodex) {
       const detalle = ultimoError
         || stderr.trim()
         || (vigilante.silenciado()
           ? `El proceso de Codex no emitió nada durante ${Math.round(((opts.tiempoSinActividadMs as number) ?? 0) / 60_000)} minutos y se cortó por silencio`
-          : `Codex terminó con código ${code}`);
+          : falloFatalCodex ? "Codex informó que el turno falló." : `Codex terminó con código ${code}`);
       const detalleProveedor = ultimoErrorProveedor ?? JSON.stringify({
         message: detalle.slice(-800).replace(/\S*[\\/]\S*/g, " "),
       });

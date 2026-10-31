@@ -7,7 +7,7 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 ## Detección unificada de cuota agotada — 31 de octubre de 2026
 
 - [x] Los errores de OpenCode conservan códigos y estados HTTP anidados del proveedor sin copiar IDs de sesión ni cabeceras. Esto permite identificar saldo/cuota de NVIDIA, DeepSeek, OpenRouter y otros adaptadores aunque cambie la forma de la respuesta.
-- [x] Codex CLI entrega sus eventos de fallo al clasificador común con código, estado y mensaje estructurados; al agotarse la sesión de ChatGPT, chat y tarea quedan en el estado reanudable de cuota agotada.
+- [x] Codex CLI entrega sus eventos de fallo al clasificador común con código, estado y mensaje estructurados, y trata `turn.failed` como terminal aunque el CLI salga con código 0; al agotarse la sesión de ChatGPT, chat y tarea quedan en el estado reanudable de cuota agotada.
 - [x] HTTP 402 sin mensaje también se clasifica como cuota agotada; el aviso de OpenRouter por máximo de tokens de una sola solicitud sigue como presupuesto insuficiente, no como cuota. Los 429 temporales se reintentan, salvo que el proveedor indique un límite diario o de plan agotado.
 - Evidencia local: `server bun test tests/cuota.test.ts tests/codex-tokens-registro.test.ts` (28 pruebas pasaron) y `server bun run typecheck` pasaron.
 

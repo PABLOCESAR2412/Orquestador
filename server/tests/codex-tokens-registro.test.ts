@@ -92,7 +92,7 @@ test("Codex conserva el código estructurado de cuota agotada en su error", asyn
         error: { code: "usage_limit_reached", message: "You've hit your ChatGPT usage limit. Try again later." },
       }),
     ]),
-    stderr: salidaFalsa([]), exited: Promise.resolve(1), kill() {}, pid: 999_999_999,
+    stderr: salidaFalsa([]), exited: Promise.resolve(0), kill() {}, pid: 999_999_999,
   })) as unknown as typeof Bun.spawn);
   const anterior = process.env.TELO_AISLAMIENTO;
   process.env.TELO_AISLAMIENTO = "desactivado";
