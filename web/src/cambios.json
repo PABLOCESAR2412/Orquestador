@@ -4,6 +4,7 @@
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
     { "fecha": "2026-10-31", "tipo": "minimo", "titulo": "Antigravity: elimina opciones no admitidas por el instalador oficial", "pr": null },
+    {"fecha":"2026-10-31","tipo":"mediano","titulo":"Selector de modelos por integración: catálogos plegables y sesión Codex CLI de ChatGPT habilitada","pr":147},
     { "fecha": "2026-10-31", "tipo": "mediano", "titulo": "Ajustes: instala Antigravity CLI en la VM y guía el acceso OAuth remoto para un piloto", "pr": null },
     { "fecha": "2026-10-30", "tipo": "minimo", "titulo": "Agentes: reconoce el límite diario de modelos gratis para evitar reintentos y respaldos innecesarios", "pr": 144 },
     { "fecha": "2026-10-30", "tipo": "minimo", "titulo": "Agentes: limita concurrencia por proveedor, evita bloquear otras tareas y recupera actualizaciones de actividad por sondeo", "pr": 143 },

@@ -155,7 +155,7 @@ export function SettingsPage() {
   const primarioId = proveedorDeModelo(value?.defaultModel);
   const respaldoId = proveedorDeModelo(prefs.data?.fallbackModel);
   const etiquetaDe = (p: ProviderStatus): string | null =>
-    p.id === primarioId ? "Primario" : p.id === respaldoId ? "Respaldo" : p.variable === null ? "Local" : null;
+    p.id === primarioId ? "Primario" : p.id === respaldoId ? "Respaldo" : p.id === "codex" ? "Sesión" : p.variable === null ? "Local" : null;
 
   // Diagnóstico interno para distinguir una clave que no expone modelos de una conexión válida.
   const modelosDe = (id: string): { total: number; enSelector: number } | null => {
