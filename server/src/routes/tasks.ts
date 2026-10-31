@@ -145,6 +145,13 @@ tasks.get("/tasks/:id/diff", async (c) => {
     if (err instanceof ErrorTarea && err.code === "task_running") {
       return c.json({ estado: "en_curso" as const });
     }
+    // Una tarea sin clon (por ejemplo, un arranque fallido ya limpiado) no tiene diff.
+    // Es un resultado de esta consulta; las operaciones de escritura siguen rechazándose.
+    if (err instanceof ErrorTarea && err.code === "task_without_repo") {
+      return c.json({ estado: "sin_repo" as const, rama: null, base_commit: null, commit: null,
+        archivos: [], diff: "", truncado: false, hash: null, remoto: false,
+        aprobaciones: { commit: null, push: null } });
+    }
     return respuestaDeError(c, err);
   }
 });

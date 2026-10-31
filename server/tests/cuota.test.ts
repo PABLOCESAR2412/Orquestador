@@ -51,6 +51,19 @@ const post = (ruta: string, cuerpo: unknown = {}) =>
   });
 
 describe("diff de una tarea activa", () => {
+  test("una tarea terminada sin copia Git devuelve sin_repo, incluso con metadatos antiguos", async () => {
+    for (const conMetadatos of [false, true]) {
+      const id = tarea("failed");
+      if (conMetadatos) db.query("UPDATE tasks SET rama='telo/prueba', base_commit=? WHERE id=?").run("a".repeat(40), id);
+      try {
+        const response = await app.request(`/api/tasks/${id}/diff`);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({ estado: "sin_repo", archivos: [], hash: null });
+      } finally { db.query("DELETE FROM tasks WHERE id=?").run(id); }
+    }
+    expect((await app.request(`/api/tasks/${crypto.randomUUID()}/diff`)).status).toBe(404);
+  });
+
   test("devuelve un estado transitorio mientras el workspace está ocupado", async () => {
     for (const status of ["queued", "analyzing", "waiting_approval", "running"]) {
       const id = tarea(status);

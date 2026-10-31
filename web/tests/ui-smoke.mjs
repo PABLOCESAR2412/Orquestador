@@ -68,11 +68,16 @@ try {
     page.on("pageerror", error => { errors.push(error.message); console.error(error.message); });
     const now = new Date().toISOString();
     const task = { id: "t1", title: "Prueba", model: "google/prueba", modelo_agotado: null, status: "done", created_at: now, started_at: now, finished_at: now, plan: null, reporte: null };
+    const resumenCompactacion = "## Objective\n- COMPACTACION-INTERNA-PRUEBA\n## Important Details\n- Conservar el contexto.\n## Work State\n### Completed\n- Lectura.\n### Active\n- Verificación.\n### Blocked\n- (none)\n## Next Move\n1. Continuar.\n## Relevant Files\n- src/app.ts";
     const messages = [
       { id: "u1", role: "user", content: "git commit y push", created_at: now },
       { id: "a1", role: "assistant", content: '{"estado":"fallo","resumen":"Faltan dependencias","desviacion":"Instala antes de probar","pendientes":["x".replace("x","y")]}<telo-memoria>MEMORIA_INTERNA</telo-memoria>', model: "groq/llama-test", effort: "low", created_at: now },
       { id: "u2", role: "user", content: "prepara de nuevo el git commit y push", created_at: now },
       { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\nAbre `server/src/ejecutar.ts:3-20` para ver el ejemplo. También revisa `Chat.tsx` y `Gone.tsx`.\n\nPDF generado: `informe revisión.pdf`.\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Uso por área\",\"unit\":\"tokens\",\"data\":[{\"label\":\"Chat\",\"value\":120},{\"label\":\"Tareas\",\"value\":80}]}\n```\n\n```chart\n{\"type\":\"line\",\"title\":\"Uso diario\",\"data\":[{\"label\":\"Lun\",\"value\":20},{\"label\":\"Mar\",\"value\":35}]}\n```\n\n```chart\n{\"type\":\"pie\",\"title\":\"Distribución\",\"data\":[{\"label\":\"A\",\"value\":3},{\"label\":\"B\",\"value\":2}]}\n```\n\n```chart\n{\"type\":\"donut\",\"title\":\"Resultados\",\"data\":[{\"label\":\"Correcto\",\"value\":9},{\"label\":\"Pendiente\",\"value\":1}]}\n```\n\n```chart\n{\"type\":\"stats\",\"title\":\"Resumen\",\"unit\":\"pruebas\",\"data\":[{\"label\":\"Correctas\",\"value\":11,\"detail\":\"En verde\"}]}\n```\n\n```chart\nesto no es JSON\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Balance\",\"data\":[{\"label\":\"Ingresos\",\"value\":5},{\"label\":\"Ajustes\",\"value\":-2}]}\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", model: "nvidia/nemotron-test", effort: "high", created_at: now },
+      { id: "u-compact-old", role: "user", content: "Continúa el trabajo anterior", created_at: now },
+      { id: "a-compact-old", role: "assistant", content: resumenCompactacion, created_at: now },
+      { id: "u-compact-new", role: "user", content: "Termina después de resumir el contexto", created_at: now },
+      { id: "a-compact-new", role: "assistant", content: "Resultado visible después de compactar.", sesion_compactada: 1, created_at: now },
       { id: "u-stale", role: "user", content: "Solicitud fallida anterior", created_at: now },
       { id: "s-stale", role: "system", content: "La solicitud anterior falló.", created_at: now },
       { id: "u-retry", role: "user", content: "Quiero una segunda versión de este PDF", created_at: now },
@@ -108,6 +113,9 @@ try {
     let skillsGuardadas = [];
     let adjuntosChatSubidos = 0;
     let diffRequests = 0;
+    let diffSinRepo = false;
+    let probarColaProveedor = false;
+    let lecturasColaProveedor = 0;
     let taskListRequests = 0;
     const esperasPollUsadas = [];
     let resolverEsperaPollLarga;
@@ -163,6 +171,16 @@ try {
       }
       else if (path === "/api/conversations/c1/turnos/u1/subagentes") data = [
         { id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true },
+      ];
+      else if (path === "/api/conversations/c1/turnos/u-capacidad/actividad") {
+        lecturasColaProveedor++;
+        data = lecturasColaProveedor === 1
+          ? [{ seq: 1, tipo: "accion", herramienta: "capacity", titulo: "En cola: esperando capacidad de opencode", detalle: null, estado: "en_curso" }]
+          : [{ seq: 1, tipo: "accion", herramienta: "capacity", titulo: "Capacidad disponible en opencode", detalle: null, estado: "hecha" },
+              { seq: 2, tipo: "accion", herramienta: "bash", titulo: "Ejecutó comprobación tras la espera", detalle: "$ bun test", estado: "en_curso" }];
+      }
+      else if (path === "/api/conversations/c1/turnos/u-compact-new/actividad") data = [
+        { seq: 1, tipo: "accion", herramienta: "compaction", titulo: "Contexto compactado automáticamente", detalle: resumenCompactacion, estado: "hecha" },
       ];
       else if (path === "/api/conversations/c-child/messages") data = [
         { id: "child-u1", role: "user", content: "Revisa las rutas y reporta riesgos", created_at: now },
@@ -285,7 +303,9 @@ try {
       }
       else if (path === "/api/tasks/t1/diff") {
         diffRequests++;
-        data = diffRequests === 1
+        data = diffSinRepo
+          ? { estado: "sin_repo", rama: null, base_commit: null, commit: null, archivos: [], diff: "", truncado: false, hash: null, remoto: false, aprobaciones: { commit: null, push: null } }
+          : diffRequests === 1
           ? { estado: "en_curso" }
           : { estado: "con_cambios", rama: "telo/prueba", base_commit: null, commit: "abcdef012345", archivos: [{ ruta: "src/app.ts", estado: "modificado", adiciones: 2, eliminaciones: 1, binario: false, sensible: false }], hash: "0123456789abcdef", diff: "diff de prueba", truncado: false, remoto: true, aprobaciones: { commit: null, push: null } };
       }
@@ -382,6 +402,7 @@ try {
         byTask: [{ taskId: "t1", calls: 1, tokens: sinDatos ? 0 : 10, cost: 0, tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 }],
       };
       else if (path.includes("eventos-vivos/poll")) {
+        if (probarColaProveedor) return route.fulfill({ status: 503, json: { error: "canal_no_disponible_fixture" } });
         const esperaPollUsada = Number(new URL(route.request().url()).searchParams.get("espera"));
         esperasPollUsadas.push(esperaPollUsada);
         if (esperaPollUsada >= 4000) resolverEsperaPollLarga();
@@ -459,6 +480,22 @@ try {
     await page.getByRole("button", { name: "Volver al chat principal: Prueba de flujo", exact: true }).click();
     await page.getByRole("heading", { name: "Prueba de flujo", exact: true }).waitFor();
     console.log(`${width}px: actividad en vivo y navegación entre supervisor y subchat comprobadas`);
+    const compactaciones = page.locator(".tl-compactacion");
+    assert.equal(await compactaciones.count(), 2, "el resumen antiguo y la compactación nueva tienen controles independientes");
+    assert.equal(await compactaciones.locator("pre").count(), 0, "ninguna compactación se muestra abierta al entrar");
+    await compactaciones.first().locator("summary").click();
+    await compactaciones.first().locator("pre").waitFor();
+    assert.equal(await compactaciones.first().locator("pre").textContent(), resumenCompactacion, "el resumen histórico se conserva íntegro al expandir");
+    await compactaciones.first().locator("summary").click();
+    await compactaciones.last().locator("summary").click();
+    await compactaciones.last().locator("pre").waitFor();
+    assert.equal(await compactaciones.last().locator("pre").textContent(), resumenCompactacion, "el nuevo resumen se carga desde la actividad del turno");
+    assert.equal(await page.getByText("Resultado visible después de compactar.", { exact: true }).isVisible(), true, "la respuesta final permanece separada");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/compactacion-${width}.png` });
+    await compactaciones.last().locator("summary").click();
+    await page.getByText("Resultado visible después de compactar.", { exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `scratch/capturas-ci/compactacion-plegada-${width}.png` });
     if (width === 390) {
       await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
       const filaChatAnterior = page.locator('.sidebar-conv[aria-label="Chat anterior"]').locator("..");
@@ -1411,6 +1448,28 @@ try {
     await botonDetener.click();
     assert.equal(chatDetenido, true);
     assert.equal(await page.evaluate(() => localStorage.getItem("telo:cola-activa:c1")), "false");
+
+    diffSinRepo = true; task.status = "failed";
+    const respuestaSinRepo = page.waitForResponse(r => r.url().endsWith("/api/tasks/t1/diff"));
+    await page.goto(`${base}/chat?conversacion=c1`);
+    assert.equal((await (await respuestaSinRepo).json()).estado, "sin_repo");
+    const consultasSinRepo = diffRequests;
+    await page.waitForTimeout(4500);
+    assert.equal(diffRequests, consultasSinRepo, "una copia Git inexistente no se vuelve a consultar cada cuatro segundos");
+    assert.equal(await page.getByText("Esta tarea no tiene copia de Git, así que no hay cambios que revisar.", { exact: true }).count(), 0);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/diff-sin-repo-${width}.png` });
+
+    probarColaProveedor = true; task.status = "analyzing";
+    messages.push({ id: "u-capacidad", role: "user", content: "Revisar con proveedor ocupado", created_at: now });
+    await page.goto(`${base}/chat?conversacion=c1`);
+    await page.locator(".tl-actividad-live").getByText("En cola: esperando capacidad de opencode", { exact: true }).first().waitFor();
+    await page.locator(".tl-actividad-live").getByText("Capacidad disponible en opencode", { exact: true }).waitFor();
+    await page.locator(".tl-actividad-live").getByText("Ejecutó comprobación tras la espera", { exact: true }).waitFor();
+    assert.ok(lecturasColaProveedor >= 2, "el sondeo continúa actualizando el mismo turno cuando el canal de eventos falla");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/cola-proveedor-${width}.png` });
+    probarColaProveedor = false;
 
     await page.goto(`${base}/ajustes?pestana=almacenamiento`);
     const disco = page.locator('section[aria-labelledby="disco-mantenimiento"]');

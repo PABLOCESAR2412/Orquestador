@@ -24,6 +24,18 @@ El respaldo usa el mismo candado de mantenimiento y no publica una copia parcial
 
 Los cambios en componentes TypeScript de la interfaz, API, workers, runners, dependencias, configuración, migraciones o el propio actualizador pasan por el drenado y reinicio. La regla es deliberadamente conservadora: si el actualizador no reconoce todos los archivos como CSS/documentación segura, pausa primero y despliega después. Esto mantiene la protección de #121 sin interrumpir tareas por ajustes puramente visuales.
 
+## Concurrencia de agentes
+
+Telo admite hasta diez runners principales en total, con una ejecución de OpenCode y dos por cada otro proveedor por defecto. Las esperas no consumen puestos globales; la cola del worker también salta proveedores ocupados antes de preparar nuevos clones. Los reintentos y cambios al modelo de respaldo reservan capacidad para su proveedor real y liberan el puesto entre intentos. El chat muestra cuándo espera capacidad y cuándo obtiene el puesto.
+
+Si la cuota contratada permite más, configurar en el archivo de entorno del servicio y reiniciar siguiendo el drenado:
+
+```ini
+TELO_CONCURRENCIA_PROVEEDORES={"opencode":1,"google":2,"groq":2,"nvidia":2,"openrouter":2,"codex":2}
+```
+
+Cada valor debe ser un entero entre 1 y 10; una configuración inválida conserva el valor seguro. Esto limita ejecuciones principales, no peticiones HTTP individuales ni los hijos que un harness lanza internamente. La delegación nativa necesita su propio presupuesto en el piloto del nuevo motor. No elimina los límites RPM/TPM de los proveedores ni garantiza que una API gratuita responda más rápido.
+
 ## Respaldos en Cloudflare R2
 
 El timer diario crea una copia SQLite verificada y un archivo del espacio de trabajo. R2 es opcional y usa la API S3 con un bucket privado. Telo sube el conjunto local más reciente por defecto, revisa el tamaño y la etiqueta de cada objeto, publica un manifiesto de conjunto completo y solo entonces poda los respaldos remotos. Conserva un conjunto completo en R2 y una copia local por defecto. Si la subida o la validación fallan, no borra copias locales.

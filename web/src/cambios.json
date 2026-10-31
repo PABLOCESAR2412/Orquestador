@@ -3,6 +3,9 @@
   "desde": "c1d06c8",
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
+    { "fecha": "2026-10-30", "tipo": "minimo", "titulo": "Agentes: limita concurrencia por proveedor, evita bloquear otras tareas y recupera actualizaciones de actividad por sondeo", "pr": 143 },
+    { "fecha": "2026-10-30", "tipo": "minimo", "titulo": "Chat: muestra actividad real del proveedor y herramientas en curso; limita reintentos fallidos y detiene consultas de diffs sin copia Git", "pr": 143 },
+    { "fecha": "2026-10-30", "tipo": "minimo", "titulo": "Chat: separa la compactación de la respuesta y permite consultarla plegada", "pr": 143 },
     { "fecha": "2026-10-30", "tipo": "minimo", "titulo": "Agentes: exige delegación explícita por turno y respeta el auxiliar solicitado", "pr": 142 },
     { "fecha": "2026-10-30", "tipo": "minimo", "titulo": "Dictado móvil: actualiza resultados repetidos sin acumular frases y conserva repeticiones reales", "pr": 142 },
     { "fecha": "2026-10-30", "tipo": "minimo", "titulo": "Subagentes: permite que OpenCode escriba su .gitignore sin abrir toda la configuración", "pr": 141 },

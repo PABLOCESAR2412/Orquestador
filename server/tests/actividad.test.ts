@@ -34,6 +34,17 @@ function herramienta(nombre: string, estado: Record<string, unknown>): string {
 }
 
 describe("líneas del agente", () => {
+  test("la cola del proveedor explica la espera y completa el mismo paso al admitir", () => {
+    const fila = (estado: string) => itemDeLinea(JSON.stringify({ type: "telo.queue", id: "espera-1", proveedor: "opencode", estado }));
+    expect(fila("waiting")).toMatchObject({ herramienta: "capacity", callId: "queue:espera-1", estado: "en_curso", titulo: "En cola: esperando capacidad de opencode" });
+    expect(fila("ready")).toMatchObject({ callId: "queue:espera-1", estado: "hecha" });
+    expect(fila("cancelled")).toMatchObject({ estado: "error" });
+    const turno = "turno-capacidad-reanudada";
+    registrarActividad(CONVERSACION, turno, fila("ready")!);
+    registrarActividad(CONVERSACION, turno, fila("waiting")!);
+    expect(actividadDelTurno(CONVERSACION, turno)).toHaveLength(1);
+    expect(actividadDelTurno(CONVERSACION, turno)[0].estado).toBe("en_curso");
+  });
   test("el texto intermedio pasa como paso de texto", () => {
     const linea = JSON.stringify({ type: "text", part: { type: "text", text: "  Voy a leer el archivo.  " } });
     expect(itemDeLinea(linea)).toEqual({ tipo: "texto", texto: "Voy a leer el archivo." });
@@ -79,6 +90,11 @@ describe("líneas del agente", () => {
   test("una herramienta en curso se publica con su id para completar el mismo paso", () => {
     const linea = JSON.stringify({ type: "tool_use", part: { type: "tool", tool: "bash", state: { status: "running" } } });
     expect(itemDeLinea(linea)).toMatchObject({ tipo: "accion", herramienta: "bash", estado: "en_curso" });
+  });
+
+  test("una llamada invalid no se marca hecha aunque OpenCode la complete", () => {
+    expect(itemDeLinea(herramienta("invalid", { output: "Invalid arguments: JSON incompleto" })))
+      .toMatchObject({ estado: "error", titulo: "El modelo envió una llamada de herramienta inválida" });
   });
 
   test("los eventos de Codex convierten comandos y cambios de archivo en actividad", () => {
@@ -224,5 +240,13 @@ describe("registro por turno", () => {
     }
     expect(registrarActividad(CONVERSACION, turno, { tipo: "texto", texto: "de más" })).toBeNull();
     expect(actividadDelTurno(CONVERSACION, turno)).toHaveLength(300);
+  });
+
+  test("un inicio tardío del plugin no revierte una herramienta ya terminada", () => {
+    const turno = "orden-plugin-stdout";
+    registrarActividad(CONVERSACION, turno, itemDeLinea(herramienta("bash", { output: "Prueba terminada" }))!);
+    registrarActividad(CONVERSACION, turno, itemDeLinea(herramienta("bash", { status: "running" }))!);
+    expect(actividadDelTurno(CONVERSACION, turno)).toHaveLength(1);
+    expect(actividadDelTurno(CONVERSACION, turno)[0]).toMatchObject({ estado: "hecha", detalle: "Prueba terminada" });
   });
 });

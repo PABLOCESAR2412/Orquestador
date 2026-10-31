@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { publicar } from "./bus";
+import { esCompactacionOpenCode } from "../../shared/compactacion";
 
 // Pasos del agente en un chat: el texto que dice mientras trabaja y cada acción (leer, buscar,
 // editar, ejecutar) con una vista previa. OpenCode los emite como líneas JSON con `--format json`.
@@ -76,6 +77,8 @@ function describirSinError(
   }
 
   switch (herramienta) {
+    case "invalid":
+      return { titulo: "El modelo envió una llamada de herramienta inválida", detalle: vista ?? cadena(entrada.error) };
     case "read":
       return { titulo: `Leyó ${rutaCorta(ruta) || "un archivo"}`, detalle: vista };
     case "list":
@@ -185,7 +188,7 @@ function describirSinError(
 }
 
 // Convierte una línea de salida de OpenCode en un paso del proceso, o null si no aporta nada que mostrar.
-// Solo cuenta lo terminado: una herramienta en curso no tiene resultado que enseñar todavía.
+// También acepta el inicio observable de una herramienta; su resultado completa el mismo callId.
 export function itemDeLinea(linea: string): ItemActividad | null {
   if (!linea.includes('"type"')) return null;
   let evento: unknown;
@@ -195,6 +198,28 @@ export function itemDeLinea(linea: string): ItemActividad | null {
     return null;
   }
   if (!esRegistro(evento)) return null;
+  if (evento.type === "telo.queue" && cadena(evento.id) && cadena(evento.proveedor) && ["waiting", "ready", "cancelled"].includes(String(evento.estado))) {
+    const proveedor = recortar(cadena(evento.proveedor)!, 60);
+    return { tipo: "accion", herramienta: "capacity", callId: `queue:${evento.id}`,
+      titulo: evento.estado === "waiting" ? `En cola: esperando capacidad de ${proveedor}`
+        : evento.estado === "ready" ? `Capacidad disponible en ${proveedor}` : `Espera cancelada en ${proveedor}`,
+      detalle: null, estado: evento.estado === "waiting" ? "en_curso" : evento.estado === "ready" ? "hecha" : "error" };
+  }
+  if (evento.type === "telo.provider" && cadena(evento.sessionID)) {
+    const status = cadena(evento.status);
+    if (!["busy", "generating", "retry", "idle"].includes(status ?? "")) return null;
+    const intento = typeof evento.attempt === "number" ? evento.attempt : 0;
+    const actividad = typeof evento.actividad === "number" ? evento.actividad : 0;
+    return {
+      tipo: "accion", herramienta: "provider", callId: `provider:${evento.sessionID}`,
+      titulo: status === "retry" ? `El proveedor reintenta la solicitud (${intento}/3)`
+        : status === "generating" ? "Llegan datos del modelo"
+        : status === "idle" ? "El motor terminó la solicitud" : "Solicitud activa en el proveedor",
+      detalle: status === "retry" ? recortar(cadena(evento.message) ?? "Error temporal del proveedor", MAX_DETALLE)
+        : status === "generating" ? `Señales de generación recibidas: ${actividad}. El contenido parcial queda dentro del motor.` : null,
+      estado: status === "idle" ? "hecha" : status === "retry" && intento >= 3 ? "error" : "en_curso",
+    };
+  }
   // Codex CLI usa Responses de tipo item.started/item.completed en lugar del formato de OpenCode.
   // Traducimos solo acciones observables; los eventos de razonamiento nunca se muestran.
   if ((evento.type === "item.started" || evento.type === "item.completed") && esRegistro(evento.item)) {
@@ -272,16 +297,13 @@ export function itemDeLinea(linea: string): ItemActividad | null {
     }
     return null;
   }
-  // OpenCode anuncia esta transición como evento de sesión; se guarda en el mismo registro de pasos.
-  if (evento.type === "session.compacted") {
-    return { tipo: "accion", herramienta: "compaction", titulo: "Contexto compactado automáticamente", detalle: null, estado: "hecha" };
+  // La CLI puede omitir summary/mode y emitir la plantilla interna como texto normal.
+  if (esCompactacionOpenCode(evento)) {
+    const texto = esRegistro(evento.part) ? cadena(evento.part.text)?.trim() : null;
+    return { tipo: "accion", herramienta: "compaction", titulo: "Contexto compactado automáticamente", detalle: texto ? recortar(texto, 32_000) : null, estado: "hecha" };
   }
   if (!esRegistro(evento.part)) return null;
   const parte = evento.part;
-
-  if (parte.type === "compaction" || parte.mode === "compaction" || parte.summary === true) {
-    return { tipo: "accion", herramienta: "compaction", titulo: "Contexto compactado automáticamente", detalle: null, estado: "hecha" };
-  }
 
   if (evento.type === "text" && cadena(parte.text)?.trim()) {
     return { tipo: "texto", texto: recortar(cadena(parte.text)!.trim(), MAX_TEXTO) };
@@ -301,7 +323,7 @@ export function itemDeLinea(linea: string): ItemActividad | null {
       herramienta,
       titulo: recortar(titulo, MAX_TITULO),
       detalle,
-      estado: situacion === "running" ? "en_curso" : situacion === "completed" ? "hecha" : "error",
+      estado: herramienta === "invalid" ? "error" : situacion === "running" ? "en_curso" : situacion === "completed" ? "hecha" : "error",
       ...((cadena(parte.callID) ?? cadena(parte.callId))
         ? { callId: cadena(parte.callID) ?? cadena(parte.callId) }
         : {}),
@@ -324,10 +346,12 @@ export type FilaActividad = {
 export function registrarActividad(conversacionId: string, turnoId: string, item: ItemActividad): number | null {
   const callId = item.tipo === "accion" ? item.callId ?? null : null;
   if (callId) {
-    const existente = db.query<{ seq: number }, [string, string, string]>(
-      "SELECT seq FROM chat_actividad WHERE conversation_id=? AND turno_id=? AND call_id=?",
+    const existente = db.query<{ seq: number; estado: string }, [string, string, string]>(
+      "SELECT seq, estado FROM chat_actividad WHERE conversation_id=? AND turno_id=? AND call_id=?",
     ).get(conversacionId, turnoId, callId);
     if (existente) {
+      // El sondeo del plugin puede entregar un inicio después del final recibido por stdout.
+      if (item.tipo === "accion" && !["provider", "capacity"].includes(item.herramienta) && item.estado === "en_curso" && existente.estado !== "en_curso") return existente.seq;
       const { titulo, detalle } = item.tipo === "accion"
         ? { titulo: item.titulo, detalle: item.detalle }
         : { titulo: item.texto, detalle: null };

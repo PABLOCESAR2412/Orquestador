@@ -1,6 +1,7 @@
 import { closeSync, fstatSync, openSync, readSync, readFileSync } from "node:fs";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
 import { esVariableReservada, SECRETOS_SOLO_SERVIDOR } from "../secretos";
 import type { ImagenAgente } from "../chat-adjuntos";
@@ -8,6 +9,8 @@ import { config } from "../config";
 import { iniciarVigilante, leerConTope } from "./proteccion";
 import type { ServidorMcpAgente } from "../conexiones-mcp";
 import { configuracionOpenCodeMcp } from "../conexiones-mcp";
+import { esCompactacionOpenCode } from "../../../shared/compactacion";
+import { pluginSeguimientoOpenCode } from "./seguimiento-opencode";
 
 // Tope de memoria para la salida del agente: 16 MB en total (arranque de 1 MB con los eventos
 // de sesión, cola de 15 MB con el detalle del fallo; el medio se recorta).
@@ -38,7 +41,7 @@ export function estimarUso(prompt: string, respuesta: string): Usage {
     costeDisponible: false,
   };
 }
-// `text` une todo lo que el agente escribió. `textoFinal` es lo que dijo después de su última
+// `text` une el texto del agente sin resúmenes internos. `textoFinal` es lo dicho después de su última
 // herramienta: la respuesta, sin la narración de los pasos (que el chat muestra aparte).
 export type RunResult = { text: string; textoFinal: string; sessionId: string | null; usage: Usage | null };
 
@@ -370,9 +373,16 @@ export async function runOpenCode(opts: {
   mkdirSync(raiz, { recursive: true, mode: 0o700 });
   const temporal = mkdtempSync(join(raiz, "run-"));
   const archivo = join(temporal, "opencode.json");
+  const captura = join(temporal, "actividad.ndjson");
+  const plugin = join(temporal, "seguimiento.js");
   try {
-    writeFileSync(archivo, JSON.stringify(configuracionOpenCodeMcp(servidores, opts.model)), { encoding: "utf8", flag: "wx", mode: 0o600 });
-    return await ejecutarOpenCode({ ...opts, opencodeMcpConfigPath: archivo });
+    const aislado = aislamientoActivo();
+    writeFileSync(captura, "", { flag: "wx", mode: 0o600 });
+    writeFileSync(plugin, pluginSeguimientoOpenCode(aislado ? "/tmp/telo-mcp-config/actividad.ndjson" : captura, sesionValida(opts.sessionId) ? opts.sessionId : null), { flag: "wx", mode: 0o600 });
+    writeFileSync(archivo, JSON.stringify({ ...configuracionOpenCodeMcp(servidores, opts.model),
+      plugin: [aislado ? "file:///tmp/telo-mcp-config/seguimiento.js" : pathToFileURL(plugin).href],
+    }), { encoding: "utf8", flag: "wx", mode: 0o600 });
+    return await ejecutarOpenCode({ ...opts, opencodeMcpConfigPath: archivo, actividadTracePath: captura });
   } finally {
     rmSync(temporal, { recursive: true, force: true });
   }
@@ -381,6 +391,7 @@ export async function runOpenCode(opts: {
 async function ejecutarOpenCode(opts: {
   servidoresMcp?: ServidorMcpAgente[];
   opencodeMcpConfigPath?: string;
+  actividadTracePath?: string;
   prompt: string;
   model: string;
   variant?: string;
@@ -418,6 +429,7 @@ async function ejecutarOpenCode(opts: {
     opts.opencodeConfigDir,
     opts.subagentesTracePath,
     opts.opencodeMcpConfigPath,
+    opts.actividadTracePath,
   );
 
   // Un id de sesión que no cumple el patrón se ignora: ni se pasa a -s ni se reutiliza.
@@ -531,6 +543,26 @@ async function ejecutarOpenCode(opts: {
     }
   };
 
+  // El motor reintenta algunos errores internamente sin emitirlos por stdout. No limitar
+  // el silencio ni la duración de herramientas: cortar solo una secuencia explícita de fallos.
+  let errorReintentos: ErrorAgente | null = null;
+  let rechazarReintentos: (error: Error) => void = () => {};
+  const reintentosAgotados = new Promise<never>((_, reject) => { rechazarReintentos = reject; });
+  void reintentosAgotados.catch(() => {});
+  const monitorActividad = vigilarSubagentes(opts.actividadTracePath, (linea) => {
+    if (errorReintentos) return;
+    alLeerLinea(linea);
+    const ev = JSON.parse(linea);
+    if (!errorReintentos && ev.type === "telo.provider" && ev.status === "retry" && ev.attempt >= 3) {
+      errorReintentos = new ErrorAgente(
+        "El proveedor falló en tres reintentos internos consecutivos. Se conservan la sesión y los archivos; puedes continuar desde el chat o elegir otro modelo.",
+        JSON.stringify({ message: String(ev.message || "Error temporal del proveedor").slice(0, 1000) }),
+      );
+      terminarGrupo(proc.pid);
+      rechazarReintentos(errorReintentos);
+    }
+  });
+
   let stdout: string, stderr: string, code: number;
   try {
     [stdout, stderr, code] = await Promise.race([
@@ -540,13 +572,17 @@ async function ejecutarOpenCode(opts: {
         proc.exited,
       ]),
       aborted,
+      reintentosAgotados,
     ]);
   } finally {
     if (timer) clearTimeout(timer);
     vigilante.detener();
     if (onAbort) opts.signal?.removeEventListener("abort", onAbort);
     monitorSubagentes.cerrar();
+    monitorActividad.cerrar();
   }
+
+  if (errorReintentos) throw errorReintentos;
 
   const events = parseEvents(stdout);
 
@@ -565,13 +601,18 @@ async function ejecutarOpenCode(opts: {
   }
 
   let text = "";
+  let textoEstimacion = "";
+  let huboCompactacion = false;
   let textoTrasHerramientas = "";
   let sessionId: string | null = null;
   let usage: Usage | null = null;
 
   for (const ev of events) {
     if (sesionValida(ev.sessionID)) sessionId = ev.sessionID;
-    if (ev.type === "text" && ev.part?.text) {
+    if (ev.type === "text" && ev.part?.text) textoEstimacion += ev.part.text;
+    const compactacion = esCompactacionOpenCode(ev);
+    if (compactacion) huboCompactacion = true;
+    if (!compactacion && ev.type === "text" && ev.part?.text) {
       text += ev.part.text;
       textoTrasHerramientas += ev.part.text;
     }
@@ -590,9 +631,11 @@ async function ejecutarOpenCode(opts: {
 
   // Si ningún evento de la sesión reportó tokens (o input y output son 0),
   // estimamos el uso a partir del prompt y texto generado para garantizar registro contable
-  const textoFinal = textoTrasHerramientas.trim() || text.trim();
+  const textoFinal = textoTrasHerramientas.trim() || text.trim() || (huboCompactacion
+    ? "El contexto se compactó, pero la ejecución terminó sin una respuesta final. Puedes continuar desde la sesión guardada."
+    : "");
   if (!usage || (usage.input === 0 && usage.output === 0)) {
-    usage = estimarUso(opts.prompt, textoFinal);
+    usage = estimarUso(opts.prompt, textoEstimacion.trim() || textoFinal);
     opts.onUso?.(usage);
   }
 

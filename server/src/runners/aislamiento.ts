@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { config } from "../config";
 import { carpetaEntregables } from "../entregables";
 import { hallarEjecutable } from "../ejecutable";
@@ -162,6 +162,7 @@ export function prefijoAislamiento(
   opencodeConfigDir?: string,
   opencodeSubagentesTracePath?: string,
   opencodeMcpConfigPath?: string,
+  opencodeActividadTracePath?: string,
 ): string[] {
   if (!aislamientoActivo()) return [];
 
@@ -295,6 +296,18 @@ export function prefijoAislamiento(
     }
     args.push("--dir", "/tmp/telo-mcp-config");
     args.push("--ro-bind", configuracionReal, "/tmp/telo-mcp-config/opencode.json");
+    if (opencodeActividadTracePath) {
+      const captura = rutaReal(opencodeActividadTracePath);
+      const carpeta = dirname(configuracionReal);
+      const plugin = join(carpeta, "seguimiento.js");
+      const statCaptura = lstatSync(opencodeActividadTracePath);
+      const statPlugin = lstatSync(plugin);
+      if (!captura || captura !== join(carpeta, "actividad.ndjson") || !statCaptura.isFile() || statCaptura.isSymbolicLink() || statCaptura.nlink !== 1 ||
+        !statPlugin.isFile() || statPlugin.isSymbolicLink() || statPlugin.nlink !== 1 || rutaReal(plugin) !== plugin) {
+        throw new AislamientoError("carpeta_no_permitida", "El registro temporal de actividad no es seguro.");
+      }
+      args.push("--ro-bind", plugin, "/tmp/telo-mcp-config/seguimiento.js", "--bind", captura, "/tmp/telo-mcp-config/actividad.ndjson");
+    }
   }
 
   // Rutas extra en solo lectura (TELO_LECTURA_EXTRA, separadas por ":"), por ejemplo la carpeta de opencode

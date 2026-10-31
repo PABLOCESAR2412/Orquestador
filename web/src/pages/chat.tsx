@@ -47,7 +47,7 @@ import { leerBorrador, guardarBorrador, leerEnvio, guardarEnvio, borrarEnvio } f
 import { crearDictador, ctorVoz, type Dictador } from "../lib/chat-dictado";
 import { PLANTILLAS_GAUNTLET } from "../lib/plantillas-gauntlet";
 import { actualizarVentanaMensajes } from "../lib/chat-mensajes";
-import { tareaVisibleDelChat } from "../lib/actividad-chat";
+import { integrarActividadGuardada, tareaVisibleDelChat } from "../lib/actividad-chat";
 import "../styles-chat.css";
 import "../styles-flujo.css";
 
@@ -1123,8 +1123,10 @@ export function ChatPage() {
   useEffect(() => {
     if (!selectedId || !turnoEnCurso || !actividadGuardada.data?.length) return;
     setVivos((prev) => {
-      if (prev[selectedId]?.turnoId === turnoEnCurso) return prev;
-      return { ...prev, [selectedId]: { turnoId: turnoEnCurso, pasos: actividadGuardada.data! } };
+      const actuales = prev[selectedId]?.turnoId === turnoEnCurso ? prev[selectedId].pasos : [];
+      const pasos = integrarActividadGuardada(actuales, actividadGuardada.data!);
+      if (JSON.stringify(actuales) === JSON.stringify(pasos)) return prev;
+      return { ...prev, [selectedId]: { turnoId: turnoEnCurso, pasos } };
     });
   }, [selectedId, turnoEnCurso, actividadGuardada.data]);
   const candidatasSugerencia = useMemo(() => sugerenciasChat(lista), [lista]);
@@ -1798,20 +1800,9 @@ export function ChatPage() {
                     </>
                   ) : (
                     <>
-                      {m.sesion_compactada ? (
-                        <p className="tl-hilo-compacta" role="note">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-                            <path d="M16 3h3a2 2 0 0 1 2 2v3" />
-                            <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
-                            <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-                            <path d="M8 9h8M8 12h8M8 15h5" />
-                          </svg>
-                          Sesión compactada · el contexto anterior se resumió para continuar
-                        </p>
-                      ) : null}
                       <MensajeAgente
                         texto={m.content}
+                        sesionCompactada={Boolean(m.sesion_compactada)}
                         cuando={m.created_at}
                         modelo={m.model ? modelList.find((modelo) => modelo.id === m.model)?.name ?? m.model : null}
                         esfuerzo={m.effort}
