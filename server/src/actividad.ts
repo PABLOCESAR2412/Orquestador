@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { publicar } from "./bus";
+import { esCompactacionOpenCode } from "../../shared/compactacion";
 
 // Pasos del agente en un chat: el texto que dice mientras trabaja y cada acción (leer, buscar,
 // editar, ejecutar) con una vista previa. OpenCode los emite como líneas JSON con `--format json`.
@@ -272,16 +273,13 @@ export function itemDeLinea(linea: string): ItemActividad | null {
     }
     return null;
   }
-  // OpenCode anuncia esta transición como evento de sesión; se guarda en el mismo registro de pasos.
-  if (evento.type === "session.compacted") {
-    return { tipo: "accion", herramienta: "compaction", titulo: "Contexto compactado automáticamente", detalle: null, estado: "hecha" };
+  // La CLI puede omitir summary/mode y emitir la plantilla interna como texto normal.
+  if (esCompactacionOpenCode(evento)) {
+    const texto = esRegistro(evento.part) ? cadena(evento.part.text)?.trim() : null;
+    return { tipo: "accion", herramienta: "compaction", titulo: "Contexto compactado automáticamente", detalle: texto ? recortar(texto, 32_000) : null, estado: "hecha" };
   }
   if (!esRegistro(evento.part)) return null;
   const parte = evento.part;
-
-  if (parte.type === "compaction" || parte.mode === "compaction" || parte.summary === true) {
-    return { tipo: "accion", herramienta: "compaction", titulo: "Contexto compactado automáticamente", detalle: null, estado: "hecha" };
-  }
 
   if (evento.type === "text" && cadena(parte.text)?.trim()) {
     return { tipo: "texto", texto: recortar(cadena(parte.text)!.trim(), MAX_TEXTO) };

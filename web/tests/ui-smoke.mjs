@@ -68,11 +68,16 @@ try {
     page.on("pageerror", error => { errors.push(error.message); console.error(error.message); });
     const now = new Date().toISOString();
     const task = { id: "t1", title: "Prueba", model: "google/prueba", modelo_agotado: null, status: "done", created_at: now, started_at: now, finished_at: now, plan: null, reporte: null };
+    const resumenCompactacion = "## Objective\n- COMPACTACION-INTERNA-PRUEBA\n## Important Details\n- Conservar el contexto.\n## Work State\n### Completed\n- Lectura.\n### Active\n- Verificación.\n### Blocked\n- (none)\n## Next Move\n1. Continuar.\n## Relevant Files\n- src/app.ts";
     const messages = [
       { id: "u1", role: "user", content: "git commit y push", created_at: now },
       { id: "a1", role: "assistant", content: '{"estado":"fallo","resumen":"Faltan dependencias","desviacion":"Instala antes de probar","pendientes":["x".replace("x","y")]}<telo-memoria>MEMORIA_INTERNA</telo-memoria>', model: "groq/llama-test", effort: "low", created_at: now },
       { id: "u2", role: "user", content: "prepara de nuevo el git commit y push", created_at: now },
       { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\nAbre `server/src/ejecutar.ts:3-20` para ver el ejemplo. También revisa `Chat.tsx` y `Gone.tsx`.\n\nPDF generado: `informe revisión.pdf`.\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Uso por área\",\"unit\":\"tokens\",\"data\":[{\"label\":\"Chat\",\"value\":120},{\"label\":\"Tareas\",\"value\":80}]}\n```\n\n```chart\n{\"type\":\"line\",\"title\":\"Uso diario\",\"data\":[{\"label\":\"Lun\",\"value\":20},{\"label\":\"Mar\",\"value\":35}]}\n```\n\n```chart\n{\"type\":\"pie\",\"title\":\"Distribución\",\"data\":[{\"label\":\"A\",\"value\":3},{\"label\":\"B\",\"value\":2}]}\n```\n\n```chart\n{\"type\":\"donut\",\"title\":\"Resultados\",\"data\":[{\"label\":\"Correcto\",\"value\":9},{\"label\":\"Pendiente\",\"value\":1}]}\n```\n\n```chart\n{\"type\":\"stats\",\"title\":\"Resumen\",\"unit\":\"pruebas\",\"data\":[{\"label\":\"Correctas\",\"value\":11,\"detail\":\"En verde\"}]}\n```\n\n```chart\nesto no es JSON\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Balance\",\"data\":[{\"label\":\"Ingresos\",\"value\":5},{\"label\":\"Ajustes\",\"value\":-2}]}\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", model: "nvidia/nemotron-test", effort: "high", created_at: now },
+      { id: "u-compact-old", role: "user", content: "Continúa el trabajo anterior", created_at: now },
+      { id: "a-compact-old", role: "assistant", content: resumenCompactacion, created_at: now },
+      { id: "u-compact-new", role: "user", content: "Termina después de resumir el contexto", created_at: now },
+      { id: "a-compact-new", role: "assistant", content: "Resultado visible después de compactar.", sesion_compactada: 1, created_at: now },
       { id: "u-stale", role: "user", content: "Solicitud fallida anterior", created_at: now },
       { id: "s-stale", role: "system", content: "La solicitud anterior falló.", created_at: now },
       { id: "u-retry", role: "user", content: "Quiero una segunda versión de este PDF", created_at: now },
@@ -163,6 +168,9 @@ try {
       }
       else if (path === "/api/conversations/c1/turnos/u1/subagentes") data = [
         { id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true },
+      ];
+      else if (path === "/api/conversations/c1/turnos/u-compact-new/actividad") data = [
+        { seq: 1, tipo: "accion", herramienta: "compaction", titulo: "Contexto compactado automáticamente", detalle: resumenCompactacion, estado: "hecha" },
       ];
       else if (path === "/api/conversations/c-child/messages") data = [
         { id: "child-u1", role: "user", content: "Revisa las rutas y reporta riesgos", created_at: now },
@@ -459,6 +467,22 @@ try {
     await page.getByRole("button", { name: "Volver al chat principal: Prueba de flujo", exact: true }).click();
     await page.getByRole("heading", { name: "Prueba de flujo", exact: true }).waitFor();
     console.log(`${width}px: actividad en vivo y navegación entre supervisor y subchat comprobadas`);
+    const compactaciones = page.locator(".tl-compactacion");
+    assert.equal(await compactaciones.count(), 2, "el resumen antiguo y la compactación nueva tienen controles independientes");
+    assert.equal(await compactaciones.locator("pre").count(), 0, "ninguna compactación se muestra abierta al entrar");
+    await compactaciones.first().locator("summary").click();
+    await compactaciones.first().locator("pre").waitFor();
+    assert.equal(await compactaciones.first().locator("pre").textContent(), resumenCompactacion, "el resumen histórico se conserva íntegro al expandir");
+    await compactaciones.first().locator("summary").click();
+    await compactaciones.last().locator("summary").click();
+    await compactaciones.last().locator("pre").waitFor();
+    assert.equal(await compactaciones.last().locator("pre").textContent(), resumenCompactacion, "el nuevo resumen se carga desde la actividad del turno");
+    assert.equal(await page.getByText("Resultado visible después de compactar.", { exact: true }).isVisible(), true, "la respuesta final permanece separada");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/compactacion-${width}.png` });
+    await compactaciones.last().locator("summary").click();
+    await page.getByText("Resultado visible después de compactar.", { exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `scratch/capturas-ci/compactacion-plegada-${width}.png` });
     if (width === 390) {
       await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
       const filaChatAnterior = page.locator('.sidebar-conv[aria-label="Chat anterior"]').locator("..");

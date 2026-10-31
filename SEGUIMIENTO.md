@@ -4,6 +4,13 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 30 de octubre de
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Compactación fuera de la respuesta — 30 de octubre de 2026
+
+- [x] **El resumen interno aparecía como entrega.** La plantilla `Objective / Important Details / Work State / Next Move / Relevant Files` coincide con el resumen de OpenCode. Su CLI emite los bloques de texto sin incluir siempre los metadatos `summary` del mensaje. Telo reconoce la plantilla completa o los metadatos explícitos, guarda el resumen como actividad de compactación y lo excluye de la respuesta final; conserva sesión y contabilidad de uso. Si el proceso termina solo con compactación, avisa que todavía falta la respuesta final.
+- [x] **Consulta plegada.** «Ver compactación» queda cerrado al abrir el chat y carga el resumen desde la actividad al expandir. Los mensajes antiguos con la firma completa también se pliegan, sin modificar sus datos guardados. Respuestas normales y ejemplos dentro de bloques de código no se clasifican por unas pocas palabras sueltas.
+- Evidencia local: 24 pruebas dirigidas de compactación/actividad/marcas y typecheck del servidor pasan; build web correcto. El recorrido de navegador comprueba resumen antiguo, carga de un resumen nuevo y respuesta final separada en 390/1440 px. Falta confirmar el flujo con OpenCode real en la VM tras desplegar.
+- Fuente de la firma y del comportamiento de la CLI: [plantilla de OpenCode](https://github.com/anomalyco/opencode/blob/v1.19.4/packages/core/src/session/compaction.ts), [emisión de texto en la CLI](https://github.com/anomalyco/opencode/blob/v1.19.4/packages/opencode/src/cli/cmd/run.ts).
+
 ## Delegación explícita y dictado móvil — 30 de octubre de 2026
 
 - [x] **Delegación por turno.** Guardar auxiliares en el Supervisor ya no inicia selección ni llamadas en peticiones normales. La solicitud actual debe pedir delegación; negaciones, consultas informativas y citas no la autorizan. Una función o modelo nombrado limita los auxiliares. OpenCode recibe `task: deny` en ejecuciones unitarias, también al reanudar sesiones; los perfiles autorizados permiten sus alias temporales y los hijos deniegan más delegación. Las plantillas aplican una especialidad al principal; la opción de auxiliares añade una petición explícita al borrador.

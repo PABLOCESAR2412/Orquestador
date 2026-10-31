@@ -8,6 +8,7 @@ import { config } from "../config";
 import { iniciarVigilante, leerConTope } from "./proteccion";
 import type { ServidorMcpAgente } from "../conexiones-mcp";
 import { configuracionOpenCodeMcp } from "../conexiones-mcp";
+import { esCompactacionOpenCode } from "../../../shared/compactacion";
 
 // Tope de memoria para la salida del agente: 16 MB en total (arranque de 1 MB con los eventos
 // de sesión, cola de 15 MB con el detalle del fallo; el medio se recorta).
@@ -38,7 +39,7 @@ export function estimarUso(prompt: string, respuesta: string): Usage {
     costeDisponible: false,
   };
 }
-// `text` une todo lo que el agente escribió. `textoFinal` es lo que dijo después de su última
+// `text` une el texto del agente sin resúmenes internos. `textoFinal` es lo dicho después de su última
 // herramienta: la respuesta, sin la narración de los pasos (que el chat muestra aparte).
 export type RunResult = { text: string; textoFinal: string; sessionId: string | null; usage: Usage | null };
 
@@ -565,13 +566,18 @@ async function ejecutarOpenCode(opts: {
   }
 
   let text = "";
+  let textoEstimacion = "";
+  let huboCompactacion = false;
   let textoTrasHerramientas = "";
   let sessionId: string | null = null;
   let usage: Usage | null = null;
 
   for (const ev of events) {
     if (sesionValida(ev.sessionID)) sessionId = ev.sessionID;
-    if (ev.type === "text" && ev.part?.text) {
+    if (ev.type === "text" && ev.part?.text) textoEstimacion += ev.part.text;
+    const compactacion = esCompactacionOpenCode(ev);
+    if (compactacion) huboCompactacion = true;
+    if (!compactacion && ev.type === "text" && ev.part?.text) {
       text += ev.part.text;
       textoTrasHerramientas += ev.part.text;
     }
@@ -590,9 +596,11 @@ async function ejecutarOpenCode(opts: {
 
   // Si ningún evento de la sesión reportó tokens (o input y output son 0),
   // estimamos el uso a partir del prompt y texto generado para garantizar registro contable
-  const textoFinal = textoTrasHerramientas.trim() || text.trim();
+  const textoFinal = textoTrasHerramientas.trim() || text.trim() || (huboCompactacion
+    ? "El contexto se compactó, pero la ejecución terminó sin una respuesta final. Puedes continuar desde la sesión guardada."
+    : "");
   if (!usage || (usage.input === 0 && usage.output === 0)) {
-    usage = estimarUso(opts.prompt, textoFinal);
+    usage = estimarUso(opts.prompt, textoEstimacion.trim() || textoFinal);
     opts.onUso?.(usage);
   }
 

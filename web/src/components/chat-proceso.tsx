@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type PasoActividad, type SubagentChat } from "../api";
 import { errorText } from "../lib/model";
 import { LoadingSkeleton } from "./loading-skeleton";
+import { esResumenCompactacion } from "../../../shared/compactacion";
 
 // Proceso del agente en un chat: lo que dijo mientras trabajaba y cada acción con su vista previa.
 // Se ve en vivo mientras el agente corre, y después desde "Ver proceso" debajo de la respuesta.
@@ -182,9 +183,11 @@ export function ProcesoAgente({
       {visibles.map((p) =>
         p.tipo === "texto" ? (
           <li key={p.seq} className="tl-proceso-texto">
-            <strong className="tl-proceso-actor">{actor}</strong>
-            <span aria-hidden="true"> · </span>
-            {p.titulo}
+            {esResumenCompactacion(p.titulo) ? <CompactacionContexto texto={p.titulo} /> : <>
+              <strong className="tl-proceso-actor">{actor}</strong>
+              <span aria-hidden="true"> · </span>
+              {p.titulo}
+            </>}
           </li>
         ) : (
           <li key={p.seq} className="tl-proceso-accion">
@@ -273,6 +276,37 @@ export function ProcesoGuardado({
         </div>
       )}
     </div>
+  );
+}
+
+export function CompactacionContexto({ texto, proceso }: {
+  texto?: string;
+  proceso?: { conversacionId: string; turnoId: string };
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const pasos = useQuery({
+    queryKey: ["actividad", proceso?.conversacionId, proceso?.turnoId],
+    queryFn: () => proceso ? api.listTurnoActividad(proceso.conversacionId, proceso.turnoId) : Promise.resolve([]),
+    enabled: abierto && !texto && Boolean(proceso),
+    staleTime: Infinity,
+  });
+  const resumenes = texto ? [texto] : (pasos.data ?? [])
+    .filter((p) => p.herramienta === "compaction" || (p.tipo === "texto" && esResumenCompactacion(p.titulo)))
+    .map((p) => p.tipo === "texto" ? p.titulo : p.detalle).filter((t): t is string => Boolean(t));
+  return (
+    <details className="tl-proceso-wrap tl-compactacion" onToggle={(event) => setAbierto(event.currentTarget.open)}>
+      <summary className="tl-proceso-boton">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true" className={abierto ? "is-abierto" : undefined}><polyline points="9 18 15 12 9 6" /></svg>
+        Ver compactación
+      </summary>
+      {abierto && <div className="tl-proceso-cuerpo">
+        <p className="tl-nota">El contexto anterior se resumió para que el agente pudiera continuar.</p>
+        {!texto && pasos.isPending && proceso && <LoadingSkeleton tipo="lineas" cantidad={2} />}
+        {pasos.isError && <p role="alert" className="error-text">{errorText(pasos.error)}</p>}
+        {resumenes.map((resumen, i) => <pre key={i} className="tl-paso-detalle">{resumen}</pre>)}
+        {!texto && pasos.isSuccess && !resumenes.length && <p className="tl-nota">Esta ejecución guardó la marca de compactación, pero no el resumen.</p>}
+      </div>}
+    </details>
   );
 }
 
