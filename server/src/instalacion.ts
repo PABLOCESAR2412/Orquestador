@@ -5,6 +5,7 @@ import { redactar, valoresDeConfiguracion } from "./redaccion";
 import { hallarEjecutable, lanzarEnGrupo, matarGrupo } from "./ejecutable";
 import { registrarTrabajo } from "./despliegue";
 
+const COMANDO_ANTIGRAVITY = `script="$(mktemp)"; trap 'rm -f "$script"' EXIT; curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error --location --max-filesize 1048576 https://antigravity.google/cli/install.sh -o "$script"; test -s "$script"; bash -n "$script"; bash "$script"`;
 
 // Instalación de herramientas desde la app. La API recibe solo un identificador de esta lista, nunca un
 // comando. Las acciones usan parámetros fijos y entorno mínimo (sin TELO_* ni claves).
@@ -26,25 +27,25 @@ type Accion = {
 const ACCIONES = {
   opencode: {
     nombre: "OpenCode",
-    comando: "npm install -g --prefix ~/.opencode opencode-ai",
+    comando: "npm install -g --prefix ~/.opencode opencode-ai@1.19.5",
     programa: "npm",
-    argv: (prefijo) => ["install", "-g", "--prefix", prefijo, "opencode-ai"],
+    argv: (prefijo) => ["install", "-g", "--prefix", prefijo, "opencode-ai@1.19.5"],
     ejecutable: (prefijo) => join(prefijo, "bin", "opencode"),
     binario: "opencode",
   },
   codex: {
     nombre: "Codex",
-    comando: "npm install -g --prefix ~/.opencode @openai/codex",
+    comando: "npm install -g --prefix ~/.opencode @openai/codex@0.166.0",
     programa: "npm",
-    argv: (prefijo) => ["install", "-g", "--prefix", prefijo, "@openai/codex"],
+    argv: (prefijo) => ["install", "-g", "--prefix", prefijo, "@openai/codex@0.166.0"],
     ejecutable: (prefijo) => join(prefijo, "bin", "codex"),
     binario: "codex",
   },
   antigravity: {
     nombre: "Antigravity CLI",
-    comando: "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+    comando: COMANDO_ANTIGRAVITY,
     programa: "bash",
-    argv: () => ["-o", "pipefail", "-c", "curl -fsSL https://antigravity.google/cli/install.sh | bash"],
+    argv: () => ["-e", "-u", "-o", "pipefail", "-c", COMANDO_ANTIGRAVITY],
     ejecutable: () => join(carpetaHome(), ".local", "bin", "agy"),
     binario: "agy",
   },

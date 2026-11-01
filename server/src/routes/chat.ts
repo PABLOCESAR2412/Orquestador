@@ -35,8 +35,11 @@ const DEFAULT_MODEL = "opencode/big-pickle";
 const MAX_CONTENIDO = 30_000;
 // Lo que se muestra en el chat si el agente falla: se corta para que no llene la conversación.
 const MAX_DETALLE_ERROR = 300;
-const chatWorkspace = join(config.dataDir, "chat-workspace");
-mkdirSync(chatWorkspace, { recursive: true });
+function carpetaWorkspaceChat(): string {
+  const carpeta = join(config.dataDir, "chat-workspace");
+  mkdirSync(carpeta, { recursive: true });
+  return carpeta;
+}
 
 type PermisoPreview = { conversacion: string; raiz: string; sesion: string | undefined; vence: number };
 const permisosPreview = new Map<string, PermisoPreview>();
@@ -939,7 +942,7 @@ function raicesArchivosConversacion(conversacion: ConversationRow): string[] {
   // Los turnos normales de chat siempre escriben en chat-workspace, incluso si la conversación
   // está vinculada a un proyecto. El repositorio también es una raíz válida para sus archivos.
   const raizChat = conversacion.subagent_workspace
-    ?? join(chatWorkspace, conversacion.parent_conversation_id ?? conversacion.id);
+    ?? join(carpetaWorkspaceChat(), conversacion.parent_conversation_id ?? conversacion.id);
   return [...new Set([
     ...[...workspaces, raizChat, ...(conversacion.repo_path ? [conversacion.repo_path] : [])].map(carpetaEntregables),
     ...workspaces,
@@ -1146,7 +1149,7 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       tipo: "texto",
       texto: `Solicitud recibida. Preparando contexto para el modelo ${model}.`,
     });
-    const cwd = conv.subagent_workspace || join(chatWorkspace, conv.parent_conversation_id ?? conversationId);
+    const cwd = conv.subagent_workspace || join(carpetaWorkspaceChat(), conv.parent_conversation_id ?? conversationId);
     mkdirSync(cwd, { recursive: true });
     const mensajeDelegacion = db.query<{ delegacion_origen: string | null }, [string, string]>(
       "SELECT delegacion_origen FROM messages WHERE id=? AND conversation_id=? AND role='user'",

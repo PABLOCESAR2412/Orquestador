@@ -265,6 +265,8 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
 
   const modeloSolicitado = task.model;
   const esfuerzoSolicitado = task.effort;
+  const inicioLlamada = performance.now();
+  let primeraActividad = false;
   let perfilesSubagente: Awaited<ReturnType<typeof prepararSubagentes>> = null;
   let huboSubagentes = false;
   let turnoTerminado = false;
@@ -334,6 +336,10 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
       },
       onLinea: (linea) => {
         if (!linea.trim()) return;
+        if (!primeraActividad) {
+          primeraActividad = true;
+          registrarEvento(task.id, "primera_actividad", `Primera salida del agente tras ${Math.round(performance.now() - inicioLlamada)} ms desde el inicio de la fase.`);
+        }
         salida.linea(linea);
         if (task.conversation_id) {
           const item = itemDeLinea(linea);
@@ -503,6 +509,7 @@ async function ejecutarTarea(task: QueuedTask) {
   // Con proyecto de Git, la tarea trabaja en su clon; con proyecto sin Git, en la carpeta del proyecto;
   // sin proyecto, en su carpeta temporal.
   let cwd: string;
+  const inicioPreparacion = performance.now();
   try {
     const workspace = join(config.dataDir, "tasks", task.id);
     mkdirSync(workspace, { recursive: true });
@@ -530,6 +537,7 @@ async function ejecutarTarea(task: QueuedTask) {
     .query("UPDATE tasks SET status = ?, started_at = datetime('now'), finished_at = NULL, workspace = ?, continuar = 0 WHERE id = ? AND status = 'queued'")
     .run(aprobado ? "running" : "analyzing", cwd, task.id);
   if (marcada.changes === 0) return;
+  registrarEvento(task.id, "workspace_preparado", `Copia de trabajo preparada en ${Math.round(performance.now() - inicioPreparacion)} ms.`);
   publicarEstado(task.id);
   if (!aprobado) registrarEvento(task.id, "iniciada", `Analizador · modelo ${task.model}`);
 

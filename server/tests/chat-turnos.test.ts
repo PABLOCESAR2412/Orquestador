@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -61,6 +61,13 @@ echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"Res
   );
   chmodSync(join(bin, "opencode"), 0o755);
   process.env.PATH = `${bin}${delimiter}${RESTAURAR.PATH ?? ""}`;
+  process.env.TELO_AISLAMIENTO = "desactivado";
+});
+
+beforeEach(() => {
+  process.env.DATA_DIR = join(RAIZ_PRUEBAS, "data");
+  process.env.TELO_PROYECTOS_DIR = join(RAIZ_PRUEBAS, "proyectos");
+  process.env.PATH = `${join(carpeta, "bin")}${delimiter}${RESTAURAR.PATH ?? ""}`;
   process.env.TELO_AISLAMIENTO = "desactivado";
 });
 

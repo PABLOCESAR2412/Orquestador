@@ -16,6 +16,32 @@ Desde Telo: clona Test, pide un cambio mínimo en un archivo de prueba, revisa e
 
 Un timer de systemd revisa `main` cada 5 minutos y comparte con el respaldo un `flock`. Si el cambio se limita a `web/src/*.css`, `web/src/cambios.json` y documentación (`README.md`, `SEGUIMIENTO.md` o este archivo), no crea una pausa ni reinicia el servidor. La interfaz se compila en una carpeta temporal; primero se publican los assets con hash y al final se sustituye `index.html`, para que las tareas y las pestañas abiertas sigan usando archivos completos. Los assets antiguos se conservan para clientes que aún los soliciten.
 
+Antes de desplegar cualquier commit de `main`, el timer consulta la API de GitHub para ese SHA y exige que los checks `servidor` e `interfaz` terminen con `success`. Si un check sigue en curso, falta o falla, ese ciclo se pospone; el siguiente vuelve a consultar y acepta una nueva ejecución de CI sin requerir otro commit. La falta de autenticación o un error de red también bloquea el despliegue. El token solo se usa en `orquestador-deploy.service`, nunca se pasa al servicio web ni a los agentes.
+
+La instalación de Antigravity descarga el instalador oficial por HTTPS, limita su tamaño y comprueba su sintaxis antes de ejecutarlo. Google no publica un checksum o firma verificable para ese script; TLS protege el transporte, pero no ofrece una verificación criptográfica independiente del contenido.
+
+Como el repositorio es privado, crea un token fine-grained limitado a `PABLOCESAR2412/Orquestador` con permiso **Checks: Read-only**. En el VM crea el archivo de entorno y edítalo directamente; no pegues el valor en el chat ni en un comando:
+
+```bash
+sudo install -o root -g root -m 600 /dev/null /etc/orquestador/deploy.env
+sudoedit /etc/orquestador/deploy.env
+```
+
+Contenido dentro del editor:
+
+```ini
+TELO_GITHUB_CI_TOKEN=github_pat_REEMPLAZAR_EN_EL_EDITOR
+```
+
+Después de incorporar la unidad actualizada desde `main`, recárgala y ejecuta un ciclo manual para comprobar los registros:
+
+```bash
+sudo cp ~/orquestador/orquestador/deploy/orquestador-deploy.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl start orquestador-deploy.service
+journalctl -u orquestador-deploy.service -n 30 --no-pager
+```
+
 Los demás cambios se tratan como potencialmente capaces de afectar el chat o las tareas: la API rechaza nuevas escrituras, el worker deja de tomar trabajos y una señal exclusiva hace que los turnos activos se detengan y queden reanudables. Se conserva la sesión del proveedor y el workspace; al volver el servicio, el usuario puede continuar manualmente. La cola y los planes pendientes de aprobación se conservan. Si algún proceso no termina dentro del plazo, el ciclo se pospone sin detener el servicio. Una vez drenado, el actualizador para el servicio, avanza `main`, instala dependencias congeladas y compila. Después arranca y comprueba `/api/health`; ante un build o arranque fallido, restaura el código anterior, reinstala, recompila y verifica. La base conserva las migraciones aditivas.
 
 La primera instalación de este protocolo requiere una actualización manual con agentes terminados y servicio parado: una versión anterior no reconoce la señal de pausa ni expone el contador de trabajos. Verifica que no quedan procesos OpenCode/Codex externos y pausa también el timer de respaldo durante ese primer cambio. No modifiques el checkout de un servicio activo. Después de instalar esta versión, solo los cambios clasificados como capaces de afectar el runtime detendrán tareas; los cambios visuales CSS y documentación seguirán aplicándose en vivo.
@@ -111,7 +137,7 @@ Usuario `orquestador`, repo en `/home/orquestador/orquestador`.
    which systemctl  # si no es /usr/bin/systemctl, ajusta la regla de sudoers
    ```
 
-3. Instala el script, las unidades y la regla de sudo, que solo permite parar, arrancar y reiniciar `orquestador`. Requiere `flock` (util-linux), curl y pgrep:
+3. Instala el script, las unidades y la regla de sudo, que solo permite parar, arrancar y reiniciar `orquestador`. Requiere `flock` (util-linux), curl y pgrep. Antes de habilitar el timer configura `/etc/orquestador/deploy.env` como se indicó arriba:
 
    ```bash
    chmod +x deploy/actualizar.sh
@@ -154,6 +180,13 @@ Sin ese permiso, la pestaña muestra un aviso en lugar de los registros. El gast
 
 - **Instalar OpenCode** usa `npm` del PATH de `orquestador.service`. Si no hay `npm`, el botón lo dice. Instala en `~/.opencode`, que el agente ya ve en solo lectura. El servidor añade esa carpeta a su PATH sin reiniciar. No hace falta sudo.
 - **Login de Codex** necesita el CLI `codex` en el servidor. Antes de usarlo, confirma con `codex login --help` que existe `--device-auth`, y mira qué archivo de sesión crea (la app espera `~/.codex/auth.json`; si es otro, hay que cambiarlo en `server/src/login-cli.ts`).
+- **Aislamiento de credenciales Codex:** antes de ejecutar modelos Codex en Telo, instala la política administrada que impide que los comandos del agente lean `auth.json` y `config.toml` desde sus dos rutas visibles dentro de Bubblewrap:
+
+  ```bash
+  sudo bash ./deploy/instalar-politica-codex.sh orquestador
+  ```
+
+  El script crea `/etc/codex/requirements.toml` solo si todavía no existe y lo deja propiedad de `root`; exige que el directorio también sea confiable. Si ya existe una política, no la reemplaza: añade las cuatro rutas a `permissions.filesystem.deny_read` y vuelve a ejecutar el script. Telo verifica la política y los permisos antes de lanzar Codex, y falla de forma cerrada si algo falta. El runner mantiene el sandbox `workspace-write`; Bubblewrap sigue imponiendo su propio límite al workspace.
 
 ## Google Drive para archivar espacios de tareas (una vez)
 

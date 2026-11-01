@@ -12,6 +12,8 @@ export type TipoEvento =
   | "creada"
   | "iniciada"
   | "sesion_asignada"
+  | "primera_actividad"
+  | "workspace_preparado"
   | "cancelacion_pedida"
   | "interrumpida"
   | "reanudada"

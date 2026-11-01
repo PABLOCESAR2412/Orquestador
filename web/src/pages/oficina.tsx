@@ -29,7 +29,7 @@ export function OfficePage() {
   const conversaciones = useQuery({ queryKey: ["conversations"], queryFn: api.listConversations, refetchInterval: 30_000, refetchIntervalInBackground: false });
   const principales = (conversaciones.data ?? []).filter((c) => !c.parent_conversation_id);
   const ordenados = [...principales].sort((a, b) => Number(Boolean(b.en_proceso || b.ocupada || b.pendiente_aprobacion)) - Number(Boolean(a.en_proceso || a.ocupada || a.pendiente_aprobacion)));
-  const visibles = ordenados.slice(0, 12);
+  const visibles = ordenados;
   const actual = visibles.find((c) => c.id === seleccion) ?? visibles[0];
   const abrir = (id: string) => { setSelectedConversationId(id); void navigate({ to: "/chat" }); };
   return <main className="oficina container">
@@ -38,8 +38,8 @@ export function OfficePage() {
     <div className="oficina-distribucion">
       <section className="oficina-plano" aria-label="Oficina de agentes">
         <div className="oficina-pared"><span className="oficina-ventanas" aria-hidden="true"><i /><i /><i /></span><strong>TELO · OFICINA DE AGENTES</strong></div>
-        <div className="oficina-sala oficina-reunion"><strong>Dirección</strong><div className="oficina-pizarra" aria-hidden="true">PLAN DE TRABAJO</div><div className="oficina-mesa-reunion" /><small>Coordinación de supervisores</small></div>
-        <div className="oficina-sala oficina-cafe"><strong>Espacio común</strong><div className="oficina-barra">CAFÉ <span aria-hidden="true">▣</span></div><div className="oficina-planta" aria-hidden="true" /><small>Movimientos decorativos</small></div>
+        <div className="oficina-sala oficina-cafe"><strong>Cocina y descanso</strong><div className="oficina-barra">CAFÉ <span aria-hidden="true">▣</span></div><div className="oficina-planta" aria-hidden="true" /></div>
+        <div className="oficina-sala oficina-reunion"><strong>Sala de reuniones</strong><div className="oficina-pizarra" aria-hidden="true">PLAN DE TRABAJO</div><div className="oficina-mesa-reunion" /></div>
         <div className="oficina-area"><div className="oficina-area-titulo"><strong>Supervisores</strong><span>{principales.length} conversaciones</span></div>
           <div className="oficina-escritorios">
             {visibles.map((c, i) => <button type="button" key={c.id} className={`oficina-puesto ${estado(c) === "En ejecución" ? "is-activa" : "is-descanso"} ${actual?.id === c.id ? "is-selected" : ""}`} onClick={() => setSeleccion(c.id)} aria-pressed={actual?.id === c.id}>
@@ -50,11 +50,14 @@ export function OfficePage() {
           {conversaciones.isPending && <p role="status">Cargando agentes…</p>}
           {!conversaciones.isPending && visibles.length === 0 && <p className="oficina-vacia">Tus conversaciones aparecerán aquí como supervisores.</p>}
         </div>
+        <div className="oficina-sala"><strong>Recepción</strong><div className="oficina-barra">BIENVENIDO</div></div>
+        <div className="oficina-sala"><strong>Oficina del gerente</strong><div className="oficina-mesa-reunion" /></div>
+        <div className="oficina-sala"><strong>Pasillo</strong></div>
+        <div className="oficina-sala"><strong>Archivo</strong></div>
       </section>
       <aside className="oficina-actividad"><h2>Agentes</h2><p>Elige un supervisor para ver su equipo y abrir su conversación.</p>
         {actual ? <><div className="oficina-detalle"><strong>{actual.title}</strong><small>{actual.project_name || "Conversación independiente"} · {estado(actual)}</small><button type="button" onClick={() => abrir(actual.id)}>Abrir chat</button></div>
           <h3>Subagentes</h3>{actual.subchats?.length ? actual.subchats.map(hijo => <button type="button" key={hijo.id} className="oficina-fila" onClick={() => abrir(hijo.id)}><span><strong>{hijo.subagent_agent || hijo.title}</strong><small>{estado(hijo)}</small></span><span>Abrir</span></button>) : <p>No hay subagentes registrados en este chat.</p>}</> : <p>Crea o abre un chat para empezar.</p>}
-        {ordenados.length > visibles.length && <p>Se muestran 12 conversaciones; las activas aparecen primero.</p>}
       </aside>
     </div>
   </main>;

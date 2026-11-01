@@ -1,0 +1,298 @@
+/* Diálogos del chat: vista previa de documentos y configuración */
+.tl-dialogo {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+.tl-dialogo-documento {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(calc(100% - 32px), var(--ancho-contenido));
+  height: min(86dvh, 900px);
+  border-radius: 14px;
+}
+.tl-dialogo-lateral {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(100%, 420px);
+  border-width: 0 0 0 1px;
+}
+.tl-dialogo-cabecera {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 12px 8px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.tl-dialogo-titulo { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.tl-dialogo-titulo-texto {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+}
+.tl-dialogo-acciones { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
+.tl-dialogo-h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.tl-dialogo-cuerpo {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 16px;
+}
+.tl-orquestacion-dialog { display: flex; flex-direction: column; max-height: min(90dvh, 920px); }
+.tl-orquestacion-dialog .tl-dialogo-cuerpo { gap: 14px; }
+.tl-orquestacion-nota { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.55; }
+.tl-agentes-dialog { width: min(calc(100% - 32px), 980px); max-height: min(90dvh, 900px); }
+.tl-agentes-layout { display: grid; flex: 1 1 auto; min-height: 0; grid-template-columns: minmax(210px, 270px) minmax(0, 1fr); }
+.tl-agentes-lista { display: flex; min-height: 0; flex-direction: column; gap: 6px; overflow-y: auto; padding: 12px; border-right: 1px solid var(--line); }
+.tl-agentes-opcion { display: grid; flex: 0 0 auto; gap: 4px; width: 100%; padding: 10px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.tl-agentes-opcion:hover { background: var(--surface-2); }
+.tl-agentes-opcion[aria-pressed="true"] { border-color: var(--line-strong); background: var(--surface-2); box-shadow: inset 3px 0 var(--signal); }
+.tl-agentes-opcion strong { font-size: 13px; }
+.tl-agentes-opcion span { color: var(--ink-2); font-size: 11.5px; line-height: 1.4; }
+.tl-agentes-detalle { gap: 14px; }
+.tl-agentes-detalle h3 { margin: 0 0 6px; font-size: 18px; }
+.tl-agentes-textarea { min-height: 54px; resize: vertical; }
+.tl-agentes-integracion { margin: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink-2); font-size: 12px; line-height: 1.5; }
+.tl-agentes-autocompletar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.tl-agentes-autocompletar span { color: var(--ink-2); font-size: 12px; line-height: 1.45; }
+.tl-agentes-pie { position: sticky; bottom: -16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: auto -16px -16px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--surface); }
+.tl-agentes-pie .tl-orquestacion-nota { max-width: 580px; font-size: 12px; }
+.tl-orquestacion-costo {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.tl-orquestacion-toggle { display: flex; align-items: flex-start; gap: 9px; color: var(--ink); font-size: 13px; line-height: 1.45; }
+.tl-orquestacion-toggle input, .tl-orquestacion-opcion input { flex: 0 0 auto; margin-top: 2px; accent-color: var(--signal); }
+.tl-orquestacion-trabajadores { display: grid; gap: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.tl-orquestacion-subtitulo { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.tl-orquestacion-controles { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.tl-orquestacion-subtitulo h3 { margin: 0; color: var(--ink); font-size: 14px; font-weight: 600; }
+.tl-orquestacion-select { width: 100%; min-width: 0; }
+.tl-orquestacion-auxiliar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; align-items: end; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.tl-orquestacion-auxiliar .tl-campo-ayuda { grid-column: 1 / -1; }
+.tl-orquestacion-quitar { grid-column: 3; }
+.tl-orquestacion-incluir-costo { padding-top: 10px; border-top: 1px solid var(--line); }
+.tl-orquestacion-modo { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.tl-orquestacion-modo legend { padding: 0 5px; color: var(--ink); font-size: 12px; font-weight: 600; }
+.tl-orquestacion-opcion { display: flex; align-items: flex-start; gap: 9px; min-width: 0; color: var(--ink); font-size: 12px; line-height: 1.45; }
+.tl-orquestacion-opcion span { display: grid; gap: 2px; }
+.tl-orquestacion-opcion small { color: var(--ink-2); font: inherit; }
+.usage-status-dot { display: inline-block; width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--error, #ef4444); }
+.usage-status-dot.is-online { background: var(--ok, #10b981); }
+.tl-orquestacion-acciones {
+  position: sticky;
+  bottom: -16px;
+  margin: auto -16px -16px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  justify-content: flex-end;
+}
+/* Vista previa: el documento va sobre una superficie neutra, como una hoja */
+.tl-documento-cuerpo {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  padding: 16px;
+  background: var(--surface-lowest);
+}
+.tl-documento-marco {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.tl-documento-tag {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  min-width: 46px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+/* Botones del diálogo: pastilla de fijado y acciones de texto en listas (Descargar usa tl-boton-principal) */
+.tl-pildora-activa {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--signal-soft);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.tl-accion-texto {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.tl-accion-texto:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.tl-accion-texto:disabled { opacity: 0.45; cursor: not-allowed; }
+.tl-accion-peligro { color: var(--danger); }
+.tl-accion-peligro:hover:not(:disabled) { background: var(--danger-soft); color: var(--danger); }
+
+/* Esfuerzo en la configuración: el segmentado ocupa todo el ancho del campo */
+.tl-esfuerzo-ancho { display: flex; width: 100%; }
+.tl-esfuerzo-ancho .tl-esfuerzo-opcion { min-height: 32px; font-size: 12.5px; }
+
+/* Campo de solo lectura: valor y etiqueta en una línea */
+.tl-campo-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.tl-campo-fila .tl-campo-valor { flex: 1 1 auto; min-width: 0; }
+.tl-etiqueta-solo-lectura {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Documentos guardados desde el chat */
+.tl-documentos-bloque { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.tl-documentos-bloque > h3 { margin: 0; }
+.tl-documentos-vacio {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+/* Campos de la configuración del chat */
+.tl-campo { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0; border: 0; padding: 0; }
+.tl-campo-etiqueta { color: var(--ink-2); font-size: 12px; font-weight: 500; }
+.tl-campo-valor { color: var(--ink); font-size: 14px; overflow-wrap: anywhere; }
+.tl-campo-ayuda { color: var(--ink-2); font-size: 12px; }
+.tl-campo-texto {
+  min-height: 36px;
+  width: 100%;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-size: 14px;
+}
+.tl-campo-texto:disabled { opacity: 0.55; }
+.tl-documentos { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.tl-documento-fila {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.tl-documento-texto { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tl-documento-titulo {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.tl-documento-meta { color: var(--ink-2); font-family: var(--font-mono); font-size: 12px; }
+.tl-documento-acciones { flex-shrink: 0; display: flex; align-items: center; gap: 4px; }
+
+/* Móvil: diálogos a pantalla completa */
+@media (max-width: 600px) {
+  .tl-dialogo-documento { top: 0; left: 0; right: 0; bottom: 0; transform: none; width: 100%; height: 100dvh; border-radius: 0; border-width: 0; }
+  .tl-agentes-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .tl-agentes-lista { flex-direction: row; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--line); padding: 8px; }
+  .tl-agentes-opcion { flex: 0 0 min(72vw, 240px); }
+  .tl-agentes-opcion[aria-pressed="true"] { box-shadow: inset 0 -3px var(--signal); }
+  .tl-agentes-pie { bottom: calc(-14px - env(safe-area-inset-bottom)); flex-direction: column; align-items: stretch; margin: auto -14px calc(-14px - env(safe-area-inset-bottom)); padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); }
+  .tl-agentes-pie button { min-height: 44px; }
+  .tl-orquestacion-dialog { max-height: 100dvh; padding-top: env(safe-area-inset-top); }
+  .tl-orquestacion-auxiliar { grid-template-columns: minmax(0, 1fr); }
+  .tl-orquestacion-auxiliar .tl-campo-ayuda, .tl-orquestacion-quitar { grid-column: 1; }
+  .tl-orquestacion-dialog .tl-dialogo-cuerpo { padding: 14px; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+  .tl-orquestacion-acciones { bottom: calc(-14px - env(safe-area-inset-bottom)); margin: auto -14px calc(-14px - env(safe-area-inset-bottom)); padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); }
+  .tl-documento-cuerpo { padding: 0; }
+  .tl-documento-marco { border: 0; border-radius: 0; }
+  .tl-dialogo-lateral { width: 100%; }
+  .tl-adjuntos-enviados { max-width: 92%; }
+}
+
+/* Historial de prompts: la lista del selector, anclada bajo el botón en escritorio */
+.tl-historial-wrap { position: relative; display: inline-flex; }
+.tl-historial-cabecera { justify-content: space-between; }
+.picker-titulo { color: var(--ink); font-size: 13px; font-weight: 600; }
+@media (min-width: 761px) {
+  .tl-historial-wrap .tl-historial {
+    top: calc(100% + 8px);
+    bottom: auto;
+    left: auto;
+    right: 0;
+    width: min(380px, 92vw);
+  }
+}
+
+/* Menú de comandos al escribir "/" en el compositor */
+.tl-slash {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 25;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px var(--shadow);
+}
+
+/* Mensaje al que saltó el historial: destaque breve */
+.tl-msg-usuario.is-resaltado .tl-msg-burbuja {
+  box-shadow: 0 0 0 2px var(--line-strong);
+  transition: box-shadow 0.3s ease;
+}

@@ -27,6 +27,31 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 - [~] Cerebro: mapa de chats y proyectos basado en pertenencia real, separado del mapa de enlaces de notas. No es un grafo semántico de Graphify.
 - [~] El catálogo de OpenCode deja de bloquear indefinidamente la creación de tareas: se limita la espera y se consume también stderr. La causa concreta de la demora reportada requiere registros de la VM.
 - [ ] Pendiente calcular equivalentes de API para suscripciones con precios y modelos verificables, y confirmar el coste y cuota reales con cada proveedor.
+- [~] La oficina muestra todos los chats y utiliza una hoja de personajes aportada por el usuario; las nuevas salas son una maqueta. Quedan pendientes el modo Planear/Construir real, nombres de agentes, rutas y animaciones hacia reuniones y validación visual.
+
+## Seguridad, despliegue y estado operativo — 31 de octubre de 2026
+
+- [~] Seguridad: `TELO_SIN_CLAVE` exige escucha loopback y rechaza solicitudes con host no local o cabeceras de proxy. No usarlo detrás de un proxy que elimine esas cabeceras; validar en Linux y VM. `.gitignore` ya excluye extensiones habituales de llaves privadas.
+- [x] Instaladores: OpenCode y Codex usan versiones exactas; Antigravity se descarga por HTTPS a un temporal, con límite de tamaño y validación `bash -n` antes de ejecutarse. El proveedor no publica checksum/firma del script, así que queda explícito el límite de verificación del contenido.
+- [~] Despliegue: `actualizar.sh` exige CI verde para `servidor` e `interfaz` en el SHA exacto de `main`; nombres contrastados contra los checks reales de GitHub. Faltan configurar el token de lectura en la VM y probar un ciclo real.
+- [x] Suite unificada: el CI corre `bun test --timeout 60000 --max-concurrency=1` en un solo proceso Linux, además de worker, typecheck, build, pruebas web y Playwright. Los checks `servidor` e `interfaz` del PR #159 pasaron. Los 89 fallos de la ejecución Windows anterior no representan el resultado Linux y no se trasladaron a CI.
+- [ ] Dependencias: el último `bun audit` no pudo consultar `registry.npmjs.org` por `DNSResolveFailed`; el informe previo señalaba 11 avisos, pero no hay una lista actual verificable por paquete. Repetir en una red con acceso y actualizar solo dependencias afectadas con lockfile y CI.
+- [ ] Aislamiento de red de agentes: requiere un proxy de egreso que permita proveedores sin exponer servicios locales; no activar `--unshare-net` mientras no exista esa ruta.
+- [x] Higiene: se asignaron los 24 PR históricos consultando los commits que introdujeron cada entrada. `styles.css` y `styles-chat.css` se dividieron en hojas temáticas menores de 1.500 líneas; el build de antes y después produjo exactamente los mismos SHA-256 para `index.css` y `chat.css`. `pages/chat.tsx` tiene 2.487 líneas, por debajo del umbral señalado.
+- [~] La ejecución registra tiempos de preparación del workspace y de primera salida del agente; falta desplegar y medir una reanudación real para identificar y corregir su causa.
+- [~] Auditoría del 31/10: `bun audit` informa 1 aviso moderado en servidor y 10 en web (6 moderados, 4 bajos). La suite única en Windows produjo 509 aprobadas, 73 omitidas y 89 fallidas; no es comparable con los cinco fallos observados en Linux. Pruebas focalizadas del filtro local y typecheck del servidor aprobados.
+- [~] El cerebro permite importar durante la sesión un graph.json de Graphify, explorar sus nodos y consultar el archivo de origen; la importación no indexa automáticamente los proyectos ni persiste el grafo.
+- [~] El selector compacta precio e índice, muestra opciones de esfuerzo y amplía coincidencias no ambiguas por nombre; falta validar cobertura contra el catálogo real y el flujo en la VM.
+- [x] HyperFrames: el usuario confirmó `hyperframes browser ensure` listo, `doctor` en 0.8.225 y actualización de las cuatro skills principales. Whisper, TTS Kokoro y MusicGen son opcionales; no se instalan sin una necesidad concreta y evaluación de recursos.
+- [~] Integraciones plegadas por defecto, selector de esfuerzo en barra, oficina pixelada y mapa de chats agrupados por proyecto. Validación local de interfaz a 390 y 1440 px; faltan casos reales en VM.
+- [~] El catálogo de OpenCode tiene un límite de espera y consume stderr para evitar esperas indefinidas. La causa del retraso reportado requiere registros de la VM.
+- [ ] El mapa de chats muestra pertenencia, no relaciones semánticas Graphify. Queda pendiente integrar indexación por proyecto y recuperación de contexto, así como equivalentes de precio fiables para sesiones de suscripción.
+
+## Oficina y cerebro — 31 de octubre de 2026
+
+- [~] La oficina presenta conversaciones principales y subchats existentes; las animaciones son decorativas y no crean agentes. Pendiente revisión visual y operativa en la VM.
+- [~] El baúl interno admite notas Markdown globales y por proyecto, búsqueda local, importación de archivos y mapa de enlaces. No introduce notas en los prompts ni reduce tokens automáticamente.
+- [ ] Pendientes: importación y exportación del baúl completo conservando carpetas, selección de notas relevantes con presupuesto de contexto, creación de agentes desde la oficina y validación en dispositivos.
 
 ## Oficina interactiva — 31 de octubre de 2026
 

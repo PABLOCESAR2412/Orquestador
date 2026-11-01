@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -10,9 +10,13 @@ if (!process.env.TELO_PRUEBAS_INICIADAS) {
   rmSync(RAIZ_PRUEBAS, { recursive: true, force: true });
   process.env.TELO_PRUEBAS_INICIADAS = "1";
 }
-process.env.DATA_DIR = join(RAIZ_PRUEBAS, "data");
-process.env.TELO_PROYECTOS_DIR = join(RAIZ_PRUEBAS, "proyectos");
-mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
+const DATA_PRUEBA = join(RAIZ_PRUEBAS, "data");
+const PROYECTOS_PRUEBA = join(RAIZ_PRUEBAS, "proyectos");
+beforeEach(() => {
+  process.env.DATA_DIR = DATA_PRUEBA;
+  process.env.TELO_PROYECTOS_DIR = PROYECTOS_PRUEBA;
+  mkdirSync(PROYECTOS_PRUEBA, { recursive: true });
+});
 
 const { codigoDeErrorClon, urlGithubNormalizada, clonarRepositorio, verificarRepositorio, visibilidadDe, ErrorClonado } =
   await import("../src/clonado");

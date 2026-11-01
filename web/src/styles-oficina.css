@@ -34,3 +34,7 @@
 .oficina .oficina-persona { background:#e4b995; border-radius:2px; box-shadow:0 -5px #33474d; }.oficina .oficina-persona span { background:#598c86; border-radius:0; box-shadow:0 8px #3d5c65; }.oficina .is-activa .oficina-persona { background:#e4b995; }.oficina .is-activa .oficina-persona span { background:#d08b5c; }
 .oficina .oficina-mesa { background:#c5b392; border:4px solid #8c8977; box-shadow:0 5px #8b9994; position:relative; }.oficina .oficina-mesa i { width:25px; height:16px; border:3px solid #344a50; background:#b6d6d5; }
 .oficina .oficina-mesa-reunion { background:#d5c19c; border:5px solid #978669; border-radius:0; height:32px; margin-top:12px; box-shadow:0 7px #869493; }.oficina .oficina-barra { background:#c0b29a; color:#3d514f; border:4px solid #8b8c79; margin-top:25px; }
+.oficina .oficina-persona,.oficina .is-activa .oficina-persona { width:56px; height:64px; background:transparent url('/oficina/caminar.png') 0 0 / 400% 400% no-repeat; box-shadow:none; image-rendering:pixelated; animation: oficina-cuadros 1s steps(4) infinite; }
+.oficina .oficina-persona::before,.oficina .oficina-persona::after,.oficina .oficina-persona span { display:none; }
+@keyframes oficina-cuadros { from { background-position-x:0; } to { background-position-x:133.333%; } }
+@media(prefers-reduced-motion:reduce){.oficina .oficina-persona{animation:none}}
