@@ -4,7 +4,7 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 1 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
-## Modelo y estados de los auxiliares — 1 de noviembre de 2026
+## Modelo y estados de los auxiliares — PR #165, 1 de noviembre de 2026
 
 - [x] La migración 055 deja los chats existentes y nuevos en herencia del modelo seleccionado. Conserva la lista antigua sin utilizarla; activar «Usar modelos diferentes para los auxiliares» y guardar es necesario para usarla. El panel deja de rellenar modelos gratuitos automáticamente.
 - [x] Chats libres y tareas de proyecto comparten esa elección. La integración del worker confirma tres revisores Gemini aun con OpenCode guardado, y conserva la selección personalizada cuando se activa expresamente. Una regresión del chat confirma que cambiar de modelo cambia los tres revisores del turno siguiente; 61 pruebas focalizadas aprobadas. No cambia el requisito de pedir agentes en el mensaje actual.

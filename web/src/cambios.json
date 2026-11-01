@@ -7,7 +7,7 @@
       "fecha": "2026-11-01",
       "tipo": "minimo",
       "titulo": "Chat: los auxiliares heredan el modelo seleccionado y reflejan correctamente fallos, cancelación y revisiones reutilizadas",
-      "pr": null
+      "pr": 165
     },
     {
       "fecha": "2026-11-01",
