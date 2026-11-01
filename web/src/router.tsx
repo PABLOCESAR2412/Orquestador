@@ -73,8 +73,6 @@ const projectDetailRoute = createRoute({
 const brainRoute = createRoute({ getParentRoute: () => rootRoute, path: "/cerebro", component: BrainPage });
 const officeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/oficina", component: OfficePage });
 const analyticsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/analiticas", component: AnalyticsPage });
-const brainRoute = createRoute({ getParentRoute: () => rootRoute, path: "/cerebro", component: BrainPage });
-const officeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/oficina", component: OfficePage });
 // La pestaña va en la URL (?pestana=) para que se pueda enlazar y el redirect de /servidor la abra.
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,

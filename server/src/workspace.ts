@@ -33,7 +33,7 @@ import { valorSecreto, valoresDeProyecto } from "./secretos";
 import { tokenGithubGlobal } from "./github-auth";
 import { tokenGithubAppParaRepo } from "./github-app";
 import { opcionesDeCredenciales } from "./git-credenciales";
-import { eliminarPerfilOpenCode, prepararDirectorioOpenCode } from "./runners/aislamiento";
+import { eliminarPerfilCodex, eliminarPerfilOpenCode, prepararDirectorioOpenCode } from "./runners/aislamiento";
 import { enMantenimiento, registrarTrabajo } from "./despliegue";
 export { opcionesDeCredenciales } from "./git-credenciales";
 

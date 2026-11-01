@@ -1408,12 +1408,13 @@ try {
     assert.equal((await tarjetaJev.textContent()).includes("Telo decide qué guardar"), true);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/jev-ajustes-${width}.png` });
-    await page.getByRole("button", { name: "Copiar código", exact: true }).click();
-    await page.getByText("Código copiado.", { exact: true }).waitFor();
+    const accesoCodex = page.locator(".aj-proveedores-adicionales");
+    await accesoCodex.getByRole("button", { name: "Copiar código", exact: true }).first().click();
+    await accesoCodex.getByText("Código copiado.", { exact: true }).first().waitFor();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "ABCD-EFGH");
-    assert.equal(await page.locator(".login-codex-enlace").getAttribute("href"), "https://auth.openai.com/codex/device");
-    await page.getByText("Ver salida del terminal", { exact: true }).click();
-    await page.locator(".login-codex-paso").scrollIntoViewIfNeeded();
+    assert.equal(await accesoCodex.locator(".login-codex-enlace").first().getAttribute("href"), "https://auth.openai.com/codex/device");
+    await accesoCodex.getByText("Ver salida del terminal", { exact: true }).first().click();
+    await accesoCodex.locator(".login-codex-paso").first().scrollIntoViewIfNeeded();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/login-${width}.png` });
     const nuevaSkill = page.getByRole("button", { name: "Nueva skill", exact: true });
