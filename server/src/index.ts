@@ -46,6 +46,7 @@ import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import { MAX_IMAGEN_BYTES } from "./chat-adjuntos";
 import { protegerOrigen } from "./seguridad-origen";
+import { restringirSinClave } from "./sin-clave";
 
 // Sin clave, la API quedaría abierta a quien tenga la URL. Por eso el servidor no arranca sin ella.
 if (!config.clave && !config.sinClave) {
@@ -57,13 +58,18 @@ if (config.clave && config.clave.length < MIN_CARACTERES_CLAVE) {
   process.exit(1);
 }
 if (config.sinClave) {
-  console.warn("TELO_SIN_CLAVE=1: la API no pide clave. Úsalo solo en desarrollo local.");
+  if (!["127.0.0.1", "::1", "localhost"].includes(config.hostname.toLowerCase())) {
+    console.error("TELO_SIN_CLAVE=1 requiere escuchar en localhost.");
+    process.exit(1);
+  }
+  console.warn("TELO_SIN_CLAVE=1: solo se admiten conexiones locales directas, sin proxy.");
 }
 
 const webDist = resolve(import.meta.dir, "../../web/dist");
 const indexFile = join(webDist, "index.html");
 
 const app = new Hono();
+if (config.sinClave) app.use("*", restringirSinClave);
 
 // Cabeceras de seguridad. La política solo permite lo que usa la app: scripts y estilos del mismo origen,
 // conexiones al mismo origen (API y SSE) y nada embebido. Sin inline scripts.

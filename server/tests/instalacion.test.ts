@@ -85,7 +85,7 @@ describe.skipIf(process.platform === "win32")("instalación de OpenCode", () => 
       estado: string;
       instalada: boolean;
     };
-    expect(cuerpo.comando).toBe("npm install -g --prefix ~/.opencode opencode-ai");
+    expect(cuerpo.comando).toBe("npm install -g --prefix ~/.opencode opencode-ai@1.19.5");
     expect(cuerpo.estado).toBe("inactiva");
     expect(cuerpo.instalada).toBe(false);
   });
@@ -121,7 +121,18 @@ describe.skipIf(process.platform === "win32")("instalación de OpenCode", () => 
     const res = await herramientas.request("/herramientas/codex/instalacion");
     expect(res.status).toBe(200);
     const cuerpo = (await res.json()) as { comando: string };
-    expect(cuerpo.comando).toBe("npm install -g --prefix ~/.opencode @openai/codex");
+    expect(cuerpo.comando).toBe("npm install -g --prefix ~/.opencode @openai/codex@0.166.0");
+  });
+
+  test("Antigravity se descarga por HTTPS y se valida antes de ejecutar", async () => {
+    const res = await herramientas.request("/herramientas/antigravity/instalacion");
+    expect(res.status).toBe(200);
+    const cuerpo = (await res.json()) as { comando: string };
+    expect(cuerpo.comando).toContain("--proto '=https'");
+    expect(cuerpo.comando).toContain("--proto-redir '=https'");
+    expect(cuerpo.comando).toContain("--max-filesize 1048576");
+    expect(cuerpo.comando).toContain('bash -n "$script"; bash "$script"');
+    expect(cuerpo.comando).not.toContain("| bash");
   });
 
   test("el ejecutable instalado queda dentro de ~/.opencode, que el agente ve en solo lectura", () => {

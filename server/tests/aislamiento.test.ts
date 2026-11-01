@@ -1,4 +1,4 @@
-import { afterAll, expect, test } from "bun:test";
+import { afterAll, beforeEach, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,13 +12,18 @@ const originales = {
 };
 const home = join(raiz, "home");
 const proyectos = join(raiz, "proyectos");
-process.env.DATA_DIR = join(raiz, "data");
-process.env.TELO_PROYECTOS_DIR = proyectos;
-process.env.HOME = home;
-process.env.TELO_AISLAMIENTO = "activado";
 mkdirSync(join(home, ".local", "share", "opencode"), { recursive: true });
 mkdirSync(proyectos, { recursive: true });
 writeFileSync(join(home, ".local", "share", "opencode", "auth.json"), '{"openai":{"key":"credencial-local"}}');
+
+// Bun ejecuta todas las suites en un mismo proceso en CI. Restaura el entorno de esta suite
+// antes de cada prueba porque otras suites también configuran DATA_DIR y HOME.
+beforeEach(() => {
+  process.env.DATA_DIR = join(raiz, "data");
+  process.env.TELO_PROYECTOS_DIR = proyectos;
+  process.env.HOME = home;
+  process.env.TELO_AISLAMIENTO = "activado";
+});
 
 const { config } = await import("../src/config");
 const { eliminarPerfilCodex, eliminarPerfilOpenCode, prepararPerfilCodex, prepararPerfilOpenCode, prefijoAislamiento, prepararDirectorioOpenCode, requisitosCodexDenieganLecturaSensibles } = await import("../src/runners/aislamiento");

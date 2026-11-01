@@ -107,6 +107,7 @@ El servicio diario de respaldos puede leer credenciales separadas desde `/etc/or
 
 ## Seguridad
 
+- `TELO_SIN_CLAVE=1` es solo para desarrollo local: exige escucha loopback y rechaza hosts no locales y cabeceras habituales de proxy. No publicar ese puerto mediante Tailscale Serve, túneles o proxies, incluso si eliminan sus cabeceras; en la VM usa `TELO_CLAVE`.
 - El agente corre en bubblewrap y escribe en su carpeta de trabajo; `.git` se monta de solo lectura y las operaciones Git del servidor pasan por `gitSeguro`. Un repo con `.git` que no sea carpeta real se rechaza.
 - Nada sensible sale del servidor: los valores de secretos, claves, tokens y URLs con credenciales se redactan antes de guardar o de enviar (salida, eventos, errores, diffs, chats). Los errores 500 no muestran rutas ni trazas.
 - Antes de un commit se escanea el diff: si tiene un secreto conocido o un archivo sensible (`.env`, llaves), la aprobación se rechaza con `secreto_detectado` o `archivo_sensible`, sin mostrar el valor.

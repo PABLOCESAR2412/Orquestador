@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,9 +11,13 @@ if (!process.env.TELO_PRUEBAS_INICIADAS) {
   rmSync(RAIZ_PRUEBAS, { recursive: true, force: true });
   process.env.TELO_PRUEBAS_INICIADAS = "1";
 }
-process.env.DATA_DIR = join(RAIZ_PRUEBAS, "data");
-process.env.TELO_PROYECTOS_DIR = join(RAIZ_PRUEBAS, "proyectos");
-mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
+const DATA_PRUEBA = join(RAIZ_PRUEBAS, "data");
+const PROYECTOS_PRUEBA = join(RAIZ_PRUEBAS, "proyectos");
+beforeEach(() => {
+  process.env.DATA_DIR = DATA_PRUEBA;
+  process.env.TELO_PROYECTOS_DIR = PROYECTOS_PRUEBA;
+  mkdirSync(PROYECTOS_PRUEBA, { recursive: true });
+});
 
 const { slugProyecto, projects } = await import("../src/routes/projects");
 const { normalizarRuta, resolverEnProyecto, leerArchivo, listarCarpeta, medirCarpeta, buscarArchivosPorNombre, ArchivoError } = await import(

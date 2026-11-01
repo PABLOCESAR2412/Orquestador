@@ -15,14 +15,16 @@ const MIME_POR_EXTENSION: Record<(typeof EXTENSIONES)[number], string> = {
 };
 const MARCADOR = /<<telo-imagen id="([a-f\d-]{36})" nombre="([^"\r\n<>]{1,120})">>/gi;
 const ID_VALIDO = /^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
-const RAIZ = join(config.dataDir, "chat-attachments");
+function raizAdjuntos(): string {
+  return join(config.dataDir, "chat-attachments");
+}
 
 export type ImagenAgente = { ruta: string; rutaVisible: string; nombre: string };
 export type ImagenAdjunta = { id: string; nombre: string; mime: string; bytes: number };
 
 function carpetaConversacion(conversationId: string): string {
   if (!ID_VALIDO.test(conversationId)) throw new Error("conversation_not_found");
-  return join(RAIZ, conversationId);
+  return join(raizAdjuntos(), conversationId);
 }
 
 function mimeDeBytes(bytes: Uint8Array): (typeof MIME_POR_EXTENSION)[keyof typeof MIME_POR_EXTENSION] | null {
