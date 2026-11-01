@@ -187,12 +187,89 @@ test("instala solo SKILL.md desde el repositorio indicado por el comando", async
   expect(listarSkills(id)[0]?.name).toBe("frontend-design");
 });
 
+test("instala UI/UX Pro Max con datos y referencias permitidos sin ejecutar ni descargar otros scripts", async () => {
+  const id = proyecto();
+  const baseSkill = ".claude/skills/ui-ux-pro-max/";
+  const recursos = [
+    "references/quick-reference.md", "references/pro-rules.md",
+    "scripts/core.py", "scripts/design_system.py", "scripts/reasoning_contract.py", "scripts/search.py",
+    "data/styles.csv", "data/catalog-summary.json", "data/stacks/react.csv",
+    "scripts/validate_data.py", "scripts/tests/test_search.py", "data/../fuera.json",
+  ];
+  const solicitudes: string[] = [];
+  globalThis.fetch = (async (url) => {
+    const destino = String(url);
+    solicitudes.push(destino);
+    if (destino.endsWith("/repos/nextlevelbuilder/ui-ux-pro-max-skill")) return Response.json({ default_branch: "main" });
+    if (destino.includes("/git/trees/main?recursive=1")) {
+      return Response.json({
+        tree: [
+          { type: "blob", path: `${baseSkill}SKILL.md`, size: 300 },
+          ...recursos.map((recurso) => ({ type: "blob", path: `${baseSkill}${recurso}`, size: 24 })),
+        ],
+      });
+    }
+    if (destino.endsWith(`${baseSkill}SKILL.md`)) {
+      return new Response('---\nname: ui-ux-pro-max\ndescription: Diseño de producto\n---\n\nUsa "${CLAUDE_PLUGIN_ROOT}/.claude/skills/ui-ux-pro-max/scripts/search.py".');
+    }
+    const recurso = decodeURIComponent(new URL(destino).pathname).split(`${baseSkill}`)[1];
+    if (recurso && recursos.includes(recurso)) return new Response(`contenido: ${recurso}`);
+    return new Response("Not found", { status: 404 });
+  }) as typeof fetch;
+
+  const respuesta = await app.request("/projects/skills-test/skills/instalar", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ comando: "ui-ux-pro-max" }),
+  });
+  expect(respuesta.status).toBe(201);
+  const skill = await respuesta.json() as { name: string; content: string };
+  expect(skill.name).toBe("ui-ux-pro-max");
+  expect(skill.content).toContain("$HOME/.config/opencode/skills/ui-ux-pro-max/scripts/search.py");
+  expect(skill.content).toContain("Compatibilidad con Telo");
+  expect(readFileSync(join(carpetaProyecto, ".opencode", "skills", "ui-ux-pro-max", "references", "quick-reference.md"), "utf8"))
+    .toContain("references/quick-reference.md");
+  expect(readFileSync(join(carpetaProyecto, ".opencode", "skills", "ui-ux-pro-max", "scripts", "search.py"), "utf8"))
+    .toContain("scripts/search.py");
+  expect(readFileSync(join(carpetaProyecto, ".opencode", "skills", "ui-ux-pro-max", "data", "stacks", "react.csv"), "utf8"))
+    .toContain("data/stacks/react.csv");
+  expect(solicitudes.some((url) => url.includes("validate_data.py"))).toBe(false);
+  expect(solicitudes.some((url) => url.includes("test_search.py"))).toBe(false);
+  expect(solicitudes.some((url) => url.includes("fuera.json"))).toBe(false);
+});
+
+test("no instala UI/UX Pro Max si el catálogo no trae los recursos obligatorios", async () => {
+  const id = proyecto();
+  globalThis.fetch = (async (url) => {
+    const destino = String(url);
+    if (destino.endsWith("/repos/nextlevelbuilder/ui-ux-pro-max-skill")) return Response.json({ default_branch: "main" });
+    if (destino.includes("/git/trees/main?recursive=1")) {
+      return Response.json({ tree: [
+        { type: "blob", path: ".claude/skills/ui-ux-pro-max/SKILL.md" },
+        { type: "blob", path: ".claude/skills/ui-ux-pro-max/scripts/search.py" },
+      ] });
+    }
+    return new Response("---\nname: ui-ux-pro-max\ndescription: incompleta\n---\n# incomplete");
+  }) as typeof fetch;
+  const respuesta = await app.request("/projects/skills-test/skills/instalar", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ comando: "ui-ux-pro-max" }),
+  });
+  expect(respuesta.status).toBe(502);
+  expect(listarSkills(id)).toEqual([]);
+});
+
 test("instala skills conocidas y desempata rutas múltiples (playwright, caveman, impeccable)", async () => {
   const id = proyecto();
   expect(parsearComandoSkill("playwright")).toEqual({ owner: "openai", repo: "skills", name: "playwright" });
   expect(parsearComandoSkill("npx skills add caveman")).toEqual({ owner: "JuliusBrussee", repo: "caveman", name: "caveman" });
   expect(parsearComandoSkill("npx skills add pbakaus/impeccable")).toEqual({ owner: "pbakaus", repo: "impeccable", name: "impeccable" });
   expect(parsearComandoSkill("context7")).toEqual({ owner: "upstash", repo: "context7", name: "context7-mcp" });
+  expect(parsearComandoSkill("writting-plans")).toEqual({ owner: "obra", repo: "superpowers", name: "writing-plans" });
+  expect(parsearComandoSkill("test-driven-development")).toEqual({ owner: "obra", repo: "superpowers", name: "test-driven-development" });
+  expect(parsearComandoSkill("systematic-debugging")).toEqual({ owner: "obra", repo: "superpowers", name: "systematic-debugging" });
+  expect(parsearComandoSkill("code-review")).toEqual({ owner: "vercel-labs", repo: "open-agents", name: "code-review" });
 
   globalThis.fetch = (async (url) => {
     const destino = String(url);
