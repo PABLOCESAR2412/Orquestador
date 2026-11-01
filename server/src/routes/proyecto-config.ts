@@ -302,7 +302,8 @@ async function tokenParaFuenteGithub(
     token = await tokenGithubAppParaRepo(
       remoto,
       accion === "pr"
-        ? { pull_requests: "write" }
+        // GitHub must be able to resolve both refs as well as create the PR.
+        ? { contents: "read", pull_requests: "write" }
         : accion === "merge"
           ? { contents: "write" }
           : { contents: "write" },
@@ -372,6 +373,11 @@ async function githubLlamar(
           : []),
       ].filter(Boolean);
       const detalle = mensajes.join("; ").slice(0, 500);
+      if (path.endsWith("/pulls") && /not all refs are readable/i.test(detalle)) {
+        throw new Error(
+          "GitHub no puede leer la rama origen o la rama base para crear el PR. Comprueba que ambas ramas existan y que la GitHub App tenga acceso de lectura al contenido; después prepara una autorización nueva.",
+        );
+      }
       if (path.endsWith("/pulls") && /no commits between/i.test(detalle)) {
         throw new Error(
           "GitHub no ve commits nuevos entre la rama de Telo y la rama base. Comprueba que el commit se haya subido a la rama indicada y que la rama base sea correcta; después prepara una nueva autorización de PR.",

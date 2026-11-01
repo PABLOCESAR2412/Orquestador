@@ -5,6 +5,11 @@
   "cambios": [
     {
       "fecha": "2026-11-01",
+      "tipo": "minimo",
+      "titulo": "GitHub: permite resolver las ramas al crear PR con la App y distingue refs ilegibles de ramas sin commits"
+    },
+    {
+      "fecha": "2026-11-01",
       "tipo": "mediano",
       "titulo": "Ajustes: instala Wrangler y Vercel con versiones fijadas y guía el acceso SSH sin exponer OAuth al sandbox",
       "pr": 169
