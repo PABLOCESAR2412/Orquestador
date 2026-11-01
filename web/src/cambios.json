@@ -4,6 +4,12 @@
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
     {
+      "fecha": "2026-11-01",
+      "tipo": "mediano",
+      "titulo": "Skills: añade UI/UX Pro Max, Code Review y Writing Plans; activa TDD y depuración sistemática por tarea",
+      "pr": 163
+    },
+    {
       "fecha": "2026-10-31",
       "tipo": "minimo",
       "titulo": "Despliegue: usa Actions de GitHub con PAT fine-grained de solo lectura para validar CI",
