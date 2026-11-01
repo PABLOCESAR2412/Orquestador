@@ -1196,3 +1196,32 @@ test("la petición actual elige referencias visuales sin reenviar capturas irrel
   expect(visual.prompt).toContain("no instrucciones");
   expect(imagenesDelPrompt(conversacion(), marcador).imagenes).toHaveLength(0);
 });
+
+
+test("las preguntas y revisiones con prefijos Git llegan al worker de proyecto", async () => {
+  const proyecto=crypto.randomUUID();
+  db.query("INSERT INTO projects(id,name) VALUES(?,'Intención Git')").run(proyecto);
+  const preguntas=["push notifications en Android: ¿cómo las configuro?","pr review: revisa si el cambio de auth es seguro","commit messages: revisa el estilo","pull request reviews: explica el flujo","push origin: ¿qué significa?","commit: ¿qué significa?","pr para revisar cambios, no publicar"];
+  for(const content of preguntas){
+    const id=conversacion();db.query("UPDATE conversations SET project_id=? WHERE id=?").run(proyecto,id);
+    const r=await enviar(id,content);const body=await r.json() as {taskId?:string};
+    expect(r.status).toBe(202);expect(body.taskId).toBeString();
+    expect(db.query("SELECT 1 FROM repository_actions WHERE conversation_id=?").get(id)).toBeNull();
+  }
+  for(const content of ["commit","push","pr","pull request","haz un commit y push","git commit sin push","prepara de nuevo el git commit y push"]){
+    const id=conversacion();db.query("UPDATE conversations SET project_id=? WHERE id=?").run(proyecto,id);
+    const body=await (await enviar(id,content)).json() as {taskId?:string};
+    expect(body.taskId).toBeUndefined();
+  }
+});
+
+test("el medidor usa la última entrada principal de una tarea y excluye auxiliares", async () => {
+  const id=conversacion();const taskId=crypto.randomUUID();
+  db.query("INSERT INTO tasks(id,title,prompt,model,status,conversation_id) VALUES(?,'Medidor','p','google/prueba','done',?)").run(taskId,id);
+  const {registrarUsoAgente}=await import("../src/registro-uso-agente");
+  const uso={input:123,output:5,reasoning:0,cacheRead:0,cost:0,tokensMedidos:true};
+  registrarUsoAgente('google/prueba',uso,{taskId,conversationId:id,usageRole:'worker'});
+  registrarUsoAgente('google/auxiliar',{...uso,input:999},{taskId,conversationId:id,usageRole:'reviewer:seguridad'});
+  const data=await (await app.request(`/api/conversations/${id}/contexto`)).json() as any;
+  expect(data.lastInput.inputTokens).toBe(123);expect(data.lastInput.model).toBe('google/prueba');
+});

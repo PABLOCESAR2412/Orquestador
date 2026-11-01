@@ -458,9 +458,10 @@ export type ContextoConversacion = {
   } | null;
 };
 
-export type CostTier = "gratis" | "economico" | "medio" | "alto" | "premium";
+export type CostTier = "gratis" | "economico" | "medio" | "alto" | "premium" | "desconocido";
 
 export type ModelInfo = {
+  priceKnown?: boolean;
   id: string;
   provider: string;
   name: string;

@@ -1,8 +1,10 @@
 import { entornoProveedores, proveedoresConClave } from "./claves-proveedor";
 import { sesionCodexConectada } from "./login-cli";
 import { listarModelosCodex } from "./modelos-codex";
+import { proveedorCompatibleConBroker } from "./runners/red-agente";
+import { aislamientoActivo } from "./runners/aislamiento";
 
-export type CostTier = "gratis" | "economico" | "medio" | "alto" | "premium";
+export type CostTier = "gratis" | "economico" | "medio" | "alto" | "premium" | "desconocido";
 
 export type ModelInfo = {
   id: string;
@@ -37,6 +39,7 @@ const ALWAYS_EXCLUDE = /~|image|vision/;
 const PAID_EXCLUDE = /preview|customtools/;
 
 const WARNINGS: Record<CostTier, string | null> = {
+  desconocido: "El catálogo no publica un precio verificable. Este modelo no se considera gratuito ni se usa como respaldo.",
   gratis: null,
   economico: null,
   medio: null,
@@ -82,12 +85,13 @@ export function parseModels(txt: string, conClave: ReadonlyMap<string, string> =
 
     const inputUsd = raw.cost?.input ?? 0;
     const outputUsd = raw.cost?.output ?? 0;
-    const free = inputUsd === 0 && outputUsd === 0;
+    const priceKnown = typeof raw.cost?.input === "number" && Number.isFinite(raw.cost.input) && raw.cost.input >= 0 && typeof raw.cost?.output === "number" && Number.isFinite(raw.cost.output) && raw.cost.output >= 0;
+    const free = priceKnown && inputUsd === 0 && outputUsd === 0;
 
     if (ALWAYS_EXCLUDE.test(id) || (!free && PAID_EXCLUDE.test(id))) continue;
 
     const matched = GROUPS.find((g) => g.pattern.test(id));
-    const costTier = tierFor(free, outputUsd);
+    const costTier = priceKnown ? tierFor(free, outputUsd) : "desconocido";
     const provider = id.split("/")[0];
     const etiquetaProveedor = conClave.get(provider);
 
@@ -101,7 +105,7 @@ export function parseModels(txt: string, conClave: ReadonlyMap<string, string> =
       context: raw.limit?.context ?? 0,
       variants: Object.keys(raw.variants ?? {}),
       free,
-      priceKnown: typeof raw.cost?.input === "number" && typeof raw.cost?.output === "number",
+      priceKnown,
       costTier,
       costWarning: WARNINGS[costTier],
       group: matched?.label ?? etiquetaProveedor ?? (free ? "Gratis" : "Otros"),
@@ -175,7 +179,8 @@ export async function getModels(force = false): Promise<ModelInfo[]> {
     throw new Error(`opencode models salió con código ${code}`);
   }
 
-  const models = parseModels(out, proveedoresConClave());
+  const entorno = entornoProveedores();
+  const models = parseModels(out, proveedoresConClave()).filter(m => !aislamientoActivo() || proveedorCompatibleConBroker(m.provider, entorno));
 
   try {
     if (await sesionCodexConectada()) {

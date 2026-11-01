@@ -100,9 +100,12 @@ function variables(ruta: string): Map<string, string> {
 }
 
 test("cada integración recibe solo sus claves y las de sus subagentes declarados", () => {
-  const propias = { GROQ_API_KEY: "groq-ficticia", NVIDIA_API_KEY: "nvidia-ficticia", OPENROUTER_API_KEY: "router-ficticia", OPENAI_API_KEY: "openai-ficticia", PROYECTO_TOKEN: "local-ficticio" };
+  const propias = { GROQ_API_KEY: "groq-ficticia", NVIDIA_API_KEY: "nvidia-ficticia", OPENROUTER_API_KEY: "router-ficticia", OPENAI_API_KEY: "openai-ficticia", DEEPSEEK_API_KEY: "deepseek-ficticia", XAI_API_KEY: "xai-ficticia", PROYECTO_TOKEN: "local-ficticio" };
   expect(entornoDelAgente(propias, ["groq/modelo"])).toMatchObject({ GROQ_API_KEY: propias.GROQ_API_KEY, PROYECTO_TOKEN: propias.PROYECTO_TOKEN });
-  for (const variable of ["NVIDIA_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"]) expect(entornoDelAgente(propias, ["groq/modelo"])[variable]).toBeUndefined();
+  for (const variable of ["NVIDIA_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "XAI_API_KEY"]) expect(entornoDelAgente(propias, ["groq/modelo"])[variable]).toBeUndefined();
+  expect(entornoDelAgente(propias, ["deepseek/modelo"])).toMatchObject({ DEEPSEEK_API_KEY: propias.DEEPSEEK_API_KEY });
+  expect(entornoDelAgente(propias, ["deepseek/modelo"]).XAI_API_KEY).toBeUndefined();
+  expect(entornoDelAgente(propias, ["xai/modelo"])).toMatchObject({ XAI_API_KEY: propias.XAI_API_KEY });
   expect(entornoDelAgente(propias, ["opencode/modelo", "nvidia/auxiliar"]).NVIDIA_API_KEY).toBe(propias.NVIDIA_API_KEY);
   expect(entornoDelAgente(propias, ["codex/modelo"]).OPENAI_API_KEY).toBeUndefined();
 });

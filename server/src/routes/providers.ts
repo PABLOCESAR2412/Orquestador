@@ -144,6 +144,8 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
       "Clave de NVIDIA. Se guarda aquí, cifrada, o viene del archivo de entorno del servidor.",
       enAgente,
     ),
+    proveedorGuardable("deepseek", "DeepSeek", "Clave de DeepSeek para su API directa; se guarda cifrada.", enAgente),
+    proveedorGuardable("xai", "xAI", "Clave de xAI para su API directa; se guarda cifrada.", enAgente),
     proveedorGuardable(
       "openrouter",
       "OpenRouter",
@@ -165,6 +167,8 @@ providers.post("/providers/:id/probar", async (c) => {
   if (!clave) return c.json({ ok: false, error: "provider_key_missing" });
 
   const destinos: Record<string, { url: string; headers: Record<string, string> }> = {
+    deepseek: { url: "https://api.deepseek.com/models", headers: { Authorization: `Bearer ${clave}` } },
+    xai: { url: "https://api.x.ai/v1/models", headers: { Authorization: `Bearer ${clave}` } },
     google: { url: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1", headers: { "x-goog-api-key": clave } },
     groq: { url: "https://api.groq.com/openai/v1/models", headers: { Authorization: `Bearer ${clave}` } },
     nvidia: { url: "https://integrate.api.nvidia.com/v1/models", headers: { Authorization: `Bearer ${clave}` } },

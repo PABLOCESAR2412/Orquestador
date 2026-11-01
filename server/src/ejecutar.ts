@@ -116,6 +116,11 @@ export function esErrorDeCuota(err: unknown): boolean {
   if (err instanceof AislamientoError) return false;
   const texto = textoDelProveedor(err);
   if (PATRON_PRESUPUESTO_POR_SOLICITUD.test(texto)) return false;
+  const definitivo = /per[ _-]?day|per[ _-]?month|daily|monthly|billing[_. -]?hard[_. -]?limit|spend[ _-]?(?:cap|limit)|insufficient[ _-]?(?:quota|balance|funds|credits?)|credit[ _-]?balance|limit\s*[:=]\s*0\b|quotaValue["\s:]+0\b/i.test(texto);
+  const temporal = /per[ _-]?(?:minute|second)|requests?\s+per\s+min|tokens?\s+per\s+min|\b[rt]pm\b|rate[ _-]?limit|too many requests/i.test(texto);
+  // RESOURCE_EXHAUSTED no demuestra saldo agotado. Los límites diarios/financieros
+  // prevalecen si el proveedor informa varios límites en la misma respuesta.
+  if (!definitivo && (temporal || (/resource[_ ]exhausted/i.test(texto) && codigoHttpDelProveedor(err) === 429))) return false;
   if (PATRON_CUOTA.test(texto)) return true;
   // Los proveedores no siempre incluyen un mensaje: HTTP 402 sí es una señal de saldo/cuota
   // agotados, salvo el caso de presupuesto por solicitud filtrado arriba.
@@ -160,17 +165,21 @@ export function codigoHttpDelProveedor(err: unknown): number | null {
       message?: unknown;
       status?: unknown;
       statusCode?: unknown;
+      code?: unknown;
       httpStatus?: unknown;
       error?: {
         message?: unknown;
         status?: unknown;
         statusCode?: unknown;
         httpStatus?: unknown;
+        code?: unknown;
         data?: { status?: unknown; statusCode?: unknown; httpStatus?: unknown; error?: { status?: unknown; statusCode?: unknown } };
       };
     };
     const candidatos: unknown[] = [
       evento.statusCode,
+      evento.code,
+      evento.error?.code,
       evento.status,
       evento.httpStatus,
       evento.error?.data?.statusCode,
@@ -235,7 +244,7 @@ export function contextoCompartidoProyecto(projectId: string, omitirConversation
       `SELECT c.id, c.title,
          (SELECT m.content FROM messages m WHERE m.conversation_id = c.id AND m.role IN ('user', 'assistant') ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) AS ultimo_mensaje
        FROM conversations c
-       WHERE c.project_id = ? ${filtroConv}
+       WHERE c.project_id = ? AND c.parent_conversation_id IS NULL ${filtroConv}
        ORDER BY c.created_at DESC, c.rowid DESC
        LIMIT 3`,
     )
@@ -688,6 +697,9 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       throw limpiarError(new Error(
         `El modelo ${opts.model} falló y el respaldo ${respaldo} ya no está disponible en OpenCode. Elige un modelo que aparezca en el selector de Ajustes y vuelve a intentarlo.`,
       ));
+    }
+    if (validacionRespaldo.info.provider !== "codex" && validacionRespaldo.info.priceKnown !== true) {
+      throw limpiarError(new Error(`No se usó el respaldo ${respaldo}: su precio no está verificado. Elige otro respaldo con precio conocido en Ajustes.`));
     }
     const principalGratis = (await getModels().catch(() => [])).find((modelo) => modelo.id === opts.model)?.free === true;
     if (principalGratis && !validacionRespaldo.info.free) {

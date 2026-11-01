@@ -39,7 +39,7 @@ beforeEach(() => {
   db.query("DELETE FROM provider_keys").run();
   db.query("DELETE FROM uso_jev").run();
   // Las variables del entorno del servidor también cuentan como "configurada": se quitan para aislar cada prueba.
-  for (const variable of ["GROQ_API_KEY", "NVIDIA_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY"]) {
+  for (const variable of ["GROQ_API_KEY", "NVIDIA_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY", "DEEPSEEK_API_KEY", "XAI_API_KEY"]) {
     delete process.env[variable];
   }
 });
@@ -276,7 +276,7 @@ describe("rutas de claves de proveedor", () => {
     expect(texto).not.toContain(VALOR);
     const datos = JSON.parse(texto) as { disponible: boolean; proveedores: { id: string; configurada: boolean }[] };
     expect(datos.disponible).toBe(true);
-    expect(datos.proveedores.map((p) => p.id)).toEqual(["groq", "nvidia", "google", "openrouter"]);
+    expect(datos.proveedores.map((p) => p.id)).toEqual(["groq", "nvidia", "google", "openrouter", "deepseek", "xai"]);
     expect(datos.proveedores.find((p) => p.id === "groq")?.configurada).toBe(true);
   });
 
@@ -410,4 +410,16 @@ describe("GET /providers", () => {
     });
     delete process.env.NVIDIA_API_KEY;
   });
+});
+
+
+test("DeepSeek y xAI guardan claves cifradas y están disponibles para análisis de solo lectura", async () => {
+  const {esClaveDeInferencia}=await import('../src/claves-proveedor');
+  for(const [id,variable] of [['deepseek','DEEPSEEK_API_KEY'],['xai','XAI_API_KEY']]){
+    expect(guardarClaveProveedor(id!,VALOR)).not.toBeNull();
+    expect(entornoProveedores()[variable!]).toBe(VALOR);
+    expect(esClaveDeInferencia(variable!)).toBe(true);
+    const data=await (await providers.request('/providers')).json() as {id:string;guardable:boolean}[];
+    expect(data.find(p=>p.id===id)?.guardable).toBe(true);
+  }
 });

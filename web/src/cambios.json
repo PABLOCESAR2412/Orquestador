@@ -5,6 +5,12 @@
   "cambios": [
     {
       "fecha": "2026-11-01",
+      "tipo": "minimo",
+      "titulo": "Corrige arranque de Codex, intención Git, límites temporales, contexto de proyectos, precios desconocidos y rutas seguras de inferencia",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-01",
       "tipo": "mediano",
       "titulo": "Chat: Planear en solo lectura, referencias visuales con seis fotogramas, skills acotadas y optimización RTK verificada",
       "pr": 167

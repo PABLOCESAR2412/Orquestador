@@ -1,5 +1,26 @@
 # Despliegue automático en el VM
 
+## Corrección del montaje de Codex y comprobación del chat
+
+El error `bwrap: Can't find source path /tmp/telo-codex-global/auth.json` era un montaje que tomaba como origen un destino interno del sandbox. El código corregido monta directamente la autenticación existente del host en solo lectura. No crees ese archivo temporal ni copies allí una clave. Conserva la sesión de Codex configurada.
+
+Tras merge y CI de main aprobado, inicia el despliegue y confirma la revisión instalada antes de probar:
+
+```bash
+sudo systemctl start orquestador-deploy.service
+journalctl -u orquestador-deploy.service -n 25 --no-pager
+cd /home/orquestador/orquestador
+git rev-parse --short HEAD
+git rev-parse --short origin/main
+bash deploy/verificar-agentes.sh
+```
+
+El verificador comprueba el montaje con Bubblewrap real, el worker, las rutas del broker, los reintentos temporales, el contexto y los precios con agentes/credenciales sintéticos y datos temporales. No certifica la sesión ni la cuota del proveedor real. Después reintenta la tarea fallida con Codex; en un chat de proyecto comprueba que «push notifications en Android: ¿cómo funcionan?» recibe respuesta normal, que el medidor muestra contexto tras ejecutar una tarea y que Compartir contexto lista los otros chats del proyecto. Los límites Gemini por minuto reintentan el mismo modelo; las cuotas diarias o de saldo siguen deteniendo o aplicando la política de respaldo elegida. Los avisos de ejecuciones antiguas no cambian retroactivamente.
+
+El broker admite [Gemini de Zen mediante su ruta Google](https://dev.opencode.ai/docs/zen/), [DeepSeek API](https://api-docs.deepseek.com/) y [xAI API](https://docs.x.ai/developers/rest-api-reference/inference). Para las dos APIs directas, guarda sus claves en Ajustes → Proveedores IA si deseas utilizarlas; no es necesario configurarlas para usar Codex o Gemini. Las sesiones OAuth de OpenCode sin broker específico y los proveedores sin ruta segura quedan fuera del catálogo bajo aislamiento; Codex nativo mantiene su integración de sesión. No se habilita ningún respaldo de pago automáticamente. Los modelos sin precio verificable se muestran como «Precio no disponible» y no se usan como respaldo.
+
+La inferencia ya no tiene el timeout HTTP de 120 segundos sin bytes del broker. Sigue vigilada por el runner: tres minutos hasta la primera actividad útil y cancelación explícita. Ese límite no garantiza una duración máxima después de comenzar el trabajo. No se añaden migraciones en esta corrección.
+
 ## Referencias visuales, Planear y RTK
 
 El selector del chat distingue Construir (flujo habitual) y Planear (workspace y entregables en solo lectura). Planear termina después de entregar el plan; no aprueba operaciones ni ejecuta el obrero. Para aplicarlo, selecciona Construir y envía una nueva petición. Cada mensaje y tarea conservan el modo que tenían al entrar en la cola. La migración 057 conserva el comportamiento previo como `build`. Antes de volver a código anterior a esta migración, termina o cancela los turnos/tareas pendientes en modo Planear: ese código no conoce la restricción. Conserva las columnas nuevas al revertir código.
@@ -40,7 +61,7 @@ bash deploy/verificar-agentes.sh
 
 El instalador conserva el PAT existente, protege el archivo con modo 0600, instala servicio y temporizador y recarga systemd. Si falta la clave, la solicita de forma oculta; necesita acceso al repositorio y Actions: Read-only. No la envíes al chat. La comprobación usa proveedores sintéticos y no reinicia Telo ni consume modelos de pago. Para comparar revisiones ejecuta por separado `git rev-parse --short HEAD` y `git rev-parse --short origin/main`.
 
-El aislamiento de red se activa con Bubblewrap; no necesita una clave nueva ni un puerto público. Las herramientas deben respetar HTTP_PROXY/HTTPS_PROXY. Su loopback sirve previews dentro de la ejecución, sin acceso a Telo, Docker ni servicios del host. Chrome de HyperFrames se monta desde su caché en solo lectura. Se admiten APIs de OpenCode, Gemini, Groq, NVIDIA, OpenRouter, OpenAI y Anthropic; OAuth y endpoints personalizados requieren un broker específico. Codex conserva su sesión y la política administrada indicada más abajo.
+El aislamiento de red se activa con Bubblewrap; no necesita una clave nueva ni un puerto público. Las herramientas deben respetar HTTP_PROXY/HTTPS_PROXY. Su loopback sirve previews dentro de la ejecución, sin acceso a Telo, Docker ni servicios del host. Chrome de HyperFrames se monta desde su caché en solo lectura. Se admiten APIs de OpenCode, Gemini, Groq, NVIDIA, OpenRouter, OpenAI, Anthropic, DeepSeek y xAI; OAuth y endpoints personalizados requieren un broker específico. Codex conserva su sesión y la política administrada indicada más abajo.
 
 Después del despliegue pide una revisión normal (sin auxiliares), otra con «usa varios agentes» (actividad por rol) y una continuación del mismo pedido (reutiliza revisiones terminadas). Comprueba en Uso la atribución por modelo y rol. Las cuotas reales del proveedor no equivalen a un fallo del sandbox. Las skills retiradas se conservan fuera de los clones en `DATA_DIR/skills-retiradas`; una copia antigua versionada sin manifiesto requiere revisión y bloquea la ejecución para no borrarla silenciosamente.
 

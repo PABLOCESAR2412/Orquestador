@@ -67,7 +67,7 @@ proyectoConfig.get("/projects/:id/contexto", (c) => {
     .query<
       { id: string; title: string; mensajes: number },
       [string]
-    >("SELECT c.id,c.title,COUNT(m.id) AS mensajes FROM conversations c LEFT JOIN messages m ON m.conversation_id=c.id WHERE c.project_id=? GROUP BY c.id ORDER BY c.created_at DESC")
+    >("SELECT c.id,c.title,COUNT(m.id) AS mensajes FROM conversations c LEFT JOIN messages m ON m.conversation_id=c.id WHERE c.project_id=? AND c.parent_conversation_id IS NULL GROUP BY c.id ORDER BY c.created_at DESC")
     .all(c.req.param("id"));
   return c.json({ compartir: !!row.compartir_contexto, chats });
 });

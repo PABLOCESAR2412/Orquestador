@@ -2406,8 +2406,8 @@ export function ChatPage() {
                     }}
                   >
                     <span className="tl-modelo-nombre">{etiquetaChip}</span>
-                    <span className="cost-meter" title={`Costo: ${nivelCosto} de 5`} aria-hidden="true">
-                      {[0, 1, 2, 3, 4].map((i) => (
+                    <span className="cost-meter" title={modelInfo?.costTier === "desconocido" ? "Precio no disponible" : `Costo: ${nivelCosto} de 5`} aria-hidden="true">
+                      {modelInfo?.costTier === "desconocido" ? "?" : [0, 1, 2, 3, 4].map((i) => (
                         <span key={i} className={`cost-bar${i < nivelCosto ? " filled" : ""}`} />
                       ))}
                     </span>

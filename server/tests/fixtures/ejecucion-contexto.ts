@@ -15,9 +15,11 @@ let supportsImages: boolean | undefined;
 mock.module("../../src/models", () => ({ ...modelosOriginales, getModels: async () => [{id:"opencode/prueba", supportsImages}] }));
 const llamadas: any[] = [];
 let fallo = false;
+const erroresPendientes: Error[] = [];
 let cancelar: AbortController | null = null;
 const runner = async (opts: any) => {
   llamadas.push(opts);
+  if (erroresPendientes.length) throw erroresPendientes.shift();
   if (fallo) {
     setTimeout(() => cancelar?.abort(), 25);
     throw new originales.ErrorAgente("Error temporal HTTP 503", '{"statusCode":503,"message":"service unavailable"}');
@@ -90,6 +92,14 @@ try {
   await ejecutarAgente({...base,prompt});
   assert.equal(llamadas.at(-1).imagenes.length,1);
   assert(llamadas.at(-1).prompt.includes("defecto observable"));
+  process.env.TELO_REINTENTO_ESPERAS_MS = "0,0";
+  erroresPendientes.push(new originales.ErrorAgente("Google HTTP 429",JSON.stringify({error:{code:429,status:"RESOURCE_EXHAUSTED",message:"Quota exceeded for GenerateRequestsPerMinutePerProjectPerModel-FreeTier. Please check plan and billing details."}})));
+  const inicioRetry = llamadas.length;
+  await ejecutarAgente(base);
+  assert.equal(llamadas.length - inicioRetry,2,"RPM se debe reintentar en el mismo modelo");
+  assert(llamadas.slice(inicioRetry).every(c=>c.model === base.model));
+  const {modeloSinCuota}=await import("../../src/respaldos-cuota");
+  assert.equal(modeloSinCuota(base.model,base.projectId),false);
 } finally {
   db.close();
   rmSync(raiz, { recursive: true, force: true });

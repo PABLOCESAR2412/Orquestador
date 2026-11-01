@@ -43,3 +43,10 @@ test("una cuota no se atribuye a otro modelo y una respuesta válida libera su p
   registrarCuotaModelo("codex/a", false);
   expect(modeloSinCuota("codex/a")).toBe(false);
 });
+
+
+test("tampoco un respaldo guardado pasa como gratis si su precio es desconocido", () => {
+  const sinPrecio=modelo('google/sin-precio',{priceKnown:false});
+  expect(candidatosPorCuota([sinPrecio],[sinPrecio.id],'google/actual',new Set(['google']),new Set(),false)).toEqual([]);
+  expect(candidatosPorCuota([sinPrecio],[sinPrecio.id],'google/actual',new Set(['google']),new Set(),true)).toEqual([]);
+});

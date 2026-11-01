@@ -548,7 +548,7 @@ chat.get("/conversations/:id/contexto", (c) => {
   }, [string]>(`
     SELECT provider, model, input_tokens AS inputTokens,
            tokens_precision AS tokensPrecision, created_at AS createdAt
-      FROM usage WHERE conversation_id=? AND task_id IS NULL ORDER BY created_at DESC, rowid DESC LIMIT 1
+      FROM usage WHERE conversation_id=? AND usage_role IN ('unknown','supervisor','analyzer','worker') ORDER BY created_at DESC, rowid DESC LIMIT 1
   `).get(id);
   const actions = db.query<{ total: number }, [string]>(
     "SELECT COUNT(*) AS total FROM chat_actividad WHERE conversation_id=? AND tipo='accion'",
@@ -1464,7 +1464,8 @@ chat.post("/conversations/:id/messages", async (c) => {
   // Fusionar un PR existente por número es una acción directa: no debe crear una tarea ni otra rama.
   const numeroPr = numeroPullRequestParaFusionar(content);
   // Las demás órdenes directas de Git crean una tarjeta de autorización, sin ejecutar al agente.
-  const pedido = /^(?:(?:haz|hacer|ejecuta|realiza|crea|crear|prepara|reintenta|por favor)\s+)*(?:de nuevo\s+)?(?:(?:un|el)\s+)?(?:git\s+(init|commit|push)|(?:un\s+)?(commit|push|pr)|(?:gh\s+pr\s+create)|(pull request))(?:\s+.*)?[.!]?$/i.exec(content);
+  // Solo atajos inequívocos. Una pregunta o un encargo con detalles llega al agente.
+  const pedido = /^(?:(?:haz|hacer|ejecuta|realiza|crea|crear|prepara|reintenta|por favor)\s+)*(?:de nuevo\s+)?(?:(?:un|el)\s+)?(?:git\s+(init|commit|push)|(?:un\s+)?(commit|push|pr)|(?:gh\s+pr\s+create)|(pull request))(?:\s+(?:(?:y|and|&)\s+(?:git\s+)?(?:push|pr)|sin\s+push))?[.!]?$/i.exec(content.trim());
   if ((reintento?.turno.work_mode ?? conv.work_mode) !== "plan" && (pedido || numeroPr !== null) && conv.project_id) {
     const turno = reintento?.turno ?? guardarMensajeUsuario(conversationId, content);
     const accion = numeroPr !== null

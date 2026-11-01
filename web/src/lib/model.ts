@@ -24,6 +24,7 @@ const PROVEEDOR_LABEL: Record<string, string> = {
   openai: "OpenAI API",
   google: "Google API",
   deepseek: "DeepSeek",
+  xai: "xAI",
   github: "GitHub Copilot",
   openrouter: "OpenRouter",
   groq: "Groq API",
@@ -48,6 +49,7 @@ export function proveedorDeModelo(modelo: string | null): string {
 }
 
 export const TIER_LABEL: Record<CostTier, string> = {
+  desconocido: "Precio no disponible",
   gratis: "Gratis",
   economico: "Económico",
   medio: "Medio",
@@ -57,6 +59,7 @@ export const TIER_LABEL: Record<CostTier, string> = {
 
 // Barras encendidas del medidor de costo (de 0 a 5).
 const TIER_BARS: Record<CostTier, number> = {
+  desconocido: 0,
   gratis: 0,
   economico: 1,
   medio: 2,
@@ -67,6 +70,7 @@ const TIER_BARS: Record<CostTier, number> = {
 export const tierBars = (tier: CostTier) => TIER_BARS[tier];
 
 export function formatPrice(m: ModelInfo): string {
+  if (m.priceKnown === false || m.costTier === "desconocido") return "Precio no disponible";
   if (m.free) return "Sin costo";
   return `$${m.inputUsd} / $${m.outputUsd} por M`;
 }

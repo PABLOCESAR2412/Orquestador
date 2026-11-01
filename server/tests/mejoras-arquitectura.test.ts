@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { publicar, eventosDesde } from "../src/bus";
@@ -135,3 +135,24 @@ describe("métricas de tokens de razonamiento en analíticas", () => {
 });
 
 
+
+
+test("compartir contexto excluye subagentes y preserva los otros chats reales", async () => {
+  const p=crypto.randomUUID(),actual=crypto.randomUUID(),otro=crypto.randomUUID();
+  const base=process.env.TELO_PROYECTOS_DIR ?? join(tmpdir(),"telo-proyectos-contexto");mkdirSync(base,{recursive:true});
+  const repo=mkdtempSync(join(base,"compartido-"));
+  db.query("INSERT INTO projects(id,name,repo_path,compartir_contexto) VALUES(?,'Solo chats raíz',?,1)").run(p,repo);
+  db.query("INSERT INTO conversations(id,project_id,title) VALUES(?,?,'Chat actual'),(?,?,'Chat independiente')").run(actual,p,otro,p);
+  db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,'assistant','RESULTADO-OTRO-CHAT')").run(crypto.randomUUID(),otro);
+  for(let n=0;n<4;n++){
+    const hijo=crypto.randomUUID();
+    db.query("INSERT INTO conversations(id,project_id,title,parent_conversation_id) VALUES(?,?,'Auxiliar propio',?)").run(hijo,p,actual);
+    db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,'assistant','RESULTADO-AUXILIAR-PROPIO')").run(crypto.randomUUID(),hijo);
+  }
+  const prompt=conInstrucciones(p,'Revisa el estado',actual);
+  expect(prompt).toContain('RESULTADO-OTRO-CHAT');expect(prompt).not.toContain('RESULTADO-AUXILIAR-PROPIO');
+  const {proyectoConfig}=await import('../src/routes/proyecto-config');
+  const r=await proyectoConfig.request(`/projects/${p}/contexto`);
+  const data=await r.json() as {chats:{id:string}[]};
+  expect(data.chats.map(c=>c.id).sort()).toEqual([actual,otro].sort());
+});
