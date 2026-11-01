@@ -4,7 +4,7 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 1 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
-## Crear PR con GitHub App — corrección de refs legibles
+## Crear PR con GitHub App — PR #170, corrección de refs legibles
 
 - [x] La instalación de `Telo-Orquestador` ya cubre todos los repositorios y tiene `Contents: Read and write` y `Pull requests: Read and write`. La captura muestra que el commit y push terminaron; el error 422 ocurre después, al crear el PR.
 - [x] Causa en el token del PR: se limitaba a `pull_requests:write`; GitHub también necesita `contents:read` para resolver las ramas `head` y `base`. El token temporal ahora pide solo esos dos alcances, sin ampliar escritura del contenido.
