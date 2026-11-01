@@ -14,7 +14,6 @@ PARADO=0
 IDENTIDAD=""
 IDENTIDAD_PAUSA=""
 STAGING=""
-CI_CONFIG=""
 INTERFAZ_CAMBIADA=0
 log() { echo "[actualizar $(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 compilar() { (cd web && bun install --frozen-lockfile && bun run build); }
@@ -66,7 +65,6 @@ servidor_arriba() {
   return 1
 }
 liberar() {
-  if [ -n "$CI_CONFIG" ]; then rm -f -- "$CI_CONFIG"; fi
   if [ -n "$STAGING" ]; then
     case "$STAGING" in "$REPO"/.git/telo-web-stage.*) rm -rf -- "$STAGING" ;; esac
   fi
@@ -105,17 +103,11 @@ if [ -z "${TELO_GITHUB_CI_TOKEN:-}" ] || [[ ! "$TELO_GITHUB_CI_TOKEN" =~ ^[A-Za-
   log "Falta un token de GitHub de solo lectura en TELO_GITHUB_CI_TOKEN; se cancela el despliegue."
   exit 1
 fi
-umask 077
-CI_CONFIG=$(mktemp "$REPO/.git/telo-ci.XXXXXX")
-printf 'header = "Authorization: Bearer %s"\nheader = "Accept: application/vnd.github+json"\nheader = "X-GitHub-Api-Version: 2022-11-28"\n' "$TELO_GITHUB_CI_TOKEN" > "$CI_CONFIG"
-if ! curl --fail --silent --show-error --max-time 20 --config "$CI_CONFIG" \
-  "https://api.github.com/repos/PABLOCESAR2412/Orquestador/commits/$NUEVA/check-runs?filter=latest&per_page=100" \
-  | bun run "$REPO/deploy/verificar-ci.ts"; then
+if ! bun run "$REPO/deploy/verificar-ci.ts" "$NUEVA"; then
   log "Los checks de servidor e interfaz no están aprobados para ${NUEVA:0:7}; se pospone el despliegue."
   exit 0
 fi
-rm -f -- "$CI_CONFIG"
-CI_CONFIG=""
+unset TELO_GITHUB_CI_TOKEN
 
 # Los cambios visuales y documentación no tocan la API ni el proceso de agentes.
 # Si cambia CSS, se construye aparte; los assets se publican antes que index.html.
