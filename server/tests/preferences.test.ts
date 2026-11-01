@@ -28,3 +28,13 @@ test("guardar otros ajustes no exige que el modelo predeterminado antiguo siga e
   expect(respuesta.status).toBe(200);
   expect(await respuesta.json()).toMatchObject({ defaultModel: "retirado/modelo", monthlyBudgetUsd: 25 });
 });
+
+test("los respaldos antiguos quedan inactivos hasta elegir una política explícita", async () => {
+  db.query("INSERT INTO app_settings(key,value) VALUES('preferences',?)").run(JSON.stringify({ fallbackModel: "opencode/antiguo", quotaFallbackModels: ["opencode/otro"] }));
+  expect(await (await app.request("/preferences")).json()).toMatchObject({ fallbackMode: "selected", fallbackModel: "opencode/antiguo" });
+  const request = (fallbackMode: unknown) => app.request("/preferences", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fallbackMode }) });
+  expect((await request("desconocido")).status).toBe(400);
+  const guardado = await request("configured");
+  expect(guardado.status).toBe(200);
+  expect(await guardado.json()).toMatchObject({ fallbackMode: "configured" });
+});

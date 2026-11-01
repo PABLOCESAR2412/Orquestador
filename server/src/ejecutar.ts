@@ -356,6 +356,7 @@ function perfilAuxiliar(opts: OpcionesAgente): string | null {
 }
 
 async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoAgente> {
+  const preferencias = getPreferences();
   mkdirSync(carpetaEntregables(opts.cwd), { recursive: true });
   const solicitudSkills = opts.solicitudSkills ?? opts.prompt;
   const mcp = configuracionMcpParaAgente(requiereContext7(solicitudSkills), opts.soloLectura);
@@ -435,7 +436,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       imagenes: visuales.imagenes,
       sessionId: sesion,
       onSesion: (id: string) => alSesion(id, modelo),
-      onUso: (uso: Usage) => registrarUsoAgente(modelo, uso, opts),
+      onUso: (uso: Usage) => registrarUsoAgente(modelo, uso, { ...opts, providerEventId: uso.providerEventId }),
     };
   };
 
@@ -617,13 +618,13 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
 
     if (esErrorDeCuota(err)) {
       if (!(err instanceof ErrorCuota)) registrarCuotaModelo(opts.model, true, opts.projectId);
+      if (preferencias.fallbackMode !== "configured" && preferencias.fallbackMode !== "automatic") throw new ErrorCuota(opts.model, sesion);
       let ultimoAgotado = opts.model;
       const modelosProbados = new Set([opts.model]);
-      const preferencias = getPreferences();
       const catalogo = await getModels().catch(() => []);
       const proveedores = [...new Set(catalogo.map((m) => m.provider))];
       const conectados = new Set(proveedores.filter((id) => id === "opencode" || id === "codex" || valorClaveApiProveedor(id) || proveedorConClave(id)?.variables.some((v) => propias[v])));
-      const alternativas = candidatosPorCuota(catalogo, [...(preferencias.quotaFallbackModels ?? []), ...(preferencias.fallbackModel ? [preferencias.fallbackModel] : [])], opts.model, conectados, modelosSinCuota(opts.projectId));
+      const alternativas = candidatosPorCuota(catalogo, [...(preferencias.quotaFallbackModels ?? []), ...(preferencias.fallbackModel ? [preferencias.fallbackModel] : [])], opts.model, conectados, modelosSinCuota(opts.projectId), preferencias.fallbackMode === "automatic");
       for (const info of alternativas) {
         const alternativa = info.id;
         if (modelosProbados.has(alternativa)) continue;
@@ -654,6 +655,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     }
 
     const modeloNoEncontrado = esErrorModeloNoEncontrado(err);
+    if (preferencias.fallbackMode !== "configured" && preferencias.fallbackMode !== "automatic") throw comoCuota(err, opts.model);
     if (!esErrorTransitorioDelProveedor(err, opts.signal) && !modeloNoEncontrado) throw comoCuota(err, opts.model);
 
     if (modeloNoEncontrado) {
@@ -662,7 +664,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       try { await getModels(true); } catch { /* el respaldo aún se valida con la última lista buena */ }
     }
 
-    const respaldo = getPreferences().fallbackModel;
+    const respaldo = preferencias.fallbackModel;
     if (!respaldo || respaldo === opts.model) throw comoCuota(err, opts.model);
 
     let validacionRespaldo: Awaited<ReturnType<typeof validateSelection>>;

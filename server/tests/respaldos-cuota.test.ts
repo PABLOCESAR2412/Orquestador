@@ -9,13 +9,13 @@ const modelo = (id: string, extra: Partial<ModelInfo> = {}): ModelInfo => ({ id,
 test("los respaldos elegidos van primero; los automáticos son gratis, conocidos y conectados", () => {
   const catalogo = [modelo("google/elegido"), modelo("opencode/automatico"), modelo("google/sin-precio", { priceKnown: false }), modelo("nvidia/desconectado"), modelo("google/pago", { free: false, inputUsd: 1 }), modelo("codex/plan", { free: false })];
   const conectados = new Set(["google", "opencode", "codex"]);
-  expect(candidatosPorCuota(catalogo, ["google/elegido", "google/elegido", "google/pago"], "openai/agotado", conectados).map((m) => m.id)).toEqual(["google/elegido", "opencode/automatico"]);
-  expect(candidatosPorCuota(catalogo, ["codex/plan"], "openai/agotado", conectados)[0].id).toBe("codex/plan");
+  expect(candidatosPorCuota(catalogo, ["google/elegido", "google/elegido", "google/pago"], "openai/agotado", conectados, new Set(), true).map((m) => m.id)).toEqual(["google/elegido", "opencode/automatico"]);
+  expect(candidatosPorCuota(catalogo, ["codex/plan"], "openai/agotado", conectados, new Set(), true)[0].id).toBe("codex/plan");
 });
 
 test("se prueban hasta tres automáticos y se priorizan proveedores distintos", () => {
   const catalogo = [modelo("google/a"), modelo("google/b"), modelo("opencode/a"), modelo("nvidia/a"), modelo("groq/a")];
-  const candidatos = candidatosPorCuota(catalogo, [], "google/agotado", new Set(["google", "opencode", "nvidia", "groq"]));
+  const candidatos = candidatosPorCuota(catalogo, [], "google/agotado", new Set(["google", "opencode", "nvidia", "groq"]), new Set(), true);
   expect(candidatos).toHaveLength(3);
   expect(new Set(candidatos.map((m) => m.provider)).size).toBe(3);
   expect(candidatos.every((m) => m.provider !== "google")).toBe(true);
@@ -23,7 +23,7 @@ test("se prueban hasta tres automáticos y se priorizan proveedores distintos", 
 
 test("los modelos agotados no consumen los tres lugares automáticos", () => {
   const catalogo = [modelo("opencode/a"), modelo("opencode/b"), modelo("opencode/c"), modelo("opencode/d")];
-  expect(candidatosPorCuota(catalogo, ["opencode/a"], "codex/agotado", new Set(["opencode"]), new Set(["opencode/a", "opencode/b", "opencode/c"])).map((m) => m.id)).toEqual(["opencode/d"]);
+  expect(candidatosPorCuota(catalogo, ["opencode/a"], "codex/agotado", new Set(["opencode"]), new Set(["opencode/a", "opencode/b", "opencode/c"]), true).map((m) => m.id)).toEqual(["opencode/d"]);
 });
 
 test("la pausa de cuota es persistente, caduca y separa proyectos", () => {

@@ -7,6 +7,7 @@ const ALLOWED_FIELDS = new Set([
   "defaultEffort",
   "fallbackModel",
   "quotaFallbackModels",
+  "fallbackMode",
   "monthlyBudgetUsd",
   "budgetAlertPercent",
   "compartirContextoChats",
@@ -28,6 +29,7 @@ preferences.put("/preferences", async (c) => {
   if (unknown) return c.json({ error: "unknown_field", field: unknown }, 400);
 
   const next: Preferences = { ...getPreferences(), ...(body as Partial<Preferences>) };
+  if (!["selected", "configured", "automatic"].includes(next.fallbackMode)) return c.json({ error: "invalid_body" }, 400);
 
   if (next.defaultModel !== null) {
     if (typeof next.defaultModel !== "string") return c.json({ error: "invalid_model" }, 400);

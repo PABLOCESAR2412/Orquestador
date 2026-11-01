@@ -749,6 +749,10 @@ function SelectorAlternativasCuota({
     mutationFn: (quotaFallbackModels: string[]) => api.savePreferences({ quotaFallbackModels }),
     onSettled: () => void qc.invalidateQueries({ queryKey: ["preferences"] }),
   });
+  const guardarModo = useMutation({
+    mutationFn: (fallbackMode: NonNullable<Preferences["fallbackMode"]>) => api.savePreferences({ fallbackMode }),
+    onSettled: () => void qc.invalidateQueries({ queryKey: ["preferences"] }),
+  });
   const guardados = prefs?.quotaFallbackModels ?? [];
   const ids = guardar.isPending ? (guardar.variables ?? guardados) : guardados;
   const [nuevo, setNuevo] = useState("");
@@ -757,6 +761,16 @@ function SelectorAlternativasCuota({
 
   return (
     <div className="aj-cadena-cuota">
+      <div className="aj-fila-campo">
+        <label htmlFor="politica-respaldo" className="aj-campo-etiqueta-fija">Si falla el modelo elegido</label>
+        <select id="politica-respaldo" className="aj-input" value={guardarModo.isPending ? guardarModo.variables : prefs?.fallbackMode ?? "selected"} disabled={guardarModo.isPending} onChange={(event) => guardarModo.mutate(event.target.value as NonNullable<Preferences["fallbackMode"]>)}>
+          <option value="selected">Usar solo el modelo elegido</option>
+          <option value="configured">Permitir mis respaldos guardados</option>
+          <option value="automatic">Permitir mis respaldos y gratuitos conectados</option>
+        </select>
+      </div>
+      <p className="aj-nota">Por defecto, Telo conserva el modelo seleccionado y pausa si se agota su cuota. Guardar modelos de respaldo no los activa: autoriza su uso con este control.</p>
+      {guardarModo.isError && <p className="aj-error" role="alert">{errorText(guardarModo.error)}</p>}
       <div className="aj-fila-campo">
         <label htmlFor="modelo-alternativo-cuota" className="aj-campo-etiqueta-fija">
           Cambiar si se agota la cuota
@@ -791,9 +805,9 @@ function SelectorAlternativasCuota({
         </div>
       </div>
       <p className="aj-nota">
-        Si el proveedor confirma que se agotó la cuota, Telo prueba estos modelos en orden y muestra el cambio en la actividad.
+        Con los respaldos autorizados, si el proveedor confirma que se agotó la cuota Telo prueba estos modelos en orden y muestra el cambio en la actividad.
         Se admiten hasta 20 modelos con coste cero o cubiertos por la sesión Codex; los modelos con cobro por API no pueden entrar.
-        Si no quedan respaldos utilizables, prueba hasta tres modelos con precio gratuito explícito de proveedores conectados.
+        La opción «mis respaldos y gratuitos conectados» añade hasta tres modelos con precio gratuito explícito de proveedores conectados cuando no quedan respaldos utilizables.
         Una cuota agotada se recuerda durante 15 minutos para evitar repetir llamadas fallidas. La disponibilidad se confirma al ejecutar, sin consultas extra a modelos.
       </p>
       {ids.length > 0 && (

@@ -407,6 +407,7 @@ function DetalleTarea({ id }: { id: string }) {
             {t.status === "sin_cuota" && (
               <AvisoCuota
                 modeloAgotado={models.data?.models.find((m) => m.id === t.modelo_agotado)?.name ?? t.modelo_agotado ?? t.model}
+                modeloSeleccionado={models.data?.models.find((m) => m.id === (modeloElegido?.id ?? t.model))?.name ?? modeloElegido?.id ?? t.model}
                 puedeSeguir={(modeloElegido?.id ?? t.model) !== t.modelo_agotado}
                 seguirPendiente={seguir.isPending}
                 onCambiarModelo={() => setSelectorAbierto(true)}

@@ -112,6 +112,7 @@ try {
     let politicaDisco = { automatica: false, umbral: 85, intervaloHoras: 24, antiguedadDias: 7 };
     let ultimoDisco = null;
     let escriturasPreferencias = 0;
+    let fallbackModeActual = "selected";
     let skillsGuardadas = [];
     let adjuntosChatSubidos = 0;
     let diffRequests = 0;
@@ -324,7 +325,10 @@ try {
         { id: "groq/llama-test", provider: "groq", name: "Llama Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Llama", recommended: true },
         { id: "groq/other-test", provider: "groq", name: "Other Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Other", recommended: true },
       ] };
-      else if (path === "/api/preferences") data = { defaultModel: null, defaultEffort: null, monthlyBudgetUsd: null, budgetAlertPercent: 80 };
+      else if (path === "/api/preferences") {
+        if (route.request().method() === "PUT") fallbackModeActual = route.request().postDataJSON().fallbackMode ?? fallbackModeActual;
+        data = { defaultModel: null, defaultEffort: null, monthlyBudgetUsd: null, budgetAlertPercent: 80, fallbackMode: fallbackModeActual };
+      }
       else if (path === "/api/providers") data = [
         { id: "opencode", name: "OpenCode", configured: true, implemented: true, hint: "CLI instalado.", variable: null, enAgente: true, guardable: false, guardada: false, sesion: false },
         { id: "codex", name: "Codex", configured: codexSesionEnPicker, implemented: true, hint: "Sesión de Codex.", variable: null, enAgente: codexSesionEnPicker, guardable: false, guardada: false, sesion: codexSesionEnPicker },
@@ -1287,11 +1291,11 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/medio-enrutado-${width}.png` });
     task.status = "sin_cuota";
-    task.modelo_agotado = "google/prueba";
+    task.modelo_agotado = "opencode/otro";
     await page.locator(".cuota-aviso").waitFor();
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("No se debe aceptar mientras falte cuota");
     assert.equal(await page.getByRole("button", { name: "Enviar", exact: true }).isDisabled(), true);
-    assert.equal((await page.locator(".cuota-aviso").textContent()).includes("Se acabó la cuota de Google Test"), true);
+    assert.equal((await page.locator(".cuota-aviso").textContent()).includes("La ejecución anterior se pausó por cuota en opencode/otro"), true);
     assert.equal((await page.locator(".cuota-aviso").textContent()).includes("ChatGPT Plus se administra por separado"), true);
     await page.screenshot({ path: `scratch/capturas-ci/cuota-chat-${width}.png` });
     await page.getByRole("button", { name: "Cambiar modelo", exact: true }).click();
@@ -1360,7 +1364,11 @@ try {
     await page.getByRole("tabpanel", { name: "OpenRouter" }).waitFor();
     await page.screenshot({ path: `scratch/capturas-ci/proveedores-${width}.png` });
     const respaldoCuota = page.locator(".aj-cadena-cuota");
-    await respaldoCuota.getByText(/Si no quedan respaldos utilizables/).waitFor();
+    await respaldoCuota.getByText(/Por defecto, Telo conserva el modelo seleccionado/).waitFor();
+    assert.equal(await respaldoCuota.getByLabel("Si falla el modelo elegido").inputValue(), "selected");
+    const guardarPolitica = page.waitForRequest(r => r.url().endsWith("/api/preferences") && r.method() === "PUT");
+    await respaldoCuota.getByLabel("Si falla el modelo elegido").selectOption("configured");
+    assert.equal((await guardarPolitica).postDataJSON().fallbackMode, "configured");
     await respaldoCuota.scrollIntoViewIfNeeded();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/respaldos-cuota-${width}.png` });

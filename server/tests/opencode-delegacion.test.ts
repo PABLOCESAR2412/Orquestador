@@ -18,7 +18,7 @@ afterAll(() => {
 });
 
 test("cada ejecución deniega task, incluso al reanudar y con permisos globales previos", async () => {
-  process.env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ theme: "prueba", permission: { task: "allow" }, agent: { build: { permission: { task: "allow" } } } });
+  process.env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ theme: "prueba", small_model: "opencode/oculto", permission: { task: "allow" }, agent: { build: { model: "opencode/oculto", permission: { task: "allow" } }, title: { model: "opencode/oculto" }, compaction: { model: "opencode/oculto" } } });
   let comando: string[] = [];
   let env: Record<string, string> = {};
   const spawn = spyOn(Bun, "spawn").mockImplementation(((args: string[], opts: { env: Record<string, string> }) => {
@@ -32,6 +32,11 @@ test("cada ejecución deniega task, incluso al reanudar y con permisos globales 
     expect(inline.theme).toBe("prueba");
     expect(inline.permission.task).toBe("deny");
     expect(inline.agent.build.permission.task).toBe("deny");
+    expect(inline.model).toBe("opencode/prueba");
+    expect(inline.small_model).toBe("opencode/prueba");
+    for (const nombre of ["build", "plan", "title", "summary", "compaction", "explore", "general"]) expect(inline.agent[nombre].model).toBe("opencode/prueba");
+    expect(inline.agent.title.disable).toBe(true);
+    expect(inline.agent.summary.disable).toBe(true);
   } finally { spawn.mockRestore(); }
 });
 
