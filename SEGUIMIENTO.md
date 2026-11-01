@@ -1,8 +1,16 @@
 # Seguimiento de Telo
 
-Registro central de fases, revisiones y hallazgos. Actualizado: 31 de octubre de 2026.
+Registro central de fases, revisiones y hallazgos. Actualizado: 1 de noviembre de 2026.
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
+
+## Skills de diseño y desarrollo — 1 de noviembre de 2026
+
+- [x] Se agregan Code Review y Writing Plans al catálogo global de arranque; TDD y Systematic Debugging ya estaban incluidos. El importador reconoce sus nombres y el alias escrito `writting-plans` resuelve a `writing-plans`.
+- [x] Ajustes > Conexiones permite instalar UI/UX Pro Max y las skills de revisión, planes, TDD y depuración desde sus repositorios fuente. UI/UX Pro Max importa la guía, reglas, datos y cuatro scripts permitidos, con límites de tamaño y rutas; no ejecuta contenido durante la instalación.
+- [x] El resolver activa cada skill por tipo de tarea o mención explícita, evitando cargar los flujos de planes/TDD cuando no aplican. Writing Plans y Code Review incluyen una nota para respetar aprobaciones y límites de Telo.
+- [x] Verificación local: 38 pruebas enfocadas aprobadas; typecheck del servidor y build de producción web aprobados.
+- [ ] Falta validar la instalación y ejecución en la VM Linux después del despliegue.
 
 ## Piloto de ejecución directa y auditoría delegada — 31 de octubre de 2026
 
