@@ -113,7 +113,7 @@ export async function leerArchivo(archivo: File): Promise<ArchivoLeido> {
   }
 }
 
-// Genera una hoja 2x2 que los modelos con entrada visual pueden analizar como resumen del clip.
+// Seis muestras con tiempos; no representan todo el movimiento ni el audio del clip.
 // El audio no se transmite: la interfaz lo indica para no presentar los fotogramas como video completo.
 export async function crearHojaFotogramas(archivo: File): Promise<File> {
   const url = URL.createObjectURL(archivo);
@@ -124,8 +124,9 @@ export async function crearHojaFotogramas(archivo: File): Promise<File> {
   video.src = url;
   try {
     await new Promise<void>((resolve, reject) => {
-      video.onloadedmetadata = () => resolve();
-      video.onerror = () => reject(new Error("No se pudo leer el video en este navegador."));
+      const timeout = window.setTimeout(() => reject(new Error("El video tardó demasiado en abrirse.")), 10_000);
+      video.onloadedmetadata = () => { window.clearTimeout(timeout); resolve(); };
+      video.onerror = () => { window.clearTimeout(timeout); reject(new Error("No se pudo leer el video en este navegador.")); };
       video.load();
     });
     if (!Number.isFinite(video.duration) || video.duration <= 0 || !video.videoWidth || !video.videoHeight) {
@@ -138,11 +139,11 @@ export async function crearHojaFotogramas(archivo: File): Promise<File> {
     const altoEtiqueta = 30;
     const canvas = document.createElement("canvas");
     canvas.width = anchoCelda * 2;
-    canvas.height = (altoCelda + altoEtiqueta) * 2;
+    canvas.height = (altoCelda + altoEtiqueta) * 3;
     const contexto = canvas.getContext("2d");
     if (!contexto) throw new Error("No se pudo preparar la vista del video.");
 
-    const muestras = [0.08, 0.35, 0.65, 0.92];
+    const muestras = [0.02, 0.2, 0.4, 0.6, 0.8, 0.98];
     for (let indice = 0; indice < muestras.length; indice += 1) {
       const segundo = Math.min(video.duration * muestras[indice]!, Math.max(0, video.duration - 0.04));
       await new Promise<void>((resolve, reject) => {
@@ -172,9 +173,12 @@ export async function crearHojaFotogramas(archivo: File): Promise<File> {
     const blob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((resultado) => resultado ? resolve(resultado) : reject(new Error("No se pudo crear la vista del video.")), "image/jpeg", 0.84);
     });
-    const base = archivo.name.replace(/\.[^.]+$/, "").slice(0, 100);
-    return new File([blob], `Fotogramas de ${base}.jpg`, { type: "image/jpeg" });
+    const base = archivo.name.replace(/\.[^.]+$/, "").slice(0, 36);
+    return new File([blob], `Fotogramas de ${base} (${video.duration.toFixed(1)} s, ${video.videoWidth}x${video.videoHeight}, 6 muestras sin audio).jpg`, { type: "image/jpeg" });
   } finally {
+    video.onloadedmetadata = null;
+    video.onseeked = null;
+    video.onerror = null;
     video.pause();
     video.removeAttribute("src");
     video.load();

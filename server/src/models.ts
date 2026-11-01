@@ -14,6 +14,7 @@ export type ModelInfo = {
   variants: string[];
   free: boolean;
   priceKnown?: boolean;
+  supportsImages?: boolean;
   costTier: CostTier;
   costWarning: string | null;
   group: string;
@@ -47,6 +48,8 @@ const TTL_MS = 10 * 60_000;
 let cache: { at: number; models: ModelInfo[] } | null = null;
 
 type RawModel = {
+  capabilities?: { input?: { image?: boolean } | string[] };
+  modalities?: { input?: string[] };
   name?: string;
   cost?: { input?: number; output?: number };
   limit?: { context?: number };
@@ -92,6 +95,7 @@ export function parseModels(txt: string, conClave: ReadonlyMap<string, string> =
       id,
       provider,
       name: raw.name ?? id,
+      supportsImages: Array.isArray(raw.capabilities?.input) ? raw.capabilities.input.includes("image") : typeof raw.capabilities?.input?.image === "boolean" ? raw.capabilities.input.image : Array.isArray(raw.modalities?.input) ? raw.modalities.input.includes("image") : undefined,
       inputUsd,
       outputUsd,
       context: raw.limit?.context ?? 0,

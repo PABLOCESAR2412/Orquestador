@@ -2,6 +2,7 @@ import { canonicalizarModelo, registrarUsoAgente } from "./registro-uso-agente";
 export { canonicalizarModelo, proveedorDeModelo, registrarUsoAgente } from "./registro-uso-agente";
 import { db } from "./db";
 import { registrarEvento } from "./eventos";
+import { rtkDisponible } from "./rtk";
 import { getModels, validateSelection } from "./models";
 import { getPreferences } from "./preferences";
 import { entornoDeProyecto } from "./secretos";
@@ -34,6 +35,7 @@ const MINIMO_OCULTAR = 4;
 export type OpcionesAgente = {
   prompt: string;
   solicitudSkills?: string;
+  workMode?: "plan" | "build";
   modelosAuxiliares?: string[];
   model: string;
   variant?: string | null;
@@ -71,18 +73,16 @@ export type ResultadoAgente = RunResult & { modelo: string; variante: string | n
 
 // Contrato común, antes de los prompts de fase, para chats y tareas con cualquier runner.
 export const CONTRATO_EJECUCION = [
-  "Contrato de ejecución común de Telo (aplica a cualquier modelo y proveedor):",
-  "- Interpreta la petición como objetivo; respeta restricciones y usa el historial, memoria, instrucciones y skills pertinentes. No repitas trabajo terminado.",
-  "- Define alcance, precondiciones y evidencia de término. Si falta un dato bloqueante, pregunta; si no, elige una opción segura y explícala al final.",
-  "- Comprueba contexto y herramientas antes de usarlas; no afirmes capacidades sin verificarlas.",
-  "- Dependencias ausentes: reinstala con lockfile frozen/ci; el analizador no instala.",
-  "- Resuelve el objetivo con el cambio/investigación mínimos, en el workspace y dentro de las autorizaciones.",
-  "- Reportes/documentos: guarda en entregables y enlaza. Al repo solo por petición. No hagas commit/PR ni muevas archivos sin autorización.",
-  "- Investiga y cita enlaces directos en Markdown. Prioriza fuentes primarias fiables (documentación, estudios, libros, videos, informes, datasets); atribuye autor/editor si consta y nunca inventes enlaces ni fuentes. Si no puedes consultar, dilo.",
-  "- Para imagen, video o voz, usa herramientas locales gratuitas o MCP configurados, no APIs de pago. Verifica TTS antes de prometer voz; si falta, entrega sin voz.",
-  "- Verifica el resultado con evidencia observable; separa lo correcto, fallido y no probado; nunca inventes resultados.",
-  "- Respeta el formato: JSON para análisis/reportes y conversación natural para chats. En trabajos largos, da avances breves; no repitas planes; no reveles razonamiento interno privado.",
-  "- Redacta en español la actividad visible y los avisos de progreso. Conserva sin traducir comandos, código, rutas, nombres propios y citas.",
+  "Contrato de ejecución común de Telo (cualquier modelo y proveedor):",
+  "- Resuelve el objetivo dentro del workspace, permisos y restricciones. Usa contexto pertinente; conserva trabajo terminado. Si falta un dato bloqueante, pregunta.",
+  "- Ahorro permanente (Caveman lite/Ponytail): busca rutas concretas, lee tramos pertinentes y agrupa lecturas independientes. No repitas contexto, skills ni trabajo. Conserva errores, evidencia, seguridad y pruebas; escribe español claro, sin lenguaje telegráfico.",
+  "- Verifica herramientas y dependencias. Reinstala con lockfile frozen/ci; el analizador no instala. No prometas capacidades sin comprobarlas.",
+  "- Reportes: guarda en entregables y enlaza; al repo solo por petición. Commit, push, PR y cambios fuera del workspace requieren autorización.",
+  "- Investiga y cita enlaces directos en Markdown de fuentes primarias: documentación, estudios, libros, videos, informes, datasets. Atribuye autor/editor si consta; nunca inventes enlaces ni fuentes. Si no puedes consultar, dilo.",
+  "- Imagen, video y voz: herramientas locales gratuitas o MCP configurados, no APIs de pago. Comprueba TTS antes de prometer voz; si falta, explica la limitación.",
+  "- Verifica con evidencia observable; distingue correcto, fallido y no probado; nunca inventes resultados.",
+  "- Respeta el formato: JSON para análisis/reportes y conversación natural para chats. Da avances breves en trabajos largos; no repitas planes; no reveles razonamiento interno privado.",
+  "- Redacta en español la actividad visible y los avisos de progreso. Conserva comandos, código, rutas, nombres propios y citas.",
 ].join("\n");
 
 export function conContratoEjecucion(prompt: string, workspace?: string): string {
@@ -356,9 +356,11 @@ function perfilAuxiliar(opts: OpcionesAgente): string | null {
 }
 
 async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoAgente> {
+  if (opts.workMode === "plan") opts = { ...opts, soloLectura: true, aprender: false };
   const preferencias = getPreferences();
   mkdirSync(carpetaEntregables(opts.cwd), { recursive: true });
   const solicitudSkills = opts.solicitudSkills ?? opts.prompt;
+  if (opts.workMode === "plan") opts = { ...opts, prompt: `Modo Planear: solo lectura. Entrega objetivo, observaciones con evidencia, pasos ordenados, archivos afectados si procede, pruebas propuestas, riesgos y preguntas bloqueantes. No ejecutes cambios ni instalaciones. El plan termina esta tarea; Construir requiere una nueva petición. Conserva JSON si la fase lo exige.\n\n${opts.prompt}` };
   const mcp = configuracionMcpParaAgente(requiereContext7(solicitudSkills), opts.soloLectura);
   const secretosProyecto = opts.projectId ? entornoDeProyecto(opts.projectId) : {};
   // Claves de proveedor (Ajustes) y secretos del proyecto. Si un nombre se repite, gana el del proyecto.
@@ -393,6 +395,8 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     opts.onSesion?.(id, id ? modelo : null);
   };
   if (opts.sessionId && !sesion) alSesion(null, null);
+  const rtk = await rtkDisponible();
+  const guiaRtk = rtk ? `RTK 1.1.0 disponible en ${rtk}. Úsalo para salidas humanas de git, búsquedas y pruebas cuando conserve la evidencia. En OpenCode se envuelven automáticamente comandos simples compatibles. No filtres JSON, datos que otro programa deba analizar ni archivos que necesitas leer íntegros. Si falta detalle, repite el comando original sin RTK. No uses llm-proxy ni servicios de RTK.` : "RTK no está instalado o no es la versión verificada. Mantén búsquedas y lecturas acotadas; no afirmes usar RTK ni instales herramientas durante el análisis.";
   const memoria = opts.projectId ? memoriaDelProyecto(opts.projectId).texto : null;
   const comunes = {
     cwd: opts.cwd,
@@ -412,18 +416,19 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
 
   const baseParaModelo = (modelo: string, variante?: string) => {
     if (sesion && modeloSesion !== modelo) alSesion(null, null);
-    const prompt = sesion || perfilAuxiliar(opts)
+    const promptBase = sesion || perfilAuxiliar(opts)
       ? opts.prompt
       : opts.conversationId
         ? promptConHistorial(opts.conversationId, opts.prompt)
         : opts.prompt;
-    const visuales = imagenesDelPrompt(opts.conversationId, prompt);
+    const prompt = `${guiaRtk}\n\n${promptBase}`;
+    const visuales = imagenesDelPrompt(opts.conversationId, prompt, solicitudSkills);
     return {
       ...comunes,
       prompt: conEstilo(
         conContratoEjecucion(
           conMemoria(
-            conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(visuales.prompt, opts.projectId, solicitudSkills).promptFinal, opts.conversationId, opts.cwd),
+            conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(visuales.prompt, opts.projectId, solicitudSkills, opts.cwd).promptFinal, opts.conversationId, opts.cwd),
             memoria,
             opts.aprender === true,
           ), opts.cwd,
@@ -522,6 +527,10 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
 
   let inicio = Date.now();
   async function ejecutarConRunner(modelo: string, params: Parameters<typeof runOpenCode>[0]): Promise<RunResult> {
+    if (params.imagenes?.length) {
+      const info = (await getModels().catch(() => [])).find(m => m.id === modelo);
+      if (info?.supportsImages === false) throw new Error("El modelo seleccionado no admite imágenes según su catálogo. Elige uno con entrada visual; Telo no cambiará de modelo por su cuenta.");
+    }
     const id = crypto.randomUUID();
     const liberar = await reservarAgente(modelo, opts.signal, (estado) => opts.onLinea?.(JSON.stringify({
       type: "telo.queue", id, proveedor: proveedorAgente(modelo), estado,

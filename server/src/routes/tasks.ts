@@ -21,6 +21,7 @@ const DEFAULT_MODEL = "opencode/big-pickle";
 const MAX_PROMPT = 10_000;
 
 type TaskRow = {
+  work_mode: "plan" | "build";
   id: string;
   title: string;
   prompt: string;
@@ -52,7 +53,7 @@ type TaskRow = {
 // plan, reporte y plan_aprobado_en: el plan del analizador, el reporte del obrero y cuándo se aprobó el plan.
 // modelo_agotado: el modelo que se quedó sin cuota (solo en tareas 'sin_cuota').
 const COLUMNS =
-  "t.id, t.title, t.prompt, t.model, t.effort, t.status, t.result, t.error, t.project_id, t.retry_of, (t.provider_session_id IS NOT NULL OR t.status = 'interrupted') AS reanudable, t.rama, t.base_commit, t.plan, t.reporte, t.plan_aprobado_en, t.plan_hash, t.approved_hash, t.conversation_id, t.modelo_agotado, p.name AS project_name, t.created_at, t.started_at, t.finished_at";
+  "t.id, t.work_mode, t.title, t.prompt, t.model, t.effort, t.status, t.result, t.error, t.project_id, t.retry_of, (t.provider_session_id IS NOT NULL OR t.status = 'interrupted') AS reanudable, t.rama, t.base_commit, t.plan, t.reporte, t.plan_aprobado_en, t.plan_hash, t.approved_hash, t.conversation_id, t.modelo_agotado, p.name AS project_name, t.created_at, t.started_at, t.finished_at";
 const DESDE = "FROM tasks t LEFT JOIN projects p ON p.id = t.project_id";
 
 const ESTADOS_REANUDABLES = ["interrupted", "failed"];
@@ -407,6 +408,7 @@ tasks.post("/tasks/:id/reintentar", (c) => {
     projectId: original.project_id,
     titulo: original.title,
     retryOf: original.id,
+    workMode: original.work_mode,
   });
   return c.json(leerTarea(nueva), 201);
 });

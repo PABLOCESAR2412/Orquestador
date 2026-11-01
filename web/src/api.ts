@@ -1,6 +1,7 @@
 import { normalizaPaginaConversaciones } from "./lib/pagina-conversaciones";
 
 export type Conversation = {
+  work_mode?: "plan" | "build";
   ultimo_rol?: string | null;
   requiere_continuar?: boolean;
   id: string;
@@ -520,6 +521,7 @@ export type TaskReport = {
 };
 
 export type Task = {
+  work_mode?: "plan" | "build";
   id: string;
   title: string;
   prompt: string;
@@ -983,6 +985,7 @@ export const api = {
       effort?: string | null;
       title?: string;
       pinned?: boolean;
+      work_mode?: "plan" | "build";
       orquestacion_habilitada?: boolean;
       orquestacion_modelos_personalizados?: boolean;
       orquestacion_seleccion_automatica?: boolean;

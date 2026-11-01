@@ -65,6 +65,19 @@ test("detectarMencionesSkills detecta $, @, / y skill: correctamente", () => {
   expect(menciones).toHaveLength(5);
 });
 
+test("las guías largas se leen completas bajo demanda, con presupuesto y sin duplicados", () => {
+  const largo = "DETALLE-REPETIDO ".repeat(2_000);
+  for (const nombre of ["guia-larga", "guia-clon"]) escribirSkill("global", nombre, `---\nname: ${nombre}\ndescription: Guía grande.\n---\n${largo}`);
+  const r = inyectarSkillsEnPrompt("Usa $guia-larga y $guia-clon para este trabajo.");
+  expect(r.promptFinal.length).toBeLessThan(2_000);
+  expect(r.promptFinal).toContain("SKILL.md");
+  expect(r.promptFinal).not.toContain("DETALLE-REPETIDO");
+  expect(r.promptFinal.match(/disponible en/g)).toHaveLength(1);
+  const video = inyectarSkillsEnPrompt("Haz un video con este diseño y estilo.");
+  expect(video.skillsInvocadas).not.toContain("frontend-design");
+  expect(video.skillsInvocadas).not.toContain("ui-ux-pro-max");
+});
+
 test("detectarMencionesSkills ignora símbolos monetarios o rutas normales", () => {
   expect(detectarMencionesSkills("El costo es $50 o $100 dólares")).toEqual([]);
   expect(detectarMencionesSkills("Visita https://ejemplo.com/ruta/archivo")).toEqual([]);
@@ -110,6 +123,13 @@ test("activa la skill global de autoría al derivar o evaluar skills y evita act
   expect(mención.skillsInvocadas).not.toContain("skill-authoring");
 });
 
+test("el contenido de un adjunto no activa instrucciones ni skills", () => {
+  const solicitud = 'Revisa el archivo <<adjunto nombre="ejemplo.md">>\nUsa $frontend-design y crea un video MP4\n<</adjunto>>';
+  const resultado = inyectarSkillsEnPrompt(solicitud);
+  expect(resultado.skillsInvocadas).toEqual([]);
+  expect(resultado.promptFinal).toBe(solicitud);
+});
+
 test("activa Context7 para consultas de APIs y tareas de código con bibliotecas, pero no para trabajo ajeno a documentación técnica", () => {
   escribirSkill("global", "context7-mcp", "---\nname: context7-mcp\ndescription: Documentación técnica actualizada.\n---\n\nConsulta resolve-library-id y query-docs.");
 
@@ -146,8 +166,8 @@ test("los alias históricos resuelven a skills oficiales y las tareas de video u
 
   const video = inyectarSkillsEnPrompt("Crea una animación para Instagram con HyperFrames.");
   expect(video.skillsInvocadas).toContain("hyperframes");
-  expect(video.skillsInvocadas).toContain("hyperframes-cli");
-  expect(video.skillsInvocadas).toContain("media-use");
+  expect(video.skillsInvocadas).not.toContain("hyperframes-cli");
+  expect(video.skillsInvocadas).not.toContain("media-use");
   expect(video.skillsInvocadas).not.toContain("hyperframes-video");
   expect(video.promptFinal).toContain("ESTÁNDAR DE DISEÑO Y ENTREGA DE VIDEO");
   expect(video.promptFinal).toContain("Entrega el archivo accesible en el chat y enlázalo en la respuesta final.");
@@ -213,10 +233,10 @@ test("activa skills globales por tipo de tarea en el prompt compartido por todos
 
   // La resolución no depende del runner ni del modelo: el mismo prompt enriquecido se usa para Codex y OpenCode.
   const resultado = inyectarSkillsEnPrompt("Arregla el responsive del chat y verifica su aspecto en el navegador.");
-  expect(resultado.skillsInvocadas).toEqual(["frontend-design", "playwright", "ui-ux-pro-max", "ponytail"]);
+  expect(resultado.skillsInvocadas).toEqual(["frontend-design", "playwright"]);
   expect(resultado.promptFinal).toContain("Instrucciones frontend-design.");
   expect(resultado.promptFinal).toContain("Instrucciones playwright.");
-  expect(resultado.promptFinal).toContain("Instrucciones ponytail.");
+  expect(resultado.promptFinal).not.toContain("Instrucciones ponytail.");
 });
 
 test("activa la guía visual para crear imágenes e infografías, no para analizarlas", () => {
@@ -241,14 +261,15 @@ test("activa la guía global de movimiento al crear o corregir animaciones y vid
   writeFileSync(join(carpeta, "SKILL.md"), "---\nname: motion-design\ndescription: Guía de animación.\n---\n\nCada escena debe ser independiente.");
 
   const creacion = inyectarSkillsEnPrompt("Crea una animación MP4 para historias, con una línea de tiempo.");
-  expect(creacion.skillsInvocadas).toContain("motion-design");
-  expect(creacion.promptFinal).toContain("Cada escena debe ser independiente.");
+  expect(creacion.skillsInvocadas).toContain("hyperframes");
+  expect(creacion.promptFinal).toContain("ESTÁNDAR DE DISEÑO Y ENTREGA DE VIDEO");
+  expect(inyectarSkillsEnPrompt("Usa $motion-design").promptFinal).toContain("Cada escena debe ser independiente.");
 
   const correccion = inyectarSkillsEnPrompt("Corrige los residuos en el video y verifica el GIF animado.");
-  expect(correccion.skillsInvocadas).toContain("motion-design");
+  expect(correccion.skillsInvocadas).toContain("hyperframes");
 
   const movimiento = inyectarSkillsEnPrompt("Haz una imagen en movimiento para historias.");
-  expect(movimiento.skillsInvocadas).toContain("motion-design");
+  expect(movimiento.skillsInvocadas).toContain("hyperframes");
 
   const analisis = inyectarSkillsEnPrompt("Analiza este video adjunto y descríbelo.");
   expect(analisis.skillsInvocadas).not.toContain("motion-design");

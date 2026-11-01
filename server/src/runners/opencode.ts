@@ -6,12 +6,13 @@ import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
 import { esVariableReservada, SECRETOS_SOLO_SERVIDOR } from "../secretos";
 import type { ImagenAgente } from "../chat-adjuntos";
 import { config } from "../config";
-import { iniciarVigilante, leerConTope } from "./proteccion";
+import { iniciarVigilante, leerConTope, TIEMPO_PRIMERA_RESPUESTA_MS, ERROR_PRIMERA_RESPUESTA, esActividadUtil } from "./proteccion";
 import type { ServidorMcpAgente } from "../conexiones-mcp";
 import { configuracionOpenCodeMcp } from "../conexiones-mcp";
 import { esCompactacionOpenCode } from "../../../shared/compactacion";
 import { pluginSeguimientoOpenCode } from "./seguimiento-opencode";
 import { PROVEEDORES_CON_CLAVE } from "../claves-proveedor";
+import { rtkDisponible } from "../rtk";
 import { prepararRedAgente, type RedAgente } from "./red-agente";
 
 // Tope de memoria para la salida del agente: 16 MB en total (arranque de 1 MB con los eventos
@@ -373,6 +374,7 @@ export async function runOpenCode(opts: {
   // grupo de procesos y la ejecución falla con un mensaje claro. Sin él, una sesión colgada
   // retenía un slot de la cola para siempre (solo lo liberaban cancelar a mano o reiniciar).
   tiempoSinActividadMs?: number | null;
+  tiempoPrimeraRespuestaMs?: number;
   signal?: AbortSignal;
   onSesion?: (sessionId: string) => void;
   onLinea?: (linea: string) => void;
@@ -399,7 +401,7 @@ export async function runOpenCode(opts: {
     const aislado = aislamientoActivo();
     if (aislado) red = await prepararRedAgente({ modelos: [opts.model, ...(opts.modelosAuxiliares ?? [])], extraEnv: opts.extraEnv, brokerOpenCode: true });
     writeFileSync(captura, "", { flag: "wx", mode: 0o600 });
-    writeFileSync(plugin, pluginSeguimientoOpenCode(aislado ? "/tmp/telo-mcp-config/actividad.ndjson" : captura, sesionValida(opts.sessionId) ? opts.sessionId : null), { flag: "wx", mode: 0o600 });
+    writeFileSync(plugin, pluginSeguimientoOpenCode(aislado ? "/tmp/telo-mcp-config/actividad.ndjson" : captura, sesionValida(opts.sessionId) ? opts.sessionId : null, await rtkDisponible()), { flag: "wx", mode: 0o600 });
     writeFileSync(archivo, JSON.stringify({ ...configuracionOpenCodeMcp(servidores, opts.model), ...red?.configuracion,
       plugin: [aislado ? "file:///tmp/telo-mcp-config/seguimiento.js" : pathToFileURL(plugin).href],
     }), { encoding: "utf8", flag: "wx", mode: 0o600 });
@@ -424,6 +426,7 @@ async function ejecutarOpenCode(opts: {
   timeoutMs?: number | null;
   // Vigilante de actividad (ver nota en la firma externa). null lo desactiva.
   tiempoSinActividadMs?: number | null;
+  tiempoPrimeraRespuestaMs?: number;
   signal?: AbortSignal;
   // Se llama en cuanto el agente informa su sesión, aunque la ejecución siga en curso.
   onSesion?: (sessionId: string) => void;
@@ -547,12 +550,14 @@ async function ejecutarOpenCode(opts: {
   void aborted.catch(() => {});
 
   let sesionAvisada: string | null = null;
+  const primeraRespuesta = iniciarVigilante({ tiempoSinActividadMs: opts.tiempoPrimeraRespuestaMs ?? TIEMPO_PRIMERA_RESPUESTA_MS, cortar: () => terminarGrupo(proc.pid) });
   const usosVistos = new Set<string>();
   const alLeerLinea = (linea: string) => {
     vigilante.patada();
     let ev: OpenCodeEvent | undefined;
     try {
       ev = JSON.parse(linea) as OpenCodeEvent;
+      if (esActividadUtil(ev)) primeraRespuesta.detener();
     } catch {
       // La CLI también puede escribir líneas sin JSON.
     }
@@ -615,11 +620,13 @@ async function ejecutarOpenCode(opts: {
   } finally {
     if (timer) clearTimeout(timer);
     vigilante.detener();
+    primeraRespuesta.detener();
     if (onAbort) opts.signal?.removeEventListener("abort", onAbort);
     monitorSubagentes.cerrar();
     monitorActividad.cerrar();
   }
 
+  if (primeraRespuesta.silenciado()) throw new ErrorAgente(ERROR_PRIMERA_RESPUESTA, "");
   if (errorReintentos) throw errorReintentos;
 
   const events = parseEvents(stdout);

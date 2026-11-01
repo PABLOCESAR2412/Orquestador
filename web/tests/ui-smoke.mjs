@@ -1,6 +1,6 @@
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 
 // Solo fixtures locales: estas pruebas nunca llaman a proveedores ni a repositorios reales.
@@ -94,6 +94,7 @@ try {
     let authenticated = false;
     let chatDetenido = false;
     let conversacionesDisponibles = false;
+    let modoC1 = "build";
     let modeloC1 = "google/prueba";
     let esfuerzoC1 = null;
     let orquestacionC1 = false;
@@ -114,7 +115,10 @@ try {
     let escriturasPreferencias = 0;
     let fallbackModeActual = "selected";
     let skillsGuardadas = [];
+    let secuenciaEnvios = 0;
     let adjuntosChatSubidos = 0;
+    let nombreHojaSubida = nombreHojaPrueba;
+    const imagenesSubidas = new Map();
     let diffRequests = 0;
     let diffSinRepo = false;
     let probarColaProveedor = false;
@@ -162,7 +166,7 @@ try {
       else if (path === "/api/media/capacidades") data = {};
       else if (path === "/api/conversations") {
         const lista = conversacionesDisponibles ? [
-        { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, orquestacion_habilitada: orquestacionC1, orquestacion_modelos_personalizados: modelosPersonalizadosC1, orquestacion_seleccion_automatica: seleccionAutomaticaC1, orquestacion_trabajadores: trabajadoresC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, tiene_sesion: true, created_at: now, subchats: [{ id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true }] },
+        { id: "c1", work_mode: modoC1, title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, orquestacion_habilitada: orquestacionC1, orquestacion_modelos_personalizados: modelosPersonalizadosC1, orquestacion_seleccion_automatica: seleccionAutomaticaC1, orquestacion_trabajadores: trabajadoresC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, tiene_sesion: true, created_at: now, subchats: [{ id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true }] },
         { id: "c2", title: "Chat paralelo", model: "nvidia/nemotron-test", project_id: null, project_name: null, created_at: now },
         { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, pendiente_aprobacion: true, estado_tarea: "pendiente_aprobacion", estado_tarea_id: "review-c3", estado_tarea_version: "hash-c3", created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
         { id: "c4", title: "Chat anterior", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() },
@@ -234,22 +238,38 @@ try {
             );
             return route.fulfill({ json: { messages: messages.slice(-2) } });
           }
-          messages.push({ id: "u3", role: "user", content: body.content, created_at: now }, { id: "a3", role: "assistant", content: "Mensaje recibido", created_at: now });
+          const secuencia = ++secuenciaEnvios;
+          messages.push({ id: `u-fixture-${secuencia}`, role: "user", content: body.content, created_at: now }, { id: `a-fixture-${secuencia}`, role: "assistant", content: "Mensaje recibido", model: modeloC1, created_at: now });
           data = { messages: messages.slice(-2) };
         } else data = messages;
       }
       else if (path === "/api/conversations/c1/adjuntos" && route.request().method() === "POST") {
         if (esperarAdjunto) await esperarAdjunto;
         adjuntosChatSubidos += 1;
+        const recibida = new Request("http://telo/adjunto", { method: "POST", headers: {"content-type": route.request().headers()["content-type"]}, body: route.request().postDataBuffer() });
+        const formulario = await recibida.formData();
+        const archivo = formulario.get("archivo");
+        const contenido = Buffer.from(await archivo.arrayBuffer());
+        const imagenId = `00000000-0000-4000-8000-${String(adjuntosChatSubidos).padStart(12, "0")}`;
+        imagenesSubidas.set(imagenId, {contenido,mime:archivo.type});
+        nombreHojaSubida = archivo.name;
+        if (archivo.name.startsWith("Fotogramas de ")) {
+          assert.match(archivo.name, /6 muestras sin audio/);
+          writeFileSync(`scratch/capturas-ci/hoja-video-${width}.jpg`, contenido);
+        }
         return route.fulfill({
           status: 201,
           json: {
             id: `00000000-0000-4000-8000-${String(adjuntosChatSubidos).padStart(12, "0")}`,
-            nombre: nombreHojaPrueba,
-            mime: "image/jpeg",
-            bytes: 2048,
+            nombre: nombreHojaSubida,
+            mime: archivo.type,
+            bytes: contenido.length,
           },
         });
+      }
+      else if (path.startsWith("/api/conversations/c1/adjuntos/")) {
+        const imagen = imagenesSubidas.get(path.split("/").at(-1));
+        return imagen ? route.fulfill({body:imagen.contenido,contentType:imagen.mime}) : route.fulfill({status:404});
       }
       else if (path === "/api/conversations/c1/archivo-pdf" || path === "/api/conversations/c2/archivo-pdf") {
         const params = new URL(route.request().url()).searchParams;
@@ -281,13 +301,14 @@ try {
       else if (path === "/api/conversations/c1" && route.request().method() === "PATCH") {
         const body = route.request().postDataJSON();
         configuracionesOrquestacion.push(body);
+        if ("work_mode" in body) modoC1 = body.work_mode;
         if ("model" in body) modeloC1 = body.model;
         if ("effort" in body) esfuerzoC1 = body.effort;
         if ("orquestacion_modelos_personalizados" in body) modelosPersonalizadosC1 = body.orquestacion_modelos_personalizados;
         if ("orquestacion_habilitada" in body) orquestacionC1 = body.orquestacion_habilitada;
         if ("orquestacion_seleccion_automatica" in body) seleccionAutomaticaC1 = body.orquestacion_seleccion_automatica;
         if ("orquestacion_trabajadores" in body) trabajadoresC1 = body.orquestacion_trabajadores;
-        data = { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, orquestacion_habilitada: orquestacionC1, orquestacion_modelos_personalizados: modelosPersonalizadosC1, orquestacion_seleccion_automatica: seleccionAutomaticaC1, orquestacion_trabajadores: trabajadoresC1, pinned_at: null, costTier: null, costWarning: null };
+        data = { id: "c1", work_mode: modoC1, title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, orquestacion_habilitada: orquestacionC1, orquestacion_modelos_personalizados: modelosPersonalizadosC1, orquestacion_seleccion_automatica: seleccionAutomaticaC1, orquestacion_trabajadores: trabajadoresC1, pinned_at: null, costTier: null, costWarning: null };
       }
       else if (path === "/api/conversations/c2/messages") data = [
         { id: "a-c2-pdf", role: "assistant", content: "PDF libre generado: `libre.pdf`. Imagen lista: `infografía final.png`.", model: "nvidia/nemotron-test", created_at: now },
@@ -460,7 +481,6 @@ try {
       }
       return route.fulfill({ json: data });
     });
-    const respuestaDiffTransitoria = page.waitForResponse(response => response.url().endsWith("/api/tasks/t1/diff"));
     await page.goto(`${base}/entrar`);
     await page.getByLabel("Clave de acceso").fill("clave-ficticia-de-prueba");
     await page.getByRole("button", { name: "Entrar", exact: true }).click();
@@ -497,6 +517,7 @@ try {
     await page.screenshot({ path: `scratch/capturas-ci/chat-vacio-${width}.png` });
     conversacionesDisponibles = true;
     await page.reload();
+    const respuestaDiffTransitoria = page.waitForResponse(response => response.url().endsWith("/api/tasks/t1/diff"));
     await page.locator(".tl-inicio-recientes").getByRole("button").filter({ hasText: "Prueba de flujo" }).click();
     await page.getByText("Conversaciones", { exact: true }).waitFor();
     let timeoutPollLargo;
@@ -1141,9 +1162,17 @@ try {
     // solo necesita ver que existe la primera; sin first(), el modo estricto revienta al segundo.
     await page.getByText("Mensaje recibido", { exact: true }).first().waitFor();
     assert.equal(await page.locator('section.tl-accion-git-actual').count(), 0, "las acciones de turnos previos quedan en el historial plegado");
+    const modo = page.getByRole("combobox", { name: "Modo de trabajo", exact: true });
+    await modo.selectOption("plan");
+    await page.waitForTimeout(200);
+    assert.equal(modoC1, "plan");
+    await page.screenshot({path: `scratch/capturas-ci/chat-plan-${width}.png`, fullPage:false});
+    await modo.selectOption("build");
+    await page.waitForTimeout(200);
+    assert.equal(modoC1, "build");
     if (videoPathPrueba) {
       await page.locator('input[type="file"]').setInputFiles(videoPathPrueba);
-      await page.getByText("4 fotogramas · sin audio", { exact: false }).waitFor();
+      await page.getByText("6 fotogramas · sin audio", { exact: false }).waitFor();
       assert.equal(await page.getByRole("button", { name: "Enviar", exact: true }).isDisabled(), false, "un video válido debe habilitar el envío aunque el borrador esté vacío");
       const subidaVideo = page.waitForRequest(request =>
         request.url().endsWith("/api/conversations/c1/adjuntos") && request.method() === "POST",
@@ -1151,7 +1180,7 @@ try {
       const solicitudVideo = page.waitForRequest(request =>
         request.url().endsWith("/api/conversations/c1/messages") &&
         request.method() === "POST" &&
-        request.postDataJSON().content.includes(nombreHojaPrueba),
+        request.postDataJSON().content.includes("Fotogramas de "),
       );
       await page.getByRole("button", { name: "Enviar", exact: true }).click();
       try {
@@ -1162,9 +1191,12 @@ try {
       }
       await solicitudVideo;
       assert.equal(adjuntosChatSubidos, 2, "la hoja de fotogramas se sube antes de enviar el mensaje");
-      const hojaEnviada = page.locator(".tl-msg-usuario img[alt]").last();
+      const hojaEnviada = page.getByAltText(nombreHojaSubida, { exact: true });
       await hojaEnviada.waitFor({ state: "attached" });
-      assert.equal(await hojaEnviada.getAttribute("alt"), nombreHojaPrueba);
+      assert.equal(await hojaEnviada.getAttribute("alt"), nombreHojaSubida);
+      await hojaEnviada.evaluate(img => img.decode());
+      const dimensiones = await hojaEnviada.evaluate(img => [img.naturalWidth,img.naturalHeight]);
+      assert.ok(dimensiones[0] > 0 && dimensiones[1] > 0, "la referencia enviada se puede abrir como imagen");
     } else {
       console.log("SKIP video: define TELO_UI_VIDEO_FIXTURE con un MP4 o WebM local para probar la decodificación real.");
     }

@@ -1,3 +1,4 @@
+import { formatearPlan } from "./plan";
 import { createHash } from "node:crypto";
 import { comprobarHerramientas, revisarDependencias } from "./comprobaciones-tarea";
 import { itemDeLinea, registrarActividad } from "./actividad";
@@ -77,6 +78,7 @@ let wake: (() => void) | null = null;
 class ErrorFase extends Error {}
 
 type QueuedTask = {
+  work_mode: "plan" | "build";
   id: string;
   prompt: string;
   model: string;
@@ -126,7 +128,7 @@ function nextQueued(): QueuedTask | null {
   if (enMantenimiento()) return null;
   const pendientes = db
     .query<QueuedTask, []>(
-      "SELECT t.id, t.prompt, t.model, t.effort, t.provider_session_id, t.provider_session_model, t.conversation_id, t.message_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado, t.continuar FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC",
+      "SELECT t.id, t.work_mode, t.prompt, t.model, t.effort, t.provider_session_id, t.provider_session_model, t.conversation_id, t.message_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado, t.continuar FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC",
     )
     .all();
   const candidata = pendientes.find((task) => {
@@ -301,6 +303,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
       ? `${prompt}\n\nComprobaciones previas de Telo (incorpora su resolución al plan antes de ejecutar pruebas):\n${ctx.avisos.join("\n")}`
       : prompt;
     const result = await ejecutarAgente({
+      workMode: task.work_mode,
       solicitudSkills: task.prompt,
       modelosAuxiliares: perfilesSubagente?.modelos,
       prompt: [...informes, perfilesSubagente ? `${perfilesSubagente.instruccion}\n\n${promptAvisos}` : promptAvisos].join("\n\n"),
@@ -418,7 +421,7 @@ function pausarPorCuota(id: string, err: ErrorCuota, reanudable: boolean, conver
 
 // Analizador: escribe el plan. Devuelve "espera" si el usuario debe aprobarlo antes del obrero,
 // o "aprobado" si el plan no necesita aprobación. Tras una desviación siempre espera.
-async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Promise<"espera" | "aprobado"> {
+async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Promise<"espera" | "aprobado" | "solo_plan"> {
   const { task } = ctx;
   const contexto = replanificacion
     ? { planAnterior: planGuardado(task.id), motivo: replanificacion.motivo }
@@ -440,6 +443,8 @@ async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Pr
     db.query("UPDATE tasks SET plan=?, plan_hash=?, approved_hash=NULL, plan_aprobado_en=NULL WHERE id=?").run(contenido, hash, task.id);
     registrarEvento(task.id, "plan_creado", `Versión ${numero}: ${plan.objetivo}`);
   })();
+
+  if (task.work_mode === "plan") return "solo_plan";
 
   if (!replanificacion && !requiereAprobacion(plan)) {
     db.query("UPDATE tasks SET plan_aprobado_en = datetime('now'), approved_hash=plan_hash WHERE id = ?").run(task.id);
@@ -547,7 +552,7 @@ async function ejecutarTarea(task: QueuedTask) {
     return;
   }
 
-  const aprobado = task.aprobado === 1;
+  const aprobado = task.work_mode !== "plan" && task.aprobado === 1;
   // La condición evita pisar una cancelación que llegó durante la preparación.
   // Al arrancar, la marca de continuar se consume: si esta ejecución vuelve a quedarse sin cuota, se vuelve a fijar.
   const marcada = db
@@ -612,6 +617,13 @@ async function ejecutarTarea(task: QueuedTask) {
     if (!aprobado) {
       const decision = await fasePlan(ctx);
       if (decision === "espera") return;
+      if (decision === "solo_plan") {
+        const plan = planGuardado(task.id);
+        if (!plan) throw new ErrorFase("No se pudo recuperar el plan guardado.");
+        const texto = formatearPlan(plan);
+        if (finish(task.id, "done", { result: texto })) avisarChat(task.id, texto, { model: task.model, effort: task.effort });
+        return;
+      }
     }
 
     // Iniciativa del obrero: un reporte con fallo no termina la tarea de inmediato. El mismo

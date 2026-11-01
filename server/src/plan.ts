@@ -27,6 +27,20 @@ export type Plan = {
   notas?: string;
 };
 
+export function formatearPlan(plan: Plan): string {
+  const lista = (titulo: string, elementos: string[]) => elementos.length
+    ? [`### ${titulo}`, elementos.map(c => `- ${c}`).join("\n")] : [];
+  return [
+    "## Plan", plan.objetivo,
+    "### Pasos", plan.pasos.map(p => `${p.id}. ${p.descripcion}${p.archivos.length ? ` (${p.archivos.join(", ")})` : ""}`).join("\n"),
+    ...lista("Comprobación propuesta", plan.criterios_de_aceptacion),
+    ...lista("Supuestos", plan.supuestos),
+    ...lista("Riesgos", plan.riesgos),
+    ...lista("Preguntas", plan.preguntas),
+    "Para ejecutar este plan, selecciona Construir y envía una nueva petición.",
+  ].join("\n\n");
+}
+
 export type Reporte = {
   estado: "completado" | "fallo" | "desviacion";
   resumen: string;
