@@ -67,9 +67,11 @@ describe("skills globales", () => {
     for (const nombre of ["playwright", "ponytail", "image-design", "motion-design", "skill-authoring"]) {
       expect(readFileSync(join(GLOBAL, nombre, "SKILL.md"), "utf8")).toContain(`name: ${nombre}`);
     }
-    for (const nombre of ["context7-mcp", "hyperframes", "hyperframes-cli", "hyperframes-registry", "media-use", "using-superpowers", "strategic-compact"]) {
+    for (const nombre of ["code-review", "writing-plans", "context7-mcp", "hyperframes", "hyperframes-cli", "hyperframes-registry", "media-use", "using-superpowers", "strategic-compact"]) {
       expect(readFileSync(join(GLOBAL, nombre, "SKILL.md"), "utf8")).toContain(`name: ${nombre}`);
     }
+    expect(readFileSync(join(GLOBAL, "writing-plans", "SKILL.md"), "utf8")).toContain("mecanismo de aprobación propios de Telo");
+    expect(readFileSync(join(GLOBAL, "code-review", "SKILL.md"), "utf8")).toContain("Mantén la revisión en solo lectura");
     expect(readFileSync(join(GLOBAL, "motion-design", "SKILL.md"), "utf8")).toContain("No dibujes sobre el fotograma anterior");
     expect(readFileSync(join(GLOBAL, "skill-authoring", "SKILL.md"), "utf8")).toContain("no presentes ejemplos hipotéticos como pruebas ejecutadas");
     expect(() => readFileSync(join(GLOBAL, "context7", "SKILL.md"), "utf8")).toThrow();

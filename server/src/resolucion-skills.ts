@@ -53,6 +53,7 @@ export type SkillInvocada = {
 // Harvey no tiene alias: el archivo antiguo no era una integración ni una skill oficial.
 const ALIAS_SKILLS_OFICIALES: Record<string, string[]> = {
   context7: ["context7-mcp"],
+  "writting-plans": ["writing-plans"],
   "hyperframes-video": ["hyperframes", "hyperframes-cli", "hyperframes-registry", "media-use"],
   "instagram-agent": ["ig-plan", "ig-reel", "ig-story", "ig-carousel", "ig-caption", "ig-human"],
   "obsidian-vault": ["obsidian-markdown", "obsidian-cli"],
@@ -82,8 +83,21 @@ function skillsAutomaticas(texto: string): string[] {
   if (requiereContext7(texto)) resultado.push("context7-mcp");
 
   const interfaz = /\b(frontend|interfaz|ui|css|componente|responsive|diseño|diseño visual|pantalla|formulario|estilo)\b/i.test(texto);
-  if (interfaz) resultado.push("frontend-design", "playwright");
+  if (interfaz) resultado.push("frontend-design", "playwright", "ui-ux-pro-max");
   else if (/\b(playwright|navegador|browser|prueba visual|e2e)\b/i.test(texto)) resultado.push("playwright");
+
+  const revisionCodigo = /\b(?:revisa|revisar|review|audita|auditar)\b[\s\S]{0,80}\b(?:c[oó]digo|diff|cambios|pull request|pr|commit|rama)\b|\b(?:c[oó]digo|diff|cambios|pull request|pr|commit|rama)\b[\s\S]{0,80}\b(?:revisa|revisar|review|audita|auditar)\b/i.test(texto);
+  if (revisionCodigo) resultado.push("code-review");
+
+  const depuracion = /\b(?:depura|depurar|debug|diagnostica|diagnosticar|investiga|investigar|corrige|corregir|arregla|arreglar|resuelve|resolver)\b[\s\S]{0,70}\b(?:error|fallo|bug|falla|problema)\b|\b(?:error|fallo|bug|falla|problema)\b[\s\S]{0,70}\b(?:depura|depurar|debug|diagnostica|diagnosticar|investiga|investigar|corrige|corregir|arregla|arreglar|resuelve|resolver)\b/i.test(texto);
+  if (depuracion) resultado.push("systematic-debugging");
+
+  if (/\b(?:tdd|test[- ]first|desarrollo guiado por pruebas|pruebas? antes del c[oó]digo)\b/i.test(texto)) {
+    resultado.push("test-driven-development");
+  }
+  if (/\b(?:escribe|redacta|prepara|crea|arma)\b[\s\S]{0,50}\bplan(?: de (?:trabajo|implementaci[oó]n))?\b|\bplanifica\b/i.test(texto)) {
+    resultado.push("writing-plans");
+  }
 
   const mencionaImagen = /\b(im[aá]gen(?:es)?|ilustraci[oó]n(?:es)?|infograf[ií]a(?:s)?|p[oó]ster(?:es)?|poster(?:s)?|gr[aá]fico(?:s)?|arte visual)\b/i.test(texto);
   const creaImagen = /\b(crea(?:r|ci[oó]n)?|gener(?:a|ar|aci[oó]n)|haz(?:me)?|diseñ(?:a|ar|o)|ilustra(?:r)?|dibuja(?:r)?|produce|compon(?:er|e)|mejora(?:r)?)\b/i.test(texto);

@@ -58,6 +58,21 @@ test("detectarMencionesSkills ignora símbolos monetarios o rutas normales", () 
   expect(detectarMencionesSkills("El usuario es user@email.com")).toEqual([]);
 });
 
+test("resuelve el nombre mal escrito de Writing Plans y activa skills por su tarea concreta", () => {
+  for (const nombre of ["writing-plans", "code-review", "systematic-debugging", "test-driven-development"]) {
+    escribirSkill("global", nombre, `---\nname: ${nombre}\ndescription: Flujo de trabajo.\n---\n\n${nombre} activo.`);
+  }
+
+  const plan = inyectarSkillsEnPrompt("Usa $writting-plans para preparar el plan de implementación.");
+  expect(plan.skillsInvocadas).toContain("writing-plans");
+  expect(plan.skillsInvocadas).not.toContain("writting-plans");
+
+  expect(inyectarSkillsEnPrompt("Revisa los cambios de código del pull request.").skillsInvocadas).toContain("code-review");
+  expect(inyectarSkillsEnPrompt("Investiga este error del servidor.").skillsInvocadas).toContain("systematic-debugging");
+  expect(inyectarSkillsEnPrompt("Apliquemos TDD a este cambio.").skillsInvocadas).toContain("test-driven-development");
+  expect(inyectarSkillsEnPrompt("Explícame qué significa TDD.").skillsInvocadas).toContain("test-driven-development");
+});
+
 test("activa la skill global de autoría al derivar o evaluar skills y evita activarla al hablar de ellas sin pedir cambios", () => {
   escribirSkill(
     "global",
@@ -175,7 +190,7 @@ test("prioriza la skill global de Telo y conserva las skills únicas del proyect
 });
 
 test("activa skills globales por tipo de tarea en el prompt compartido por todos los runners", () => {
-  for (const nombre of ["frontend-design", "playwright", "ponytail"]) {
+  for (const nombre of ["frontend-design", "playwright", "ui-ux-pro-max", "ponytail"]) {
     escribirSkill(
       "global",
       nombre,
@@ -185,7 +200,7 @@ test("activa skills globales por tipo de tarea en el prompt compartido por todos
 
   // La resolución no depende del runner ni del modelo: el mismo prompt enriquecido se usa para Codex y OpenCode.
   const resultado = inyectarSkillsEnPrompt("Arregla el responsive del chat y verifica su aspecto en el navegador.");
-  expect(resultado.skillsInvocadas).toEqual(["frontend-design", "playwright", "ponytail"]);
+  expect(resultado.skillsInvocadas).toEqual(["frontend-design", "playwright", "ui-ux-pro-max", "ponytail"]);
   expect(resultado.promptFinal).toContain("Instrucciones frontend-design.");
   expect(resultado.promptFinal).toContain("Instrucciones playwright.");
   expect(resultado.promptFinal).toContain("Instrucciones ponytail.");

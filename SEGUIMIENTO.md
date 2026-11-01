@@ -1,8 +1,16 @@
 # Seguimiento de Telo
 
-Registro central de fases, revisiones y hallazgos. Actualizado: 31 de octubre de 2026.
+Registro central de fases, revisiones y hallazgos. Actualizado: 1 de noviembre de 2026.
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
+
+## Skills de diseño y desarrollo — 1 de noviembre de 2026
+
+- [x] Se agregan Code Review y Writing Plans al catálogo global de arranque; TDD y Systematic Debugging ya estaban incluidos. El importador reconoce sus nombres y el alias escrito `writting-plans` resuelve a `writing-plans`.
+- [x] Ajustes > Conexiones permite instalar UI/UX Pro Max y las skills de revisión, planes, TDD y depuración desde sus repositorios fuente. UI/UX Pro Max importa la guía, reglas, datos y cuatro scripts permitidos, con límites de tamaño y rutas; no ejecuta contenido durante la instalación.
+- [x] El resolver activa cada skill por tipo de tarea o mención explícita, evitando cargar los flujos de planes/TDD cuando no aplican. Writing Plans y Code Review incluyen una nota para respetar aprobaciones y límites de Telo.
+- [x] Verificación local: 38 pruebas enfocadas aprobadas; typecheck del servidor y build de producción web aprobados.
+- [ ] Falta validar la instalación y ejecución en la VM Linux después del despliegue.
 
 ## Piloto de ejecución directa y auditoría delegada — 31 de octubre de 2026
 
@@ -43,7 +51,7 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 
 - [~] Seguridad: `TELO_SIN_CLAVE` exige escucha loopback y rechaza solicitudes con host no local o cabeceras de proxy. No usarlo detrás de un proxy que elimine esas cabeceras; validar en Linux y VM. `.gitignore` ya excluye extensiones habituales de llaves privadas.
 - [x] Instaladores: OpenCode y Codex usan versiones exactas; Antigravity se descarga por HTTPS a un temporal, con límite de tamaño y validación `bash -n` antes de ejecutarse. El proveedor no publica checksum/firma del script, así que queda explícito el límite de verificación del contenido.
-- [~] Despliegue: `actualizar.sh` exige CI verde para `servidor` e `interfaz` en el SHA exacto de `main`; nombres contrastados contra los checks reales de GitHub. Faltan configurar el token de lectura en la VM y probar un ciclo real.
+- [~] Despliegue: `actualizar.sh` consulta la API de Actions para el SHA exacto de `main` y exige que el último workflow de push tenga `servidor` e `interfaz` verdes. Usa PAT fine-grained con `Actions: Read-only` (el permiso Checks no existe para esos PAT) y lo quita del entorno antes de compilar. Pruebas locales específicas pasan; falta guardar el PAT en `/etc/orquestador/deploy.env` y observar un ciclo real en la VM.
 - [x] Suite unificada: el CI corre `bun test --timeout 60000 --max-concurrency=1` en un solo proceso Linux, además de worker, typecheck, build, pruebas web y Playwright. Los checks `servidor` e `interfaz` del PR #159 pasaron. Los 89 fallos de la ejecución Windows anterior no representan el resultado Linux y no se trasladaron a CI.
 - [ ] Dependencias: el último `bun audit` no pudo consultar `registry.npmjs.org` por `DNSResolveFailed`; el informe previo señalaba 11 avisos, pero no hay una lista actual verificable por paquete. Repetir en una red con acceso y actualizar solo dependencias afectadas con lockfile y CI.
 - [ ] Aislamiento de red de agentes: requiere un proxy de egreso que permita proveedores sin exponer servicios locales; no activar `--unshare-net` mientras no exista esa ruta.

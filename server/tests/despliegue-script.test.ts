@@ -21,12 +21,10 @@ merge) echo merge >> eventos; echo nueva > head;;
 reset) echo rollback >> eventos; echo anterior > head;;
 *) exit 1;; esac`,
     bun: `if [ "$1" = -e ]; then exec "$TELO_BUN_REAL" "$@"; fi
-if [ "$1" = run ] && [[ "$2" == */verificar-ci.ts ]]; then cat >/dev/null; echo "CI aprobado"; exit 0; fi
+if [ "$1" = run ] && [[ "$2" == */verificar-ci.ts ]]; then echo "CI aprobado"; exit 0; fi
+if [ -n "$TELO_GITHUB_CI_TOKEN" ]; then echo "el token se heredó al build" >&2; exit 91; fi
 echo "build:$PWD" >> "$TELO_REPO/eventos"`,
-    curl: `case "$*" in
-  *check-runs*) echo '{"check_runs":[{"name":"servidor","status":"completed","conclusion":"success"},{"name":"interfaz","status":"completed","conclusion":"success"}]}' ;;
-  *) if [ "$TELO_MODO" = ocupado ]; then echo '{"ok":true,"despliegue":{"mantenimiento":true,"activas":1}}'; else echo '{"ok":true,"despliegue":{"mantenimiento":true,"activas":0}}'; fi ;;
-esac`,
+    curl: `if [ "$TELO_MODO" = ocupado ]; then echo '{"ok":true,"despliegue":{"mantenimiento":true,"activas":1}}'; else echo '{"ok":true,"despliegue":{"mantenimiento":true,"activas":0}}'; fi`,
     sudo: `echo "$*" >> eventos
 if [ "$TELO_MODO" = arranque-falla ] && [ "$3" = start ] && [ "$(cat head)" = nueva ]; then exit 1; fi`,
     pgrep: "exit 1",
