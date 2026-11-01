@@ -342,11 +342,13 @@
 .tl-hilo-columna {
   --tl-hilo-gutter: 72px;
   position: relative;
-  width: min(100%, calc(var(--ancho-contenido) + 56px));
+  width: min(100%, calc(var(--ancho-contenido) + 144px));
+  min-height: 100%;
   margin: 0 auto;
-  padding: 28px 16px 28px var(--tl-hilo-gutter);
+  padding: 28px var(--tl-hilo-gutter) 14px;
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   gap: 28px;
 }
 .tl-hilo-columna:has(.tl-hilo-hito)::before {
@@ -2802,6 +2804,10 @@
   .tl-archivo-chip-icono, .tl-archivo-chip-tipo { flex: 0 0 auto; }
   .tl-archivo-chip-abrir-etiqueta { display: none; }
 }
+
+/* Evita que encabezados cortos (p. ej. "Step") se partan letra por letra. */
+.tl-md .tl-tabla-wrap th:first-child,
+.tl-md .tl-tabla-wrap td:first-child { width: 1%; white-space: nowrap; }
 
 @media (max-width: 600px) {
   .tl-chat-cabecera { gap: 8px; padding: 10px 16px; }

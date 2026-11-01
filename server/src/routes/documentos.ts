@@ -84,7 +84,7 @@ documentos.get("/documentos/:id", (c) => {
 });
 
 // Descarga: el navegador guarda el archivo tal como se generó.
-documentos.get("/documentos/:id/archivo", (c) => {
+documentos.get("/documentos/:id/archivo", async (c) => {
   const fila = db
     .query<FilaDocumento & { contenido: Uint8Array }, [string]>(
       `SELECT ${COLUMNAS}, contenido FROM documentos WHERE id = ?`,
@@ -93,11 +93,15 @@ documentos.get("/documentos/:id/archivo", (c) => {
   if (!fila) return c.json({ error: "documento_no_encontrado" }, 404);
   const nombre = nombreArchivo(fila.titulo, fila.formato);
   const ascii = nombre.replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "'");
-  return new Response(fila.contenido, {
+  // Los documentos HTML antiguos reciben también la política al descargarse.
+  const contenido = fila.formato === "html"
+    ? await generarArchivo("html", fila.titulo, new TextDecoder().decode(fila.contenido))
+    : fila.contenido;
+  return new Response(contenido, {
     headers: {
       "Content-Type": mimeDeFormato(fila.formato),
       "Content-Disposition": `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(nombre)}`,
-      "Content-Length": String(fila.contenido.byteLength),
+      "Content-Length": String(contenido.byteLength),
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "no-store",
     },

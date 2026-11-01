@@ -68,11 +68,16 @@ try {
     page.on("pageerror", error => { errors.push(error.message); console.error(error.message); });
     const now = new Date().toISOString();
     const task = { id: "t1", title: "Prueba", model: "google/prueba", modelo_agotado: null, status: "done", created_at: now, started_at: now, finished_at: now, plan: null, reporte: null };
+    const resumenCompactacion = "## Objective\n- COMPACTACION-INTERNA-PRUEBA\n## Important Details\n- Conservar el contexto.\n## Work State\n### Completed\n- Lectura.\n### Active\n- Verificación.\n### Blocked\n- (none)\n## Next Move\n1. Continuar.\n## Relevant Files\n- src/app.ts";
     const messages = [
       { id: "u1", role: "user", content: "git commit y push", created_at: now },
       { id: "a1", role: "assistant", content: '{"estado":"fallo","resumen":"Faltan dependencias","desviacion":"Instala antes de probar","pendientes":["x".replace("x","y")]}<telo-memoria>MEMORIA_INTERNA</telo-memoria>', model: "groq/llama-test", effort: "low", created_at: now },
       { id: "u2", role: "user", content: "prepara de nuevo el git commit y push", created_at: now },
       { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\nAbre `server/src/ejecutar.ts:3-20` para ver el ejemplo. También revisa `Chat.tsx` y `Gone.tsx`.\n\nPDF generado: `informe revisión.pdf`.\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Uso por área\",\"unit\":\"tokens\",\"data\":[{\"label\":\"Chat\",\"value\":120},{\"label\":\"Tareas\",\"value\":80}]}\n```\n\n```chart\n{\"type\":\"line\",\"title\":\"Uso diario\",\"data\":[{\"label\":\"Lun\",\"value\":20},{\"label\":\"Mar\",\"value\":35}]}\n```\n\n```chart\n{\"type\":\"pie\",\"title\":\"Distribución\",\"data\":[{\"label\":\"A\",\"value\":3},{\"label\":\"B\",\"value\":2}]}\n```\n\n```chart\n{\"type\":\"donut\",\"title\":\"Resultados\",\"data\":[{\"label\":\"Correcto\",\"value\":9},{\"label\":\"Pendiente\",\"value\":1}]}\n```\n\n```chart\n{\"type\":\"stats\",\"title\":\"Resumen\",\"unit\":\"pruebas\",\"data\":[{\"label\":\"Correctas\",\"value\":11,\"detail\":\"En verde\"}]}\n```\n\n```chart\nesto no es JSON\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Balance\",\"data\":[{\"label\":\"Ingresos\",\"value\":5},{\"label\":\"Ajustes\",\"value\":-2}]}\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", model: "nvidia/nemotron-test", effort: "high", created_at: now },
+      { id: "u-compact-old", role: "user", content: "Continúa el trabajo anterior", created_at: now },
+      { id: "a-compact-old", role: "assistant", content: resumenCompactacion, created_at: now },
+      { id: "u-compact-new", role: "user", content: "Termina después de resumir el contexto", created_at: now },
+      { id: "a-compact-new", role: "assistant", content: "Resultado visible después de compactar.", sesion_compactada: 1, created_at: now },
       { id: "u-stale", role: "user", content: "Solicitud fallida anterior", created_at: now },
       { id: "s-stale", role: "system", content: "La solicitud anterior falló.", created_at: now },
       { id: "u-retry", role: "user", content: "Quiero una segunda versión de este PDF", created_at: now },
@@ -102,12 +107,16 @@ try {
     let reintentos = [];
     let skillInstallRequests = 0;
     let skillSaveRequests = 0;
+    const brainNotes = [];
     let politicaDisco = { automatica: false, umbral: 85, intervaloHoras: 24, antiguedadDias: 7 };
     let ultimoDisco = null;
     let escriturasPreferencias = 0;
     let skillsGuardadas = [];
     let adjuntosChatSubidos = 0;
     let diffRequests = 0;
+    let diffSinRepo = false;
+    let probarColaProveedor = false;
+    let lecturasColaProveedor = 0;
     let taskListRequests = 0;
     const esperasPollUsadas = [];
     let resolverEsperaPollLarga;
@@ -163,6 +172,16 @@ try {
       }
       else if (path === "/api/conversations/c1/turnos/u1/subagentes") data = [
         { id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true },
+      ];
+      else if (path === "/api/conversations/c1/turnos/u-capacidad/actividad") {
+        lecturasColaProveedor++;
+        data = lecturasColaProveedor === 1
+          ? [{ seq: 1, tipo: "accion", herramienta: "capacity", titulo: "En cola: esperando capacidad de opencode", detalle: null, estado: "en_curso" }]
+          : [{ seq: 1, tipo: "accion", herramienta: "capacity", titulo: "Capacidad disponible en opencode", detalle: null, estado: "hecha" },
+              { seq: 2, tipo: "accion", herramienta: "bash", titulo: "Ejecutó comprobación tras la espera", detalle: "$ bun test", estado: "en_curso" }];
+      }
+      else if (path === "/api/conversations/c1/turnos/u-compact-new/actividad") data = [
+        { seq: 1, tipo: "accion", herramienta: "compaction", titulo: "Contexto compactado automáticamente", detalle: resumenCompactacion, estado: "hecha" },
       ];
       else if (path === "/api/conversations/c-child/messages") data = [
         { id: "child-u1", role: "user", content: "Revisa las rutas y reporta riesgos", created_at: now },
@@ -285,7 +304,9 @@ try {
       }
       else if (path === "/api/tasks/t1/diff") {
         diffRequests++;
-        data = diffRequests === 1
+        data = diffSinRepo
+          ? { estado: "sin_repo", rama: null, base_commit: null, commit: null, archivos: [], diff: "", truncado: false, hash: null, remoto: false, aprobaciones: { commit: null, push: null } }
+          : diffRequests === 1
           ? { estado: "en_curso" }
           : { estado: "con_cambios", rama: "telo/prueba", base_commit: null, commit: "abcdef012345", archivos: [{ ruta: "src/app.ts", estado: "modificado", adiciones: 2, eliminaciones: 1, binario: false, sensible: false }], hash: "0123456789abcdef", diff: "diff de prueba", truncado: false, remoto: true, aprobaciones: { commit: null, push: null } };
       }
@@ -294,6 +315,7 @@ try {
       else if (path === "/api/models/usage") data = { counts: { "groq/llama-test": 12, "google/prueba": 5, "nvidia/nemotron-test": 3 } };
       else if (path === "/api/models") data = { models: [
         { id: "opencode/claude-fable-5", provider: "opencode", name: "Claude Fable 5", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Claude", recommended: true },
+        { id: "codex/gpt-5-codex", provider: "codex", name: "GPT-5 Codex", inputUsd: 0, outputUsd: 0, context: 100000, variants: ["high"], free: false, costTier: "medio", costWarning: null, group: "Codex", recommended: true },
         { id: "google/prueba", provider: "google", name: "Google Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Gemini", recommended: true },
         { id: "nvidia/nemotron-test", provider: "nvidia", name: "Nemotron Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Nemotron", recommended: true },
         { id: "nvidia/llama-test", provider: "nvidia", name: "NVIDIA Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Llama", recommended: true },
@@ -303,7 +325,7 @@ try {
       else if (path === "/api/preferences") data = { defaultModel: null, defaultEffort: null, monthlyBudgetUsd: null, budgetAlertPercent: 80 };
       else if (path === "/api/providers") data = [
         { id: "opencode", name: "OpenCode", configured: true, implemented: true, hint: "CLI instalado.", variable: null, enAgente: true, guardable: false, guardada: false, sesion: false },
-        { id: "codex", name: "Codex", configured: codexSesionEnPicker, implemented: true, hint: "Sesión de Codex.", variable: "OPENAI_API_KEY", enAgente: false, guardable: false, guardada: false, sesion: codexSesionEnPicker },
+        { id: "codex", name: "Codex", configured: codexSesionEnPicker, implemented: true, hint: "Sesión de Codex.", variable: null, enAgente: codexSesionEnPicker, guardable: false, guardada: false, sesion: codexSesionEnPicker },
         { id: "google", name: "Google (Gemini)", configured: true, implemented: true, hint: "Clave de prueba.", variable: "GOOGLE_GENERATIVE_AI_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
         { id: "groq", name: "Groq", configured: false, implemented: true, hint: "Clave de prueba.", variable: "GROQ_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
         { id: "nvidia", name: "NVIDIA", configured: true, implemented: true, hint: "Clave de prueba.", variable: "NVIDIA_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
@@ -354,6 +376,28 @@ try {
       else if (path === "/api/tasks") { taskListRequests++; data = [{ id: "regular-1", title: "Prompt ordinario del chat", model: "google/prueba", status: "done", created_at: now }]; }
       else if (path === "/api/programadas") data = [{ id: "schedule-1", titulo: "Resumen diario", prompt: "Preparar resumen", model: "google/prueba", effort: null, project_id: null, project_name: null, frecuencia: "diaria", cada_horas: null, hora: "08:00", activa: true, proxima_en: now, ultima_ejecucion: null, ultima_tarea_id: null, created_at: now }];
       else if (path === "/api/projects") data = [{ id: "p1", name: "Pruebas", en_proceso: true }];
+      else if (path === "/api/cerebro/notas" && route.request().method() === "GET") {
+        const projectId = params.get("project_id");
+        const query = (params.get("q") ?? "").toLocaleLowerCase();
+        const notas = brainNotes.filter(nota => (nota.project_id ?? null) === (projectId ?? null) && (!query || `${nota.title} ${nota.content}`.toLocaleLowerCase().includes(query)));
+        data = { notas: notas.map(({ content, ...nota }) => ({ ...nota, resumen: content.slice(0, 180) })), total: notas.length, busqueda: "local" };
+      }
+      else if (path === "/api/cerebro/notas" && route.request().method() === "POST") {
+        const body = route.request().postDataJSON();
+        const nota = { id: `brain-${brainNotes.length + 1}`, project_id: body.project_id, title: body.title, content: body.content, created_at: now, updated_at: now };
+        brainNotes.push(nota);
+        return route.fulfill({ status: 201, json: nota });
+      }
+      else if (path === "/api/cerebro/grafo") data = { nodos: brainNotes.map(({ id, title }) => ({ id, title })), enlaces: [], limitado: false };
+      else if (path.startsWith("/api/cerebro/notas/")) {
+        const nota = brainNotes.find(item => item.id === path.split("/").at(-1));
+        if (!nota) return route.fulfill({ status: 404, json: { error: "note_not_found" } });
+        if (route.request().method() === "GET") data = nota;
+        else if (route.request().method() === "PUT") {
+          Object.assign(nota, route.request().postDataJSON(), { updated_at: new Date().toISOString() });
+          data = nota;
+        } else if (route.request().method() === "DELETE") { brainNotes.splice(brainNotes.indexOf(nota), 1); data = { ok: true }; }
+      }
       else if (path === "/api/documentos" && route.request().method() === "POST") data = { id: "doc1", conversation_id: "c1", titulo: "Documento de prueba", formato: "md", bytes: 123, created_at: now };
       else if (path === "/api/documentos/doc1/vista") {
         return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: "<!doctype html><html><body><p>Vista previa de prueba</p></body></html>" });
@@ -382,6 +426,7 @@ try {
         byTask: [{ taskId: "t1", calls: 1, tokens: sinDatos ? 0 : 10, cost: 0, tokensMedidos: sinDatos ? 0 : 1, costesEstimados: sinDatos ? 0 : 1, sinTokens: sinDatos ? 1 : 0, sinCoste: sinDatos ? 1 : 0, historicos: 0 }],
       };
       else if (path.includes("eventos-vivos/poll")) {
+        if (probarColaProveedor) return route.fulfill({ status: 503, json: { error: "canal_no_disponible_fixture" } });
         const esperaPollUsada = Number(new URL(route.request().url()).searchParams.get("espera"));
         esperasPollUsadas.push(esperaPollUsada);
         if (esperaPollUsada >= 4000) resolverEsperaPollLarga();
@@ -413,6 +458,20 @@ try {
     await page.getByText("Conversaciones", { exact: true }).waitFor();
     await page.getByRole("heading", { name: "Bienvenido a Telo", exact: true }).waitFor();
     await page.getByRole("button", { name: "Nuevo chat", exact: true }).waitFor();
+    await page.goto(`${base}/cerebro`);
+    await page.getByRole("heading", { name: "Cerebro", exact: true }).waitFor();
+    await page.getByText("Este baúl está vacío. Crea una nota o importa Markdown.", { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "el cerebro cabe en el ancho de la pantalla");
+    await page.getByRole("button", { name: "+ Nota", exact: true }).click();
+    await page.getByLabel("Título de la nota").waitFor();
+    assert.equal(await page.getByLabel("Título de la nota").inputValue(), "Nota nueva");
+    await page.getByLabel("Contenido Markdown").fill("# Nota nueva\n\n[[Pruebas]]");
+    await page.getByRole("button", { name: "Guardar", exact: true }).click();
+    await page.getByText("Cambios guardados.", { exact: true }).waitFor();
+    assert.equal(brainNotes[0]?.content, "# Nota nueva\n\n[[Pruebas]]");
+    await page.screenshot({ path: `scratch/capturas-ci/cerebro-${width}.png` });
+    await page.goto(`${base}/chat`);
+    await page.getByRole("heading", { name: "Bienvenido a Telo", exact: true }).waitFor();
     const marcaChatNuevo = page.locator(".tl-vacio-emblema");
     assert.equal(await marcaChatNuevo.locator("svg").count(), 1, "el chat nuevo reutiliza el símbolo de Telo");
     assert.equal(await marcaChatNuevo.locator(".tl-vacio-orbita").count(), 2, "el símbolo tiene dos líneas orbitales");
@@ -459,6 +518,22 @@ try {
     await page.getByRole("button", { name: "Volver al chat principal: Prueba de flujo", exact: true }).click();
     await page.getByRole("heading", { name: "Prueba de flujo", exact: true }).waitFor();
     console.log(`${width}px: actividad en vivo y navegación entre supervisor y subchat comprobadas`);
+    const compactaciones = page.locator(".tl-compactacion");
+    assert.equal(await compactaciones.count(), 2, "el resumen antiguo y la compactación nueva tienen controles independientes");
+    assert.equal(await compactaciones.locator("pre").count(), 0, "ninguna compactación se muestra abierta al entrar");
+    await compactaciones.first().locator("summary").click();
+    await compactaciones.first().locator("pre").waitFor();
+    assert.equal(await compactaciones.first().locator("pre").textContent(), resumenCompactacion, "el resumen histórico se conserva íntegro al expandir");
+    await compactaciones.first().locator("summary").click();
+    await compactaciones.last().locator("summary").click();
+    await compactaciones.last().locator("pre").waitFor();
+    assert.equal(await compactaciones.last().locator("pre").textContent(), resumenCompactacion, "el nuevo resumen se carga desde la actividad del turno");
+    assert.equal(await page.getByText("Resultado visible después de compactar.", { exact: true }).isVisible(), true, "la respuesta final permanece separada");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/compactacion-${width}.png` });
+    await compactaciones.last().locator("summary").click();
+    await page.getByText("Resultado visible después de compactar.", { exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `scratch/capturas-ci/compactacion-plegada-${width}.png` });
     if (width === 390) {
       await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
       const filaChatAnterior = page.locator('.sidebar-conv[aria-label="Chat anterior"]').locator("..");
@@ -575,13 +650,14 @@ try {
     assert.match(await selectorModelo.locator(".picker-tus-modelos").innerText(), /Llama Test/);
     assert.match(await selectorModelo.locator(".picker-tus-modelos").innerText(), /Google Test/);
     assert.equal(await selectorModelo.locator(".picker-intelligence").filter({ hasText: "AA 42,5" }).count(), 1);
-    // El buscador filtra el catálogo en vivo, esconde "Tus modelos" y marca el proveedor en cada fila.
+    // El buscador filtra el catálogo y muestra el proveedor en la cabecera del grupo.
     const campoBusca = selectorModelo.locator(".picker-search");
     await campoBusca.fill("other");
     await selectorModelo.locator(".picker-item").filter({ hasText: "Other Test" }).waitFor();
     assert.match(await selectorModelo.locator(".picker-conteo").innerText(), /1 modelo/);
     assert.equal(await selectorModelo.locator(".picker-item").filter({ hasText: "Llama Test" }).count(), 0);
-    assert.equal(await selectorModelo.locator(".picker-proveedor-chip").filter({ hasText: "Groq API" }).count(), 1);
+    assert.equal(await selectorModelo.getByRole("heading", { name: "Groq API", exact: true }).count(), 1);
+    assert.equal(await selectorModelo.locator(".picker-proveedor-chip").count(), 0);
     await campoBusca.fill("inexistente");
     assert.equal(await selectorModelo.locator(".picker-item").count(), 0);
     assert.match(await selectorModelo.locator(".muted-note").innerText(), /Sin resultados/);
@@ -590,6 +666,7 @@ try {
     const anclarGoogle = selectorModelo.getByRole("button", { name: "Anclar Google Test en favoritos", exact: true });
     await anclarGoogle.click();
     assert.equal(await selectorModelo.getByRole("button", { name: "Quitar Google Test de favoritos", exact: true }).getAttribute("aria-pressed"), "true");
+    await selectorModelo.getByRole("button", { name: "Mostrar modelos de Groq API", exact: true }).click();
     await selectorModelo.locator(".picker-item").filter({ hasText: "Other Test" }).click();
     await page.locator(".tl-modelo-boton .tl-modelo-nombre").filter({ hasText: "Other Test" }).waitFor();
     assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Llama Test" }).count(), 1);
@@ -1027,6 +1104,10 @@ try {
     await page.evaluate(() => window.__reconocimientoPrueba.onresult({ resultIndex: 0, results: [{ 0: { transcript: "dictado B" }, isFinal: true, length: 1 }] }));
     await page.waitForFunction(() => localStorage.getItem("telo:borrador:c2") === "Base B dictado B"
       && document.querySelector('textarea[aria-label="Mensaje"]')?.value === "Base B dictado B");
+    await page.evaluate(() => {
+      for (let i = 0; i < 3; i++) window.__reconocimientoPrueba.onresult({ resultIndex: 0, results: [{ 0: { transcript: "dictado B" }, isFinal: true, length: 1 }] });
+    });
+    assert.equal(await page.getByRole("textbox", { name: "Mensaje", exact: true }).inputValue(), "Base B dictado B", "reenviar finales móviles no duplica la transcripción");
     assert.equal(await page.evaluate(() => localStorage.getItem("telo:borrador:c2")), "Base B dictado B");
     assert.equal(await page.evaluate(() => localStorage.getItem("telo:borrador:c1")), "Base A dictado A");
     mostrarHistorialExtenso = true;
@@ -1081,8 +1162,8 @@ try {
     await page.getByRole("button", { name: "Configurar supervisor y modelos auxiliares", exact: true }).click();
     const dialogoOrquestacion = page.getByRole("dialog", { name: "Supervisor del chat" });
     await dialogoOrquestacion.waitFor();
-    await dialogoOrquestacion.getByLabel("Activar auxiliares para esta conversación").check();
-    assert.equal(await dialogoOrquestacion.getByRole("radio", { name: /Elegir según cada petición/ }).isChecked(), true);
+    await dialogoOrquestacion.getByLabel("Preparar auxiliares para peticiones explícitas").check();
+    assert.equal(await dialogoOrquestacion.getByRole("radio").count(), 0);
     assert.equal(await dialogoOrquestacion.locator(".tl-orquestacion-auxiliar").count(), 3, "el supervisor propone una lista dinámica de hasta tres modelos candidatos");
     await dialogoOrquestacion.getByLabel("Función auxiliar 2").selectOption("arquitectura");
     await dialogoOrquestacion.getByRole("button", { name: "Quitar auxiliar 3", exact: true }).click();
@@ -1093,7 +1174,7 @@ try {
     const peticionOrquestacion = await guardarOrquestacion;
     const configuracionGuardada = peticionOrquestacion.postDataJSON();
     assert.equal(configuracionGuardada.orquestacion_habilitada, true);
-    assert.equal(configuracionGuardada.orquestacion_seleccion_automatica, true);
+    assert.equal(configuracionGuardada.orquestacion_seleccion_automatica, false);
     assert.equal(configuracionGuardada.orquestacion_trabajadores.length, 3, "se guarda la cantidad dinámica de modelos candidatos");
     assert.equal(configuracionGuardada.orquestacion_trabajadores[0].model === configuracionGuardada.model, false, "el modelo supervisor no se duplica como auxiliar");
     assert.equal(configuracionGuardada.orquestacion_trabajadores[0].rol, configuracionGuardada.orquestacion_trabajadores[1].rol, "se permiten varios candidatos con la misma función");
@@ -1119,7 +1200,8 @@ try {
     assert.equal(textoUso.includes("Últimas 5 horas"), true);
     assert.equal(textoUso.includes("Mes actual (UTC)"), true);
     assert.equal(textoUso.includes("Estimación de coste"), true);
-    assert.equal(textoUso.includes("saldo ni los límites efectivos"), true);
+    assert.equal(textoUso.includes("El plan Google AI Plus y la cuota de Antigravity son aparte"), true);
+    assert.equal(await panelUso.getByRole("link", { name: "Google AI Studio · Usage" }).getAttribute("href"), "https://aistudio.google.com/usage");
     assert.equal(/\b(?:restantes|RPD|RPM|cuota restante)\b/i.test(textoUso), false);
     await page.keyboard.press("Escape");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
@@ -1245,13 +1327,14 @@ try {
     assert.equal(await page.getByRole("heading", { name: "Cuenta de Google", exact: true }).count(), 0);
     const proveedoresInferencia = page.getByRole("tablist", { name: "Proveedores de inferencia" });
     await proveedoresInferencia.getByRole("tab", { name: "Google Gemini" }).waitFor();
-    assert.equal(await proveedoresInferencia.getByRole("tab").count(), 4);
+    assert.equal(await proveedoresInferencia.getByRole("tab").count(), 5);
     const panelGemini = page.getByRole("tabpanel", { name: "Google Gemini" });
+    await panelGemini.getByRole("button", { name: "Mostrar ajustes", exact: true }).click();
     await panelGemini.getByRole("button", { name: "Editar", exact: true }).click();
     assert.equal(await panelGemini.locator("input[type=password]").count(), 1, "la clave solo aparece al editarla");
     await panelGemini.getByRole("button", { name: "Cancelar", exact: true }).click();
     await panelGemini.locator(".aj-probar-proveedor").getByRole("button", { name: "Probar conexión", exact: true }).click();
-    await panelGemini.getByText(/Catálogo consultado: 7 modelos disponibles/).waitFor();
+    await panelGemini.getByText("Catálogo consultado. No se generó texto ni se consumieron tokens.", { exact: true }).waitFor();
     await proveedoresInferencia.getByRole("tab", { name: "OpenRouter" }).click();
     await page.getByRole("tabpanel", { name: "OpenRouter" }).waitFor();
     await page.screenshot({ path: `scratch/capturas-ci/proveedores-${width}.png` });
@@ -1310,14 +1393,17 @@ try {
     await tarjetaJev.getByText("TypeSafe Jev", { exact: true }).waitFor();
     const campoJev = tarjetaJev.getByLabel("Clave API");
     assert.equal(await campoJev.getAttribute("type"), "password");
-    await tarjetaJev.getByRole("button", { name: "Mostrar", exact: true }).click();
+    await tarjetaJev.getByRole("button", { name: "Mostrar clave escrita", exact: true }).click();
     assert.equal(await campoJev.getAttribute("type"), "text");
-    await tarjetaJev.getByRole("button", { name: "Ocultar", exact: true }).click();
+    await tarjetaJev.getByRole("button", { name: "Ocultar clave escrita", exact: true }).click();
     assert.equal(await campoJev.getAttribute("type"), "password");
     await campoJev.fill("apikey_prueba_de_interfaz_123456789012");
     await tarjetaJev.getByRole("button", { name: "Guardar clave", exact: true }).click();
-    await tarjetaJev.getByText("Clave guardada cifrada; Telo no vuelve a mostrar su valor.", { exact: true }).waitFor();
+    await tarjetaJev.getByText("Clave guardada cifrada en el servidor. Jev se activará en las próximas evaluaciones.", { exact: true }).waitFor();
+    assert.equal(await campoJev.count(), 0, "la configuración se pliega después de guardar la clave");
+    await tarjetaJev.getByRole("button", { name: "Editar configuración", exact: true }).click();
     assert.equal(await campoJev.inputValue(), "");
+    assert.equal(await campoJev.getAttribute("type"), "password");
     assert.equal((await tarjetaJev.textContent()).includes("apikey_prueba_de_interfaz_123456789012"), false);
     assert.equal((await tarjetaJev.textContent()).includes("Telo decide qué guardar"), true);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
@@ -1357,9 +1443,24 @@ try {
     await selectorModelos.getByRole("heading", { name: "OpenCode", exact: true }).waitFor();
     await selectorModelos.getByRole("heading", { name: "NVIDIA API", exact: true }).waitFor();
     await selectorModelos.getByRole("heading", { name: "Groq API", exact: true }).waitFor();
-    await selectorModelos.getByRole("heading", { name: "Cuenta Codex", exact: true }).waitFor();
+    await selectorModelos.getByRole("heading", { name: "Codex CLI · sesión de ChatGPT", exact: true }).waitFor();
     await selectorModelos.evaluate(el => Promise.all(el.getAnimations().map(animation => animation.finished)));
-    assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).isDisabled(), true);
+    const gruposGroq = selectorModelos.locator("#picker-integracion-groq");
+    assert.equal(await gruposGroq.isHidden(), true, "las integraciones empiezan contraídas");
+    await selectorModelos.getByRole("button", { name: "Mostrar modelos de Groq API", exact: true }).click();
+    assert.equal(await gruposGroq.isVisible(), true, "se puede volver a expandir la integración");
+    await selectorModelos.getByRole("button", { name: "Ocultar modelos de Groq API", exact: true }).click();
+    assert.equal(await gruposGroq.isHidden(), true, "se puede plegar el catálogo completo de una integración");
+    const gruposCodex = selectorModelos.locator("#picker-integracion-codex-sesion");
+    const conteoConCodex = await selectorModelos.locator(".picker-conteo").textContent();
+    assert.equal(await gruposCodex.isHidden(), true, "el catálogo de Codex empieza plegado");
+    await selectorModelos.getByRole("button", { name: "Mostrar modelos de Codex CLI · sesión de ChatGPT", exact: true }).click();
+    assert.equal(await gruposCodex.isVisible(), true);
+    await selectorModelos.getByRole("button", { name: "Solo gratis", exact: true }).click();
+    assert.equal(await selectorModelos.locator(".picker-conteo").textContent(), conteoConCodex?.replace(/\d+/, String(Number(conteoConCodex.match(/\d+/)?.[0]) - 1)), "Codex no aparece como modelo gratis ni infla el conteo");
+    await selectorModelos.getByRole("button", { name: "Solo gratis", exact: true }).click();
+    assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).isDisabled(), false);
+    assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).count(), 1, "el catálogo de sesión evita duplicar el modelo de Codex incluido en /api/models");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/modelos-${width}.png` });
     console.log(`${width}px: código de acceso comprobado`);
@@ -1404,6 +1505,28 @@ try {
     assert.equal(chatDetenido, true);
     assert.equal(await page.evaluate(() => localStorage.getItem("telo:cola-activa:c1")), "false");
 
+    diffSinRepo = true; task.status = "failed";
+    const respuestaSinRepo = page.waitForResponse(r => r.url().endsWith("/api/tasks/t1/diff"));
+    await page.goto(`${base}/chat?conversacion=c1`);
+    assert.equal((await (await respuestaSinRepo).json()).estado, "sin_repo");
+    const consultasSinRepo = diffRequests;
+    await page.waitForTimeout(4500);
+    assert.equal(diffRequests, consultasSinRepo, "una copia Git inexistente no se vuelve a consultar cada cuatro segundos");
+    assert.equal(await page.getByText("Esta tarea no tiene copia de Git, así que no hay cambios que revisar.", { exact: true }).count(), 0);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/diff-sin-repo-${width}.png` });
+
+    probarColaProveedor = true; task.status = "analyzing";
+    messages.push({ id: "u-capacidad", role: "user", content: "Revisar con proveedor ocupado", created_at: now });
+    await page.goto(`${base}/chat?conversacion=c1`);
+    await page.locator(".tl-actividad-live").getByText("En cola: esperando capacidad de opencode", { exact: true }).first().waitFor();
+    await page.locator(".tl-actividad-live").getByText("Capacidad disponible en opencode", { exact: true }).waitFor();
+    await page.locator(".tl-actividad-live").getByText("Ejecutó comprobación tras la espera", { exact: true }).waitFor();
+    assert.ok(lecturasColaProveedor >= 2, "el sondeo continúa actualizando el mismo turno cuando el canal de eventos falla");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/cola-proveedor-${width}.png` });
+    probarColaProveedor = false;
+
     await page.goto(`${base}/ajustes?pestana=almacenamiento`);
     const disco = page.locator('section[aria-labelledby="disco-mantenimiento"]');
     const preferenciasAntesDisco = escriturasPreferencias;
@@ -1426,6 +1549,11 @@ try {
     assert.equal(escriturasPreferencias, preferenciasAntesDisco);
     assert.equal(await page.locator(".aj-barra-guardado").count(), 0);
     await page.screenshot({ path: `scratch/capturas-ci/disco-${width}.png` });
+    await page.goto(`${base}/oficina`);
+    await page.getByRole("heading", { name: "Oficina", exact: true }).waitFor();
+    await page.locator(".oficina-plano").waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "la oficina cabe en el ancho disponible");
+    await page.screenshot({ path: `scratch/capturas-ci/oficina-${width}.png` });
     assert.deepEqual(errors, []);
     await context.close();
     console.log(`PASS ${width}px: login, mensajes, aprobación Git, código copiable y métricas.`);

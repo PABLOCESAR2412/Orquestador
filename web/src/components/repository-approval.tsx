@@ -506,7 +506,7 @@ export function AccionesRepositorioChat({
     queryKey: ["task-diff", taskId],
     queryFn: () => api.taskDiff(taskId!),
     enabled: Boolean(taskId && terminada),
-    refetchInterval: 4000,
+    refetchInterval: (q) => q.state.error || q.state.data?.estado === "sin_repo" ? false : 4000,
     retry: false,
   });
   const refrescar = () => {
@@ -565,7 +565,7 @@ export function AccionesRepositorioChat({
     queryKey: ["task-diff", tareaResolucionId],
     queryFn: () => api.taskDiff(tareaResolucionId!),
     enabled: Boolean(tareaResolucionId && estadoReparacion === "done"),
-    refetchInterval: estadoReparacion === "done" ? 3000 : false,
+    refetchInterval: (q) => estadoReparacion === "done" && !q.state.error && q.state.data?.estado !== "sin_repo" ? 3000 : false,
     retry: false,
   });
   const actividadResolucion = (actividadResolucionQuery.data ?? []).filter((paso) => paso.seq > actividadDesde);

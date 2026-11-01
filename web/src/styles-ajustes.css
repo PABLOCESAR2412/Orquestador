@@ -658,6 +658,9 @@
 .aj-estado-proveedor.is-conectado { color: var(--online); }
 .aj-estado-proveedor.is-error { color: var(--danger); }
 .aj-estado-proveedor.is-error .aj-proveedor-punto { background: var(--danger); }
+.aj-jev-cabecera { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.aj-jev-cabecera .aj-tarjeta-titulo-simple { margin: 0; }
+.aj-integracion-requisito a { color: var(--ink); text-underline-offset: 3px; }
 .aj-probar-proveedor { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
 .aj-probar-proveedor .aj-nota,
 .aj-probar-proveedor .aj-error { margin: 0; }
@@ -792,6 +795,18 @@
 .aj-campo-doble .aj-input {
   flex: 1 1 200px;
 }
+.aj-cadena-cuota { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.aj-modelos-cuota { display: flex; flex-direction: column; gap: 8px; padding: 0; margin: 0; list-style: none; }
+.aj-modelo-cuota { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
+.aj-modelo-cuota-posicion { display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); color: var(--ink-2); font-size: 12px; }
+.aj-modelo-cuota-nombre { display: flex; flex: 1 1 auto; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.aj-modelo-cuota-nombre small { color: var(--ink-2); font-size: 11px; }
+.aj-modelo-cuota-acciones { display: flex; flex-wrap: wrap; gap: 5px; }
+@media (max-width: 560px) {
+  .aj-modelo-cuota { align-items: flex-start; flex-wrap: wrap; }
+  .aj-modelo-cuota-nombre { flex-basis: calc(100% - 44px); }
+  .aj-modelo-cuota-acciones { margin-left: 34px; }
+}
 
 /* Conexiones MCP: lista compacta, controles en línea y formularios que caben en móvil. */
 .aj-conexiones-intro { max-width: 72ch; margin-top: 6px; }
@@ -912,12 +927,15 @@
 .aj-integracion-fila p { margin: 4px 0 0; color: var(--ink-2); font-size: 12px; line-height: 1.45; }
 .aj-integracion-requisito { color: var(--ink-2); font-size: 12px; line-height: 1.45; }
 .aj-integracion-fila > .aj-btn { justify-self: end; min-height: 36px; }
+.aj-integracion-acciones { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.aj-integracion-acciones .aj-error { flex-basis: 100%; margin: 0; }
 @media (max-width: 760px) {
   .aj-conexion-nativas { grid-template-columns: minmax(0, 1fr); }
   .aj-conexion-nativa + .aj-conexion-nativa { border-top: 1px solid var(--line); border-left: 0; }
   .aj-integracion-fila { grid-template-columns: minmax(0, 1fr) auto; }
   .aj-integracion-requisito { grid-column: 1 / -1; }
   .aj-integracion-fila > .aj-btn { justify-self: start; grid-column: 1 / -1; }
+  .aj-integracion-acciones { grid-column: 1 / -1; justify-content: flex-start; }
 }
 @media (max-width: 560px) {
   .aj-conexion-nativa { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 14px; }
@@ -931,6 +949,7 @@
   .aj-integracion-fila { grid-template-columns: minmax(0, 1fr); }
   .aj-integracion-fila > .aj-integracion-requisito,
   .aj-integracion-fila > .aj-btn { grid-column: auto; }
+  .aj-integracion-acciones { grid-column: auto; justify-content: flex-start; }
 }
 
 .aj-nota {

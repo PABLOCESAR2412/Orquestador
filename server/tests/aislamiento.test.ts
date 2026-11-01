@@ -67,6 +67,11 @@ test.skipIf(process.platform === "win32" || !Bun.which("bwrap"))("monta el perfi
   expect(args).toContain(join("/tmp/telo-opencode-profile", "data", "opencode", "auth.json"));
   expect(args).toContain(configSubagentes);
   expect(args).toContain("/tmp/telo-opencode-config");
+  const gitignore = join(configSubagentes, ".gitignore");
+  const gitignoreMount = args.indexOf(gitignore);
+  expect(existsSync(gitignore)).toBe(true);
+  expect(args[gitignoreMount - 1]).toBe("--bind");
+  expect(args[gitignoreMount + 1]).toBe("/tmp/telo-opencode-config/.gitignore");
   expect(args).toContain("--ro-bind");
   eliminarPerfilOpenCode("chat-con-bwrap");
 });
@@ -104,4 +109,18 @@ test.skipIf(process.platform === "win32" || !Bun.which("bwrap"))("oculta el arch
     if (previos.leer === undefined) delete process.env.TELO_LECTURA_EXTRA;
     else process.env.TELO_LECTURA_EXTRA = previos.leer;
   }
+});
+
+test.skipIf(process.platform === "win32" || !Bun.which("bwrap"))("el seguimiento permite escribir solo su captura y mantiene plugin y configuración de solo lectura", () => {
+  const workspace = join(proyectos, "seguimiento");
+  const temporal = join(config.dataDir, "perfiles-mcp", "prueba-seguimiento");
+  mkdirSync(workspace, { recursive: true }); mkdirSync(temporal, { recursive: true });
+  const archivo = join(temporal, "opencode.json"), captura = join(temporal, "actividad.ndjson"), plugin = join(temporal, "seguimiento.js");
+  for (const ruta of [archivo, captura, plugin]) writeFileSync(ruta, "");
+  const args = prefijoAislamiento(workspace, false, [], undefined, undefined, undefined, archivo, captura);
+  for (const ruta of [archivo, plugin]) expect(args[args.indexOf(ruta) - 1]).toBe("--ro-bind");
+  expect(args[args.indexOf(captura) - 1]).toBe("--bind");
+  expect(args[args.indexOf(captura) + 1]).toBe("/tmp/telo-mcp-config/actividad.ndjson");
+  rmSync(captura); symlinkSync(join(home, ".local/share/opencode/auth.json"), captura);
+  expect(() => prefijoAislamiento(workspace, false, [], undefined, undefined, undefined, archivo, captura)).toThrow("registro temporal");
 });

@@ -64,12 +64,35 @@ describe("skills globales", () => {
 
     expect(readFileSync(join(GLOBAL, "gauntlet", "SKILL.md"), "utf8")).toContain("Personalización conservada.");
     expect(readFileSync(join(frontend, "SKILL.md"), "utf8")).toBe("Skill existente con formato pendiente de corregir.\n");
-    for (const nombre of ["playwright", "ponytail", "image-design", "motion-design", "skill-authoring", "context7"]) {
+    for (const nombre of ["playwright", "ponytail", "image-design", "motion-design", "skill-authoring"]) {
+      expect(readFileSync(join(GLOBAL, nombre, "SKILL.md"), "utf8")).toContain(`name: ${nombre}`);
+    }
+    for (const nombre of ["context7-mcp", "hyperframes", "hyperframes-cli", "hyperframes-registry", "media-use", "using-superpowers", "strategic-compact"]) {
       expect(readFileSync(join(GLOBAL, nombre, "SKILL.md"), "utf8")).toContain(`name: ${nombre}`);
     }
     expect(readFileSync(join(GLOBAL, "motion-design", "SKILL.md"), "utf8")).toContain("No dibujes sobre el fotograma anterior");
     expect(readFileSync(join(GLOBAL, "skill-authoring", "SKILL.md"), "utf8")).toContain("no presentes ejemplos hipotéticos como pruebas ejecutadas");
-    expect(readFileSync(join(GLOBAL, "context7", "SKILL.md"), "utf8")).toContain("resolve-library-id");
+    expect(() => readFileSync(join(GLOBAL, "context7", "SKILL.md"), "utf8")).toThrow();
+  });
+
+  test("conserva una skill antigua que el usuario haya personalizado", () => {
+    const legado = join(GLOBAL, "context7");
+    mkdirSync(legado, { recursive: true });
+    writeFileSync(join(legado, "SKILL.md"), [
+      "---",
+      "name: context7",
+      "description: Consulta documentación actual y ejemplos de bibliotecas, frameworks, SDK, APIs y herramientas de línea de comandos al implementarlos, configurarlos, migrarlos o depurarlos.",
+      "---",
+      "",
+      "# Adaptación propia",
+      "",
+      "Este contenido lo modificó la persona.",
+      "",
+    ].join("\n"));
+
+    prepararCarpetaGlobal();
+
+    expect(readFileSync(join(legado, "SKILL.md"), "utf8")).toContain("Este contenido lo modificó la persona.");
   });
 
   test("guarda una skill válida y la lista con su descripción", async () => {

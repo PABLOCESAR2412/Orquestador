@@ -5,7 +5,8 @@ import { partirMensaje } from "../lib/adjuntos";
 import { effortLabel } from "../lib/model";
 import { urlAdjuntoImagenChat, type FormatoDocumento, type SubagentChat } from "../api";
 import { Contenido, copiarTexto, type ReferenciaArchivo } from "./chat-contenido";
-import { ProcesoAgente, ProcesoGuardado, SubagentesTurno } from "./chat-proceso";
+import { CompactacionContexto, ProcesoAgente, ProcesoGuardado, SubagentesTurno } from "./chat-proceso";
+import { esResumenCompactacion } from "../../../shared/compactacion";
 import { FORMATOS_OPCIONES } from "./documentos";
 import type { PasoActividad } from "../api";
 import { MediaJobCard } from "./media-job-card";
@@ -215,6 +216,7 @@ export function MensajeAgente({
   onAbrirSubchat,
   subagentes,
   abrirProcesoInicial = false,
+  sesionCompactada = false,
   duracion,
   onCitar,
 }: {
@@ -239,10 +241,12 @@ export function MensajeAgente({
   onAbrirSubchat?: (id: string) => void;
   subagentes?: SubagentChat[];
   abrirProcesoInicial?: boolean;
+  sesionCompactada?: boolean;
 }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const mediaId = /^\[\[telo-media:([a-f0-9-]+)\]\]$/i.exec(texto.trim())?.[1] ?? null;
   const reporte = interpretarRespuestaTarea(texto);
+  const resumenContexto = esResumenCompactacion(texto);
   const [leyendo, setLeyendo] = useState(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const montadoRef = useRef(false);
@@ -432,8 +436,9 @@ export function MensajeAgente({
           abiertoInicial={abrirProcesoInicial}
         />
       )}
+      {(resumenContexto || sesionCompactada) && <CompactacionContexto texto={resumenContexto ? texto : undefined} proceso={proceso} />}
       <div className="tl-msg-texto">
-        {mediaId ? <MediaJobCard id={mediaId} /> : (
+        {resumenContexto ? null : mediaId ? <MediaJobCard id={mediaId} /> : (
           <>
             {reporte ? (
               <InformeTarea
@@ -700,7 +705,7 @@ export function IndicadorPensando({
     const temporizador = window.setInterval(() => setAhora(Date.now()), 1000);
     return () => window.clearInterval(temporizador);
   }, []);
-  const firmaActividad = vivo.map((paso) => `${paso.seq}:${paso.estado}`).join(",");
+  const firmaActividad = vivo.map((paso) => `${paso.seq}:${paso.estado}:${paso.titulo}:${paso.detalle ?? ""}`).join(",");
   useEffect(() => {
     setActividadAbierta(true);
     setUltimaActividadVista(firmaActividad ? Date.now() : fechaUtcMs(desde) ?? Date.now());
@@ -719,6 +724,7 @@ export function IndicadorPensando({
   const auxiliarActivo = [...auxiliares].reverse().find((auxiliar) => auxiliar.estado === "running");
   const ultimaHerramienta = (ultimaAccion?.herramienta ?? "").toLowerCase();
   const etiquetaHerramienta = (herramienta: string): string => {
+    if (herramienta === "provider" || herramienta === "capacity") return ultimaAccion?.titulo ?? "Esperando actividad del proveedor";
     if (/^(github|gh)(?:[._-]|$)/i.test(herramienta)) return "Consultando GitHub";
     if (herramienta.startsWith("skill") || herramienta.includes("skill")) return "Aplicando una skill";
     if (/^(agent|subagent|sub_agent|spawn|delegate)/i.test(herramienta)) return "Delegando trabajo";

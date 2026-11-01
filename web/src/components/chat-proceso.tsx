@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type PasoActividad, type SubagentChat } from "../api";
 import { errorText } from "../lib/model";
 import { LoadingSkeleton } from "./loading-skeleton";
+import { esResumenCompactacion } from "../../../shared/compactacion";
 
 // Proceso del agente en un chat: lo que dijo mientras trabajaba y cada acción con su vista previa.
 // Se ve en vivo mientras el agente corre, y después desde "Ver proceso" debajo de la respuesta.
@@ -182,9 +183,11 @@ export function ProcesoAgente({
       {visibles.map((p) =>
         p.tipo === "texto" ? (
           <li key={p.seq} className="tl-proceso-texto">
-            <strong className="tl-proceso-actor">{actor}</strong>
-            <span aria-hidden="true"> · </span>
-            {p.titulo}
+            {esResumenCompactacion(p.titulo) ? <CompactacionContexto texto={p.titulo} /> : <>
+              <strong className="tl-proceso-actor">{actor}</strong>
+              <span aria-hidden="true"> · </span>
+              {p.titulo}
+            </>}
           </li>
         ) : (
           <li key={p.seq} className="tl-proceso-accion">
@@ -221,9 +224,16 @@ export function ProcesoGuardado({
     // Un turno terminado no cambia: se guarda en caché para no pedirlo otra vez al volver.
     staleTime: Infinity,
   });
+  const uso = useQuery({
+    queryKey: ["uso-turno", conversacionId, turnoId],
+    queryFn: () => api.listTurnoUso(conversacionId, turnoId),
+    enabled: abierto,
+    staleTime: Infinity,
+  });
 
   const acciones = pasos.data?.filter((p) => p.tipo === "accion").length ?? 0;
   const etiqueta = pasos.data ? `Proceso · ${acciones} ${acciones === 1 ? "acción" : "acciones"}` : "Ver proceso";
+  const numero = (n: number) => n.toLocaleString("es-EC");
 
   return (
     <div className="tl-proceso-wrap">
@@ -259,6 +269,27 @@ export function ProcesoGuardado({
       </button>
       {abierto && (
         <div className="tl-proceso-cuerpo">
+          {uso.data && uso.data.llamadas > 0 && (
+            <details className="tl-proceso-wrap">
+              <summary className="tl-proceso-boton">Uso registrado · {uso.data.llamadas} llamadas</summary>
+              <div className="tl-proceso-cuerpo">
+                <p className="tl-nota">
+                  {uso.data.duracionMs !== null && `Duración ${Math.max(0, uso.data.duracionMs / 1000).toFixed(1)} s · `}
+                  {numero(uso.data.tokensMedidos)} tokens medidos · {numero(uso.data.tokensEstimados)} estimados · coste estimado ${uso.data.costeEstimadoUsd.toFixed(4)} USD
+                  {uso.data.sinTokens > 0 && ` · ${uso.data.sinTokens} llamadas sin dato de tokens`}
+                  {(uso.data.sinCoste + uso.data.costeDesconocido) > 0 && ` · ${uso.data.sinCoste + uso.data.costeDesconocido} llamadas sin coste verificable`}
+                </p>
+                <ul className="tl-nota">
+                  {uso.data.porEtapa.map((fila) => (
+                    <li key={`${fila.role}:${fila.provider}:${fila.model}`}>
+                      {fila.role === "supervisor" ? "Supervisor" : fila.role === "analyzer" ? "Analizador" : fila.role === "worker" ? "Obrero" : fila.role.startsWith("reviewer:") ? `Revisor ${fila.role.slice("reviewer:".length)}` : "Etapa no identificada"} · {fila.provider}/{fila.model}: {fila.calls} llamadas, {numero(fila.tokensMedidos)} tokens medidos, {numero(fila.tokensEstimados)} estimados; {fila.costeEstimadoUsd ? `$${fila.costeEstimadoUsd.toFixed(4)} estimados` : "sin coste estimado"}.
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </details>
+          )}
+          {uso.isError && <p className="tl-nota">No se pudo cargar el uso de este turno.</p>}
           {pasos.isPending && !pasos.data && <LoadingSkeleton tipo="lineas" cantidad={3} />}
           {pasos.isError && (
             <div className="error-box" role="alert">
@@ -273,6 +304,37 @@ export function ProcesoGuardado({
         </div>
       )}
     </div>
+  );
+}
+
+export function CompactacionContexto({ texto, proceso }: {
+  texto?: string;
+  proceso?: { conversacionId: string; turnoId: string };
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const pasos = useQuery({
+    queryKey: ["actividad", proceso?.conversacionId, proceso?.turnoId],
+    queryFn: () => proceso ? api.listTurnoActividad(proceso.conversacionId, proceso.turnoId) : Promise.resolve([]),
+    enabled: abierto && !texto && Boolean(proceso),
+    staleTime: Infinity,
+  });
+  const resumenes = texto ? [texto] : (pasos.data ?? [])
+    .filter((p) => p.herramienta === "compaction" || (p.tipo === "texto" && esResumenCompactacion(p.titulo)))
+    .map((p) => p.tipo === "texto" ? p.titulo : p.detalle).filter((t): t is string => Boolean(t));
+  return (
+    <details className="tl-proceso-wrap tl-compactacion" onToggle={(event) => setAbierto(event.currentTarget.open)}>
+      <summary className="tl-proceso-boton">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true" className={abierto ? "is-abierto" : undefined}><polyline points="9 18 15 12 9 6" /></svg>
+        Ver compactación
+      </summary>
+      {abierto && <div className="tl-proceso-cuerpo">
+        <p className="tl-nota">El contexto anterior se resumió para que el agente pudiera continuar.</p>
+        {!texto && pasos.isPending && proceso && <LoadingSkeleton tipo="lineas" cantidad={2} />}
+        {pasos.isError && <p role="alert" className="error-text">{errorText(pasos.error)}</p>}
+        {resumenes.map((resumen, i) => <pre key={i} className="tl-paso-detalle">{resumen}</pre>)}
+        {!texto && pasos.isSuccess && !resumenes.length && <p className="tl-nota">Esta ejecución guardó la marca de compactación, pero no el resumen.</p>}
+      </div>}
+    </details>
   );
 }
 

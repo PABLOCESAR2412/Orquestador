@@ -15,6 +15,33 @@
   font-size: 12px;
 }
 
+.picker-integracion-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 14px 0 4px; }
+.picker-integracion-titulo { min-width: 0; margin: 0; }
+.picker-integracion-cabecera {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 40px;
+  min-height: 36px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.picker-integracion-cabecera:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.picker-integracion-cabecera:focus-visible { outline: 2px solid var(--signal); outline-offset: 1px; }
+.picker-integracion-cabecera:disabled { cursor: default; }
+.picker-integracion-conteo { margin-left: auto; color: var(--ink-3); font-size: 10px; font-weight: 400; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+.picker-integracion-flecha { flex: 0 0 auto; transition: transform 160ms ease; }
+.picker-integracion-cabecera[aria-expanded="true"] .picker-integracion-flecha { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .picker-integracion-flecha { transition: none; }
+}
+
 .picker-item-codex:disabled {
   cursor: not-allowed;
   opacity: 0.62;
@@ -35,6 +62,10 @@
 .picker-aa-nota code { font-size: 11px; }
 .picker-modelo-fila { display: flex; align-items: stretch; gap: 2px; min-width: 0; }
 .picker-modelo-fila > .picker-item { flex: 1 1 auto; min-width: 0; }
+.picker-modelo-fila .picker-meta, .picker-item-codex .picker-meta { flex-direction: row; align-items: center; gap: 7px; }
+.picker-modelo-fila .picker-item, .picker-item-codex { gap: 8px; padding-top: 6px; padding-bottom: 6px; }
+.picker-modelo-fila .picker-nombre-linea { flex-wrap: wrap; gap: 4px; }
+.picker-item-codex .picker-codex-context { display: none; }
 .picker-intelligence { color: var(--signal); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .picker-fijar {
   flex: 0 0 34px;
@@ -132,3 +163,6 @@
   .picker-configuracion .segmented { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; overflow: visible; }
   .picker-configuracion .segmented button { min-width: 0; min-height: 44px; padding: 6px 4px; border-radius: 8px; white-space: normal; overflow-wrap: anywhere; font-size: 12px; }
 }
+.picker-esfuerzo-barra { display: grid; gap: 8px; min-width: 0; text-align: center; }
+.picker-esfuerzo-barra input { width: 100%; accent-color: var(--primary); cursor: pointer; }
+.picker-esfuerzo-barra input:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }

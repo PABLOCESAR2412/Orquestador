@@ -15,8 +15,26 @@ import {
   memoriaDelProyecto,
 } from "../src/memoria";
 import { db } from "../src/db";
+import { config } from "../src/config";
 
 describe("sesiones dinámicas por dispositivo", () => {
+  test("rechaza una sesión vencida antes de renovar su actividad sin depender del reinicio", () => {
+    const sinClaveAnterior = config.sinClave;
+    config.sinClave = false;
+    const vencida = crearSesionDispositivo({});
+    const reciente = crearSesionDispositivo({});
+    try {
+      db.query("UPDATE auth_sessions SET last_seen_at = datetime('now', '-61 days') WHERE id = ?").run(vencida.id);
+      expect(sesionValida(vencida.token)).toBe(false);
+      expect(db.query("SELECT id FROM auth_sessions WHERE id = ?").get(vencida.id)).toBeNull();
+      expect(sesionValida(reciente.token)).toBe(true);
+    } finally {
+      cerrarSesionPorToken(vencida.token);
+      cerrarSesionPorToken(reciente.token);
+      config.sinClave = sinClaveAnterior;
+    }
+  });
+
   test("crea, valida y lista sesiones en auth_sessions", () => {
     const sesion1 = crearSesionDispositivo({ userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", ip: "127.0.0.1" });
     expect(sesion1.token.length).toBeGreaterThan(20);

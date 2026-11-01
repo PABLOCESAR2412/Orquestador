@@ -14,7 +14,7 @@ import {
   unlinkSync,
   writeSync,
 } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { carpetaHome } from "./hogar";
 import { redactar, valoresDeConfiguracion } from "./redaccion";
@@ -447,7 +447,7 @@ Una skill lista tiene un disparador claro, un objetivo único, pasos accionables
 `;
 
 const SKILLS_UPSTREAM = [
-  "brainstorming", "context7-mcp", "documentation-lookup", "harvey", "hyperframes",
+  "brainstorming", "context7-mcp", "documentation-lookup", "hyperframes",
   "hyperframes-cli", "hyperframes-registry", "ig-caption", "ig-carousel", "ig-human",
   "ig-plan", "ig-reel", "ig-story", "job-application-assistant", "media-use", "obsidian-cli",
   "obsidian-markdown", "orca-cli", "orchestration", "prospecting", "strategic-compact",
@@ -455,148 +455,20 @@ const SKILLS_UPSTREAM = [
   "using-superpowers", "verification-before-completion",
 ] as const;
 
-const SKILLS_LEGADAS = {
-  context7: "Consulta documentación actual y ejemplos de bibliotecas, frameworks, SDK, APIs y herramientas de línea de comandos al implementarlos, configurarlos, migrarlos o depurarlos.",
-  "hyperframes-video": "Crea y verifica animaciones y videos basados en HTML con HyperFrames cuando se pide un video, motion graphic, captions o animación.",
-  "instagram-agent": "Planifica y prepara contenido para Instagram, incluyendo publicaciones, Reels, Stories, calendario y métricas.",
-  "obsidian-vault": "Organiza ideas, notas y conocimiento en un vault de Obsidian con enlaces y Markdown.",
-  superpowers: "Aplica prácticas de desarrollo guiado por pruebas, diseño incremental, depuración sistemática y revisión de código cuando se solicite trabajo de ingeniería.",
-  "ecc-workflows": "Aplica de forma selectiva buenas prácticas de Everything Claude Code para contexto, agentes, revisión y flujos de ingeniería.",
-  "harvey-legal": "Ayuda a estructurar investigación, revisión y borradores legales con fuentes, jurisdicción y límites explícitos.",
-  "orca-agent-builder": "Diseña una especificación local de agente para el producto Orca que el usuario identifique.",
-  "ai-job-search": "Busca oportunidades laborales y adapta materiales de postulación con información verificable y consentimiento.",
-  "find-clients": "Identifica clientes potenciales y prepara propuestas de servicio y mensajes de acercamiento personalizados.",
-} as const;
+const SKILLS_LEGADAS_SHA256: Record<string, string> = {
+  context7: "37ed6cc55ac1d5b42fc90869215d202724f1e147586b5fd7073454f4c57453c6",
+  "hyperframes-video": "ead8d5260a849b3263d823194160c48d949df95bc29d5384bf87a4fdba7905c3",
+  "instagram-agent": "20cff84f68e51ee224517dc5fd9bc5fe0846772707960d7e23d69a4fe419addc",
+  "obsidian-vault": "1f3bb2dfb45d071af52a5252410cb76ed840f80f6c4ba224591bc4d33140f666",
+  superpowers: "87cd7a61eee862cf6105ade3cf043bf6ae6d0c630d35bcb15b2ba993664f74bf",
+  "ecc-workflows": "4aa355a4dcb246b91d04743ba49489ab649f24232855a144c009f694e78d57f4",
+  "harvey-legal": "8701e0bb48a49cf9ca3a12a903baa1a7b6ead06774987452269e35bdca38b516",
+  "orca-agent-builder": "98c3aae8c3b952f03931d70a861176b5cca5e1134ce8fb775d8299433f9d160c",
+  "ai-job-search": "a3a7003364f1038ddc0fa08e6d8b7af2f6158fc2055799faf9b8b2e610e835d9",
+  "find-clients": "e69344fb58eb62d4a296c4c719c9ace323d47bc7a0eddc03e28f033626ec65bf",
+};
 
-export const SKILL_CONTEXT7_CONTENIDO = `---
-name: context7
-description: Consulta documentación actual de bibliotecas, frameworks, SDK, APIs y herramientas al implementarlos, configurarlos, migrarlos o depurarlos.
----
-
-# Documentación técnica actual
-
-Usa Context7 cuando la tarea dependa de la API, configuración, versión o comportamiento actual de una biblioteca o servicio. Llama a resolve-library-id para ubicar la biblioteca oficial y después formula consultas concretas de documentación.
-
-Envía solo el nombre de la tecnología y preguntas conceptuales. No compartas código privado, credenciales, datos de usuarios ni contenido de archivos. Si Context7 no está disponible, continúa con fuentes oficiales accesibles e indica qué verificaste.
-`;
-
-const SKILLS_PERSONALES = {
-  "hyperframes-video": `---
-name: hyperframes-video
-description: Crea y verifica animaciones y videos basados en HTML con HyperFrames cuando se pide un video, motion graphic, captions o animación.
----
-
-# Videos con HyperFrames
-
-Usa HyperFrames para convertir composiciones HTML en video cuando la solicitud pida una animación o video. Revisa primero el proyecto y los archivos existentes; no empieces de cero si ya hay una composición.
-
-## Flujo
-
-1. Comprueba el espacio libre del disco antes de descargar o renderizar (en Linux, \`df -Pk <espacio-de-trabajo>\`). Usa como umbral conservador 4 GiB libres para la descarga, Chromium, archivos temporales y el render; por debajo, no ejecutes npx ni inicies el render en esa VM porque Telo puede quedarse sin disco. En ese caso prepara la composición HTML y avisa que falta espacio para producir el MP4; ofrece liberar espacio o renderizar en un equipo con más espacio.
-2. Comprueba \`node --version\` y ejecuta \`npx --yes hyperframes doctor\` solo después de pasar la comprobación de disco. Requiere Node.js 22 o posterior y FFmpeg; el diagnóstico también comprueba FFprobe y Chromium empaquetado. FFprobe se usa para verificar el archivo final. npx descarga HyperFrames bajo demanda y evita una instalación global.
-3. Revisa y reutiliza primero la composición HTML existente. Para un proyecto nuevo crea una carpeta propia dentro del espacio de trabajo con \`npx --yes hyperframes init <nombre> --example blank --skip-skills\`; el ejemplo es obligatorio en modo automático y \`--skip-skills\` evita cambiar la configuración global de otras herramientas.
-4. Ejecuta \`npx --yes hyperframes lint\` y revisa fotogramas representativos con \`npx --yes hyperframes snapshot <directorio> --at <segundos-separados-por-comas>\` antes del render.
-5. Cuando se pidió el archivo final, renderiza en el entorno con espacio suficiente con \`npx --yes hyperframes render --output <archivo.mp4>\`; verifica que exista, tenga tamaño mayor que cero y duración correcta con \`ffprobe\`. No borres archivos del usuario ni cachés compartidas para recuperar espacio.
-
-## Límites
-
-- Prioriza render local. No publiques, subas a servicios cloud ni consumas servicios pagados sin petición explícita. Si el entorno de ejecución de Telo no tiene Node 22+ y FFmpeg, el render local no está disponible hasta que se preparen esos requisitos; Chromium viene empaquetado y Docker solo se necesita para el modo Docker.
-- No afirmes que se generó audio, voz o material visual si no se ejecutó y verificó la herramienta correspondiente.
-- Evita instalar dependencias globales. Si HyperFrames no está disponible, explica el requisito exacto y ofrece continuar con herramientas presentes.
-`,
-  "instagram-agent": `---
-name: instagram-agent
-description: Planifica y prepara contenido para Instagram, incluyendo publicaciones, Reels, Stories, calendario y métricas.
----
-
-# Agente de contenido para Instagram
-
-Aclara objetivo, cuenta o marca, audiencia, formato, tono y llamada a la acción. Reutiliza el brief y el contexto del chat; pregunta solo por los datos que sigan faltando.
-
-Prepara copies, guiones, ideas visuales, calendario y variantes con proporciones y zonas seguras adecuadas al formato. Distingue recomendaciones de datos verificados y no inventes métricas, tendencias ni resultados.
-
-No publiques, envíes mensajes ni programes contenido. La publicación requiere que el usuario conecte una cuenta Meta/Instagram con permisos adecuados y confirme cada acción.
-`,
-  "obsidian-vault": `---
-name: obsidian-vault
-description: Organiza ideas, notas y conocimiento en un vault de Obsidian con enlaces y Markdown.
----
-
-# Trabajo con Obsidian
-
-Usa Markdown compatible con Obsidian, títulos claros, enlaces internos [[nota]] y etiquetas solo cuando aporten navegación. Antes de crear o modificar una nota, identifica el vault, la carpeta destino y si debe enlazarse con notas existentes.
-
-Si no existe conexión configurada, entrega el contenido como Markdown y señala que no se escribió en el vault. Para acceso directo, el usuario debe configurar una integración segura, por ejemplo Obsidian Local REST API mediante un servidor MCP, con URL local y token guardado como secreto.
-
-No leas ni escribas el vault ni sigas enlaces externos sin autorización. Nunca incluyas el token en prompts, logs o notas.
-`,
-  "superpowers": `---
-name: superpowers
-description: Aplica prácticas de desarrollo guiado por pruebas, diseño incremental, depuración sistemática y revisión de código cuando se solicite trabajo de ingeniería.
----
-
-# Prácticas de ingeniería
-
-Para cambios de software, entiende el flujo existente, formula el comportamiento esperado, separa el trabajo en pasos pequeños y verifica cada paso. En bugs, reproduce o identifica la causa antes de editar; en cambios grandes, acuerda primero un plan concreto. Conserva cambios ajenos y evita añadir abstracciones o dependencias innecesarias.
-
-Sigue las instrucciones del repositorio y las herramientas disponibles. No afirmes haber ejecutado pruebas que no ejecutaste ni instales hooks o automatizaciones de terceros por iniciativa propia.
-`,
-  "ecc-workflows": `---
-name: ecc-workflows
-description: Aplica de forma selectiva buenas prácticas de Everything Claude Code para contexto, agentes, revisión y flujos de ingeniería.
----
-
-# Flujos inspirados en ECC
-
-Usa solo la práctica pertinente: instrucciones breves por proyecto, planes verificables, revisión independiente cuando haya capacidad real de delegación, y documentación de decisiones repetibles. Adapta todo a las herramientas y políticas de Telo.
-
-No descargues el repositorio ECC, sus hooks, comandos o agentes, no cambies la configuración global y no ejecutes scripts de terceros sin petición explícita y revisión de su contenido. Explica cuándo una capacidad no existe en Telo.
-`,
-  "harvey-legal": `---
-name: harvey-legal
-description: Ayuda a estructurar investigación, revisión y borradores legales con fuentes, jurisdicción y límites explícitos.
----
-
-# Flujo legal
-
-Identifica jurisdicción, fecha, tipo de documento y pregunta concreta. Separa hechos proporcionados, inferencias y cuestiones por confirmar. Cita fuentes primarias actuales cuando se requiera precisión legal y marca riesgos y términos ambiguos.
-
-Esta skill no conecta Harvey ni reemplaza asesoría de un abogado. Si se solicita usar el servicio Harvey, se necesita acceso y conexión autorizada de la organización. No envíes documentos confidenciales a un servicio externo sin aprobación.
-`,
-  "orca-agent-builder": `---
-name: orca-agent-builder
-description: Diseña una especificación local de agente para el producto Orca que el usuario identifique.
----
-
-# Diseño de agentes Orca
-
-Antes de diseñar una integración, confirma qué producto llamado Orca usa el usuario y pide su URL o documentación oficial. No asumas nombres de API, formatos, registry, workspace, permisos ni mecanismo de despliegue. Mientras no se identifique el producto, prepara solo una especificación local con objetivo, entradas, salida, modelo, herramientas, memoria, permisos y criterios de éxito.
-
-Distingue el diseño local de un agente realmente creado en el servicio. No publiques ni envíes datos sin autorización y una integración verificada.
-`,
-  "ai-job-search": `---
-name: ai-job-search
-description: Busca oportunidades laborales y adapta materiales de postulación con información verificable y consentimiento.
----
-
-# Búsqueda de empleo
-
-Usa ubicación, modalidad, cargos, experiencia, salario y restricciones del usuario. Busca vacantes vigentes en fuentes identificables; resume fecha, requisitos, ubicación y enlace directo, y separa requisitos imprescindibles de deseables.
-
-Adapta CV y carta solo con experiencia real proporcionada; no inventes títulos, habilidades ni logros. No envíes postulaciones, crees cuentas o compartas datos personales sin autorización explícita.
-`,
-  "find-clients": `---
-name: find-clients
-description: Identifica clientes potenciales y prepara propuestas de servicio y mensajes de acercamiento personalizados.
----
-
-# Prospección de clientes
-
-Define servicio, sector, territorio, tamaño de cliente y señales de necesidad. Investiga fuentes públicas, entrega una lista con evidencia y enlaces, y explica por qué cada candidato encaja. Distingue hechos de hipótesis.
-
-Prepara mensajes breves y personalizados, sin afirmar una relación previa inexistente. No contactes, envíes correos ni cargues datos personales a CRM sin autorización e integración configurada.
-`,
-} as const;
+const HARVEY_FALSA_SHA256 = "71a7c466c2f14b3a8110393afb6b167cb88a842b6935d462cb97f3c42aaf0a80";
 
 // Crea la carpeta de skills globales si falta. Se llama al arrancar: así bubblewrap siempre puede montarla en
 // solo lectura (si no existiera, el agente podría crearla dentro de ~/.config/opencode, que sí es escribible).
@@ -611,8 +483,6 @@ export function prepararCarpetaGlobal(): void {
     ["image-design", SKILL_IMAGE_DESIGN_CONTENIDO],
     ["motion-design", SKILL_MOTION_DESIGN_CONTENIDO],
     ["skill-authoring", SKILL_AUTORIA_CONTENIDO],
-    ["context7", SKILL_CONTEXT7_CONTENIDO],
-    ...Object.entries(SKILLS_PERSONALES),
   ] as const;
   for (const [nombre, contenido] of predeterminadas) {
     try {
@@ -638,16 +508,33 @@ export function prepararCarpetaGlobal(): void {
     } catch { /* la skill incorrecta o ausente se muestra como no disponible, sin romper el arranque */ }
   }
 
-  // Retira solo las descripciones sembradas originalmente por Telo; preserva cualquier versión editada.
-  for (const [nombre, descripcion] of Object.entries(SKILLS_LEGADAS)) {
+  // Harvey Specterbot no es una skill oficial de Harvey. Retira únicamente la copia
+  // exacta que Telo incluía; conserva cualquier carpeta o archivo personalizado.
+  try {
+    const dir = carpetaSegura(ancla, tramos, false);
+    const archivo = dir ? join(dir, "harvey", ARCHIVO) : null;
+    const stat = archivo ? lstatORNull(archivo) : null;
+    if (archivo && stat?.isFile() && !stat.isSymbolicLink()) {
+      const contenido = readFileSync(archivo);
+      const hash = createHash("sha256").update(contenido).digest("hex");
+      if (hash === HARVEY_FALSA_SHA256) {
+        unlinkSync(archivo);
+        const carpeta = join(dir!, "harvey");
+        if (readdirSync(carpeta).length === 0) rmdirSync(carpeta);
+      }
+    }
+  } catch { /* una copia editada o inaccesible se conserva */ }
+
+  // Retira únicamente el contenido exacto sembrado originalmente por Telo; conserva copias editadas.
+  for (const [nombre, hashEsperado] of Object.entries(SKILLS_LEGADAS_SHA256)) {
     try {
       const dir = carpetaSegura(ancla, tramos, false);
       const archivo = dir ? join(dir, nombre, ARCHIVO) : null;
       if (!archivo) continue;
       const stat = lstatORNull(archivo);
       if (!stat?.isFile() || stat.isSymbolicLink()) continue;
-      const texto = readFileSync(archivo, "utf8");
-      if (leerFrontmatter(texto)?.description !== descripcion) continue;
+      const hash = createHash("sha256").update(readFileSync(archivo)).digest("hex");
+      if (hash !== hashEsperado) continue;
       unlinkSync(archivo);
       const carpeta = join(dir!, nombre);
       if (readdirSync(carpeta).length === 0) rmdirSync(carpeta);

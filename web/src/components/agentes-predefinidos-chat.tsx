@@ -251,9 +251,9 @@ export function AgentesPredefinidosChat({
               );
             })}
             <div className="tl-agentes-pie">
-              <p className="tl-orquestacion-nota">La plantilla prepara un borrador; no lo envía, publica ni escribe en servicios externos. Para que Telo inicie auxiliares, configura el Supervisor y añade modelos. Usarán las conexiones guardadas en Configuración → Proveedores IA, sin credenciales separadas por agente. Revisa y envía el mensaje manualmente.</p>
+              <p className="tl-orquestacion-nota">Usar en el chat aplica esta especialidad al agente principal. La opción de Supervisor añade al borrador una petición explícita de auxiliares; guardar modelos por sí solo no los activa. Usarán las conexiones guardadas en Configuración → Proveedores IA, sin credenciales separadas por agente. Revisa y envía el mensaje manualmente.</p>
               <div className="tl-dialogo-acciones">
-                <button type="button" className="primary" onClick={() => onConfigureSupervisor(prepararBorrador())} disabled={agente.campos.some((campo) => campo.requerido && !valores[`${agente.id}:${campo.id}`]?.trim())}>Configurar Supervisor y auxiliares</button>
+                <button type="button" className="primary" onClick={() => onConfigureSupervisor(`${prepararBorrador()}\n\nUsa los auxiliares configurados para esta petición.`)} disabled={agente.campos.some((campo) => campo.requerido && !valores[`${agente.id}:${campo.id}`]?.trim())}>Configurar Supervisor y auxiliares</button>
                 <button type="button" className="tl-boton" onClick={() => onApply(prepararBorrador())} disabled={agente.campos.some((campo) => campo.requerido && !valores[`${agente.id}:${campo.id}`]?.trim())}>Usar en el chat</button>
               </div>
             </div>

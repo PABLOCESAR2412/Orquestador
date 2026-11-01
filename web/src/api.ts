@@ -124,6 +124,21 @@ export type ProjectDetail = {
   };
 };
 
+export type BrainNoteSummary = {
+  id: string;
+  project_id: string | null;
+  title: string;
+  resumen: string;
+  created_at: string;
+  updated_at: string;
+};
+export type BrainNote = BrainNoteSummary & { content: string };
+export type BrainGraph = {
+  nodos: { id: string; title: string }[];
+  enlaces: { source: string; target: string; label: string }[];
+  limitado: boolean;
+};
+
 export type ProjectFileEntry = {
   nombre: string;
   ruta: string;
@@ -236,6 +251,21 @@ export type GoogleLiveMetrics = {
   estado: "activo" | "sin_clave" | "clave_invalida" | "rate_limit" | "desconectado";
   mensaje: string;
   ultimaComprobacion: string;
+};
+
+export type CuotaCodex = {
+  estado: "activo" | "sin_cli" | "sin_sesion" | "no_disponible";
+  plan: string | null;
+  ventanas: {
+    id: string;
+    nombre: string;
+    usadoPorcentaje: number;
+    restantePorcentaje: number;
+    duracionMinutos: number | null;
+    reiniciaEn: string | null;
+  }[];
+  reiniciosDisponibles: number | null;
+  comprobadoEn: string;
 };
 
 export type UsoProveedor = {
@@ -562,6 +592,30 @@ export type PasoActividad = {
   titulo: string;
   detalle: string | null;
   estado: "hecha" | "error" | "texto" | "en_curso";
+};
+
+export type UsoTurno = {
+  turnId: string;
+  duracionMs: number | null;
+  llamadas: number;
+  tokensMedidos: number;
+  tokensEstimados: number;
+  sinTokens: number;
+  costeEstimadoUsd: number;
+  sinCoste: number;
+  costeDesconocido: number;
+  porEtapa: {
+    role: string;
+    provider: string;
+    model: string;
+    calls: number;
+    tokensMedidos: number;
+    tokensEstimados: number;
+    sinTokens: number;
+    costeEstimadoUsd: number;
+    sinCoste: number;
+    costeDesconocido: number;
+  }[];
 };
 
 export type MedioJob = {
@@ -892,6 +946,8 @@ export const api = {
   // Pasos del agente de un turno (el id es el del mensaje del usuario).
   listTurnoActividad: (conversacionId: string, turnoId: string) =>
     request<PasoActividad[]>(`/api/conversations/${conversacionId}/turnos/${turnoId}/actividad`),
+  listTurnoUso: (conversacionId: string, turnoId: string) =>
+    request<UsoTurno>(`/api/conversations/${conversacionId}/turnos/${turnoId}/uso`),
   listSubagentes: (conversacionId: string, turnoId: string) =>
     request<SubagentChat[]>(`/api/conversations/${conversacionId}/turnos/${turnoId}/subagentes`),
   capacidadesMedios: () => request<CapacidadesMediosApi>("/api/media/capacidades"),
@@ -958,6 +1014,23 @@ export const api = {
   rejectTaskPlan: (id: string, body: { motivo?: string }) =>
     request<Task>(`/api/tasks/${id}/rechazar-plan`, { method: "POST", body: JSON.stringify(body) }),
   getProject: (id: string) => request<ProjectDetail>(`/api/projects/${id}`),
+  listBrainNotes: (projectId: string | null, q = "") => {
+    const params = new URLSearchParams();
+    if (projectId) params.set("project_id", projectId);
+    if (q.trim()) params.set("q", q.trim());
+    return request<{ notas: BrainNoteSummary[]; total: number; busqueda: "local" }>(`/api/cerebro/notas?${params}`);
+  },
+  brainGraph: (projectId: string | null) => {
+    const params = new URLSearchParams();
+    if (projectId) params.set("project_id", projectId);
+    return request<BrainGraph>(`/api/cerebro/grafo?${params}`);
+  },
+  getBrainNote: (id: string) => request<BrainNote>(`/api/cerebro/notas/${encodeURIComponent(id)}`),
+  createBrainNote: (body: { project_id: string | null; title: string; content: string }) =>
+    request<BrainNote>("/api/cerebro/notas", { method: "POST", body: JSON.stringify(body) }),
+  updateBrainNote: (id: string, body: { title: string; content: string }) =>
+    request<BrainNote>(`/api/cerebro/notas/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteBrainNote: (id: string) => request<{ ok: boolean }>(`/api/cerebro/notas/${encodeURIComponent(id)}`, { method: "DELETE"}),
   // Solo sugiere: el texto se revisa en el campo de instrucciones y se guarda desde ahí.
   suggestProjectInstructions: (id: string) =>
     request<{ texto: string; fuentes: string[] }>(`/api/projects/${id}/instrucciones/sugeridas`),
@@ -1008,6 +1081,7 @@ export const api = {
   runProgramada: (id: string) =>
     request<Task>(`/api/programadas/${id}/ejecutar`, { method: "POST", body: "{}" }),
   usage: () => request<{ generado: string; proveedores: UsoProveedor[]; googleLive?: GoogleLiveMetrics }>("/api/uso"),
+  codexUsage: (forzar = false) => request<CuotaCodex>(`/api/providers/codex/usage${forzar ? "?refresh=1" : ""}`),
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
   googleDriveArchives: () => request<AlmacenamientoDrive>("/api/google-drive/archives"),
   archivarTareaDrive: (id: string) => request<{ id: string; task_id: string; action: "archive"; state: "queued" }>(`/api/google-drive/archives/${id}`, { method: "POST", body: "{}" }),
@@ -1113,6 +1187,8 @@ export const api = {
   deleteProviderKey: (id: string) =>
     request<{ ok: boolean }>(`/api/claves-proveedor/${encodeURIComponent(id)}`, { method: "DELETE" }),
   getJev: () => request<JevStatus>("/api/jev"),
+  getJevOficina: () => request<{ llamadas: number; completadas: number | null; entrada: number | null; salida: number | null; sin_datos: number | null }>("/api/jev/oficina"),
+  decidirJevOficina: () => request<{ actividad: "cafe" | "ventana" | "charla" }>("/api/jev/oficina", { method: "POST", body: "{}" }),
   setJevKey: (valor: string) => request<{ configurada: boolean; actualizada_en: string }>("/api/jev", {
     method: "PUT", body: JSON.stringify({ valor }),
   }),
@@ -1190,6 +1266,7 @@ export type Preferences = {
   budgetAlertPercent: number;
   // Modelo de respaldo si el principal responde 429 o un error del servidor del proveedor.
   fallbackModel: string | null;
+  quotaFallbackModels: string[];
   compartirContextoChats?: boolean;
 };
 

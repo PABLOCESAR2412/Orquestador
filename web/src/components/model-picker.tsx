@@ -1,10 +1,10 @@
 import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type ModeloCodex, type ModelInfo } from "../api";
-import { formatPrice, nombreProveedor } from "../lib/model";
+import { effortLabel, formatPrice, nombreProveedor } from "../lib/model";
 import { coincideModelo, agruparPorProveedor, normalizaBusca } from "../lib/busca-modelos";
 import { guardarPreferenciasSelector, leerPreferenciasSelector, normalizarIdAnalisis, type PreferenciasSelectorModelos } from "../lib/model-picker-preferencias";
-import { CostMeter, EffortControl, useDialogo } from "./controls";
+import { useDialogo } from "./controls";
 import "../styles-picker.css";
 
 type Props = {
@@ -73,11 +73,14 @@ export function ModelPicker({
   });
   const [onlyFree, setOnlyFree] = useState(false);
   const [textoBusca, setTextoBusca] = useState("");
+  const [integracionesAbiertas, setIntegracionesAbiertas] = useState<Record<string, boolean>>({});
   const buscando = textoBusca.trim().length > 0;
   const [preferencias, setPreferencias] = useState<PreferenciasSelectorModelos>(leerPreferenciasSelector);
   const [draftId, setDraftId] = useState(currentId);
+  const [draftSeleccionado, setDraftSeleccionado] = useState<ModelInfo | null>(null);
   const [draftEffort, setDraftEffort] = useState(currentEffort);
-  const draftModel = models.find((m) => m.id === draftId) ?? null;
+  const [eligiendoEsfuerzo, setEligiendoEsfuerzo] = useState(false);
+  const draftModel = models.find((m) => m.id === draftId) ?? (draftSeleccionado?.id === draftId ? draftSeleccionado : null);
   const esfuerzoValido = draftEffort && draftModel?.variants.includes(draftEffort) ? draftEffort : null;
   const dialogRef = useRef<HTMLDivElement>(null);
   // Si no hay disparador, vuelve el elemento que tenía el foco al abrir.
@@ -128,8 +131,31 @@ export function ModelPicker({
     guardarPreferenciasSelector(siguiente);
   };
 
+  const integracionAbierta = (id: string) => buscando || integracionesAbiertas[id] === true;
+  const alternarIntegracion = (id: string) => setIntegracionesAbiertas((actual) => ({ ...actual, [id]: !actual[id] }));
+  const cabeceraIntegracion = (id: string, nombre: string, cantidad: number) => (
+    <div className="picker-integracion-heading">
+      <h3 className="group-title picker-integracion-titulo">{nombre}</h3>
+      <button
+        type="button"
+        className="picker-integracion-cabecera"
+        aria-expanded={integracionAbierta(id)}
+        aria-controls={`picker-integracion-${id}`}
+        aria-label={`${integracionAbierta(id) ? "Ocultar" : "Mostrar"} modelos de ${nombre}`}
+        disabled={buscando}
+        onClick={() => alternarIntegracion(id)}
+      >
+        <span className="picker-integracion-conteo">{plural(cantidad)}</span>
+        <svg className="picker-integracion-flecha" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+    </div>
+  );
+
   const candidatos = useMemo(
-    () => models.filter((m) => m.recommended && (!onlyFree || m.free)),
+    // Codex se muestra desde su catálogo de sesión abajo, sin duplicar los mismos IDs del catálogo general.
+    () => models.filter((m) => m.recommended && m.provider !== "codex" && (!onlyFree || m.free)),
     [models, onlyFree],
   );
   const destacados = useMemo(() => {
@@ -143,16 +169,25 @@ export function ModelPicker({
       .slice(0, 3);
     return [...fijados, ...masUsados];
   }, [candidatos, preferencias, usosModelos.data]);
-  const puntajes = useMemo(() => new Map(
-    (inteligencia.data?.modelos ?? []).map((modelo) => [normalizarIdAnalisis(modelo.slug), modelo]),
-  ), [inteligencia.data]);
-  const puntajeDe = (id: string) => puntajes.get(normalizarIdAnalisis(id)) ?? null;
+  const puntajes = useMemo(() => {
+    const mapa = new Map<string, (NonNullable<typeof inteligencia.data>["modelos"])[number] | null>();
+    for (const modelo of inteligencia.data?.modelos ?? []) {
+      for (const clave of new Set([normalizarIdAnalisis(modelo.slug), normalizarIdAnalisis(modelo.name)])) {
+        const anterior = mapa.get(clave);
+        mapa.set(clave, anterior === undefined || anterior?.slug === modelo.slug ? modelo : null);
+      }
+    }
+    return mapa;
+  }, [inteligencia.data]);
+  const puntajeDe = (id: string, nombre?: string) => puntajes.get(normalizarIdAnalisis(id)) ?? (nombre ? puntajes.get(normalizarIdAnalisis(nombre)) : null) ?? null;
 
   const seleccionar = (m: ModelInfo | null) => {
     if (!m) return elegir(null, null);
     if (!conEsfuerzo || !m.variants || m.variants.length === 0) return elegir(m, null);
+    setDraftSeleccionado(m);
     setDraftId(m.id);
     setDraftEffort((v) => (v && m.variants.includes(v) ? v : null));
+    setEligiendoEsfuerzo(true);
   };
   const esActual = (m: ModelInfo) => m.id === currentId;
 
@@ -178,8 +213,8 @@ export function ModelPicker({
 
   // Modelos listados tras filtrar: es el contador "N modelos disponibles".
   const listados = useMemo(
-    () => destacados.length + groups.reduce((total, [, familias]) => total + familias.reduce((n, [, items]) => n + items.length, 0), 0),
-    [groups, destacados],
+    () => destacados.length + groups.reduce((total, [, familias]) => total + familias.reduce((n, [, items]) => n + items.length, 0), 0) + (!onlyFree && codexConectado ? catalogoCodex.data?.models.length ?? 0 : 0),
+    [groups, destacados, onlyFree, codexConectado, catalogoCodex.data],
   );
 
   // Resultados del buscador: coinciden por nombre, id, familia o proveedor visible;
@@ -194,30 +229,30 @@ export function ModelPicker({
     [hallazgos],
   );
   const ocultos = hallazgos ? hallazgos.total - hallazgos.visibles.length : 0;
-  const listadosVisibles = hallazgos ? hallazgos.visibles.length : listados;
 
   // La sección Codex también responde al buscador: sus filas se filtran mientras escribes.
   const codexVisibles = useMemo(() => {
+    if (onlyFree) return [];
     if (!buscando || !catalogoCodex.data) return catalogoCodex.data?.models ?? [];
     return catalogoCodex.data.models.filter((modelo) =>
-      coincideModelo({ name: modelo.name, id: `codex/${modelo.id}`, group: "Codex", provider: "codex" }, textoBusca),
+      coincideModelo({ name: modelo.name, id: `codex/${modelo.id}`, group: "Codex CLI · sesión de ChatGPT", provider: "codex" }, textoBusca),
     );
-  }, [buscando, catalogoCodex.data, textoBusca]);
+  }, [onlyFree, buscando, catalogoCodex.data, textoBusca]);
+  const listadosVisibles = hallazgos ? hallazgos.visibles.length + codexVisibles.length : listados;
 
   // Fila de un modelo: nombre con "✓ Activo" si es el actual; precio arriba y costo abajo.
-  const fila = (m: ModelInfo) => {
+  const fila = (m: ModelInfo, mostrarIntegracion = false) => {
     const fijado = preferencias.fijados.includes(m.id);
-    const indice = puntajeDe(m.id);
+    const indice = puntajeDe(m.id, m.name);
     return (
       <div className="picker-modelo-fila">
         <button type="button" className="picker-item" aria-current={esActual(m) || undefined} aria-pressed={conEsfuerzo ? m.id === draftId : undefined} onClick={() => seleccionar(m)}>
           <span className="picker-main">
             <span className="picker-nombre-linea">
               <span className="picker-name">{m.name}</span>
-              <span className="picker-proveedor-chip">{nombreProveedor(m.provider)}</span>
+              {mostrarIntegracion && <span className="picker-proveedor-chip">{nombreProveedor(m.provider)}</span>}
               {esActual(m) && <span className="picker-activo">✓ Activo</span>}
             </span>
-            <span className="picker-id">{m.id}</span>
           </span>
           <span className="picker-meta">
             <span className="picker-price" title="Precio de entrada / salida por millón de tokens">
@@ -226,10 +261,6 @@ export function ModelPicker({
             {indice && <span className="picker-intelligence" title={`Artificial Analysis Intelligence Index v${inteligencia.data?.version ?? "?"}`}>
               AA {indice.score.toLocaleString("es", { maximumFractionDigits: 1 })}
             </span>}
-            <span className="picker-costo">
-              <span className="picker-costo-etiqueta">Costo</span>
-              <CostMeter tier={m.costTier} />
-            </span>
           </span>
         </button>
         <button
@@ -252,7 +283,7 @@ export function ModelPicker({
     <>
       <div className="scrim" onClick={cerrar} />
       <div className={`picker${conEsfuerzo ? " picker-con-esfuerzo" : ""}`} role="dialog" aria-modal="true" aria-label="Elegir modelo" ref={dialogRef}>
-        <div className="picker-head">
+        {!eligiendoEsfuerzo && <><div className="picker-head">
           <label className="picker-buscar">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <circle cx="11" cy="11" r="7" />
@@ -316,7 +347,7 @@ export function ModelPicker({
             <section className="picker-proveedor picker-tus-modelos" aria-labelledby="picker-tus-modelos">
               <h3 className="group-title" id="picker-tus-modelos">Tus modelos</h3>
               {preferencias.fijados.some((id) => candidatos.some((m) => m.id === id)) && <p className="picker-proveedor-nota">Anclados y más usados</p>}
-              {destacados.map((m) => <div key={m.id} className="picker-modelo">{fila(m)}</div>)}
+              {destacados.map((m) => <div key={m.id} className="picker-modelo">{fila(m, true)}</div>)}
             </section>
           )}
           {!buscando && (
@@ -360,7 +391,7 @@ export function ModelPicker({
             </p>
           )}
 
-          {!cargando && !error && !buscando && groups.length === 0 && (
+          {!cargando && !error && !buscando && groups.length === 0 && codexVisibles.length === 0 && (
             <p className="muted-note pad">Ningún modelo disponible en este momento.</p>
           )}
 
@@ -369,22 +400,26 @@ export function ModelPicker({
             (buscando
               ? gruposBusca.map(([proveedor, items]) => (
                   <section key={proveedor} className="picker-proveedor">
-                    <h3 className="group-title">{nombreProveedor(proveedor)}</h3>
-                    {items.map((m) => <div key={m.id} className="picker-modelo">{fila(m)}</div>)}
+                    {cabeceraIntegracion(proveedor, nombreProveedor(proveedor), items.length)}
+                    <div id={`picker-integracion-${proveedor}`} hidden={!integracionAbierta(proveedor)}>
+                      {items.map((m) => <div key={m.id} className="picker-modelo">{fila(m)}</div>)}
+                    </div>
                   </section>
                 ))
               : groups.map(([proveedor, familias]) => (
               <section key={proveedor} className="picker-proveedor">
-                <h3 className="group-title">{nombreProveedor(proveedor)}</h3>
-                {familias.map(([familia, items]) => (
-                  <div key={familia} className="picker-familia">
-                    <div className="picker-familia-cabecera">
-                      <h4 className="picker-familia-titulo">{familia}</h4>
-                      <span className="picker-familia-conteo">{plural(items.length)}</span>
+                {cabeceraIntegracion(proveedor, nombreProveedor(proveedor), familias.reduce((n, [, items]) => n + items.length, 0))}
+                <div id={`picker-integracion-${proveedor}`} hidden={!integracionAbierta(proveedor)}>
+                  {familias.map(([familia, items]) => (
+                    <div key={familia} className="picker-familia">
+                      <div className="picker-familia-cabecera">
+                        <h4 className="picker-familia-titulo">{familia}</h4>
+                        <span className="picker-familia-conteo">{plural(items.length)}</span>
+                      </div>
+                      {items.map((m) => <div key={m.id} className="picker-modelo">{fila(m)}</div>)}
                     </div>
-                    {items.map((m) => <div key={m.id} className="picker-modelo">{fila(m)}</div>)}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </section>
             )))}
 
@@ -395,30 +430,31 @@ export function ModelPicker({
           )}
 
           {!cargando && !error && codexConectado && (!buscando || codexVisibles.length > 0) && (
-            <section className="picker-proveedor" aria-labelledby="picker-codex-titulo">
-              <h3 id="picker-codex-titulo" className="group-title">Cuenta Codex</h3>
-              <p className="picker-proveedor-nota">
-                {catalogoCodex.isError
-                  ? "No se pudo consultar el catálogo de Codex. Revisa la sesión en Ajustes."
-                  : codexEnAgente
-                    ? "Modelos disponibles a través de tu sesión activa con ChatGPT."
-                    : "Modelos de tu sesión. Telo todavía ejecuta agentes con OpenCode; esta lista es informativa."}
-              </p>
-              {catalogoCodex.isPending && <p className="picker-cargando" role="status">Consultando modelos de Codex…</p>}
-              {codexVisibles.map((modelo) => (
-                <FilaCodex
-                  key={modelo.id}
-                  modelo={modelo}
-                  deshabilitado={!codexEnAgente}
-                  onSelect={seleccionar}
-                  esActual={currentId === `codex/${modelo.id}` || currentId === modelo.id}
-                  esDraft={draftId === `codex/${modelo.id}` || draftId === modelo.id}
-                />
-              ))}
+            <section className="picker-proveedor" aria-label="Codex CLI con sesión de ChatGPT">
+              {cabeceraIntegracion("codex-sesion", "Codex CLI · sesión de ChatGPT", codexVisibles.length)}
+              <div id="picker-integracion-codex-sesion" hidden={!integracionAbierta("codex-sesion")}>
+                <p className="picker-proveedor-nota">
+                  {catalogoCodex.isError
+                    ? "No se pudo consultar el catálogo de Codex. Revisa la sesión en Ajustes."
+                    : "Modelos de la integración Codex CLI, autenticada con tu sesión de ChatGPT."}
+                </p>
+                {catalogoCodex.isPending && <p className="picker-cargando" role="status">Consultando modelos de Codex…</p>}
+                {codexVisibles.map((modelo) => (
+                  <FilaCodex
+                    key={modelo.id}
+                    modelo={modelo}
+                    deshabilitado={!codexEnAgente}
+                    onSelect={seleccionar}
+                    esActual={currentId === `codex/${modelo.id}` || currentId === modelo.id}
+                    esDraft={draftId === `codex/${modelo.id}` || draftId === modelo.id}
+                  />
+                ))}
+              </div>
             </section>
           )}
         </div>
-        {conEsfuerzo && draftModel && draftModel.variants.length > 0 && (
+        </>}
+        {eligiendoEsfuerzo && conEsfuerzo && draftModel && draftModel.variants.length > 0 && (
           <div className="picker-configuracion">
             <div className="picker-eleccion">
               <strong title={draftModel.name}>
@@ -426,12 +462,16 @@ export function ModelPicker({
               </strong>
               <span>Nivel de esfuerzo:</span>
             </div>
-            <EffortControl
-              variants={draftModel.variants}
-              value={esfuerzoValido}
-              disabled={!draftModel}
-              onChange={(nuevoEsfuerzo) => elegir(draftModel, nuevoEsfuerzo)}
-            />
+            <div className="picker-esfuerzo-barra">
+              <strong aria-hidden="true">{esfuerzoValido ? effortLabel(esfuerzoValido) : "Auto"}</strong>
+              <input type="range" min="0" max={draftModel.variants.length} step="1" list="niveles-esfuerzo"
+                value={esfuerzoValido ? draftModel.variants.indexOf(esfuerzoValido) + 1 : 0}
+                aria-label="Nivel de esfuerzo" aria-valuetext={esfuerzoValido ? effortLabel(esfuerzoValido) : "Auto"}
+                onChange={(event) => elegir(draftModel, draftModel.variants[Number(event.target.value) - 1] ?? null)} />
+              <datalist id="niveles-esfuerzo">{[null, ...draftModel.variants].map((nivel, i) => <option key={nivel ?? "auto"} value={i} label={nivel ? effortLabel(nivel) : "Auto"} />)}</datalist>
+              <button type="button" className="ghost" onClick={() => elegir(draftModel, null)}>Auto</button>
+              <button type="button" className="ghost" onClick={() => setEligiendoEsfuerzo(false)}>Volver a modelos</button>
+            </div>
           </div>
         )}
       </div>
@@ -479,10 +519,8 @@ function FilaCodex({
       <span className="picker-main">
         <span className="picker-nombre-linea">
           <span className="picker-name">{modelo.name}</span>
-          <span className="picker-proveedor-chip">Codex</span>
           {esActual && <span className="picker-activo">✓ Activo</span>}
         </span>
-        <span className="picker-id">{modelInfo.id}</span>
       </span>
       <span className="picker-meta">
         <span className="picker-price">{deshabilitado ? "Solo catálogo" : "Cuenta ChatGPT"}</span>

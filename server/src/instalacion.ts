@@ -7,7 +7,7 @@ import { registrarTrabajo } from "./despliegue";
 
 
 // Instalación de herramientas desde la app. La API recibe solo un identificador de esta lista, nunca un
-// comando. Cada acción tiene un argv fijo, se lanza sin shell y con entorno mínimo (sin TELO_* ni claves).
+// comando. Las acciones usan parámetros fijos y entorno mínimo (sin TELO_* ni claves).
 // OpenCode se instala con npm dentro de ~/.opencode: esa carpeta ya es visible (solo lectura) para el agente
 // en bubblewrap, así que no hace falta tocar TELO_LECTURA_EXTRA.
 
@@ -40,6 +40,22 @@ const ACCIONES = {
     ejecutable: (prefijo) => join(prefijo, "bin", "codex"),
     binario: "codex",
   },
+  antigravity: {
+    nombre: "Antigravity CLI",
+    comando: "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+    programa: "bash",
+    argv: () => ["-o", "pipefail", "-c", "curl -fsSL https://antigravity.google/cli/install.sh | bash"],
+    ejecutable: () => join(carpetaHome(), ".local", "bin", "agy"),
+    binario: "agy",
+  },
+  hermes: {
+    nombre: "Hermes Agent",
+    comando: "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive --skip-browser --skip-computer-use",
+    programa: "bash",
+    argv: () => ["-o", "pipefail", "-c", "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive --skip-browser --skip-computer-use"],
+    ejecutable: () => join(carpetaHome(), ".local", "bin", "hermes"),
+    binario: "hermes",
+  },
 } satisfies Record<string, Accion>;
 
 export type HerramientaInstalable = keyof typeof ACCIONES;
@@ -56,7 +72,7 @@ export type InstalacionPublica = {
   terminada: string | null;
   // Código legible (ver errorText en la web). null si no hay error.
   motivo: string | null;
-  // Últimas líneas de la salida de npm, redactadas.
+  // Últimas líneas de la salida del instalador, redactadas.
   salida: string;
 };
 
@@ -87,9 +103,9 @@ function carpetaDeInstalacion(): string {
 // Añade la carpeta de instalación al PATH de este proceso si el ejecutable ya está ahí. Así, tras instalar
 // (o tras reiniciar el servidor) el CLI se encuentra sin tocar el archivo de servicio de systemd.
 export function asegurarRutaInstalada(): void {
-  for (const accion of Object.values(ACCIONES)) {
-    const bin = join(carpetaDeInstalacion(), "bin");
-    if (!existsSync(join(bin, accion.binario))) continue;
+  const rutas = [join(carpetaHome(), ".opencode", "bin"), join(carpetaHome(), ".local", "bin")];
+  for (const bin of rutas) {
+    if (!existsSync(bin)) continue;
     const actual = (process.env.PATH ?? "").split(":");
     if (!actual.includes(bin)) process.env.PATH = [bin, ...actual].filter(Boolean).join(":");
   }
@@ -138,16 +154,19 @@ export function iniciarInstalacion(id: string): InstalacionPublica {
   if (instalada(id)) throw new InstalacionError("ya_instalada", 409);
 
   const accion = ACCIONES[id];
-  if (hallarEjecutable(accion.programa) === null) throw new InstalacionError("npm_no_disponible", 503);
+  if (hallarEjecutable(accion.programa) === null) {
+    throw new InstalacionError(["antigravity", "hermes"].includes(id) ? "bash_no_disponible" : "npm_no_disponible", 503);
+  }
+  if (["antigravity", "hermes"].includes(id) && hallarEjecutable("curl") === null) throw new InstalacionError("curl_no_disponible", 503);
 
   const prefijo = carpetaDeInstalacion();
-  mkdirSync(prefijo, { recursive: true });
+  if (id === "opencode" || id === "codex") mkdirSync(prefijo, { recursive: true });
 
   let proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
   try {
     proc = lanzarEnGrupo([accion.programa, ...accion.argv(prefijo)], entornoInstalacion());
   } catch {
-    throw new InstalacionError("npm_no_disponible", 503);
+    throw new InstalacionError(["antigravity", "hermes"].includes(id) ? "bash_no_disponible" : "npm_no_disponible", 503);
   }
 
   estados.set(id, {

@@ -32,6 +32,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
   const pathAnterior = process.env.PATH;
   const aislamientoAnterior = process.env.TELO_AISLAMIENTO;
   const claveCifradoAnterior = process.env.TELO_CLAVE_CIFRADO;
+  const concurrenciaAnterior = process.env.TELO_CONCURRENCIA_PROVEEDORES;
   const creados: { id: string; proyecto?: string; conversacion?: string }[] = [];
 
   beforeAll(async () => {
@@ -46,6 +47,8 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     process.env.TELO_PROYECTOS_DIR = join(raiz, "proyectos");
     process.env.TELO_AISLAMIENTO = "activado";
     process.env.TELO_CLAVE_CIFRADO = Buffer.alloc(32, 1).toString("base64");
+    // Este escenario comprueba el techo global, con un proveedor sintético de diez puestos.
+    process.env.TELO_CONCURRENCIA_PROVEEDORES = '{"fixture":10}';
     ({ db } = await import("../src/db"));
     const { config } = await import("../src/config");
     datos = config.dataDir;
@@ -88,6 +91,8 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     else process.env.TELO_AISLAMIENTO = aislamientoAnterior;
     if (claveCifradoAnterior === undefined) delete process.env.TELO_CLAVE_CIFRADO;
     else process.env.TELO_CLAVE_CIFRADO = claveCifradoAnterior;
+    if (concurrenciaAnterior === undefined) delete process.env.TELO_CONCURRENCIA_PROVEEDORES;
+    else process.env.TELO_CONCURRENCIA_PROVEEDORES = concurrenciaAnterior;
     if (
       hogar &&
       resolve(hogar).startsWith(resolve(tmpdir()) + sep) &&

@@ -77,17 +77,20 @@ describe.skipIf(process.platform === "win32")("login de Codex", () => {
     const res = await servidor.request("/providers/codex/login", { method: "POST" });
     expect(res.status).toBe(202);
 
-    const esperando = await esperar((e) => e.url !== null && e.codigo !== null);
-    expect(esperando.estado).toBe("esperando");
-    expect(esperando.url).toBe("https://auth.ejemplo.test/device");
-    expect(esperando.codigo).toBe("WXYZ-12345");
-    expect(esperando.salida).not.toContain(TOKEN);
-    expect(esperando.salida).toContain("***");
+    try {
+      // URL/código y token llegan en escrituras distintas: esperar ambas antes de comprobar redacción.
+      const esperando = await esperar((e) => e.url !== null && e.codigo !== null && e.salida.includes("***"));
+      expect(esperando.estado).toBe("esperando");
+      expect(esperando.url).toBe("https://auth.ejemplo.test/device");
+      expect(esperando.codigo).toBe("WXYZ-12345");
+      expect(esperando.salida).not.toContain(TOKEN);
+      expect(esperando.salida).toContain("***");
 
-    const dos = await servidor.request("/providers/codex/login", { method: "POST" });
-    expect(dos.status).toBe(409);
-
-    await servidor.request("/providers/codex/login", { method: "DELETE" });
+      const dos = await servidor.request("/providers/codex/login", { method: "POST" });
+      expect(dos.status).toBe(409);
+    } finally {
+      await servidor.request("/providers/codex/login", { method: "DELETE" });
+    }
     const cancelado = await esperar((e) => e.estado === "fallido");
     expect(cancelado.estado).toBe("fallido");
     expect(cancelado.motivo).toBe("cancelado");
@@ -106,10 +109,11 @@ describe.skipIf(process.platform === "win32")("login de Codex", () => {
     expect(cuerpo).not.toContain(TOKEN);
   });
 
-  test("el proveedor codex refleja la sesión sin cambiar a activo (los agentes aún no lo usan)", async () => {
-    const lista = (await (await servidor.request("/providers")).json()) as { id: string; configured: boolean; enAgente: boolean }[];
+  test("el proveedor Codex habilita sus modelos con la sesión autenticada del CLI", async () => {
+    const lista = (await (await servidor.request("/providers")).json()) as { id: string; configured: boolean; enAgente: boolean; variable: string | null }[];
     const codex = lista.find((p) => p.id === "codex");
     expect(codex?.configured).toBe(true);
-    expect(codex?.enAgente).toBe(false);
+    expect(codex?.enAgente).toBe(true);
+    expect(codex?.variable).toBeNull();
   });
 });

@@ -1,15 +1,186 @@
 # Seguimiento de Telo
 
-Registro central de fases, revisiones y hallazgos. Actualizado: 30 de octubre de 2026.
+Registro central de fases, revisiones y hallazgos. Actualizado: 31 de octubre de 2026.
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
+
+## Piloto de ejecución directa y auditoría delegada — 31 de octubre de 2026
+
+- [~] La ruta directa sigue siendo la predeterminada: la delegación solo corre si el usuario la pide explícitamente y el chat tiene la orquestación gestionada habilitada. La rama gestionada ya no crea perfiles nativos como alternativa oculta; si no hay revisores configurados, continúa con el supervisor.
+- [~] La auditoría gestionada por Telo acepta hasta tres revisores de roles distintos (arquitectura, seguridad y verificación), aislados en solo lectura. Los perfiles nativos de OpenCode, cuando se usan con delegación explícita, tienen permisos limitados a lectura y búsqueda; no pueden ejecutar shell, escribir ni delegar de nuevo.
+- [~] Se persiste cada revisión gestionada por mensaje de origen. Al reanudar el mismo pedido se reutilizan las etapas completadas que conservan modelo y rol; fallos e interrupciones vuelven a ejecutarse. OpenCode todavía no expone aquí checkpoints ni uso individual de cada subagente; para medir el piloto, activa el Supervisor gestionado de Telo.
+- [~] El panel «Ver proceso» muestra llamadas, tokens medidos/estimados, coste estimado y desglose por supervisor/revisor e integración/modelo. No presenta el coste estimado como facturación real; los proveedores que no informan uso quedan marcados como no verificables. El alcance es el turno del chat, no el saldo de la cuenta del proveedor.
+- [~] La oficina invalida su lista por eventos de inicio/finalización/configuración y conserva un sondeo de respaldo cada 30 s. Sus animaciones siguen siendo locales y no generan llamadas de modelo.
+- [x] Verificación local: `server bun run typecheck`, `web bun run build`, `web bun run test:ui` en 390/1440 px y las pruebas focalizadas (44 aprobadas, 17 omitidas) pasan. La suite completa pasó con 598 aprobadas, 71 omitidas y 0 fallidas; el smoke no incluyó decodificación de video porque no se configuró un fixture local.
+- [~] La suite del worker con bubblewrap y la comparación de auditoría directa vs delegada con un proveedor real siguen pendientes de CI Linux y del despliegue en la VM. Este equipo no tiene WSL, Docker ni acceso a la VM.
+- [ ] Piloto pendiente: comparar manualmente una auditoría directa y otra delegada sobre el mismo repositorio; revisar cobertura/evidencia, duración, tokens por modelo y revisiones reutilizadas. Validar migración y comportamiento en Linux/VM antes de desplegar.
+
+## Presentación de respuestas del chat — 31 de octubre de 2026
+
+- [~] Se refuerza el contrato del chat para responder en el idioma del usuario y omitir razonamiento privado, borradores y notas internas. No se añadió un filtro heurístico que pueda borrar respuestas válidas. Pendiente validar en la VM con una tarea larga.
+- [~] La primera columna de tablas queda compacta y sin salto por carácter; las tablas anchas conservan el desplazamiento de su contenedor. Pendiente revisión visual en escritorio y móvil.
+
+## Selector y oficina — 31 de octubre de 2026
+
+- [~] Selector: integraciones plegadas inicialmente, identificación compacta y barra accesible de esfuerzo con confirmación. Mantiene proveedor en modelos destacados.
+- [~] Oficina: plano 2D con personajes y mobiliario; el descanso se anima localmente y el control de Jev se retira de esta pantalla.
+- [~] Cerebro: mapa de chats y proyectos basado en pertenencia real, separado del mapa de enlaces de notas. No es un grafo semántico de Graphify.
+- [~] El catálogo de OpenCode deja de bloquear indefinidamente la creación de tareas: se limita la espera y se consume también stderr. La causa concreta de la demora reportada requiere registros de la VM.
+- [ ] Pendiente calcular equivalentes de API para suscripciones con precios y modelos verificables, y confirmar el coste y cuota reales con cada proveedor.
+
+## Oficina interactiva — 31 de octubre de 2026
+
+- [~] La vista agrupa conversaciones por supervisor y muestra subchats registrados; la selección abre el chat real. El plano pixelado es una representación local y no crea agentes ni actividad. Pendiente verificar con conversaciones reales y accesibilidad visual.
+- [~] Vista inicial de tareas reales con acceso a cada tarea, actualización periódica y movimientos locales sin llamadas a modelos. Pendiente comprobar visualmente en móvil y escritorio y validar en la VM.
+- [ ] Añadir subagentes reales, acceso a sus chats, notificaciones y salas de tarea; no representar como actividad real los movimientos decorativos.
+- [~] La oficina permite pedir una elección puntual a Jev, con una consulta por minuto, registro separado de intentos y tokens informados, y una estimación indicativa según la tarifa pública. La animación básica no necesita proveedor. Faltan prueba real de Jev y comprobación de la migración en Linux.
+
+## CI del PR #154 — 31 de octubre de 2026
+
+- [x] El fallo de `servidor` no era latencia: `server/tests/uso-agente.test.ts` encontró que el contrato común de cada llamada tenía 2.140 caracteres y excedía el tope de 2.000.
+- [x] Se compactó sin quitar las reglas que comprueba el test: localmente el contrato queda en 1.660 caracteres (480 menos, ~22 %). `bun test tests/uso-agente.test.ts` y `bun run typecheck` pasan localmente.
+- [x] Publicada la corrección en #154. En la rama del PR quedó en 1.811 caracteres y conserva la regla de persistencia de recursos entre reinicios; commits `dcdf4b2` y `068da05`.
+- [x] GitHub terminó `servidor` e `interfaz` para `068da051a480ede17b18544675a65e8d1d5d26a4`: ambos pasaron y la rama es integrable. Queda una advertencia de mantenimiento de GitHub Actions: `checkout@v4` y `upload-artifact@v4` migran de Node 20 a Node 24; no afecta el resultado del CI.
+
+## Delegación explícita al continuar chats — 31 de octubre de 2026
+
+- [x] La solicitud de usar auxiliares queda asociada al mensaje raíz. Los mensajes «Seguir donde se quedó» heredan ese origen solo mientras no exista una respuesta final; una petición nueva no hereda permisos antiguos.
+- [x] Los auxiliares gestionados por Telo consumen el origen al terminar su análisis. Los perfiles nativos solo lo consumen al observar el evento `created`; preparar una configuración no cuenta como agente iniciado.
+- [x] Añadida cobertura unitaria que corre en Windows y una prueba de turno completo para CI Linux.
+- [ ] Falta confirmar el caso en la VM tras desplegar el cambio; la conversación «Top skills» sigue activa y no se debe detener para probar el fix.
+
+## Piloto del cerebro interno compatible con Obsidian — 31 de octubre de 2026
+
+- [x] Decisión: baúl Markdown administrado por Telo, sin instalar Obsidian en la VM. Las notas se importan por lotes desde archivos `.md`, se exportan como `.md` y admiten enlaces `[[nota]]`.
+- [x] Primera fase del piloto: notas globales y por proyecto, edición con límite de 48 KB, búsqueda léxica local y mapa clicable de enlaces existentes. El grafo se calcula sin modelos. Las notas son manuales; la memoria automática de proyecto y los documentos de chat permanecen separados.
+- [ ] Pendiente del piloto: exportar/importar un baúl completo como carpeta o archivo, preservar carpetas de Obsidian y revisar la experiencia en la VM.
+- [ ] Segunda fase: recuperar únicamente las notas relevantes al chat/tarea dentro de un presupuesto corto de contexto; mostrar qué notas se incluyeron. Sin llamadas a modelos para generar el grafo ni para seleccionar notas.
+- [ ] Tercera fase: evaluar un mapa de código opcional (Graphify) y una vista de oficina que represente eventos reales de tareas y auxiliares. No simular actividad.
+- Riesgo a controlar: no mezclar memoria aprendida, documentos por chat y notas globales/proyecto; respetar el workspace y el aislamiento de cada proyecto.
+
+## Cuotas, uso de API y respaldo automático — 31 de octubre de 2026
+
+- [x] El panel «Uso» consulta la cuenta local de Codex CLI por el App Server oficial y muestra plan, ventanas de uso, porcentaje restante, reinicios y hora de restablecimiento cuando Codex los entrega. La consulta es local, tiene tiempo máximo y caché de un minuto; no muestra correo ni credenciales.
+- [x] OpenAI API queda diferenciada: el plan de ChatGPT/Codex y la facturación de API son distintos. El panel de Codex muestra la cuota de sesión; las llamadas de API siguen en el registro de uso de Telo y no se suman a la cuota Plus.
+- [x] Antigravity incluye el comando interactivo `/usage` para consultar cuota por modelo. La CLI no documenta una API estructurada de cuota para que Telo la lea. La cuota de Antigravity/Google AI Plus es distinta del consumo de Gemini API; el panel de Google enlaza a la página de uso de AI Studio.
+- [x] Ajustes permite crear una lista ordenada de hasta 20 modelos gratuitos del catálogo y modelos de la sesión Codex. Ante una respuesta inequívoca de cuota agotada, Telo intenta la lista sin cambiar a modelos con coste de API; informa el cambio en actividad y registra el uso bajo el modelo que realmente respondió. Si todos fallan por cuota, conserva el comportamiento de pausa reanudable.
+- [x] Anthropic se explica como uso de API registrado por Telo; no se presenta como acceso al saldo Claude.ai/Claude Code. La suscripción de Claude y el consumo de API se facturan por separado.
+- [ ] Pendiente de validar en la VM: lectura real de `account/rateLimits/read` con la sesión Codex del servicio, porcentajes y horarios de reinicio. Si systemd no comparte el login de Codex del usuario `orquestador`, el panel debe indicar que no hay sesión disponible.
+- [ ] Pendiente de prueba operativa: agotar cuotas de forma controlada para demostrar que el turno avanza al siguiente modelo, mantiene el workspace/historial, registra el proveedor real y se detiene reanudable al terminar la lista. No provocar agotamiento real de cuota solo para probarlo.
+- Fuentes primarias: [Codex App Server (cuenta y rate limits)](https://learn.chatgpt.com/docs/app-server), [reinicios y límites de Codex](https://help.openai.com/en/articles/20001498-how-resets-work-in-codex), [uso de Antigravity CLI](https://antigravity.google/docs/cli/commands/usage?app=antigravity-ide), [facturación de Gemini API](https://ai.google.dev/gemini-api/docs/billing), [separación entre Claude y API](https://support.claude.com/en/articles/9876003-why-is-claude-api-usage-billed-separately-from-my-paid-claude-plan).
+
+## Catálogo del chat por integración — 31 de octubre de 2026
+
+- [x] **Codex ya aparece y ejecuta modelos desde el chat.** El repositorio contiene el runner `codex exec`, `GET /api/providers/codex/models` y la consulta de catálogo de la sesión. Por tanto, la nota de fase 3 que decía «los agentes todavía no usan Codex» ya no describe el código actual; era un estado histórico.
+- [x] El selector separa los catálogos por integración (`Groq API`, `NVIDIA API`, `OpenRouter`, `OpenAI API`, `OpenCode`, etc.) y permite plegar cada lista. Codex queda en su propia sección: **Codex CLI · sesión de ChatGPT**. OpenAI API es una conexión distinta y sigue usando su clave API.
+- [x] Corregido el estado de Codex: el runner usa el login del CLI y no `OPENAI_API_KEY`; la sesión conectada habilita sus modelos sin etiquetarlos como catálogo informativo. La lista dedicada ya no duplica Codex que también aparece en `/api/models`.
+- [x] «Solo gratis» omite Codex y el contador lo refleja, porque el uso de la sesión depende del plan y su cuota, no de que el catálogo marque coste API cero.
+- [ ] Este cambio comprueba el comportamiento del código y el catálogo configurado en el servidor; la prueba de inicio de sesión y ejecución real debe repetirse tras desplegarlo en la VM.
+
+## Instalación de Antigravity CLI — 31 de octubre de 2026
+
+- [x] Ajustes permite instalar el CLI oficial (`agy`) desde la VM en `~/.local/bin`. La instalación usa el comando oficial sin opciones que el script no admite; la API solo acepta el identificador fijo `antigravity` y requiere confirmación explícita.
+- [x] Corregidos `--skip-aliases` y `--skip-path`: la CLI 1.4.12 instalada en la VM confirmó que el script solo acepta `--dir` y `--help`.
+- [x] La tarjeta junto a Codex explica el acceso OAuth soportado por SSH: iniciar `~/.local/bin/agy` en terminal interactiva como `orquestador`, abrir la URL en el equipo y devolver el código a esa terminal. La sesión no se transmite a Telo.
+- [ ] Este cambio solo instala y guía el inicio de sesión. Antigravity aún no ejecuta chats ni tareas de Telo. Antes de habilitarlo como runner hay que validar disponibilidad de la sesión/keyring para el servicio systemd, invocación headless `agy -p`, eventos `stream-json`, límites de cuenta, cancelación y aislamiento Bubblewrap.
+- Fuente primaria: [instalación y autenticación remota](https://antigravity.google/docs/install?tab=cli), [modo headless](https://antigravity.google/docs/cli/headless/).
+
+## Hermes: preparación del piloto — 31 de octubre de 2026
+
+- [x] Ajustes instala Hermes en la VM con el instalador oficial y muestra el estado bajo una integración separada. La tarjeta guía OAuth propio con `HERMES_HOME="$HOME/.hermes-telo"`, desactiva `auth.adopt_external_logins` antes del login y no copia `~/.codex/auth.json`. El estado solo confirma que encuentra una entrada OAuth de Codex en el almacén Hermes, no que una llamada funcione.
+- [x] La instalación no habilita Hermes como runner ni lo lista como modelo ejecutable. La delegación solicitada sigue funcionando por el mecanismo actual hasta que el piloto supere las comprobaciones de seguridad y ciclo de vida.
+- [ ] **Bloqueo técnico antes de enrutar chats/subagentes:** Hermes ofrece `hermes chat --oneshot --format stream-json` y delegación de hijos, pero la documentación advierte que turnos y delegaciones pueden pertenecer al gateway. Además, el sandbox actual oculta `HOME` y todavía no monta un perfil Hermes aislado. Falta probar en Linux que la tarea y todos sus hijos quedan dentro de Bubblewrap, que detener una sola conversación termina todos sus procesos sin tocar hermanos, y que sesiones OAuth concurrentes no pisan su estado.
+- [ ] **Piloto de aceptación:** instalar y autenticar el perfil independiente; ejecutar una solicitud unitaria y otra que pida dos auxiliares; comprobar que una solicitud sin pedir agentes no delega; revisar actividad y resultados de cada hijo; cancelar mientras trabajan y comprobar que no queda proceso; forzar una cuota agotada y verificar el aviso reutilizable. Solo después habilitar selector/modelos y ruta Hermes por chat.
+- **Cuota de ChatGPT:** Hermes documenta OAuth de Codex, pero deja sin documentar qué planes son elegibles y cómo contabiliza su cuota. No se debe contar con un ahorro frente al runner actual hasta probarlo en la cuenta. Hermes puede adoptar credenciales externas si esa opción está habilitada; el flujo de Ajustes la desactiva y usa un login propio. No se copia ni reutiliza el archivo de Codex CLI.
+- Fuentes primarias: [CLI y eventos JSONL](https://hermes-agent.nousresearch.com/docs/reference/cli-commands), [delegación de subagentes](https://hermes-agent.nousresearch.com/docs/user-guide/features/delegation), [proveedor Codex y cuota del plan](https://hermes-agent.nousresearch.com/docs/integrations/providers), [seguridad](https://hermes-agent.nousresearch.com/docs/user-guide/security).
+
+## Concurrencia por proveedor y evaluación de Hermes — 30 de octubre de 2026
+
+- [x] **Admisión global sin presupuesto por proveedor.** Había diez puestos comunes; varias ejecuciones del mismo servicio podían ocuparlos incluso durante reintentos. Ahora las ejecuciones principales tienen límite por proveedor (OpenCode 1; demás 2; configurable con `TELO_CONCURRENCIA_PROVEEDORES`, valores 1–10), además del máximo global de diez. Las esperas no ocupan puestos, conservan orden por proveedor, se pueden cancelar sin afectar al agente activo y no impiden admitir otro proveedor. Cada intento reserva el proveedor real; se libera antes del backoff o de usar un respaldo.
+- [x] **El worker también aplica el presupuesto antes de clonar.** La preparación y ejecución de un proveedor ocupado no llenan los diez slots con tareas que solo esperan, y la búsqueda de la siguiente tarea puede saltar a otro proveedor. Se conserva la serialización del proyecto. La prueba mantiene doce tareas de OpenCode (la primera bloqueada), demuestra que Google llega a revisión de plan y, tras cancelar la primera, que se atienden las demás.
+- [x] **Actividad congelada con el canal de eventos caído.** El sondeo devolvía nuevos pasos, pero el efecto de React descartaba la respuesta si ya había actividad del mismo turno. Ahora integra los pasos y sus cambios de estado, conserva eventos posteriores y evita reabrir herramientas finalizadas por una respuesta atrasada. La espera de capacidad tiene una acción visible propia.
+- [x] **Los límites diarios de modelos gratis se reintentaban como si fueran cortes breves.** Las analíticas del 25–31 de octubre muestran 8,8 M de tokens de agente; el proveedor agotó solicitudes `free-models-per-day` y Telo seguía probando reintentos, luego modelos de respaldo. Esa respuesta ahora se clasifica como cuota agotada para detener ese modelo y dejar elegir otro; los `429` temporales sin límite diario siguen con reintentos. Regresión: `server/tests/cuota.test.ts` (21 pass).
+- **Consumo observado en la VM:** 30,1 M tokens en 30 días, 28,7 M de entrada; 19,9 M asociados a tareas y 11,4 M a chats. Últimos 7 días: 8,8 M en 640 registros medidos. Los modelos gratuitos OpenCode concentran el uso. Esto no prueba una relación causal con “tres proyectos”; la duración y cantidad de llamadas por tarea pesan más que el número de proyectos por sí solo.
+- **Consumo auxiliar separado:** Jev/TypeSafe marca 245,2 k tokens en 156 llamadas durante 7 días, principalmente 132 ordenamientos de sugerencias (228,6 k). Su cuota es independiente de los modelos de agentes. Reducir o cachear esas llamadas puede ahorrar esa cuota auxiliar, no los tokens gratuitos de OpenCode.
+- Evidencia local: 34 pruebas focalizadas de capacidad/worker/actividad/runner y 65 pruebas web, typecheck y build pasan. Playwright completo pasa a 390/1440 px; fuerza un 503 del canal de eventos y confirma que el sondeo actualiza la misma acción de cola y muestra la siguiente herramienta. Falta completar CI en este commit.
+- **Evidencia de la VM:** en la consulta operativa estaba en `83d1f1c9a69f` (todavía sin PR #143), OpenCode 1.18.35, servicio activo desde 01:43 UTC y dos tareas en curso. El diario consultado no mostró un reinicio general posterior ni un OOM; esto no prueba que la API esté generando. No se atribuye toda espera a OpenCode ni a cuota sin trazas del proveedor.
+- [x] **Piloto elegido: Hermes CLI de una sola ejecución, manteniendo Telo.** El CLI documenta `hermes chat --oneshot --format stream-json` y `delegate_task`; OpenClaw no se incorpora en esta fase. El nuevo bloque de Ajustes prepara la instalación y el login independiente; todavía no sustituye el runner ni habilita el catálogo de Hermes.
+- **Condiciones del piloto:** fijar versión de Hermes y proveedor/modelo soportados (no asumir que los modelos gratuitos ni los IDs de OpenCode se transfieren); mantener cola, aprobaciones Git, uso y directorio de trabajo bajo Telo; restringir delegación a petición explícita y máximo dos hijos, sin anidamiento; meter el runner y todos sus hijos en Bubblewrap y un perfil de sesión separado; conservar la sesión histórica de OpenCode sin interpretarla como una sesión Hermes.
+- **Prueba de aceptación:** mismo proveedor/modelo, prompts y workspace en ambos motores; caso unitario, dos hijos pedidos, cuatro tareas de proveedores independientes, saturación de un mismo proveedor, error de herramienta, cancelación de una sola tarea y reanudación tras reinicio. Verificar resultados con marcadores/archivos deterministas, ninguna escritura duplicada, ausencia de efectos sobre hermanos y de acceso fuera del workspace; medir primer evento útil, éxito, duración, tokens/coste y memoria máxima. El piloto solo se promueve con evidencia real; el límite del proveedor se mantiene con cualquier harness.
+- Fuentes primarias: [Hermes ACP](https://hermes-agent.nousresearch.com/docs/user-guide/features/acp), [delegación Hermes](https://hermes-agent.nousresearch.com/docs/user-guide/features/delegation), [ACP de OpenClaw](https://docs.openclaw.ai/tools/acp-agents), [cola de OpenClaw](https://docs.openclaw.ai/concepts/queue).
+
+## Esperas del proveedor y consultas de diff — 30 de octubre de 2026
+
+- [x] **409 repetidos en chats.** La API de la VM confirmó `task_without_repo` para dos tareas antiguas fallidas, distintas de las ejecuciones actuales. Aunque conservaban rama/base en la base de datos, ya no había clon utilizable. La consulta de diff devuelve HTTP 200 con `estado: sin_repo`; las aprobaciones de escritura conservan su rechazo. La interfaz deja de sondear al recibir ese estado o un error persistente, también en reparaciones de conflictos.
+- [x] **Estados ocultos por la CLI.** Un plugin local por ejecución recoge herramientas en curso y estados de proveedor (`busy`, generación, reintento, `idle`) que `opencode run --format json` omite. Solo cuenta señales de generación, sin copiar texto parcial ni razonamiento, agrupa las frecuentes y limita bytes/eventos. No añade llamadas al proveedor. El JSON y el plugin se montan de solo lectura; solo su captura temporal permite escritura. Reutiliza el lector y los identificadores de actividad existentes; un inicio atrasado no revierte una acción terminada.
+- [x] **Reintentos internos sin fin visible.** Al tercer reintento interno consecutivo informado por OpenCode se termina el grupo con error recuperable, conservando sesión y archivos. No se corta por duración ni por silencio. Una herramienta `invalid` queda marcada como error y el indicador de inactividad reconoce también cambios de contenido dentro del mismo paso.
+- Evidencia: 50 pruebas dirigidas pasan, typecheck del servidor y build web pasan. Playwright completo pasa en 390/1440 px y verifica que un diff sin clon no se repita tras el intervalo de sondeo. La suite adicional de aislamiento requiere Linux; el caso previo que crea un enlace falla con EPERM en este Windows restringido y queda para CI, sin relajar la protección.
+- [ ] **Confirmación operativa de las pausas.** El análisis actual de Apex-Suite y el video usan GLM gratuito con esfuerzo máximo. El análisis emitió búsquedas, lectura y un `todowrite`; el video alcanzó diez acciones y una herramienta inválida. Esto no demuestra por sí solo un bloqueo del proceso. La VM confirma CLI y bubblewrap disponibles; SSH rechaza la autenticación por clave pública. Tras desplegar hay que comprobar el plugin con el OpenCode instalado y observar si la pausa corresponde a reintentos, generación o falta real de eventos. No se han cancelado ni reiniciado trabajos del usuario durante esta revisión.
+- Referencias del protocolo: [salida JSON de la CLI](https://github.com/anomalyco/opencode/blob/v1.19.4/packages/opencode/src/cli/cmd/run.ts), [estados de sesión](https://github.com/anomalyco/opencode/blob/v1.19.4/packages/schema/src/session-status-event.ts), [eventos de plugins](https://github.com/anomalyco/opencode/blob/v1.19.4/packages/opencode/src/plugin/index.ts).
+
+## Compactación fuera de la respuesta — 30 de octubre de 2026
+
+- [x] **El resumen interno aparecía como entrega.** La plantilla `Objective / Important Details / Work State / Next Move / Relevant Files` coincide con el resumen de OpenCode. Su CLI emite los bloques de texto sin incluir siempre los metadatos `summary` del mensaje. Telo reconoce la plantilla completa o los metadatos explícitos, guarda el resumen como actividad de compactación y lo excluye de la respuesta final; conserva sesión y contabilidad de uso. Si el proceso termina solo con compactación, avisa que todavía falta la respuesta final.
+- [x] **Consulta plegada.** «Ver compactación» queda cerrado al abrir el chat y carga el resumen desde la actividad al expandir. Los mensajes antiguos con la firma completa también se pliegan, sin modificar sus datos guardados. Respuestas normales y ejemplos dentro de bloques de código no se clasifican por unas pocas palabras sueltas.
+- Evidencia local: 24 pruebas dirigidas de compactación/actividad/marcas y typecheck del servidor pasan; build web correcto. El recorrido de navegador comprueba resumen antiguo, carga de un resumen nuevo y respuesta final separada en 390/1440 px. Falta confirmar el flujo con OpenCode real en la VM tras desplegar.
+- Fuente de la firma y del comportamiento de la CLI: [plantilla de OpenCode](https://github.com/anomalyco/opencode/blob/v1.19.4/packages/core/src/session/compaction.ts), [emisión de texto en la CLI](https://github.com/anomalyco/opencode/blob/v1.19.4/packages/opencode/src/cli/cmd/run.ts).
+- El primer CI expuso una carrera previa en `login-codex.test.ts`: el test recibía URL/código antes de la línea del token ficticio y comprobaba su redacción demasiado pronto. Ahora espera la salida comprobable y cancela en `finally` para no arrastrar el proceso al siguiente caso. No cambia el login del producto.
+
+## Delegación explícita y dictado móvil — 30 de octubre de 2026
+
+- [x] **Delegación por turno.** Guardar auxiliares en el Supervisor ya no inicia selección ni llamadas en peticiones normales. La solicitud actual debe pedir delegación; negaciones, consultas informativas y citas no la autorizan. Una función o modelo nombrado limita los auxiliares. OpenCode recibe `task: deny` en ejecuciones unitarias, también al reanudar sesiones; los perfiles autorizados permiten sus alias temporales y los hijos deniegan más delegación. Las plantillas aplican una especialidad al principal; la opción de auxiliares añade una petición explícita al borrador.
+- [x] **Dictado móvil duplicado.** Se reconstruye la transcripción desde la lista completa de resultados del navegador en vez de añadir cada resultado final de nuevo. Se conservan las sesiones anteriores al reiniciar el motor y las repeticiones realmente dictadas. Regresiones en `chat-dictado.test.ts` y en el compositor de Playwright.
+- Evidencia: pruebas dirigidas de delegación y runner, 64 pruebas web, typecheck de servidor y build web pasan. Los casos de chat con procesos requieren Linux y quedan para CI. Falta comprobar voz en el teléfono físico y un piloto real de subagentes en la VM; los runners de las pruebas son simulados. La decisión posterior del usuario de probar Hermes queda registrada en la sección de instalación del piloto.
+
+## Inicialización de perfiles de subagentes — 30 de octubre de 2026
+
+- [x] **OpenCode fallaba al iniciar subagentes (`FileSystem.writeFile .../.gitignore`).** El perfil temporal se montaba completo en solo lectura, pero OpenCode escribe `.gitignore` al inicializar su configuración. Ahora Telo precrea ese archivo y monta solo él en lectura/escritura; el JSON, los prompts y plugins permanecen de solo lectura, y el registro NDJSON conserva su montaje separado. `aislamiento.test.ts` comprueba el montaje puntual; la suite completa de servidor pasó en CI Linux. La prueba local queda limitada por el permiso de symlinks de Windows.
+
+## Revisión de seguridad y flujos — 30 de octubre de 2026
+
+Correcciones preparadas en [PR #140](https://github.com/PABLOCESAR2412/Orquestador/pull/140); estos resultados locales no certifican su despliegue en la VM.
+
+- [x] **S01 · La copia de skills podía escribir fuera del workspace (alta).** Un enlace en el destino o en sus ancestros redirigía la escritura del servidor; un enlace duro permitía modificar otro archivo. Se validan destinos, se reemplazan archivos atómicamente y se verifica `.opencode` antes de escribir. Cinco regresiones fallaron antes y pasan después en `skills-seguras.test.ts`.
+- [x] **S02 · Otra aplicación en distinto puerto del mismo host podía mutar la API con la cookie (media).** `SameSite=Strict` no separa esos puertos. Se valida Origin antes de las mutaciones, se rechaza el origen opaco y los metadatos de otro sitio; siguen disponibles clientes CLI sin Origin y el callback OAuth GET. Pruebas sobre revocación de sesiones real y proxy simulado en `seguridad-origen.test.ts`.
+- [x] **S03 · Una sesión inactiva más de 60 días podía renovarse (media).** Ahora se rechaza y elimina antes de actualizar su actividad. Regresión rojo→verde en `sesiones-dispositivos.test.ts`.
+- [x] **S04 · HTML descargado conservaba código activo que omitía el filtro de texto (media).** Se usa el parser HTML nativo, se retiran atributos ejecutables y URLs inseguras y se antepone una CSP dentro del archivo. Las descargas antiguas se vuelven a proteger. `documentos.test.ts` y Chrome verifican los casos normal, NBSP, VT y doctype malformado, con código posterior al filtro bloqueado y sin peticiones externas.
+- [x] **F01 · «Detener» cancelaba el último turno en cola y dejaba ejecutándose el anterior.** Ahora aborta la tarea activa y cancela todas las pendientes de ese chat; conserva las sesiones y los workspaces. Regresión en `chat-cola.test.ts`.
+- [x] **F02 · Un turno en cola ocultaba el plan que esperaba aprobación.** Backend e interfaz priorizan la tarea activa o pendiente de aprobación y después la cola FIFO. Regresiones en `chat-cola.test.ts` y `web/tests/chat-tareas.test.ts`.
+- [x] **F03 · Actividad, subchats y tarjetas Git podían aparecer bajo otro mensaje.** Migración aditiva `049_task_message`: cada tarea nueva guarda su mensaje origen, validado contra su conversación. Se conserva en Seguir y en reparación de conflictos. Las tareas antiguas quedan sin asociación, sin inventar vínculos; las cadenas commit→push→PR respetan el null explícito. `worker-turnos.test.ts` ejecuta el worker real con runner simulado; `migracion-turno-tarea.test.ts` comprueba base anterior, respaldo, idempotencia, escritor antiguo y FK SET NULL. Volver al binario previo conserva la columna nullable y los datos.
+- [x] **F04 · Las lecturas Git privadas omitían el helper de credenciales.** Los tres fetch reciben ahora helper y entorno; sin instalación App se intenta también la sesión global antes del token del proyecto. Dos regresiones sin red comprueban actualización, rama PR y diagnóstico de conflictos; el token no aparece en argumentos.
+- [x] **F05 · La cancelación de una tarea quedaba bloqueada durante mantenimiento.** La puerta admitía detener/cancelar pero omitía la ruta real `/api/tasks/:id/cancel`. Regresión rojo→verde en `despliegue.test.ts`.
+- Evidencia local: 12 suites de seguridad/planes/programadas **119 pass, 3 skip**; pase de Git/cola/migraciones/worker **81 pass, 14 skip** y cinco casos dirigidos finales; Git+skills **42 pass**; web **62 pass**; typecheck servidor y build web correctos. Playwright pasa en 390/1440 px y las exportaciones HTML superan cuatro casos de seguridad. Las omisiones corresponden a procesos/aislamiento que requieren Linux o recursos de prueba.
+- Cobertura revisada sin otro fallo confirmado: lectura de archivos y streams, previews con origen opaco, aprobaciones ligadas al diff, secretos/cifrado/redacción, OAuth Drive, medios, MCP, subagentes, retención, planificador y coordinación de mantenimiento.
+- [ ] **S05 · Separar el estado global de Codex por conversación (prioridad alta).** `aislamiento.ts` expone `~/.codex` en lectura a todos los runners: si hay historiales/configuración globales, el agente puede leerlos. El runner Codex tampoco tiene perfil propio; hay que diseñar la migración de sesiones y respaldos, y validar escritura/renovación de credenciales con Codex real en Linux antes de cambiar ese montaje. No está resuelto por este PR.
+- [ ] **Validación de producción:** comprobar Origin con el proxy HTTPS real, arranque con migración 049, lectura de un repositorio privado real y un flujo de dos turnos con subagentes. No se accedió a credenciales ni se desplegó en la VM desde esta revisión.
+- [ ] **Siguientes mejoras recomendadas:** política de permisos MCP por tarea y proxy de egreso para separar la red del sandbox. Son brechas de arquitectura ya registradas en la revisión del harness; requieren conservar el acceso de los proveedores y no imponer un corte fijo de tareas largas.
+
+## Contexto Git al crear chats — 30 de octubre de 2026
+
+- [~] **La paleta y el comando «Nuevo chat» podían crear una conversación libre dentro de un proyecto activo.** Esas rutas enviaban `projectId: null`, por lo que los turnos no recibían `project_id` y el worker no preparaba la copia Git del proyecto. La paleta y el comando del chat ahora heredan el proyecto seleccionado. «Nuevo chat libre» sigue creando una conversación independiente; los botones del proyecto ya vinculaban su `project_id`.
+- [x] **La paleta anunciaba Ctrl+N para «Nuevo chat», aunque ese atajo abre «Nuevo proyecto».** Se quitó la etiqueta engañosa del atajo.
+- Validación: `cd web && bun run build` (TypeScript y Vite) completó correctamente. La advertencia de tamaño de chunk ya existía; queda pendiente comprobar el flujo visual en la VM después del despliegue.
+
+## Política de despliegue refinada — 30 de octubre de 2026
+
+- [~] **Las tareas ya no se pausan por cambios visuales o documentación.** `deploy/actualizar.sh` reconoce commits limitados a CSS, el registro de cambios y los documentos operativos; los CSS se construyen en staging y se publican con los assets antes que `index.html`, sin reiniciar el servicio. Cambios de API, workers, runners, interfaz funcional, dependencias, configuración o migraciones siguen usando el drenado y la pausa reanudable por precaución.
+- [ ] **Validación en la VM:** la modificación del actualizador en sí requiere un primer despliegue con el protocolo actual (drenar tareas activas). Después, confirmar que una tarea sintética sigue activa durante un cambio solo CSS y que un cambio de runtime sí se pausa y puede reanudarse. No se ha desplegado desde este workspace.
+
+## Ajustes visuales e inventario real de skills — 30 de octubre de 2026
+
+- [~] **La escala del texto desalineaba la interfaz.** La raíz aplica la escala una sola vez y las áreas usan su altura. Compilación web correcta; la revisión visual al 90 %, 100 % y 125 % en 390 y 1440 px sigue pendiente porque el entorno de revisión bloqueó el acceso del navegador a localhost.
+- [~] **El hilo del chat estaba desplazado respecto al compositor.** El ancho interior de la columna queda igual al ancho máximo del compositor y con márgenes simétricos; la conversación corta queda junto al compositor. Smoke visual pendiente por el bloqueo del navegador local.
+- [~] **El indicador de carga parecía dos puntos orbitando.** El SVG conserva el arco animado, con extremos rectos en vez de extremos redondos que parecían puntos. Smoke visual pendiente.
+- [~] **Ajustes de proveedores e integraciones.** OpenCode aparece como motor local, se retiraron cifras redundantes de consumo y se añadieron controles para plegar credenciales. Las claves guardadas siguen ocultas por el servidor; el ojo solo revela la clave nueva mientras se escribe. Compilación web correcta; revisión visual pendiente.
+- [~] **Skills e integraciones.** La selección automática y los alias usan los nombres de origen; Conexiones enlaza repositorios y permite instalar las skills que falten con el importador existente. Telo solo importa `SKILL.md`, no sus referencias o scripts. Harvey Specterbot y las antiguas skills de muestra solo se eliminan si coinciden byte por byte con la copia sembrada por Telo; las versiones editadas se conservan. Compilación y tipo del servidor correctos; los ocho comandos de instalación pasan el parser y la prueba de conservación de skills personalizadas pasa. Las pruebas que escriben skills fallan en Windows en la operación atómica `renameSync`; WSL no inicia en este equipo. Falta repetir instalación y validar herramientas en Linux/VM.
+- [ ] **Pendientes con credenciales o capacidad externa.** Instagram requiere que Telo implemente OAuth/publicación y una cuenta Creator o Business; Obsidian requiere un puente MCP HTTPS que la VM alcance y el Bearer de ese puente; Harvey: la documentación pública consultada describe Harvey consumiendo MCP de un cliente, no una API/MCP genérica de Harvey para que Telo la consuma. Para Telo→Harvey hay que pedir a Harvey acceso y documentación oficial; el formulario actual de Telo solo admite HTTPS + Bearer, no OAuth. Para Harvey→Telo habría que desarrollar un servidor MCP en Telo y habilitarlo en el tenant; cada usuario debe autenticarse. Búsqueda web requiere elegir un servidor/proveedor MCP real. Context7 ya tiene MCP remoto sin token; la clave de Upstash es opcional y eleva cuota. HyperFrames no usa clave API para render local: el espacio libre es una lectura actual, no un mínimo fijo; falta ejecutar `npx hyperframes doctor` y verificar un render en la VM. Codex conserva el inicio de sesión; `OPENAI_API_KEY` sería otra vía con facturación separada.
 
 ## Confirmación del estado operativo — 30 de octubre de 2026
 
 - [x] **Google Drive en la VM:** el usuario confirma que el flujo funciona.
 - [x] **Restauración desde R2:** el usuario confirma que funciona.
 - [ ] **Web Push en Android:** no funciona; sigue pendiente la entrega real en el dispositivo.
-- [ ] **Aislamiento y recursos en Linux:** siguen pendientes las pruebas con procesos reales.
+- [x] **Aislamiento y recursos en Linux:** el usuario confirma que funcionan. Esta revisión local en Windows no repitió esas pruebas.
 - [x] **Otras verificaciones operativas anotadas:** el usuario confirma que están bien.
 - [~] **Integraciones externas:** el usuario está comprobándolas; actualizar cada integración cuando confirme el resultado.
 - [~] **Arranque de tareas largas:** el usuario reporta que las tareas no llegan a iniciar. En el código, el estado sigue `queued` durante la preparación del clon; esto explica la falta de actividad visible, pero no demuestra que la demora real de VM/proveedor tenga la misma causa. Falta registrar duración por fase y reproducirlo en la VM.
@@ -631,7 +802,7 @@ Estado detallado en `FASE3.md`. Resumen:
 - [~] **Estado y registros del servidor** en Ajustes. Hecho: estado de la unidad y registros con redacción. Requiere en el VM: `usermod -aG systemd-journal orquestador` (ver `deploy/README.md`). Pendiente: gasto de Azure (decisión del usuario).
 - [ ] **Skills configurables** (tarea 7). Bloqueada: hay que confirmar en el VM dónde lee OpenCode las skills, y decidir si son globales o por proyecto.
 - [ ] **Claves y botón "Instalar"** (tarea 9). Bloqueada: instalar software en el VM necesita aprobación explícita.
-- [ ] **Codex, Gemini y Claude gratis** (tarea 10). Bloqueada: decidir si se acepta el login de dispositivo de Codex en el VM y si Claude se conecta solo con clave de API.
+- [ ] **Registro histórico de la fase 3: Codex, Gemini y Claude gratis** (tarea 10). Entonces estaba pendiente aceptar el login de dispositivo de Codex; la integración Codex CLI actual se documenta al inicio de este archivo. Claude gratis continúa sin implementar.
 
 Corrección de la nota de Gemini: ver sección B.
 
@@ -639,7 +810,7 @@ Corrección de la nota de Gemini: ver sección B.
 
 - Skills globales y por proyecto, editables desde Ajustes y desde el proyecto. Pendiente en el VM: confirmar que OpenCode las lista.
 - OpenCode se puede instalar desde Ajustes con confirmación (comando fijo, `npm install -g --prefix ~/.opencode opencode-ai`). Pendiente: `npm` en el PATH del servicio.
-- Codex: inicio de sesión por código de dispositivo desde Ajustes. Pendiente: confirmar el comando `codex login --device-auth` y el archivo de sesión en el VM. Los agentes todavía no usan Codex.
+- Codex: estado histórico antes de integrar el runner. Hoy el selector consulta el catálogo de la sesión y `codex/*` se ejecuta con `codex exec`; ver «Catálogo del chat por integración» al inicio. La verificación de despliegue real sigue pendiente.
 - Claude gratis: sin decisión; no se implementa.
 
 
@@ -699,7 +870,7 @@ Lista de control. Se marca lo hecho en cada tarea y aquí a la vez.
 - [x] **Tarea 7.** Skills globales y por proyecto, editables desde la app. Verificada en navegador a 390 y 1440 px, y en `skills.test.ts`. **Pendiente en el VM:** confirmar que OpenCode las lista.
 - [x] **Tarea 8.** Memoria del proyecto editable desde la app (`PUT /api/projects/:id/memoria`, con redacción y límite de 4 000 caracteres; botones Editar, Escribir, Guardar, Cancelar y Borrar). Verificada en el navegador a 390 y 1440 px, y en `proyectos.test.ts`. Supuesto confirmado en el código: "memoria" = memoria aprendida por proyecto.
 - [x] **Tarea 9.** Botón "Instalar" de OpenCode con confirmación en dos pasos y comando fijo, verificado con npm falso (`instalacion.test.ts`) y en navegador. **Pendiente en el VM:** que `npm` exista para el servicio, y que `opencode models` liste los modelos de la clave guardada.
-- [~] **Tarea 10.** Codex: login por código de dispositivo, verificado con CLI falso (`login-codex.test.ts`) y en navegador; **pendiente en el VM:** el comando exacto y el archivo de sesión. Instalar Codex desde Ajustes: hecho (misma tarjeta que el login, verificado en navegador a 390 y 1440 px). Gemini: clave de AI Studio (tarea 3). Claude: **investigado, no implementado** (ver tarea 10, punto b).
+- [~] **Tarea 10 (registro histórico).** Codex: login por código de dispositivo e instalación desde Ajustes. El runner Codex CLI y el catálogo del chat se añadieron después; ver «Catálogo del chat por integración». Gemini: clave de AI Studio (tarea 3). Claude: **investigado, no implementado** (ver tarea 10, punto b).
 - [~] **Tarea 11.** Acciones git desde los chats (commit, subir rama y abrir PR, siempre con aprobación). En `main` desde los PR 36 a 42. En esta rama se quitan la fusión local y el push directo a `main`, el PR usa solo `GITHUB_PR_TOKEN` y las notas del plan dejan de romper la aprobación (ver Tarea 11). La protección de `main` en GitHub ya está hecha.
 - [x] **Tarea 12.** Cola de mensajes del chat: si envías más mientras el agente responde, se ejecutan en orden. Hecha en el PR #127 (ver «Tarea 12: cola de mensajes del chat»).
 - [ ] **Tarea 13.** Wrangler (Cloudflare) instalable desde Ajustes, con inicio de sesión por código. Pendiente de dos decisiones (ver Tarea 13).
@@ -932,7 +1103,7 @@ Antes de seguir: correr `bun test tests/chat-turnos.test.ts`. Si falla, corregir
 - **El token no se lee ni se muestra.** La salida se redacta. El éxito se decide por salida 0 y porque exista el archivo de sesión; ese archivo solo se comprueba, nunca se abre.
 - `~/.codex` está en `HERRAMIENTAS` de `server/src/runners/aislamiento.ts` y se monta en solo lectura.
 - En la tarjeta de Codex: «Iniciar sesión» → enlace y código → «Sesión iniciada en el servidor». «Ya lo hice» comprueba el estado y mantiene el enlace mientras el CLI espera.
-- Codex **no** es todavía proveedor de los agentes. La tarjeta lo dice.
+- Esta nota era anterior al runner Codex y está superada: ahora los modelos `codex/*` se listan con la sesión y se ejecutan con `codex exec`. Ver el estado actualizado al inicio de `SEGUIMIENTO.md`.
 
 **Verificado.** `server/tests/login-codex.test.ts` (4 pruebas) con un CLI falso que imprime un token de prueba: el token no aparece en ninguna respuesta, cancelar no deja procesos y sin CLI responde `codex_no_instalado`. En navegador: enlace, código, «Ya lo hice» y sesión iniciada, a 390 y 1440 px.
 

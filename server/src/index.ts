@@ -31,6 +31,7 @@ import { uso } from "./routes/uso";
 import { media, reanudarGeneracionesMedios } from "./routes/media";
 import { googleDriveOAuth } from "./routes/google-drive-oauth";
 import { googleDriveArchives, iniciarGoogleDriveArchives } from "./routes/google-drive-archives";
+import { cerebro } from "./routes/cerebro";
 import { jevRoute } from "./routes/jev";
 import { conexiones } from "./routes/conexiones";
 import { push } from "./routes/push";
@@ -44,6 +45,7 @@ import { getCookie } from "hono/cookie";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import { MAX_IMAGEN_BYTES } from "./chat-adjuntos";
+import { protegerOrigen } from "./seguridad-origen";
 
 // Sin clave, la API quedaría abierta a quien tenga la URL. Por eso el servidor no arranca sin ella.
 if (!config.clave && !config.sinClave) {
@@ -104,6 +106,7 @@ app.use("*", (c, next) =>
     ? next()
     : cabecerasSeguras(c, next),
 );
+app.use("/api/*", protegerOrigen);
 
 // Los prompts siguen limitados a 64 KB; las imágenes usan un límite separado y se validan por firma.
 const limitarApi = bodyLimit({
@@ -172,6 +175,7 @@ app.route("/api", github);
 app.route("/api", media);
 app.route("/api", googleDriveOAuth);
 app.route("/api", googleDriveArchives);
+app.route("/api", cerebro);
 app.get("/api/*", (c) => c.json({ error: "not_found" }, 404));
 
 // El CLI de OpenCode instalado desde la app vuelve a estar en PATH tras un reinicio.

@@ -1,8 +1,12 @@
 import { Hono } from "hono";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { proveedorConClave, tieneClaveProveedor, valorClaveApiProveedor } from "../claves-proveedor";
 import { cancelarLoginCodex, confirmarLoginCodex, estadoLoginCodex, iniciarLoginCodex, LoginError, sesionCodexConectada } from "../login-cli";
 import { hallarEjecutable } from "../ejecutable";
+import { carpetaHome } from "../hogar";
 import { listarModelosCodex } from "../modelos-codex";
+import { obtenerCuotaCodex } from "../cuota-codex";
 
 
 type ProviderStatus = {
@@ -33,6 +37,23 @@ function variablesDeAgente(): Set<string> {
   );
 }
 
+// Solo informa si hay una entrada Codex en el almacén propio de Hermes; nunca devuelve el JSON.
+// El formato lo administra Hermes y puede cambiar entre versiones, por eso comprobamos presencia,
+// sin interpretar ni exponer access/refresh tokens.
+function hermesCodexAuthConfigurada(): boolean {
+  const archivo = join(carpetaHome(), ".hermes-telo", "auth.json");
+  try {
+    if (!existsSync(archivo)) return false;
+    const texto = readFileSync(archivo, "utf8");
+    if (texto.length > 1_000_000) return false;
+    const json = JSON.parse(texto);
+    const plano = JSON.stringify(json);
+    return /openai-codex/i.test(plano) && /refresh[_-]?token/i.test(plano);
+  } catch {
+    return false;
+  }
+}
+
 // Proveedor con clave que se puede guardar: configurado si la clave está en la base o en el entorno del servidor.
 // Las variables salen de claves-proveedor.ts; la primera es la que se muestra.
 function proveedorGuardable(id: string, name: string, hint: string, enAgente: Set<string>): ProviderStatus {
@@ -57,6 +78,8 @@ function proveedorGuardable(id: string, name: string, hint: string, enAgente: Se
 async function estadoProveedores(): Promise<ProviderStatus[]> {
   const enAgente = variablesDeAgente();
   const sesionCodex = await sesionCodexConectada();
+  const hermesInstalado = hallarEjecutable("hermes") !== null;
+  const hermesConectado = hermesInstalado && hermesCodexAuthConfigurada();
   return [
     {
       id: "opencode",
@@ -78,11 +101,29 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
       hint: sesionCodex
         ? "Sesión conectada con ChatGPT. Los modelos de Codex están disponibles en el selector."
         : "Inicia sesión con tu cuenta de ChatGPT usando el código de dispositivo.",
-      variable: "OPENAI_API_KEY",
-      enAgente: enAgente.has("OPENAI_API_KEY"),
+      variable: null,
+      // Este proveedor se ejecuta con el CLI autenticado, no con OPENAI_API_KEY.
+      enAgente: sesionCodex,
       guardable: false,
       guardada: false,
       sesion: sesionCodex,
+    },
+    {
+      id: "hermes",
+      name: "Hermes Agent",
+      configured: hermesInstalado,
+      // La instalación y el login se exponen como preparación del piloto; Telo aún no enruta chats a Hermes.
+      implemented: false,
+      hint: hermesConectado
+        ? "CLI instalado y credenciales propias detectadas. La ejecución aislada y el uso de subagentes siguen en piloto."
+        : hermesInstalado
+          ? "CLI instalado. Inicia su OAuth propio para preparar el piloto; no se asume que la sesión Codex existente se pueda compartir."
+          : "Harness alternativo para un piloto de subagentes nativos. Se instala desde aquí; aún no es el runner de chats.",
+      variable: null,
+      enAgente: false,
+      guardable: false,
+      guardada: false,
+      sesion: hermesConectado,
     },
     proveedorGuardable(
       "google",
@@ -164,6 +205,7 @@ providers.get("/providers/codex/models", async (c) => {
     return c.json({ error: "codex_models_unavailable" }, 503);
   }
 });
+providers.get("/providers/codex/usage", async (c) => c.json(await obtenerCuotaCodex(c.req.query("refresh") === "1")));
 providers.post("/providers/codex/login", async (c) => {
   try {
     return c.json(await iniciarLoginCodex(), 202);

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { estadoInstalacion, esInstalable, InstalacionError, iniciarInstalacion } from "../instalacion";
 
-// Instalación de herramientas del servidor (hoy solo OpenCode). La instalación exige confirmación explícita
+// Instalación de herramientas del servidor. La instalación exige confirmación explícita
 // en el cuerpo: la interfaz muestra primero el comando y luego pide que se confirme.
 export const herramientas = new Hono();
 

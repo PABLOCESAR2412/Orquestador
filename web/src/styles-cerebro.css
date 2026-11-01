@@ -1,0 +1,115 @@
+.cerebro-page {
+  width: min(100%, 1680px);
+  min-width: 0;
+  margin: 0 auto;
+  padding: 28px clamp(16px, 3vw, 40px) 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-sizing: border-box;
+}
+.cerebro-header,
+.cerebro-acciones,
+.cerebro-editor-head,
+.cerebro-editor-acciones,
+.cerebro-grafo-head,
+.cerebro-lista-cabecera,
+.cerebro-pie {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.cerebro-header { align-items: flex-end; }
+.cerebro-header h1 { margin: 0; font-size: clamp(24px, 2vw, 28px); line-height: 1.2; letter-spacing: -0.02em; font-weight: 600; }
+.cerebro-header p { max-width: 68ch; margin: 8px 0 0; color: var(--ink-2); }
+.cerebro-acciones { flex-shrink: 0; }
+.cerebro-layout {
+  min-height: min(72vh, 780px);
+  display: grid;
+  grid-template-columns: minmax(210px, 250px) minmax(320px, 1fr) minmax(280px, 340px);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+}
+.cerebro-lista,
+.cerebro-grafo { min-width: 0; padding: 18px; background: var(--surface-2); }
+.cerebro-lista { display: flex; flex-direction: column; gap: 9px; border-right: 1px solid var(--line); }
+.cerebro-grafo { display: flex; flex-direction: column; align-items: stretch; border-left: 1px solid var(--line); }
+.cerebro-label { margin-top: 5px; color: var(--ink-2); font-size: 12px; }
+.cerebro-ambito,
+.cerebro-buscar,
+.cerebro-editor-head input {
+  width: 100%; min-width: 0; box-sizing: border-box;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  padding: 9px 10px; color: var(--ink); background: var(--surface);
+  font: inherit;
+}
+.cerebro-ambito:focus-visible,
+.cerebro-buscar:focus-visible,
+.cerebro-editor-head input:focus-visible,
+.cerebro-markdown:focus-visible,
+.cerebro-nodo:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.cerebro-lista-cabecera { margin-top: 8px; color: var(--ink-2); font-size: 11px; }
+.cerebro-lista-cabecera span:first-child { color: var(--ink); font-weight: 600; }
+.cerebro-notas-lista { display: flex; flex-direction: column; gap: 5px; min-height: 0; overflow: auto; margin: 2px -8px -8px; padding: 0 8px 8px; }
+.cerebro-nota-item {
+  display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 10px;
+  text-align: left; border: 1px solid transparent; border-radius: var(--radius-sm);
+  color: var(--ink); background: transparent; cursor: pointer; font: inherit;
+}
+.cerebro-nota-item:hover { background: var(--surface-hover); }
+.cerebro-nota-item.is-activa { border-color: var(--line-strong); background: var(--surface); }
+.cerebro-nota-item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.cerebro-nota-item span { display: -webkit-box; overflow: hidden; color: var(--ink-2); font-size: 11px; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.cerebro-editor { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 16px; }
+.cerebro-editor-head { align-items: flex-start; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.cerebro-editor-head input { font-size: 18px; font-weight: 600; }
+.cerebro-editor-acciones { justify-content: flex-end; flex-wrap: wrap; }
+.cerebro-editor-acciones button { white-space: nowrap; }
+.cerebro-markdown {
+  flex: 1; width: 100%; min-height: 400px; resize: vertical; margin-top: 12px; padding: 14px;
+  box-sizing: border-box; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  color: var(--ink); background: var(--surface-lowest); font: 13px/1.65 var(--font-mono); tab-size: 2;
+}
+.cerebro-pie { margin-top: 9px; color: var(--ink-2); font-size: 10px; flex-wrap: wrap; }
+.cerebro-grafo-head { padding: 2px 2px 8px; }
+.cerebro-grafo-head span { color: var(--ink-2); font-size: 11px; }
+.cerebro-mapa { display: block; width: 100%; max-height: 390px; min-height: 260px; overflow: visible; }
+.cerebro-enlace { stroke: var(--line-strong); stroke-width: 1.25; }
+.cerebro-nodo { cursor: pointer; }
+.cerebro-nodo circle { fill: var(--surface); stroke: var(--line-strong); stroke-width: 2; transition: r 150ms ease, fill 150ms ease, stroke 150ms ease; }
+.cerebro-nodo:hover circle,
+.cerebro-nodo.is-seleccionado circle { fill: var(--surface-2); stroke: var(--signal); }
+.cerebro-nodo:hover circle { stroke: var(--signal); }
+.cerebro-nodo text { fill: var(--ink-2); font: 10px var(--font-mono); pointer-events: none; }
+.cerebro-nodo.is-seleccionado text { fill: var(--ink); font-weight: 700; }
+.cerebro-mapa-vacio { fill: var(--ink-2); font: 11px var(--font-mono); }
+.cerebro-vacio { margin: 8px 0 0; color: var(--ink-2); font-size: 11px; line-height: 1.5; }
+.cerebro-error { margin: 8px 0; color: var(--danger); font-size: 12px; }
+.cerebro-notice { margin: 8px 0 0; color: var(--online); font-size: 12px; }
+.cerebro-sin-seleccion { display: grid; place-content: center; gap: 8px; flex: 1; min-height: 320px; text-align: center; color: var(--ink-2); }
+.cerebro-sin-seleccion strong { color: var(--ink); font-size: 18px; }
+.cerebro-sin-seleccion span { max-width: 40ch; }
+@media (max-width: 1150px) {
+  .cerebro-layout { grid-template-columns: minmax(190px, 230px) minmax(300px, 1fr); }
+  .cerebro-grafo { grid-column: 1 / -1; border: 0; border-top: 1px solid var(--line); }
+  .cerebro-mapa { min-height: 220px; max-height: 300px; }
+}
+@media (max-width: 720px) {
+  .cerebro-page { padding: 18px 12px 24px; }
+  .cerebro-header { align-items: flex-start; flex-direction: column; }
+  .cerebro-acciones { width: 100%; justify-content: flex-start; }
+  .cerebro-layout { display: flex; flex-direction: column; min-height: 0; }
+  .cerebro-lista { max-height: 360px; border: 0; border-bottom: 1px solid var(--line); }
+  .cerebro-editor { min-height: 520px; }
+  .cerebro-editor-head { flex-direction: column; }
+  .cerebro-editor-acciones { justify-content: flex-start; width: 100%; }
+  .cerebro-markdown { min-height: 360px; }
+  .cerebro-grafo { border-top: 1px solid var(--line); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cerebro-nodo circle { transition: none; }
+}

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
+  constants as fsConstants,
   cpSync,
   existsSync,
   lstatSync,
@@ -13,7 +14,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { config } from "./config";
 import { db } from "./db";
 import { registrarEvento } from "./eventos";
@@ -32,7 +33,7 @@ import { valorSecreto, valoresDeProyecto } from "./secretos";
 import { tokenGithubGlobal } from "./github-auth";
 import { tokenGithubAppParaRepo } from "./github-app";
 import { opcionesDeCredenciales } from "./git-credenciales";
-import { eliminarPerfilOpenCode } from "./runners/aislamiento";
+import { eliminarPerfilOpenCode, prepararDirectorioOpenCode } from "./runners/aislamiento";
 import { enMantenimiento, registrarTrabajo } from "./despliegue";
 export { opcionesDeCredenciales } from "./git-credenciales";
 
@@ -256,16 +257,17 @@ const TIEMPO_SINCRONIZAR_MS = 15_000;
 async function tokenDeLectura(para: {
   projectId: string | null;
   remoto: string | null;
-}): Promise<Record<string, string>> {
-  if (!para.remoto) return {};
+}): Promise<ReturnType<typeof opcionesDeCredenciales>> {
+  if (!para.remoto) return opcionesDeCredenciales(null);
   let token: string | null = null;
   try {
     token = await tokenGithubAppParaRepo(para.remoto, { contents: "read" });
   } catch {
-    token = tokenGithubGlobal();
+    // La credencial anterior sigue disponible si la App no tiene acceso.
   }
+  if (!token) token = tokenGithubGlobal();
   if (!token && para.projectId) token = valorSecreto(para.projectId, "GITHUB_TOKEN");
-  return token ? opcionesDeCredenciales(token).env : {};
+  return opcionesDeCredenciales(token);
 }
 
 // Pone la copia local del proyecto al día con su origin antes de clonarla para la tarea. Una copia
@@ -284,14 +286,14 @@ async function traerRepoLocalAlDia(repoPath: string, projectId: string | null): 
     const estado = await gitSeguro(["status", "--porcelain", "--untracked-files=no"], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS });
     if (estado.code !== 0 || estado.stdout.trim() !== "") return null;
     const remoto = urlGithubPermitida(urlSinCredenciales(rRemoto.stdout.trim()));
-    const entorno = await tokenDeLectura({ projectId, remoto });
-    await gitOkSeguro(["fetch", "origin", rama], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS, env: entorno });
+    const credenciales = await tokenDeLectura({ projectId, remoto });
+    await gitOkSeguro([...credenciales.args, "fetch", "origin", rama], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS, env: credenciales.env });
     const punta = (
       await gitOkSeguro(["rev-parse", `refs/remotes/origin/${rama}`], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS })
     ).trim();
     const local = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS })).trim();
     if (!punta || punta === local) return null;
-    await gitOkSeguro(["merge", "--ff-only", `origin/${rama}`], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS, env: entorno });
+    await gitOkSeguro(["merge", "--ff-only", `origin/${rama}`], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS, env: credenciales.env });
     return punta;
   } catch {
     // Sin conexión o con historial divergente: la copia local queda como está.
@@ -365,18 +367,48 @@ function esCarpetaReal(ruta: string): boolean {
   }
 }
 
-// Copia recursiva sin enlaces simbólicos: un symlink dentro del árbol de skills se salta,
-// porque un agente escribiendo a través de un enlace escribiría fuera de su sandbox. También
-// se exige una carpeta real como origen (existsSync seguiría el enlace de una carpeta enlazada).
+function prepararDestinoSkills(ruta: string): void {
+  let existente = resolve(ruta);
+  while (true) {
+    try {
+      const info = lstatSync(existente);
+      if (!info.isDirectory() || info.isSymbolicLink() || realpathSync(existente) !== existente)
+        throw new Error("El destino de skills contiene enlaces o no es una carpeta real.");
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      const padre = dirname(existente);
+      if (padre === existente) throw error;
+      existente = padre;
+    }
+  }
+  mkdirSync(ruta, { recursive: true });
+}
+
+// La reanudación vuelve a copiar sobre un destino que el agente pudo modificar.
 export function copiarCarpetaSana(origen: string, destino: string): void {
   if (!lstatSync(origen).isDirectory()) throw new Error("El origen de la copia no es una carpeta real.");
-  mkdirSync(destino, { recursive: true });
+  prepararDestinoSkills(destino);
   for (const entrada of readdirSync(origen, { withFileTypes: true })) {
     if (entrada.isSymbolicLink()) continue;
     const de = join(origen, entrada.name);
     const a = join(destino, entrada.name);
     if (entrada.isDirectory()) copiarCarpetaSana(de, a);
-    else if (entrada.isFile()) copyFileSync(de, a);
+    else if (entrada.isFile()) {
+      try {
+        if (!lstatSync(a).isFile()) throw new Error("El archivo de destino de skills no es regular.");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      // Reemplazar el archivo evita escribir a través de un enlace duro preexistente.
+      const temporal = join(destino, `.telo-skill-${crypto.randomUUID()}.tmp`);
+      try {
+        copyFileSync(de, temporal, fsConstants.COPYFILE_EXCL);
+        renameSync(temporal, a);
+      } finally {
+        rmSync(temporal, { force: true });
+      }
+    }
   }
 }
 
@@ -384,13 +416,12 @@ export function copiarCarpetaSana(origen: string, destino: string): void {
 // asegurando que las skills locales y no commiteadas estén disponibles para el agente.
 function sincronizarSkillsDeProyecto(repoPath: string, clon: string): void {
   try {
-    const opencodeDir = join(clon, ".opencode");
-    mkdirSync(opencodeDir, { recursive: true });
+    const opencodeDir = prepararDirectorioOpenCode(clon);
 
     // Pre-crea .opencode/.gitignore para que OpenCode no intente crearlo sobre un sistema de archivos solo lectura
     const gitignorePath = join(opencodeDir, ".gitignore");
     if (!existsSync(gitignorePath)) {
-      writeFileSync(gitignorePath, "*\n!.gitignore\n!skills/\n", "utf-8");
+      writeFileSync(gitignorePath, "*\n!.gitignore\n!skills/\n", { encoding: "utf-8", flag: "wx" });
     }
 
     // Asegura que Git en el clon ignore completamente la carpeta .opencode para que las skills
@@ -410,13 +441,11 @@ function sincronizarSkillsDeProyecto(repoPath: string, clon: string): void {
     const skillsOpencode = join(repoPath, ".opencode", "skills");
     if (esCarpetaReal(skillsOpencode)) {
       const destOpencode = join(clon, ".opencode", "skills");
-      mkdirSync(destOpencode, { recursive: true });
       copiarCarpetaSana(skillsOpencode, destOpencode);
     }
     const skillsRaiz = join(repoPath, "skills");
     if (esCarpetaReal(skillsRaiz)) {
       const destRaiz = join(clon, "skills");
-      mkdirSync(destRaiz, { recursive: true });
       copiarCarpetaSana(skillsRaiz, destRaiz);
     }
   } catch {
@@ -485,12 +514,12 @@ export function prepararCopia(
         if (!remoto || !urlGithubPermitida(remoto)) throw new ErrorTarea("sin_remoto", 409);
         if ((await gitSeguro(["check-ref-format", "--branch", baseBranch], { cwd: clon })).code !== 0)
           throw new ErrorTarea("rama_base_invalida", 409);
-        const env = await tokenDeLectura({ projectId: fila.project_id, remoto });
+        const credenciales = await tokenDeLectura({ projectId: fila.project_id, remoto });
         await gitOkSeguro([
-          "fetch", "--no-tags", remoto,
+          ...credenciales.args, "fetch", "--no-tags", remoto,
           `+refs/heads/${rama}:refs/telo/source`,
           `+refs/heads/${baseBranch}:refs/telo/base`,
-        ], { cwd: clon, timeoutMs: TIEMPO_CLON_MS, env });
+        ], { cwd: clon, timeoutMs: TIEMPO_CLON_MS, env: credenciales.env });
         const head = (await gitOkSeguro(["rev-parse", "refs/telo/source"], { cwd: clon })).trim();
         base = (await gitOkSeguro(["rev-parse", "refs/telo/base"], { cwd: clon })).trim();
         await gitOkSeguro(["checkout", "-B", rama, head], { cwd: clon });
@@ -550,12 +579,12 @@ export async function detectarConflictosPullRequest(
     (await gitSeguro(["check-ref-format", "--branch", ramaBase], { cwd: ctx.clon })).code !== 0 ||
     (await gitSeguro(["check-ref-format", "--branch", ramaFuente], { cwd: ctx.clon })).code !== 0
   ) return [];
-  const env = await tokenDeLectura({ projectId: ctx.projectId, remoto });
+  const credenciales = await tokenDeLectura({ projectId: ctx.projectId, remoto });
   await gitOkSeguro([
-    "fetch", "--no-tags", remoto,
+    ...credenciales.args, "fetch", "--no-tags", remoto,
     `+refs/heads/${ramaBase}:refs/telo/diagnostico/base`,
     `+refs/heads/${ramaFuente}:refs/telo/diagnostico/head`,
-  ], { cwd: ctx.clon, timeoutMs: TIEMPO_CLON_MS, env });
+  ], { cwd: ctx.clon, timeoutMs: TIEMPO_CLON_MS, env: credenciales.env });
   const base = (await gitOkSeguro(["rev-parse", "refs/telo/diagnostico/base"], { cwd: ctx.clon })).trim();
   const head = (await gitOkSeguro(["rev-parse", "refs/telo/diagnostico/head"], { cwd: ctx.clon })).trim();
   const resultado = await gitSeguro(["merge-tree", "--write-tree", base, head], {

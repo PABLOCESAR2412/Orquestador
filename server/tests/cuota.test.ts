@@ -51,6 +51,19 @@ const post = (ruta: string, cuerpo: unknown = {}) =>
   });
 
 describe("diff de una tarea activa", () => {
+  test("una tarea terminada sin copia Git devuelve sin_repo, incluso con metadatos antiguos", async () => {
+    for (const conMetadatos of [false, true]) {
+      const id = tarea("failed");
+      if (conMetadatos) db.query("UPDATE tasks SET rama='telo/prueba', base_commit=? WHERE id=?").run("a".repeat(40), id);
+      try {
+        const response = await app.request(`/api/tasks/${id}/diff`);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({ estado: "sin_repo", archivos: [], hash: null });
+      } finally { db.query("DELETE FROM tasks WHERE id=?").run(id); }
+    }
+    expect((await app.request(`/api/tasks/${crypto.randomUUID()}/diff`)).status).toBe(404);
+  });
+
   test("devuelve un estado transitorio mientras el workspace está ocupado", async () => {
     for (const status of ["queued", "analyzing", "waiting_approval", "running"]) {
       const id = tarea(status);
@@ -69,10 +82,25 @@ describe("clasificación de cuota agotada", () => {
   test("el rate limit temporal no se confunde con una cuota agotada", () => {
     expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"message":"Rate limit exceeded (429)"}}'))).toBe(false);
     expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"message":"429 Too Many Requests"}}'))).toBe(false);
+    expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"message":"Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day"}}'))).toBe(true);
+    expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"message":"Monthly free model request limit reached"}}'))).toBe(true);
     expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"message":"Quota exceeded for this model"}}'))).toBe(true);
     expect(esErrorDeCuota(new Error('opencode salió con código 1: {"error":{"code":"insufficient_quota"}}'))).toBe(true);
     expect(esErrorDeCuota(new Error("Insufficient account funds"))).toBe(true);
     expect(esErrorDeCuota(new Error("usage limit reached for this model"))).toBe(true);
+    expect(esErrorDeCuota(new Error("You've hit your usage limit. Try again in 4 hours."))).toBe(true);
+    expect(esErrorDeCuota(new Error('Codex error: {"code":"billing_hard_limit_reached"}'))).toBe(true);
+    expect(esErrorDeCuota(new Error("Monthly call limit reached for this account"))).toBe(true);
+  });
+
+  test("clasifica 402 de saldo en cualquier proveedor, sin confundir el máximo de tokens por solicitud", () => {
+    const errorPago = (detalleProveedor: string) => new ErrorAgente("fallo del proveedor", detalleProveedor);
+    expect(esErrorDeCuota(errorPago(JSON.stringify({ type: "error", statusCode: "402", message: "Payment Required" })))).toBe(true);
+    expect(esErrorDeCuota(errorPago(JSON.stringify({
+      type: "error", statusCode: 402,
+      message: "This request requires more credits, or fewer max_tokens. You requested up to 32000 tokens, but can only afford 10533.",
+    })))).toBe(false);
+    expect(esErrorTransitorioDelProveedor(errorPago(JSON.stringify({ statusCode: 429, message: "Rate limit exceeded" })))).toBe(true);
   });
 
   test("una ruta con una palabra como «cuota» no cuenta: solo el detalle del proveedor", () => {
@@ -148,6 +176,19 @@ describe("clasificación de cuota agotada", () => {
     expect(detalle).not.toContain("sesion-interna");
     expect(detalle).not.toContain("responseHeaders");
     expect(esErrorTransitorioDelProveedor(new ErrorAgente("fallo del proveedor", detalle))).toBe(true);
+  });
+
+  test("OpenCode conserva código y saldo de errores anidados del proveedor", () => {
+    const evento = {
+      type: "error",
+      sessionID: "interno-no-conservar",
+      error: { data: { status: 402, error: { code: "insufficient_balance", message: "Insufficient Balance" } } },
+    };
+    const detalle = detalleDelProveedor("", "", [evento as never]);
+    expect(detalle).toContain("insufficient_balance");
+    expect(detalle).toContain("Insufficient Balance");
+    expect(detalle).not.toContain("interno-no-conservar");
+    expect(esErrorDeCuota(new ErrorAgente("OpenCode falló", detalle))).toBe(true);
   });
 
   test("un error del servidor o una salida vacía no cuentan como cuota", () => {

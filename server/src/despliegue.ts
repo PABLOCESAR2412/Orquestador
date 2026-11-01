@@ -52,7 +52,7 @@ export const puertaDespliegue: MiddlewareHandler = async (c, next) => {
   const preparaGit = /^\/api\/(?:tasks\/[^/]+\/diff|projects\/[^/]+(?:\/git)?)$/.test(c.req.path);
   if (["GET", "HEAD", "OPTIONS"].includes(c.req.method) && !preparaGit) return next();
   // El usuario conserva la posibilidad de cancelar o cerrar sesión durante el drenado.
-  const cancelar = /\/(?:detener|cancelar|logout)$/.test(c.req.path);
+  const cancelar = /\/(?:detener|cancelar|logout)$/.test(c.req.path) || /^\/api\/tasks\/[^/]+\/cancel$/.test(c.req.path);
   if (enMantenimiento() && !cancelar) {
     c.header("Retry-After", "15");
     return c.json({ error: "servidor_actualizando", mensaje: "Telo está preparando una actualización. Tu trabajo se conserva; vuelve a enviar en unos segundos." }, 503);

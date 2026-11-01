@@ -3,9 +3,9 @@ import { join, resolve, sep } from "node:path";
 import { config } from "./config";
 import { getModels } from "./models";
 
-const PETICION_DELEGAR = /\b(?:subagentes?|(?:varios?|varias?|dos|tres|cuatro|m[uú]ltiples?)\s+agentes?|agentes?\s+(?:en\s+)?paralelo|por\s+medio\s+de\s+(?:sus?\s+)?agentes?|(?:usa(?:r|s)?|us(?:e|es|en)|utiliz(?:a|ar|as|an|e|es|en)|cre(?:a|ar|as|an|e|es|en)|lanz(?:a|ar|as|an)|lance|lances|lancen|activ(?:a|ar|as|an|e|es|en)|emple(?:a|ar|as|an|e|es|en))\s+(?:(?:tus?|varios?|varias?|dos|tres|cuatro|m[uú]ltiples?)\s+)?(?:agentes?|subagentes?|auxiliares?)|agentes?\s+(?:para\s+que|que)\s+(?:revisen|analicen|investiguen|trabajen|verifiquen)|deleg(?:a|ar|ando)|llama\s+a\s+(?:varios|m[aá]s\s+de\s+uno|un\s+subagente))\b/i;
-const PETICION_REPARTIDA_POR_ROLES = /\b(?:usa(?:r|s)?|us(?:e|es|en)|utiliz(?:a|ar|as|an|e|es|en))\s+(?:dos|tres|varios?|varias?)\s+urgentes?\b[\s\S]{0,240}\buno\s+se\s+encarga\b[\s\S]{0,240}\b(?:otro|encarga\s+de)\b/i;
-const MAX_MODELOS = 4;
+import { pideSubagentes } from "../../shared/delegacion";
+export { pideSubagentes } from "../../shared/delegacion";
+const MAX_MODELOS = 3;
 
 export type PreparacionSubagentes = {
   instruccion: string;
@@ -23,9 +23,6 @@ export function eliminarPerfilSubagentes(directorio: string | null | undefined):
   rmSync(destino, { recursive: true, force: true });
 }
 
-export function pideSubagentes(prompt: string): boolean {
-  return PETICION_DELEGAR.test(prompt) || PETICION_REPARTIDA_POR_ROLES.test(prompt);
-}
 
 function slug(valor: string): string {
   return valor.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 42) || "modelo";
@@ -103,6 +100,9 @@ export async function prepararSubagentes(opts: {
         "---",
         `description: Subagente temporal ${slug(modelo.id)} para la tarea solicitada`,
         "mode: subagent",
+        "permission:",
+        ...(opts.soloLectura ? ["  \"*\": deny", "  read: allow", "  glob: allow", "  grep: allow", "  list: allow", "  edit: deny", "  write: deny", "  bash: deny"] : []),
+        "  task: deny",
         `model: ${idModelo}`,
         "---",
         guiaSubagente,

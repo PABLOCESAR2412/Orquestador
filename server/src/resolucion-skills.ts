@@ -49,6 +49,19 @@ export type SkillInvocada = {
   ambito: "proyecto" | "global";
 };
 
+// Los alias antiguos apuntan a skills upstream que el servidor importa.
+// Harvey no tiene alias: el archivo antiguo no era una integración ni una skill oficial.
+const ALIAS_SKILLS_OFICIALES: Record<string, string[]> = {
+  context7: ["context7-mcp"],
+  "hyperframes-video": ["hyperframes", "hyperframes-cli", "hyperframes-registry", "media-use"],
+  "instagram-agent": ["ig-plan", "ig-reel", "ig-story", "ig-carousel", "ig-caption", "ig-human"],
+  "obsidian-vault": ["obsidian-markdown", "obsidian-cli"],
+  superpowers: ["using-superpowers"],
+  "ecc-workflows": ["strategic-compact"],
+  "ai-job-search": ["job-application-assistant"],
+  "find-clients": ["prospecting"],
+};
+
 export function requiereContext7(texto: string): boolean {
   const normalizado = texto.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
   if (/\bcontext\s*7\b|\bcontext7\b/.test(normalizado)) return true;
@@ -59,14 +72,14 @@ export function requiereContext7(texto: string): boolean {
 
 function skillsAutomaticas(texto: string): string[] {
   const resultado: string[] = [];
-  const textoNormalizado = texto.normalize("NFD").replace(/\p{Diacritic}/gu, "");
+  const textoNormalizado = texto.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
   const accionesAutoria = "(?:crea|crear|creacion|redacta|redactar|mejora|mejorar|optimiza|optimizar|revisa|revisar|evalua|evaluar|convierte|convertir|deriva|derivar|disena|disenar|probar|prueba)";
   const autoriaSkill = new RegExp(
     `\\b${accionesAutoria}\\b[\\s\\S]{0,48}\\b(?:skills?|habilidades?)\\b|\\b(?:skills?|habilidades?)\\b[\\s\\S]{0,48}\\b${accionesAutoria}\\b`,
     "i",
   ).test(textoNormalizado);
   if (autoriaSkill) resultado.push("skill-authoring");
-  if (requiereContext7(texto)) resultado.push("context7");
+  if (requiereContext7(texto)) resultado.push("context7-mcp");
 
   const interfaz = /\b(frontend|interfaz|ui|css|componente|responsive|diseño|diseño visual|pantalla|formulario|estilo)\b/i.test(texto);
   if (interfaz) resultado.push("frontend-design", "playwright");
@@ -79,7 +92,26 @@ function skillsAutomaticas(texto: string): string[] {
   const mencionaMovimiento = /\b(animaci[oó]n(?:es)?|animad[oa]s?|movimiento|video(?:s)?|v[ií]deo(?:s)?|mp4|gif|webp animad[oa]|motion design)\b/i.test(texto);
   const creaMovimiento = /\b(crea(?:r|ci[oó]n)?|gener(?:a|ar|aci[oó]n)|haz(?:me)?|hacer|diseñ(?:a|ar|o)|anima(?:r)?|edita(?:r)?|convierte|produce|mejora(?:r)?|corrige|arregla|revisa)\b/i.test(texto);
   const pideMovimiento = /\b(?:quiero|quisiera|necesito|me gustar[ií]a|puedes|podr[ií]as)\b[\s\S]{0,100}\b(?:hacer|crear|generar|producir|editar|animar|convertir)\b[\s\S]{0,100}\b(?:animaci[oó]n|video|v[ií]deo|mp4|gif)\b|\b(?:quiero|quisiera|necesito|me gustar[ií]a)\b[\s\S]{0,80}\b(?:un|una)\s+(?:video|v[ií]deo|animaci[oó]n)\b/i.test(texto);
-  if (mencionaMovimiento && (creaMovimiento || pideMovimiento)) resultado.push("motion-design", "hyperframes-video");
+  if (mencionaMovimiento && (creaMovimiento || pideMovimiento)) {
+    resultado.push("motion-design", "hyperframes", "hyperframes-cli", "hyperframes-registry", "media-use");
+  }
+
+  if (/\b(?:instagram|reel|reels|story|stories|carrusel|publicacion|caption|biografia)\b/.test(textoNormalizado)) {
+    resultado.push("ig-plan", "ig-human");
+    if (/\b(?:reel|reels|video|v[ií]deo)\b/.test(textoNormalizado)) resultado.push("ig-reel");
+    if (/\b(?:story|stories|historia|historias)\b/.test(textoNormalizado)) resultado.push("ig-story");
+    if (/\b(?:carrusel|carousel)\b/.test(textoNormalizado)) resultado.push("ig-carousel");
+    if (/\b(?:caption|copy|texto|publicacion|post|biografia)\b/.test(textoNormalizado)) resultado.push("ig-caption");
+  }
+  if (/\b(?:obsidian|vault|boveda|nota\s+markdown)\b/.test(textoNormalizado)) {
+    resultado.push("obsidian-markdown", "obsidian-cli");
+  }
+  if (/\b(?:empleo|trabajo|vacante|vacantes|curriculum|cv|postulacion)\b/.test(textoNormalizado)) {
+    resultado.push("job-application-assistant");
+  }
+  if (/\b(?:clientes\s+potenciales|prospeccion|prospectos|lead\s+generation)\b/.test(textoNormalizado)) {
+    resultado.push("prospecting");
+  }
 
   const cambioAcotado = texto.length <= 4_000 &&
     /\b(corrige|arregla|fix|bug|error|implementa|añade|agrega|actualiza|cambia|refactoriza)\b/i.test(texto) &&
@@ -97,22 +129,21 @@ export function resolverSkillsInvocadas(
   const resueltas: SkillInvocada[] = [];
   const ambitoProy = projectId ? ambitoProyecto(projectId) : null;
 
-  for (const nombre of nombres) {
-    let encontrada = false;
+  const candidatas = [...new Set(nombres.flatMap((nombre) => ALIAS_SKILLS_OFICIALES[nombre] ?? [nombre]))];
+  for (const nombre of candidatas) {
     // 1. Intentar en global: las instrucciones compartidas de Telo tienen prioridad.
     try {
       const detalle = leerSkill({ ambito: "global" }, nombre);
       resueltas.push({ nombre, contenido: detalle.contenido, ambito: "global" });
-      encontrada = true;
+      continue;
     } catch {
       // No está instalada globalmente; se buscará en el proyecto.
     }
     // 2. Usar la del proyecto solo como complemento cuando falta la global.
-    if (!encontrada && ambitoProy) {
+    if (ambitoProy) {
       try {
         const detalle = leerSkill(ambitoProy, nombre);
         resueltas.push({ nombre, contenido: detalle.contenido, ambito: "proyecto" });
-        encontrada = true;
       } catch {
         // No está en el proyecto.
       }

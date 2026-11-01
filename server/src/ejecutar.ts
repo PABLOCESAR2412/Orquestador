@@ -18,6 +18,8 @@ import { imagenesDelPrompt } from "./chat-adjuntos";
 import { configuracionMcpParaAgente } from "./conexiones-mcp";
 import { carpetaEntregables } from "./entregables";
 import { mkdirSync } from "node:fs";
+import { reservarAgente } from "./capacidad-agentes";
+import { proveedorAgente } from "./limites";
 
 // Longitud mínima de un valor de secreto para ocultarlo en la salida. Más corto, aparecería en texto normal.
 const MINIMO_OCULTAR = 4;
@@ -39,10 +41,14 @@ export type OpcionesAgente = {
   onSesion?: (sessionId: string | null, model: string | null) => void;
   onLinea?: (linea: string) => void;
   onSubagente?: (linea: string) => void;
+  // Informa los cambios automáticos de modelo por cuota agotada.
+  onCambioModeloCuota?: (agotado: string, siguiente: string) => void;
   // Solo para la tarea: registra el cambio de modelo en su historial.
   taskId?: string;
   projectId?: string | null;
   conversationId?: string | null;
+  turnId?: string | null;
+  usageRole?: string;
   soloLectura?: boolean;
   // Solo para la tarea: pide al agente escribir la memoria del proyecto al final y la guarda.
   aprender?: boolean;
@@ -60,59 +66,22 @@ export type ResultadoAgente = RunResult & { modelo: string; variante: string | n
 // Contrato común, antes de los prompts de fase, para chats y tareas con cualquier runner.
 export const CONTRATO_EJECUCION = [
   "Contrato de ejecución común de Telo (aplica a cualquier modelo y proveedor):",
-  "- Interpreta la petición como objetivo y respeta sus restricciones. Usa el historial, memoria, instrucciones y skills pertinentes; no repitas trabajo terminado.",
+  "- Interpreta la petición como objetivo; respeta restricciones y usa el historial, memoria, instrucciones y skills pertinentes. No repitas trabajo terminado.",
   "- Define alcance, precondiciones y evidencia de término. Si falta un dato bloqueante, pregunta; si no, elige una opción segura y explícala al final.",
-  "- Inspecciona contexto y herramientas antes de usarlas; no afirmes capacidades sin comprobarlas.",
+  "- Comprueba contexto y herramientas antes de usarlas; no afirmes capacidades sin verificarlas.",
   "- Dependencias ausentes: reinstala con lockfile frozen/ci; el analizador no instala.",
-  "- Haz el cambio o investigación mínimos que resuelvan el objetivo, dentro del workspace y las autorizaciones recibidas.",
-  "- Reportes y documentos: usa la carpeta de entregables y enlázalos. Solo van al repo por petición expresa. No prepares commit/PR ni muevas documentos existentes sin autorización.",
-  "- Para investigar, busca en Internet y respalda afirmaciones con enlaces directos en Markdown. Usa materiales pertinentes (documentación, estudios, libros, videos, informes, datasets u otros), prioriza fuentes primarias fiables y atribuye autor/editor si está disponible; nunca inventes enlaces ni fuentes. Si no puedes consultar, dilo.",
-  "- Para imágenes, videos o voz, usa herramientas locales gratuitas o MCP configurados, no APIs de pago. Antes de prometer voz, verifica la herramienta; si falta, dilo y entrega el material sin voz.",
-  "- Verifica el resultado y comunica evidencia observable, separando lo correcto, lo fallido y lo no probado; nunca inventes resultados.",
-  "- Respeta el formato de fase: JSON para análisis/reportes y conversación natural para chats. En trabajos largos, da avances breves; no repitas planes ni muestres razonamiento privado.",
+  "- Resuelve el objetivo con el cambio/investigación mínimos, en el workspace y dentro de las autorizaciones.",
+  "- Reportes/documentos: guarda en entregables y enlaza. Al repo solo por petición. No hagas commit/PR ni muevas archivos sin autorización.",
+  "- Investiga y cita enlaces directos en Markdown. Prioriza fuentes primarias fiables (documentación, estudios, libros, videos, informes, datasets); atribuye autor/editor si consta y nunca inventes enlaces ni fuentes. Si no puedes consultar, dilo.",
+  "- Para imagen, video o voz, usa herramientas locales gratuitas o MCP configurados, no APIs de pago. Verifica TTS antes de prometer voz; si falta, entrega sin voz.",
+  "- Verifica el resultado con evidencia observable; separa lo correcto, fallido y no probado; nunca inventes resultados.",
+  "- Respeta el formato: JSON para análisis/reportes y conversación natural para chats. En trabajos largos, da avances breves; no repitas planes; no reveles razonamiento interno privado.",
   "- Redacta en español la actividad visible y los avisos de progreso. Conserva sin traducir comandos, código, rutas, nombres propios y citas.",
-  "- Explica decisiones con conclusiones y evidencia útil; no reveles razonamiento interno privado.",
 ].join("\n");
 
 export function conContratoEjecucion(prompt: string, workspace?: string): string {
   const destino = workspace ? `\nCarpeta de entregables independientes (fuera del repositorio): ${carpetaEntregables(workspace)}. Enlaza los archivos por su nombre relativo a esta carpeta.` : "";
   return `${CONTRATO_EJECUCION}${destino}\n---\n${prompt}`;
-}
-
-// Un único límite para chats y tareas, sin depender del proveedor elegido.
-const MAX_AGENTES_SIMULTANEOS = 10;
-let agentesActivos = 0;
-const colaAgentes: { signal?: AbortSignal; resolve: () => void; reject: (error: Error) => void; cancelar?: () => void }[] = [];
-
-function liberarAgente(): void {
-  const siguiente = colaAgentes.shift();
-  if (siguiente) {
-    if (siguiente.cancelar) siguiente.signal?.removeEventListener("abort", siguiente.cancelar);
-    siguiente.resolve();
-    return;
-  }
-  agentesActivos -= 1;
-}
-
-async function reservarAgente(signal?: AbortSignal): Promise<() => void> {
-  if (signal?.aborted) throw new Error("Ejecución cancelada.");
-  if (agentesActivos < MAX_AGENTES_SIMULTANEOS && colaAgentes.length === 0) {
-    agentesActivos += 1;
-    return liberarAgente;
-  }
-  await new Promise<void>((resolve, reject) => {
-    const espera: (typeof colaAgentes)[number] = { signal, resolve, reject };
-    if (signal) {
-      espera.cancelar = () => {
-        const indice = colaAgentes.indexOf(espera);
-        if (indice !== -1) colaAgentes.splice(indice, 1);
-        reject(new Error("Ejecución cancelada."));
-      };
-      signal.addEventListener("abort", espera.cancelar, { once: true });
-    }
-    colaAgentes.push(espera);
-  });
-  return liberarAgente;
 }
 
 export function canonicalizarModelo(modelo: string): string {
@@ -165,7 +134,7 @@ export function estimarCosteGemini(modelo: string, inputTokens: number, outputTo
 export function registrarUsoAgente(
   modelo: string,
   uso: Usage,
-  contexto: Pick<OpcionesAgente, "conversationId" | "projectId" | "taskId">,
+  contexto: Pick<OpcionesAgente, "conversationId" | "projectId" | "taskId" | "turnId" | "usageRole">,
 ): void {
   const modeloCanonico = canonicalizarModelo(modelo);
   const provider = proveedorDeModelo(modeloCanonico);
@@ -179,14 +148,16 @@ export function registrarUsoAgente(
 
   db.query(
     `INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens,
-      reasoning_tokens, cache_read_tokens, cost, project_id, task_id, tokens_precision, cost_precision)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      reasoning_tokens, cache_read_tokens, cost, project_id, task_id, tokens_precision, cost_precision,
+      turn_id, usage_role)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     crypto.randomUUID(), contexto.conversationId ?? null, provider, modeloCanonico,
     uso.input, uso.output, uso.reasoning, uso.cacheRead, costo,
     contexto.projectId ?? null, contexto.taskId ?? null,
     uso.tokensEstimados ? "estimado" : uso.tokensMedidos === undefined ? "desconocida" : uso.tokensMedidos ? "medida" : "no_disponible",
     costPrecision,
+    contexto.turnId ?? null, contexto.usageRole ?? "unknown",
   );
 }
 
@@ -194,7 +165,10 @@ export function registrarUsoAgente(
 // Saldo insuficiente: otro modelo no lo arregla, así que nunca se reintenta.
 const PATRON_MODELO_NO_ENCONTRADO = /model[_ ]not found|unknown model|no such model/i;
 // Solo límites definitivos (no cualquier 429): la tarea o el chat se detienen para que el usuario elija otro modelo.
-const PATRON_CUOTA = /(?:\b(?:quota|cuota)\b.*\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|reach(?:ed)?|agotad[ao]|consumid[ao])\b|\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|agotad[ao]|consumid[ao])\b.*\b(?:quota|cuota)\b|\busage limit\b.*\b(?:reach(?:ed)?|exceed(?:ed)?|exhaust(?:ed)?)\b|\bfree usage\b.*\b(?:exhaust(?:ed)?|reach(?:ed)?|exceed(?:ed)?)\b|\bresource[_ ]exhausted\b|\binsufficient[_ ]quota\b|\binsufficient\s+(?:account\s+)?(?:funds|balance|credits?)\b|\b(?:sin|no hay)\s+(?:saldo|cr[eé]ditos)\b)/i;
+const PATRON_CUOTA = /(?:\b(?:quota|cuota)\b.*\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|reach(?:ed)?|agotad[ao]|consumid[ao])\b|\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|agotad[ao]|consumid[ao])\b.*\b(?:quota|cuota)\b|\busage limit\b.*\b(?:hit|reach(?:ed)?|exceed(?:ed)?|exhaust(?:ed)?)\b|\b(?:hit|reach(?:ed)?|exceed(?:ed)?|exhaust(?:ed)?)\b.*\busage limit\b|\b(?:you(?:'ve| have)?\s+)?(?:hit|reach(?:ed)?|exceed(?:ed)?)\s+(?:your\s+)?(?:daily|weekly|monthly|billing|usage|account|plan|subscription)\s+(?:free\s+)?(?:model\s+)?(?:request|call|token|usage)?\s*limit\b|\b(?:daily|weekly|monthly|billing|account|plan|subscription)\s+(?:free\s+)?(?:model\s+)?(?:request|call|token|usage)?\s*limit\s+(?:hit|reach(?:ed)?|exceed(?:ed)?|exhaust(?:ed)?)\b|\bfree usage\b.*\b(?:exhaust(?:ed)?|reach(?:ed)?|exceed(?:ed)?)\b|\bfree[-_ ]models?[-_ ]per[-_ ](?:day|month)\b|\b(?:daily|monthly)\s+(?:free\s+)?(?:model\s+)?(?:request|usage)\s+limit\b|\bresource[_ ]exhausted\b|\b(?:billing[_ .-]?)?hard[_ .-]?limit[_ .-]?(?:reached|exceeded)\b|\b(?:quota|usage)[_ .-]?(?:limit[_ .-]?)?(?:reached|exceeded|exhausted)\b|\binsufficient[_ .-]?(?:quota|balance|credits?)\b|\bcredit[_ .-]?balance[_ .-]?(?:exhausted|insufficient)\b|\binsufficient\s+(?:account\s+)?(?:funds|balance|credits?)\b|\b(?:sin|no hay)\s+(?:saldo|cr[eé]ditos)\b)/i;
+// OpenRouter y otros gateways pueden responder 402 cuando el prompt pide más tokens de los
+// que caben en el presupuesto actual. Eso no significa que se haya agotado la cuota de la cuenta.
+const PATRON_PRESUPUESTO_POR_SOLICITUD = /more credits|fewer max_tokens|can only afford|requested up to\s+[\d,]+/i;
 
 // Se lanza cuando el modelo se quedó sin cuota. `modelo` es el último que se intentó; `sessionId`, la
 // sesión del agente (si llegó a abrirse), para continuarla después con otro modelo.
@@ -211,7 +185,12 @@ export class ErrorCuota extends Error {
 export function esErrorDeCuota(err: unknown): boolean {
   if (err instanceof ErrorCuota) return true;
   if (err instanceof AislamientoError) return false;
-  return PATRON_CUOTA.test(textoDelProveedor(err));
+  const texto = textoDelProveedor(err);
+  if (PATRON_PRESUPUESTO_POR_SOLICITUD.test(texto)) return false;
+  if (PATRON_CUOTA.test(texto)) return true;
+  // Los proveedores no siempre incluyen un mensaje: HTTP 402 sí es una señal de saldo/cuota
+  // agotados, salvo el caso de presupuesto por solicitud filtrado arriba.
+  return codigoHttpDelProveedor(err) === 402;
 }
 
 function mensajeDe(err: unknown): string {
@@ -252,24 +231,33 @@ export function codigoHttpDelProveedor(err: unknown): number | null {
       message?: unknown;
       status?: unknown;
       statusCode?: unknown;
+      httpStatus?: unknown;
       error?: {
         message?: unknown;
         status?: unknown;
         statusCode?: unknown;
-        data?: { status?: unknown; statusCode?: unknown };
+        httpStatus?: unknown;
+        data?: { status?: unknown; statusCode?: unknown; httpStatus?: unknown; error?: { status?: unknown; statusCode?: unknown } };
       };
     };
-    const candidatos = [
+    const candidatos: unknown[] = [
       evento.statusCode,
       evento.status,
+      evento.httpStatus,
       evento.error?.data?.statusCode,
       evento.error?.data?.status,
+      evento.error?.data?.httpStatus,
+      evento.error?.data?.error?.statusCode,
+      evento.error?.data?.error?.status,
       evento.error?.statusCode,
       evento.error?.status,
+      evento.error?.httpStatus,
     ];
-    const codigo = candidatos.find((codigo): codigo is number =>
-      typeof codigo === "number" && Number.isInteger(codigo) && codigo >= 100 && codigo <= 599,
-    ) ?? null;
+    const codigo = candidatos
+      .map((valor) => typeof valor === "string" && /^\d{3}$/.test(valor) ? Number(valor) : valor)
+      .find((valor): valor is number =>
+        typeof valor === "number" && Number.isInteger(valor) && valor >= 100 && valor <= 599,
+      ) ?? null;
     if (codigo !== null) return codigo;
 
     // OpenCode a veces omite statusCode en su evento APIError para este fallo 5xx genérico.
@@ -379,8 +367,9 @@ export function conInstrucciones(
 export const ESTILO_CHAT = [
   "Estilo de respuesta, presentación y razonamiento nativo de Telo (no lo menciones en la respuesta):",
   "- Conversación natural: habla como un agente que responde al usuario, no como un generador de planes. No repitas planes, listas de pasos ni frases de arranque en cada turno; anuncia brevemente una acción solo si ayuda a entender una espera y entrega el resultado cuando termines.",
+  "- Respuesta final: escribe solo la respuesta útil para el usuario, en su idioma. No muestres razonamiento privado, borradores, notas para ti, hipótesis descartadas ni conversaciones internas; resume únicamente acciones realizadas, resultados comprobados y bloqueos reales. No entregues una respuesta provisional como si fuera el resultado.",
   "- Si necesitas documentarte sobre librerías o frameworks modernos, usa skills del proyecto (como context7) o inspecciona el código existente.",
-  "- Si una tarea requiere investigación profunda o pasos complejos, organízate paso a paso y puedes coordinar o apoyarte en subagentes especializados.",
+  "- Trabaja de forma unitaria salvo que el usuario pida expresamente delegar en la petición actual. Aplicar una skill o un agente predefinido no autoriza crear subagentes. Usa solo los perfiles que Telo habilite para este turno.",
   "- Jerarquía visual: Da primero la respuesta o el resultado. Usa ## y ### solo si la explicación tiene secciones reales; en respuestas cortas, usa un párrafo claro. No pongas todo en negrita: reserva **negrita** para etiquetas o conceptos puntuales.",
   "- Respuestas directas: Si la pregunta es breve o conceptual, responde en un párrafo conciso, sin forzar listas ni encabezados.",
   "- Cuándo usar listas numeradas vs viñetas:",
@@ -589,14 +578,18 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     return { ...r, text: opts.aprender ? quitarBloqueMemoria(texto) : texto, textoFinal: opts.aprender ? quitarBloqueMemoria(textoFinal) : textoFinal, modelo, variante };
   };
 
+  let inicio = Date.now();
   async function ejecutarConRunner(modelo: string, params: Parameters<typeof runOpenCode>[0]): Promise<RunResult> {
-    if (modelo.startsWith("codex/")) {
-      return runCodex(params);
-    }
-    return runOpenCode(params);
+    const id = crypto.randomUUID();
+    const liberar = await reservarAgente(modelo, opts.signal, (estado) => opts.onLinea?.(JSON.stringify({
+      type: "telo.queue", id, proveedor: proveedorAgente(modelo), estado,
+    })));
+    inicio = Date.now();
+    try {
+      return await (modelo.startsWith("codex/") ? runCodex(params) : runOpenCode(params));
+    } finally { liberar(); }
   }
 
-  const inicio = Date.now();
   const varianteInicial = opts.variant ?? undefined;
   const sesionUsada = sesion;
   try {
@@ -675,6 +668,36 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       }
     }
 
+    if (esErrorDeCuota(err)) {
+      let ultimoAgotado = opts.model;
+      const modelosProbados = new Set([opts.model]);
+      const alternativas = getPreferences().quotaFallbackModels ?? [];
+      const catalogo = await getModels().catch(() => []);
+      for (const alternativa of alternativas) {
+        if (modelosProbados.has(alternativa)) continue;
+        modelosProbados.add(alternativa);
+        const info = catalogo.find((modelo) => modelo.id === alternativa);
+        // Defensa adicional si el catálogo cambió después de guardar las preferencias.
+        if (!info || (!info.free && info.provider !== "codex")) continue;
+        const variante = opts.variant && info.variants.includes(opts.variant) ? opts.variant : undefined;
+        opts.onCambioModeloCuota?.(ultimoAgotado, alternativa);
+        try {
+          const parametros = baseParaModelo(alternativa, variante);
+          // Un proveedor distinto no comparte sesión; continúa desde el historial y el workspace actuales.
+          parametros.prompt = promptContinuacion(parametros.prompt, false);
+          const resultado = await ejecutarConRunner(alternativa, parametros);
+          return terminar(resultado, alternativa, variante ?? null);
+        } catch (errorAlternativa) {
+          const tiempoAgotado = opts.timeoutMs !== undefined && opts.timeoutMs !== null && Date.now() - inicio >= opts.timeoutMs;
+          if (tiempoAgotado || opts.signal?.aborted) throw limpiarError(errorAlternativa);
+          if (!esErrorDeCuota(errorAlternativa)) throw limpiarError(errorAlternativa);
+          ultimoAgotado = alternativa;
+          err = errorAlternativa;
+        }
+      }
+      throw new ErrorCuota(ultimoAgotado, sesion);
+    }
+
     const modeloNoEncontrado = esErrorModeloNoEncontrado(err);
     if (!esErrorTransitorioDelProveedor(err, opts.signal) && !modeloNoEncontrado) throw comoCuota(err, opts.model);
 
@@ -730,10 +753,5 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
 }
 
 export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAgente> {
-  const liberar = await reservarAgente(opts.signal);
-  try {
-    return await ejecutarAgenteReservado(opts);
-  } finally {
-    liberar();
-  }
+  return ejecutarAgenteReservado(opts);
 }

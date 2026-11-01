@@ -100,6 +100,35 @@ test("reanuda el reconocimiento cuando el motor corta mientras se dicta", () => 
   expect(activo).toBe(false);
 });
 
+test("Android puede repetir y corregir finales desde cero sin acumular versiones", () => {
+  const { creadas, construir } = arnes();
+  let texto = "";
+  const dictador = crearDictador({ construir, lenguaje: "es", componer: (t) => texto = t, avisar() {}, alCambiar() {} });
+  dictador.alternar("Base");
+  const rec = creadas[0]!;
+  for (const frase of ["necesito", "necesito", "necesito en video", "necesito en video el resultado"]) {
+    rec.onresult!(eventoVoz([[frase, true]], 0));
+    expect(texto).toBe(`Base ${frase}`);
+  }
+  rec.onend!();
+  rec.onresult!(eventoVoz([["con voz", true]], 0));
+  rec.onresult!(eventoVoz([["con voz", true]], 0));
+  expect(texto).toBe("Base necesito en video el resultado con voz");
+});
+
+test("retira interinos descartados y conserva repeticiones realmente dictadas", () => {
+  const { creadas, construir } = arnes();
+  let texto = "";
+  const dictador = crearDictador({ construir, lenguaje: "es", componer: (t) => texto = t, avisar() {}, alCambiar() {} });
+  dictador.alternar("");
+  const rec = creadas[0]!;
+  rec.onresult!(eventoVoz([["sí", true], ["borrador", false]], 0));
+  rec.onresult!(eventoVoz([["sí", true]], 1));
+  expect(texto).toBe("sí");
+  rec.onresult!(eventoVoz([["sí", true], ["sí", true]], 1));
+  expect(texto).toBe("sí sí");
+});
+
 test("un dictado nuevo no lo matan los cortes de la instancia vieja", () => {
   const { creadas, construir } = arnes();
   let activo = false;

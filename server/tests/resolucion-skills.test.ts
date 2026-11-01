@@ -83,16 +83,48 @@ test("activa la skill global de autoría al derivar o evaluar skills y evita act
 });
 
 test("activa Context7 para consultas de APIs y tareas de código con bibliotecas, pero no para trabajo ajeno a documentación técnica", () => {
-  escribirSkill("global", "context7", "---\nname: context7\ndescription: Documentación técnica actualizada.\n---\n\nConsulta resolve-library-id y query-docs.");
+  escribirSkill("global", "context7-mcp", "---\nname: context7-mcp\ndescription: Documentación técnica actualizada.\n---\n\nConsulta resolve-library-id y query-docs.");
 
   const cambio = inyectarSkillsEnPrompt("Implementa la autenticación con Supabase y revisa la API actual.");
-  expect(cambio.skillsInvocadas).toContain("context7");
+  expect(cambio.skillsInvocadas).toContain("context7-mcp");
   expect(cambio.promptFinal).toContain("Consulta resolve-library-id y query-docs.");
+  const explicita = inyectarSkillsEnPrompt("Usa $context7 para verificar React 19.");
+  expect(explicita.skillsInvocadas).toContain("context7-mcp");
+  expect(explicita.skillsInvocadas).not.toContain("context7");
   expect(requiereContext7("Usa $context7 para verificar React 19.")).toBe(true);
 
   const tareaVisual = inyectarSkillsEnPrompt("Corrige el encuadre del video MP4.");
   expect(tareaVisual.skillsInvocadas).not.toContain("context7");
   expect(requiereContext7("La rama tiene conflictos de merge.")).toBe(false);
+});
+
+test("Instagram y Obsidian activan sus skills oficiales específicas", () => {
+  const nombres = ["ig-plan", "ig-reel", "ig-caption", "ig-human", "obsidian-markdown", "obsidian-cli"];
+  for (const nombre of nombres) {
+    escribirSkill("global", nombre, `---\nname: ${nombre}\ndescription: Skill oficial.\n---\n\nInstrucciones de ${nombre}.`);
+  }
+
+  const instagram = inyectarSkillsEnPrompt("Prepara un Reel de Instagram con copy para mi cuenta.");
+  expect(instagram.skillsInvocadas).toEqual(expect.arrayContaining(["ig-plan", "ig-reel", "ig-caption", "ig-human"]));
+
+  const obsidian = inyectarSkillsEnPrompt("Guarda esta nota Markdown en mi vault de Obsidian.");
+  expect(obsidian.skillsInvocadas).toEqual(expect.arrayContaining(["obsidian-markdown", "obsidian-cli"]));
+});
+
+test("los alias históricos resuelven a skills oficiales y las tareas de video usan las oficiales de HyperFrames", () => {
+  for (const nombre of ["hyperframes", "hyperframes-cli", "hyperframes-registry", "media-use"]) {
+    escribirSkill("global", nombre, `---\nname: ${nombre}\ndescription: Skill oficial.\n---\n\nInstrucciones de ${nombre}.`);
+  }
+
+  const video = inyectarSkillsEnPrompt("Crea una animación para Instagram con HyperFrames.");
+  expect(video.skillsInvocadas).toContain("hyperframes");
+  expect(video.skillsInvocadas).toContain("hyperframes-cli");
+  expect(video.skillsInvocadas).toContain("media-use");
+  expect(video.skillsInvocadas).not.toContain("hyperframes-video");
+
+  const explicita = inyectarSkillsEnPrompt("Usa $hyperframes-video para renderizar este proyecto.");
+  expect(explicita.skillsInvocadas).toContain("hyperframes");
+  expect(explicita.skillsInvocadas).not.toContain("hyperframes-video");
 });
 
 test("resolver e inyectar skills en el prompt", () => {

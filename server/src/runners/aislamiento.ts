@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { config } from "../config";
 import { carpetaEntregables } from "../entregables";
 import { hallarEjecutable } from "../ejecutable";
@@ -162,6 +162,7 @@ export function prefijoAislamiento(
   opencodeConfigDir?: string,
   opencodeSubagentesTracePath?: string,
   opencodeMcpConfigPath?: string,
+  opencodeActividadTracePath?: string,
 ): string[] {
   if (!aislamientoActivo()) return [];
 
@@ -257,6 +258,23 @@ export function prefijoAislamiento(
       throw new AislamientoError("carpeta_no_permitida", "La configuración de subagentes no está dentro del almacenamiento de Telo.");
     }
     args.push("--dir", "/tmp/telo-opencode-config", "--ro-bind", perfilReal, "/tmp/telo-opencode-config");
+    const gitignore = join(perfilReal, ".gitignore");
+    try {
+      writeFileSync(gitignore, "", { encoding: "utf8", flag: "wx", mode: 0o600 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    const gitignoreStat = lstatSync(gitignore);
+    if (
+      !gitignoreStat.isFile() ||
+      gitignoreStat.isSymbolicLink() ||
+      gitignoreStat.nlink !== 1 ||
+      realpathSync(gitignore) !== gitignore
+    ) {
+      throw new AislamientoError("carpeta_no_permitida", "El .gitignore temporal de OpenCode no es seguro.");
+    }
+    // OpenCode inicializa la carpeta de configuración escribiendo este archivo. El resto sigue en solo lectura.
+    args.push("--bind", gitignore, "/tmp/telo-opencode-config/.gitignore");
     if (opencodeSubagentesTracePath) {
       const captura = rutaReal(opencodeSubagentesTracePath);
       const esperada = join(perfilReal, "subagentes.ndjson");
@@ -278,6 +296,18 @@ export function prefijoAislamiento(
     }
     args.push("--dir", "/tmp/telo-mcp-config");
     args.push("--ro-bind", configuracionReal, "/tmp/telo-mcp-config/opencode.json");
+    if (opencodeActividadTracePath) {
+      const captura = rutaReal(opencodeActividadTracePath);
+      const carpeta = dirname(configuracionReal);
+      const plugin = join(carpeta, "seguimiento.js");
+      const statCaptura = lstatSync(opencodeActividadTracePath);
+      const statPlugin = lstatSync(plugin);
+      if (!captura || captura !== join(carpeta, "actividad.ndjson") || !statCaptura.isFile() || statCaptura.isSymbolicLink() || statCaptura.nlink !== 1 ||
+        !statPlugin.isFile() || statPlugin.isSymbolicLink() || statPlugin.nlink !== 1 || rutaReal(plugin) !== plugin) {
+        throw new AislamientoError("carpeta_no_permitida", "El registro temporal de actividad no es seguro.");
+      }
+      args.push("--ro-bind", plugin, "/tmp/telo-mcp-config/seguimiento.js", "--bind", captura, "/tmp/telo-mcp-config/actividad.ndjson");
+    }
   }
 
   // Rutas extra en solo lectura (TELO_LECTURA_EXTRA, separadas por ":"), por ejemplo la carpeta de opencode

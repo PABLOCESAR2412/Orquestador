@@ -40,6 +40,21 @@ const ITEMS: NavItem[] = [
     ),
   },
   {
+    to: "/oficina",
+    label: "Oficina",
+    icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 10h18M10 10v11M15 3v7"/></svg>,
+  },
+  {
+    to: "/cerebro",
+    label: "Cerebro",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="6" cy="7" r="2" /><circle cx="17" cy="5" r="2" /><circle cx="14" cy="17" r="2" /><circle cx="5" cy="18" r="2" />
+        <path d="m8 7 7-1M7 9l-1 7m2 2 4-1m3-2 2-7" />
+      </svg>
+    ),
+  },
+  {
     to: "/ajustes",
     label: "Ajustes",
     icon: (

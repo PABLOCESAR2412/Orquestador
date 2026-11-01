@@ -1,3 +1,4 @@
+import { pideSubagentes } from "../../../shared/delegacion";
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -46,6 +47,7 @@ import { leerBorrador, guardarBorrador, leerEnvio, guardarEnvio, borrarEnvio } f
 import { crearDictador, ctorVoz, type Dictador } from "../lib/chat-dictado";
 import { PLANTILLAS_GAUNTLET } from "../lib/plantillas-gauntlet";
 import { actualizarVentanaMensajes } from "../lib/chat-mensajes";
+import { integrarActividadGuardada, tareaVisibleDelChat } from "../lib/actividad-chat";
 import "../styles-chat.css";
 import "../styles-flujo.css";
 
@@ -517,7 +519,7 @@ export function ChatPage() {
     refetchInterval: 3_000,
     retry: reintentarConsultaTransitoria,
   });
-  const tareaChat = current?.project_id ? tareasChat.data?.at(-1) : undefined;
+  const tareaChat = current?.project_id ? tareaVisibleDelChat(tareasChat.data) : undefined;
   const modeloAgotadoChat = current?.cuota_modelo ?? (tareaChat?.status === "sin_cuota"
     ? tareaChat.modelo_agotado ?? tareaChat.model
     : null);
@@ -1121,8 +1123,10 @@ export function ChatPage() {
   useEffect(() => {
     if (!selectedId || !turnoEnCurso || !actividadGuardada.data?.length) return;
     setVivos((prev) => {
-      if (prev[selectedId]?.turnoId === turnoEnCurso) return prev;
-      return { ...prev, [selectedId]: { turnoId: turnoEnCurso, pasos: actividadGuardada.data! } };
+      const actuales = prev[selectedId]?.turnoId === turnoEnCurso ? prev[selectedId].pasos : [];
+      const pasos = integrarActividadGuardada(actuales, actividadGuardada.data!);
+      if (JSON.stringify(actuales) === JSON.stringify(pasos)) return prev;
+      return { ...prev, [selectedId]: { turnoId: turnoEnCurso, pasos } };
     });
   }, [selectedId, turnoEnCurso, actividadGuardada.data]);
   const candidatasSugerencia = useMemo(() => sugerenciasChat(lista), [lista]);
@@ -1289,7 +1293,7 @@ export function ChatPage() {
   const nuevoChat = () => {
     if (creandoChat) return;
     setCreandoChat(true);
-    api.createConversation(null).then(
+    api.createConversation(current?.project_id ?? null).then(
       (conv) => {
         void qc.invalidateQueries({ queryKey: ["conversations"] });
         setSelectedId(conv.id);
@@ -1796,20 +1800,9 @@ export function ChatPage() {
                     </>
                   ) : (
                     <>
-                      {m.sesion_compactada ? (
-                        <p className="tl-hilo-compacta" role="note">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-                            <path d="M16 3h3a2 2 0 0 1 2 2v3" />
-                            <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
-                            <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-                            <path d="M8 9h8M8 12h8M8 15h5" />
-                          </svg>
-                          Sesión compactada · el contexto anterior se resumió para continuar
-                        </p>
-                      ) : null}
                       <MensajeAgente
                         texto={m.content}
+                        sesionCompactada={Boolean(m.sesion_compactada)}
                         cuando={m.created_at}
                         modelo={m.model ? modelList.find((modelo) => modelo.id === m.model)?.name ?? m.model : null}
                         esfuerzo={m.effort}
@@ -1852,8 +1845,8 @@ export function ChatPage() {
                   vivo={(selectedId && vivos[selectedId]?.pasos) || []}
                   conversacionId={selectedId ?? undefined}
                   turnoId={selectedId ? vivos[selectedId]?.turnoId ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.id : undefined}
-                  mostrarSubagentes={!current?.model?.startsWith("codex/") && (Boolean(current?.orquestacion_habilitada) || /\b(subagentes?|agentes?\s+(?:en\s+)?paralelo|deleg(?:a|ar|ando)|llama\s+a\s+(?:varios|m[aá]s\s+de\s+uno|un\s+subagente))\b/i.test(envioActual?.content ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.content ?? ""))}
-                  orquestacionActiva={Boolean(current?.orquestacion_habilitada)}
+                  mostrarSubagentes={!current?.model?.startsWith("codex/") && pideSubagentes(envioActual?.content ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.content ?? "")}
+                  orquestacionActiva={Boolean(current?.orquestacion_habilitada) && pideSubagentes(envioActual?.content ?? [...lista].reverse().find((mensaje) => mensaje.role === "user")?.content ?? "")}
                   onAbrirSubchat={setSelectedId}
                 />
               )}
@@ -2578,7 +2571,6 @@ export function ChatPage() {
               esfuerzo={current.effort}
               habilitada={Boolean(current.orquestacion_habilitada)}
               preactivarAuxiliares={orquestacionDesdeAgente}
-              seleccionAutomatica={current.orquestacion_seleccion_automatica ?? true}
               trabajadores={current.orquestacion_trabajadores ?? []}
               modelos={modelList}
               guardando={configure.isPending}

@@ -15,7 +15,7 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 const { db } = await import("../src/db");
 const { config } = await import("../src/config");
 const { gitOk } = await import("../src/git");
-const { aprobarTarea, diffDeTarea, limpiarCopiaCancelada, prepararCopia, reintegrarSobrePunta } = await import("../src/workspace");
+const { aprobarTarea, detectarConflictosPullRequest, diffDeTarea, limpiarCopiaCancelada, prepararCopia, reintegrarSobrePunta } = await import("../src/workspace");
 const { repositoryActions } = await import("../src/routes/repository-actions");
 const { guardarSecreto, entornoDeProyecto } = await import("../src/secretos");
 const { fuenteAutenticacionGithub, githubApiPr } = await import("../src/routes/proyecto-config");
@@ -441,6 +441,20 @@ test("el chat prepara commit y push juntos y vincula la tarjeta al nuevo mensaje
   }
 });
 
+test("una tarjeta sin turno conocido no se reasigna al último mensaje del chat", async () => {
+  const p = proyecto(), conversationId = randomUUID(), messageId = randomUUID();
+  db.query("INSERT INTO conversations(id,title,project_id) VALUES (?,'Legacy',?)").run(conversationId, p.id);
+  db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES (?,?,'user','Otro turno')").run(messageId, conversationId);
+  try {
+    const respuesta = await pedir(`/projects/${p.id}/acciones`, { action: "init", conversationId, messageId: null });
+    expect(respuesta.status).toBe(201);
+    const accion = await respuesta.json() as any;
+    expect(JSON.parse(accion.payload).messageId).toBeNull();
+    const listado = await (await repositoryActions.request(`/conversations/${conversationId}/acciones`)).json() as any[];
+    expect(listado.find((item) => item.id === accion.id)?.message_id).toBeNull();
+  } finally { db.query("DELETE FROM conversations WHERE id=?").run(conversationId); }
+});
+
 test("push_main ya no se acepta, y merge se puede preparar y autorizar directamente", { timeout: 20000 }, async () => {
   const p = await tareaConCommit();
   expect((await pedir(`/projects/${p.id}/acciones`, { action: "push_main", taskId: p.taskId })).status).toBe(400);
@@ -583,6 +597,7 @@ test("un merge con conflictos lista archivos y crea tarea sobre la rama del PR",
     pr_url: "https://github.com/dueno/prueba/pull/9",
   });
   const accion = await preparada.json() as { id: string };
+  db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES (?,?,'user','Un turno posterior')").run(randomUUID(), conversationId);
   const originalSpawn = Bun.spawn;
   const spy = spyOn(Bun, "spawn").mockImplementation(((cmd: any, opts: any) => {
     if (Array.isArray(cmd) && cmd.includes("fetch") && cmd.includes(REMOTO)) {
@@ -624,10 +639,10 @@ test("un merge con conflictos lista archivos y crea tarea sobre la rama del PR",
     expect(reparacion.status).toBe(202);
     const nueva = await reparacion.json() as { task_id: string };
     taskResolutionId = nueva.task_id;
-    const tarea = db.query<{ status: string; source_branch: string; source_base_branch: string; source_pr_number: number; prompt: string }, [string]>(
-      "SELECT status,source_branch,source_base_branch,source_pr_number,prompt FROM tasks WHERE id=?",
+    const tarea = db.query<{ status: string; source_branch: string; source_base_branch: string; source_pr_number: number; prompt: string; message_id: string | null }, [string]>(
+      "SELECT status,source_branch,source_base_branch,source_pr_number,prompt,message_id FROM tasks WHERE id=?",
     ).get(nueva.task_id)!;
-    expect(tarea).toMatchObject({ status: "queued", source_branch: p.diff.rama, source_base_branch: "main", source_pr_number: 9 });
+    expect(tarea).toMatchObject({ status: "queued", source_branch: p.diff.rama, source_base_branch: "main", source_pr_number: 9, message_id: messageId });
     expect(tarea.prompt).toContain("src/widget.ts");
     const payloadReparacion = JSON.parse(db.query<{ payload: string }, [string]>("SELECT payload FROM repository_actions WHERE id=?").get(accion.id)!.payload) as Record<string, unknown>;
     expect(payloadReparacion.repair_message_id).toBe(messageId);
@@ -753,6 +768,7 @@ test("push con destino rama prepara el PR aunque el plan no lo pida", { timeout:
   guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
   const conversationId = await conversacionTarea(p);
   const accion = await (await pedir(`/projects/${p.id}/acciones`, { action: "push", taskId: p.taskId, conversationId })).json() as any;
+  db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES (?,?,'user','Un turno posterior a la tarjeta')").run(randomUUID(), conversationId);
   const ramaTarea = (await diffDeTarea(p.taskId)).rama;
   globalThis.fetch = (async (url: any) => {
     expect(String(url)).toBe("https://api.github.com/repos/dueno/prueba");
@@ -777,8 +793,9 @@ test("push con destino rama prepara el PR aunque el plan no lo pida", { timeout:
     expect(subidas).toBe(1);
     const diff = await diffDeTarea(p.taskId);
     expect(diff.aprobaciones.push?.rama).toBe(ramaTarea);
-    const pr = db.query<{ state: string }, [string]>("SELECT state FROM repository_actions WHERE task_id=? AND action='pr'").get(p.taskId);
+    const pr = db.query<{ state: string; payload: string }, [string]>("SELECT state,payload FROM repository_actions WHERE task_id=? AND action='pr'").get(p.taskId);
     expect(pr?.state).toBe("pending");
+    expect(JSON.parse(pr!.payload).messageId).toBeNull();
     // Autorizar el PR preparado por la cadena: nada se fusiona ni falla sin permisos reales.
     const prId = db.query<{ id: string }, [string]>("SELECT id FROM repository_actions WHERE task_id=? AND action='pr'").get(p.taskId)!.id;
     const prAprobada = await pedir(`/acciones/${prId}/decidir`, { approve: false });
@@ -893,6 +910,47 @@ async function avanzarOrigen(origen: string, texto: string) {
   } finally {
     rmSync(aux, { recursive: true, force: true });
   }
+}
+
+for (const credencial of ["global", "proyecto"] as const) {
+  test(`las lecturas Git privadas usan helper y credencial ${credencial} sin exponer el token`, { timeout: 30000 }, async () => {
+    const { p, origen } = await proyectoLocalConOrigen(randomUUID().slice(0, 8));
+    const punta = await avanzarOrigen(origen, "avance privado\n");
+    await gitOk(["branch", "resolver", punta], { cwd: origen });
+    await gitOk(["remote", "set-url", "origin", REMOTO], { cwd: p.cwd });
+    if (credencial === "global") {
+      guardarCuentaGithubGlobal({ token: TOKEN, login: "prueba", name: "Prueba", avatar_url: "", scopes: [], actualizado_en: new Date().toISOString() });
+    } else guardarSecreto(p.id, "GITHUB_TOKEN", TOKEN);
+    const lecturas: { helper: boolean; autenticada: boolean; tokenEnArgumentos: boolean }[] = [];
+    const original = Bun.spawn;
+    const espia = spyOn(Bun, "spawn").mockImplementation(((cmd: any, opts: any) => {
+      if (Array.isArray(cmd) && cmd[0] === "git" && cmd.includes("fetch")) {
+        const helper = cmd.some((arg: string) => arg.startsWith("credential.https://github.com.helper=!") && arg.includes("$TELO_GIT_TOKEN"));
+        const autenticada = opts.env?.TELO_GIT_TOKEN === TOKEN;
+        lecturas.push({ helper, autenticada, tokenEnArgumentos: cmd.some((arg: string) => arg.includes(TOKEN)) });
+        if (!helper || !autenticada) return original([process.execPath, "-e", "process.exit(1)"], { stdout: "pipe", stderr: "pipe" });
+        // Sustituye el transporte remoto por un bare local; Git sigue ejecutando el fetch real.
+        const local = cmd.map((arg: string) => arg === REMOTO || arg === "origin" ? origen : arg);
+        if (cmd.includes("origin")) local[local.length - 1] = "refs/heads/main:refs/remotes/origin/main";
+        return original(local, opts);
+      }
+      return original(cmd, opts);
+    }) as typeof Bun.spawn);
+    try {
+      const taskId = randomUUID();
+      p.taskId = taskId;
+      db.query("INSERT INTO tasks(id,title,prompt,model,status,project_id,source_branch,source_base_branch) VALUES (?,'Lectura privada','Prueba','prueba','queued',?,'resolver','main')").run(taskId, p.id);
+      const copia = await prepararCopia(taskId, p.cwd, p.id);
+      expect(copia.base_commit).toBe(punta);
+      expect((await gitOk(["rev-parse", "HEAD"], { cwd: p.cwd })).trim()).toBe(punta);
+      db.query("UPDATE tasks SET status='done' WHERE id=?").run(taskId);
+      expect(await detectarConflictosPullRequest(taskId, REMOTO, "main", "resolver")).toEqual([]);
+      expect(lecturas).toEqual(Array.from({ length: 3 }, () => ({ helper: true, autenticada: true, tokenEnArgumentos: false })));
+    } finally {
+      espia.mockRestore();
+      rmSync(origen, { recursive: true, force: true });
+    }
+  });
 }
 
 test("prepararCopia trae la copia local al día con el avance del origin", { timeout: 20000 }, async () => {

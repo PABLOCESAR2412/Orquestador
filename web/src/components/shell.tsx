@@ -35,6 +35,8 @@ export function Shell({ children }: { children: ReactNode }) {
     toggleDrawer,
     selectedConversationId,
     setSelectedConversationId,
+    activeProjectId,
+    activeProjectName,
     nuevoProyectoAbierto,
     setNuevoProyectoAbierto,
     abrirNuevoProyecto,
@@ -156,8 +158,16 @@ export function Shell({ children }: { children: ReactNode }) {
     conversations.data?.conversations.find((c) => c.id === selectedConversationId) ??
     anteriores.flatMap((t) => t.items).find((c) => c.id === selectedConversationId) ??
     null;
-  const proyectoActivoId = conversacionActiva?.project_id ?? null;
-  const proyectoActivoNombre = conversacionActiva?.project_name ?? null;
+  const proyectoActivoId = conversacionActiva
+    ? conversacionActiva.project_id ?? null
+    : selectedConversationId
+      ? activeProjectId
+      : null;
+  const proyectoActivoNombre = conversacionActiva
+    ? conversacionActiva.project_name ?? null
+    : selectedConversationId
+      ? activeProjectName
+      : null;
 
   const crearChatProyecto = useMutation({
     mutationFn: (pId: string) => nuevoChatDelProyecto(pId),
@@ -754,7 +764,7 @@ export function Shell({ children }: { children: ReactNode }) {
       </div>
 
       {/* Paleta de comandos: Ctrl+K o Cmd+K desde cualquier pantalla */}
-      <PaletaComandos />
+      <PaletaComandos proyectoId={proyectoActivoId} proyectoNombre={proyectoActivoNombre} />
     </div>
   );
 }
