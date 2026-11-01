@@ -26,6 +26,7 @@ import { redactar, valoresDeConfiguracion } from "./redaccion";
 // Cada escritura va por tramos comprobados (ningún tramo puede ser enlace) y termina con un renombrado atómico.
 
 export const LIMITE_SKILL = 64 * 1024;
+export const LIMITE_RECURSO_SKILL = 8 * 1024 * 1024;
 const NOMBRE_MAX = 64;
 const DESCRIPCION_MAX = 1024;
 // Mismo patrón que exige OpenCode: minúsculas, dígitos y guiones simples entre segmentos.
@@ -242,6 +243,59 @@ function escribirSkillEn(ancla: string, tramos: string[], nombre: string, conten
   return datosDestino === null;
 }
 
+// Guarda un recurso auxiliar dentro de la carpeta de una skill. Solo acepta rutas relativas
+// sencillas y crea cada carpeta sin seguir enlaces simbólicos.
+export function guardarRecursoSkill(ambito: AmbitoSkills, nombre: string, rutaRelativa: string, contenido: string): void {
+  validarNombre(nombre);
+  const partes = rutaRelativa.split("/");
+  if (
+    rutaRelativa.length > 240 || partes.length < 2 ||
+    partes.some((parte) => !/^[A-Za-z0-9._-]+$/.test(parte) || parte === "." || parte === "..")
+  ) throw new SkillError("skill_ruta_no_permitida", 400);
+  const bytes = Buffer.from(contenido, "utf8");
+  if (bytes.byteLength > LIMITE_RECURSO_SKILL) throw new SkillError("skill_demasiado_grande", 413);
+  if (redactar(contenido, valoresDeConfiguracion()) !== contenido) throw new SkillError("skill_contiene_secreto", 400);
+
+  const { ancla, tramos } = anclaDe(ambito);
+  const base = carpetaSegura(ancla, tramos, false);
+  const skillDir = base ? join(base, nombre) : null;
+  const statSkill = skillDir ? lstatORNull(skillDir) : null;
+  if (!skillDir || !statSkill?.isDirectory() || statSkill.isSymbolicLink()) {
+    throw new SkillError("skill_no_encontrada", 404);
+  }
+
+  let directorio = skillDir;
+  for (const parte of partes.slice(0, -1)) {
+    directorio = join(directorio, parte);
+    const stat = lstatORNull(directorio);
+    if (!stat) mkdirSync(directorio);
+    else if (!stat.isDirectory() || stat.isSymbolicLink()) throw new SkillError("skill_ruta_no_permitida", 400);
+  }
+  const destino = join(directorio, partes.at(-1)!);
+  const statDestino = lstatORNull(destino);
+  if (statDestino && (!statDestino.isFile() || statDestino.isSymbolicLink())) {
+    throw new SkillError("skill_ruta_no_permitida", 400);
+  }
+  const temporal = join(directorio, `.recurso-${randomUUID()}.tmp`);
+  const fd = openSync(temporal, fc.O_WRONLY | fc.O_CREAT | fc.O_EXCL | fc.O_NOFOLLOW, 0o644);
+  try {
+    let escrito = 0;
+    while (escrito < bytes.length) escrito += writeSync(fd, bytes, escrito, bytes.length - escrito);
+    fsyncSync(fd);
+  } catch {
+    closeSync(fd);
+    unlinkSync(temporal);
+    throw new SkillError("skill_no_guardada", 400);
+  }
+  closeSync(fd);
+  try {
+    renameSync(temporal, destino);
+  } catch {
+    unlinkSync(temporal);
+    throw new SkillError("skill_no_guardada", 400);
+  }
+}
+
 // Guarda la skill. Rechaza lo que OpenCode no cargaría y cualquier texto con un secreto conocido:
 // esa versión se rechaza en vez de guardarse redactada, para no pisar al editar.
 export function guardarSkill(ambito: AmbitoSkills, nombre: string, contenido: string): { creada: boolean } {
@@ -447,11 +501,11 @@ Una skill lista tiene un disparador claro, un objetivo único, pasos accionables
 `;
 
 const SKILLS_UPSTREAM = [
-  "brainstorming", "context7-mcp", "documentation-lookup", "hyperframes",
+  "brainstorming", "code-review", "context7-mcp", "documentation-lookup", "hyperframes",
   "hyperframes-cli", "hyperframes-registry", "ig-caption", "ig-carousel", "ig-human",
   "ig-plan", "ig-reel", "ig-story", "job-application-assistant", "media-use", "obsidian-cli",
   "obsidian-markdown", "orca-cli", "orchestration", "prospecting", "strategic-compact",
-  "subagent-driven-development", "systematic-debugging", "test-driven-development",
+  "subagent-driven-development", "systematic-debugging", "test-driven-development", "writing-plans",
   "using-superpowers", "verification-before-completion",
 ] as const;
 
