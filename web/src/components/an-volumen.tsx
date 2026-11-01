@@ -1,8 +1,9 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import type { AnalyticsVolume } from "../api";
 import { niceMax } from "./charts";
 
-// Barras de llamadas por día, hechas a mano con SVG como el resto de gráficas.
-// El día actual (último punto) va en --ink y los demás días en --bar.
+// Barras por intervalo, hechas a mano con SVG como el resto de gráficas.
+// El último punto va en --ink y los anteriores en --bar.
 // Mide su ancho real para que el texto no se encoja en móvil.
 
 const ALTO = 220;
@@ -10,17 +11,20 @@ const PAD = { top: 30, right: 4, bottom: 30, left: 4 };
 const RADIO = 4;
 const ANCHO_MAX_BARRA = 44;
 
-type ModeloDia = { model: string; provider: string; calls: number; tokens: number; estimados: number };
-type DiaLlamadas = { day: string; calls: number; tokens?: number; tokensEstimados?: number; modelos?: ModeloDia[] };
+type PuntoLlamadas = AnalyticsVolume["puntos"][number];
+type Intervalo = AnalyticsVolume["intervalo"];
 
-function diaSemana(day: string): string {
-  const texto = new Date(`${day}T12:00:00Z`).toLocaleDateString("es", { weekday: "short", timeZone: "UTC" });
-  const limpio = texto.replace(".", "");
-  return limpio.charAt(0).toUpperCase() + limpio.slice(1);
-}
-
-export function diaCompleto(day: string): string {
-  return new Date(`${day}T12:00:00Z`).toLocaleDateString("es", { day: "numeric", month: "long", timeZone: "UTC" });
+export function fechaPunto(at: string, intervalo: Intervalo, completa = false): string {
+  const esDia = intervalo === "dia";
+  const fecha = new Date(esDia ? `${at}T12:00:00Z` : `${at.replace(" ", "T")}Z`);
+  if (esDia) return fecha.toLocaleDateString("es-EC", completa
+    ? { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }
+    : { day: "numeric", month: "short", timeZone: "UTC" }).replace(".", "");
+  return fecha.toLocaleString("es-EC", completa
+    ? { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }
+    : intervalo === "hora"
+      ? { day: "numeric", month: "short", hour: "2-digit", timeZone: "UTC" }
+      : { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
 }
 
 // Barra con esquina redondeada solo arriba; la base queda recta sobre el eje.
@@ -29,8 +33,7 @@ function barra(x: number, y: number, w: number, h: number) {
   return `M${x},${y + h} V${y + r} Q${x},${y} ${x + r},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r} V${y + h} Z`;
 }
 
-// Qué días llevan etiqueta: con 7 días, todos (día de la semana); con más, uno de cada varios
-// (número del día). El día actual siempre tiene etiqueta.
+// Mantiene etiquetas legibles aun cuando el rango contiene cientos de intervalos.
 function indicesEtiquetados(n: number): Set<number> {
   const paso = n <= 7 ? 1 : Math.ceil(n / 8);
   const indices = new Set<number>();
@@ -45,7 +48,7 @@ function indicesEtiquetados(n: number): Set<number> {
   return indices;
 }
 
-export function VolumenLlamadas({ data, titulo, diaSeleccionado, onSeleccionDia }: { data: DiaLlamadas[]; titulo: string; diaSeleccionado?: string | null; onSeleccionDia?: (day: string) => void }) {
+export function VolumenLlamadas({ data, titulo, intervalo, puntoSeleccionado, onSeleccionPunto }: { data: PuntoLlamadas[]; titulo: string; intervalo: Intervalo; puntoSeleccionado?: string | null; onSeleccionPunto?: (at: string) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [ancho, setAncho] = useState(640);
   const [detalle, setDetalle] = useState<{ day: string; x: number; y: number } | null>(null);
@@ -59,8 +62,9 @@ export function VolumenLlamadas({ data, titulo, diaSeleccionado, onSeleccionDia 
   }, []);
 
   const n = data.length;
+  const anchoSvg = Math.max(ancho, n > 120 ? n * 6 : ancho);
   const max = niceMax(Math.max(0, ...data.map((d) => d.calls)));
-  const innerW = ancho - PAD.left - PAD.right;
+  const innerW = anchoSvg - PAD.left - PAD.right;
   const innerH = ALTO - PAD.top - PAD.bottom;
   const base = PAD.top + innerH;
   const slot = n ? innerW / n : innerW;
@@ -68,44 +72,49 @@ export function VolumenLlamadas({ data, titulo, diaSeleccionado, onSeleccionDia 
   const etiquetados = indicesEtiquetados(n);
   const vacio = data.every((d) => d.calls === 0);
   const hoy = n - 1;
-  const diaDetalle = detalle ? data.find((d) => d.day === detalle.day) : null;
-  const tooltipX = detalle ? Math.max(8, Math.min(detalle.x, ancho - 228)) : 0;
-  const tooltipY = detalle ? Math.max(8, Math.min(detalle.y, ALTO - 110)) : 0;
+  const diaDetalle = detalle ? data.find((d) => d.at === detalle.day) : null;
+  const tooltipX = detalle ? Math.max(8, Math.min(detalle.x, ancho - 268)) : 0;
+  const tooltipY = detalle ? Math.max(8, Math.min(detalle.y, ALTO - 174)) : 0;
 
   const mostrarDetalle = (day: string, x: number, y: number) => setDetalle({ day, x, y });
 
   return (
     <div className="an-grafica" ref={ref}>
-      <svg width={ancho} height={ALTO} viewBox={`0 0 ${ancho} ${ALTO}`} role="group" aria-label={titulo}>
-        <line className="an-eje" x1={PAD.left} x2={ancho - PAD.right} y1={base} y2={base} />
+      <div className="an-grafica-scroll">
+      <svg width={anchoSvg} height={ALTO} viewBox={`0 0 ${anchoSvg} ${ALTO}`} role="group" aria-label={titulo}>
+        <line className="an-eje" x1={PAD.left} x2={anchoSvg - PAD.right} y1={base} y2={base} />
 
         {data.map((d, i) => {
           const x = PAD.left + i * slot + (slot - anchoBarra) / 2;
           const h = (d.calls / max) * innerH;
           const esHoy = i === hoy;
-          const seleccionado = detalle?.day === d.day;
+          const seleccionado = detalle?.day === d.at;
           return (
             <g
-              key={d.day}
-              className={seleccionado || diaSeleccionado === d.day ? "an-barra-grupo is-activo" : "an-barra-grupo"}
+              key={d.at}
+              className={seleccionado || puntoSeleccionado === d.at ? "an-barra-grupo is-activo" : "an-barra-grupo"}
               role="button"
-              aria-label={`${diaCompleto(d.day)}: ${d.calls} ${d.calls === 1 ? "llamada" : "llamadas"}`}
-              aria-pressed={diaSeleccionado === d.day}
-              tabIndex={d.calls > 0 ? 0 : -1}
-              onPointerEnter={(event) => mostrarDetalle(d.day, event.clientX - ref.current!.getBoundingClientRect().left, event.clientY - ref.current!.getBoundingClientRect().top)}
-              onPointerMove={(event) => mostrarDetalle(d.day, event.clientX - ref.current!.getBoundingClientRect().left, event.clientY - ref.current!.getBoundingClientRect().top)}
+              aria-label={`${fechaPunto(d.at, intervalo, true)}: ${d.calls} ${d.calls === 1 ? "petición" : "peticiones"}, ${d.tokens.toLocaleString("es-EC")} tokens`}
+              aria-pressed={puntoSeleccionado === d.at}
+              tabIndex={0}
+              onPointerEnter={(event) => mostrarDetalle(d.at, event.clientX - ref.current!.getBoundingClientRect().left, event.clientY - ref.current!.getBoundingClientRect().top)}
+              onPointerMove={(event) => mostrarDetalle(d.at, event.clientX - ref.current!.getBoundingClientRect().left, event.clientY - ref.current!.getBoundingClientRect().top)}
               onPointerLeave={() => setDetalle(null)}
-              onClick={() => onSeleccionDia?.(d.day)}
+              onClick={() => onSeleccionPunto?.(d.at)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  onSeleccionDia?.(d.day);
+                  onSeleccionPunto?.(d.at);
                 }
               }}
-              onFocus={() => mostrarDetalle(d.day, x + anchoBarra / 2, Math.max(PAD.top, base - h))}
+              onFocus={(event) => {
+                const caja = event.currentTarget.getBoundingClientRect();
+                const grafica = ref.current!.getBoundingClientRect();
+                mostrarDetalle(d.at, caja.left + caja.width / 2 - grafica.left, caja.top - grafica.top);
+              }}
               onBlur={() => setDetalle(null)}
             >
-              <title>{`${diaCompleto(d.day)}: ${d.calls} ${d.calls === 1 ? "llamada" : "llamadas"}`}</title>
+              <title>{`${fechaPunto(d.at, intervalo, true)}: ${d.calls} ${d.calls === 1 ? "petición" : "peticiones"}`}</title>
               {h > 0 && <path className={esHoy ? "an-barra is-hoy" : "an-barra"} d={barra(x, base - h, anchoBarra, h)} />}
               {esHoy && d.calls > 0 && (
                 <text className="an-valor-hoy" x={x + anchoBarra / 2} y={base - h - 8} textAnchor="middle">
@@ -119,7 +128,7 @@ export function VolumenLlamadas({ data, titulo, diaSeleccionado, onSeleccionDia 
                   y={base + 19}
                   textAnchor="middle"
                 >
-                  {n <= 7 ? diaSemana(d.day) : String(Number(d.day.slice(8, 10)))}
+                  {fechaPunto(d.at, intervalo)}
                 </text>
               )}
             </g>
@@ -128,23 +137,25 @@ export function VolumenLlamadas({ data, titulo, diaSeleccionado, onSeleccionDia 
 
         {vacio && (
           <text className="an-vacio" x={ancho / 2} y={PAD.top + innerH / 2} textAnchor="middle">
-            Sin llamadas en este periodo
+            Sin peticiones en este periodo
           </text>
         )}
       </svg>
+      </div>
       {diaDetalle && (
         <div className="an-tooltip-dia" role="tooltip" style={{ left: tooltipX, top: tooltipY }}>
-          <strong>{diaCompleto(diaDetalle.day)}</strong>
-          <div className="an-tooltip-total"><span>Llamadas</span><b>{diaDetalle.calls}</b></div>
-          {diaDetalle.modelos && diaDetalle.modelos.length > 0 && (
+          <strong>{fechaPunto(diaDetalle.at, intervalo, true)}</strong>
+          <div className="an-tooltip-total"><span>Peticiones</span><b>{diaDetalle.calls}</b></div>
+          <div className="an-tooltip-total"><span>Tokens</span><b>{diaDetalle.tokens.toLocaleString("es-EC")}</b></div>
+          {diaDetalle.modelos.length > 0 && (
             <ul>
-              {[...diaDetalle.modelos].sort((a, b) => b.calls - a.calls).slice(0, 5).map((modelo) => (
+              {[...diaDetalle.modelos].sort((a, b) => b.calls - a.calls).slice(0, 2).map((modelo) => (
                 <li key={`${modelo.provider}/${modelo.model}`}>
-                  <span>{modelo.provider} · {modelo.model}</span>
-                  <b>{modelo.calls} {modelo.calls === 1 ? "llamada" : "llamadas"}</b>
+                  <span title={`${modelo.provider} · ${modelo.model}`}>{modelo.model}</span>
+                  <b>{modelo.tokens.toLocaleString("es-EC")} tok · {modelo.calls} {modelo.calls === 1 ? "petición" : "peticiones"}</b>
                 </li>
               ))}
-              {diaDetalle.modelos.length > 5 && <li className="an-tooltip-mas">y {diaDetalle.modelos.length - 5} modelos más</li>}
+              {diaDetalle.modelos.length > 2 && <li className="an-tooltip-mas">{diaDetalle.modelos.length - 2} más · ver detalle abajo</li>}
             </ul>
           )}
         </div>

@@ -1,9 +1,9 @@
 import { useState, useMemo, type ReactNode } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { api, type Analytics, type Task } from "../api";
+import { api, type Analytics, type AnalyticsVolume, type Task } from "../api";
 import { LoadingSkeleton } from "../components/loading-skeleton";
 import { compact } from "../components/charts";
-import { diaCompleto, VolumenLlamadas } from "../components/an-volumen";
+import { fechaPunto, VolumenLlamadas } from "../components/an-volumen";
 import { Paginacion } from "../components/paginacion";
 import { cuando } from "../components/tarea-formato";
 import { agenteDeTarea, duracionSeg, fechaUtc, nombreAgente } from "../lib/tareas-vista";
@@ -13,6 +13,16 @@ import "../styles-analiticas.css";
 const PERIODS = [7, 30, 90] as const;
 const FILAS_POR_PAGINA = 5;
 const DIA_MS = 86_400_000;
+const MAX_VOLUMEN_MS: Record<AnalyticsVolume["intervalo"], number> = {
+  minuto: 6 * 60 * 60_000 + 60_000,
+  hora: 90 * DIA_MS + 60_000,
+  dia: 365 * DIA_MS + 60_000,
+};
+
+function fechaLocalInput(ms: number): string {
+  const fecha = new Date(ms - new Date(ms).getTimezoneOffset() * 60_000);
+  return fecha.toISOString().slice(0, 16);
+}
 
 export const usd = (n: number) => {
   if (n === 0) return "US$ 0.00";
@@ -104,8 +114,12 @@ export function AnalyticsPage() {
   const [proyecto, setProyecto] = useState("");
   const [modelo, setModelo] = useState("");
   const [pagina, setPagina] = useState(1);
-  const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null);
-  const [modeloDia, setModeloDia] = useState("");
+  const [puntoSeleccionado, setPuntoSeleccionado] = useState<string | null>(null);
+  const [modeloIntervalo, setModeloIntervalo] = useState("");
+  const [desdeBorrador, setDesdeBorrador] = useState(() => fechaLocalInput(Date.now() - 30 * DIA_MS));
+  const [hastaBorrador, setHastaBorrador] = useState(() => fechaLocalInput(Date.now()));
+  const [intervaloBorrador, setIntervaloBorrador] = useState<AnalyticsVolume["intervalo"]>("dia");
+  const [rangoVolumen, setRangoVolumen] = useState(() => ({ desde: fechaLocalInput(Date.now() - 30 * DIA_MS), hasta: fechaLocalInput(Date.now()), intervalo: "dia" as AnalyticsVolume["intervalo"] }));
 
   const query = useQuery({
     queryKey: ["analytics", days, proyecto, modelo],
@@ -114,6 +128,23 @@ export function AnalyticsPage() {
   });
   const data: Analytics | undefined = query.data;
   const models = useQuery({ queryKey: ["models"], queryFn: api.listModels, staleTime: 5 * 60_000 });
+  const desdeMs = new Date(rangoVolumen.desde).getTime();
+  const hastaMs = new Date(rangoVolumen.hasta).getTime();
+  const rangoValido = Number.isFinite(desdeMs) && Number.isFinite(hastaMs) && desdeMs <= hastaMs;
+  const borradorValido = Number.isFinite(new Date(desdeBorrador).getTime()) && Number.isFinite(new Date(hastaBorrador).getTime()) && new Date(desdeBorrador).getTime() <= new Date(hastaBorrador).getTime();
+  const borradorDentroLimite = borradorValido && new Date(hastaBorrador).getTime() - new Date(desdeBorrador).getTime() <= MAX_VOLUMEN_MS[intervaloBorrador];
+  const volumen = useQuery({
+    queryKey: ["analytics-volume", rangoVolumen, proyecto, modelo],
+    queryFn: () => api.getAnalyticsVolume({
+      desde: new Date(rangoVolumen.desde).toISOString(),
+      hasta: new Date(new Date(rangoVolumen.hasta).getTime() + 59_999).toISOString(),
+      intervalo: rangoVolumen.intervalo,
+      proyecto: proyecto || null,
+      modelo: modelo || null,
+    }),
+    enabled: rangoValido,
+    placeholderData: keepPreviousData,
+  });
   const tareas = useQuery({ queryKey: ["tasks"], queryFn: api.listTasks });
   const names = useMemo(() => new Map((models.data?.models ?? []).map((m) => [m.id, m.name])), [models.data]);
   const nombreModelo = (id: string) => names.get(id) ?? id;
@@ -136,18 +167,30 @@ export function AnalyticsPage() {
   const filasTabla = ejecuciones.slice((paginaTabla - 1) * FILAS_POR_PAGINA, paginaTabla * FILAS_POR_PAGINA);
 
   const tiempo = data ? tiempoComputoSeg(data) : null;
-  const primerDia = data?.byDay[0]?.day;
-  const ultimoDia = data?.byDay.at(-1)?.day;
-  const rango = primerDia && ultimoDia ? `Del ${diaCompleto(primerDia)} al ${diaCompleto(ultimoDia)}` : "";
   const maxModelo = data ? Math.max(0, ...data.byModel.map((r) => r.tokens)) : 0;
   const totalCosto = data ? data.byModel.reduce((s, r) => s + r.cost, 0) : 0;
-  const diaActivo = data?.byDay.find((d) => d.day === diaSeleccionado) ?? data?.byDay.at(-1) ?? null;
-  const modelosDia = diaActivo?.modelos ?? [];
-  const opcionesModeloDia = [...new Set(modelosDia.map((m) => `${m.provider}/${m.model}`))];
-  const modeloDiaActivo = opcionesModeloDia.includes(modeloDia) ? modeloDia : "";
-  const modelosDiaFiltrados = modelosDia
-    .filter((m) => !modeloDiaActivo || `${m.provider}/${m.model}` === modeloDiaActivo)
+  const volumenData = volumen.data;
+  const intervaloActivo = volumenData?.puntos.find((punto) => punto.at === puntoSeleccionado) ?? volumenData?.puntos.at(-1) ?? null;
+  const modelosIntervalo = intervaloActivo?.modelos ?? [];
+  const opcionesModeloIntervalo = [...new Set(modelosIntervalo.map((m) => `${m.provider}/${m.model}`))];
+  const modeloIntervaloActivo = opcionesModeloIntervalo.includes(modeloIntervalo) ? modeloIntervalo : "";
+  const modelosIntervaloFiltrados = modelosIntervalo
+    .filter((m) => !modeloIntervaloActivo || `${m.provider}/${m.model}` === modeloIntervaloActivo)
     .sort((a, b) => b.calls - a.calls);
+  const estimadoApiPorModelo = (modeloId: string, inputTokens: number, outputTokens: number, llamadasMedidas: number) => {
+    const tarifa = models.data?.models.find((m) => m.id === modeloId);
+    if (!tarifa || llamadasMedidas === 0 || tarifa.inputUsd < 0 || tarifa.outputUsd < 0) return null;
+    if (tarifa.free && tarifa.inputUsd === 0 && tarifa.outputUsd === 0) return 0;
+    if (tarifa.inputUsd === 0 && tarifa.outputUsd === 0) return null;
+    return (inputTokens * tarifa.inputUsd + outputTokens * tarifa.outputUsd) / 1_000_000;
+  };
+  const modelosMedidos = data?.byModel.filter((fila) => fila.measuredCalls > 0) ?? [];
+  const equivalenciasApi = modelosMedidos.flatMap((fila) => {
+    const valor = estimadoApiPorModelo(fila.model, fila.measuredInputTokens, fila.measuredOutputTokens, fila.measuredCalls);
+    return valor === null ? [] : [{ fila, valor }];
+  });
+  const totalEquivalenteApi = equivalenciasApi.reduce((total, fila) => total + fila.valor, 0);
+  const tokensConTarifa = equivalenciasApi.reduce((total, { fila }) => total + fila.measuredInputTokens + fila.measuredOutputTokens, 0);
 
   // Totales de uso interno de Telo (Jev)
   const jevTotales = useMemo(() => {
@@ -184,8 +227,8 @@ export function AnalyticsPage() {
                   onClick={() => {
                     setDays(p);
                     setPagina(1);
-                    setDiaSeleccionado(null);
-                    setModeloDia("");
+                    setPuntoSeleccionado(null);
+                    setModeloIntervalo("");
                   }}
                 >
                   {p}d
@@ -367,48 +410,77 @@ export function AnalyticsPage() {
             <section className="an-panel" aria-labelledby="an-volumen-titulo">
               <div className="an-panel-cabeza">
                 <div className="an-panel-texto">
-                  <h2 id="an-volumen-titulo" className="an-panel-titulo">Volumen de llamadas diarias</h2>
-                  <p className="an-panel-sub">{rango ? `${rango} · ${data.days} días` : `${data.days} días`}</p>
+                  <h2 id="an-volumen-titulo" className="an-panel-titulo">Volumen de peticiones</h2>
+                  <p className="an-panel-sub">Las fechas se agrupan en UTC; el rango que eliges usa tu hora local.</p>
                 </div>
                 <div className="an-leyenda" aria-hidden="true">
                   <span>
                     <i className="an-leyenda-punto is-hoy" />
-                    Día actual
+                    Último intervalo
                   </span>
                   <span>
                     <i className="an-leyenda-punto" />
-                    Otros días
+                    Otros intervalos
                   </span>
                 </div>
               </div>
-              <VolumenLlamadas
-                data={data.byDay}
-                titulo={`Llamadas por día en los últimos ${data.days} días`}
-                diaSeleccionado={diaActivo?.day}
-                onSeleccionDia={setDiaSeleccionado}
-              />
+              <form className="an-volumen-filtros" onSubmit={(event) => {
+                event.preventDefault();
+                if (borradorDentroLimite) {
+                  setRangoVolumen({ desde: desdeBorrador, hasta: hastaBorrador, intervalo: intervaloBorrador });
+                  setPuntoSeleccionado(null);
+                }
+              }}>
+                <label className="an-campo">
+                  <span className="an-campo-etiqueta">Desde</span>
+                  <input className="an-input" type="datetime-local" value={desdeBorrador} onChange={(event) => setDesdeBorrador(event.target.value)} required />
+                </label>
+                <label className="an-campo">
+                  <span className="an-campo-etiqueta">Hasta</span>
+                  <input className="an-input" type="datetime-local" value={hastaBorrador} onChange={(event) => setHastaBorrador(event.target.value)} required />
+                </label>
+                <label className="an-campo an-volumen-intervalo">
+                  <span className="an-campo-etiqueta">Agrupar por</span>
+                  <select className="an-select" value={intervaloBorrador} onChange={(event) => setIntervaloBorrador(event.target.value as AnalyticsVolume["intervalo"])}>
+                    <option value="dia">Día</option>
+                    <option value="hora">Hora</option>
+                    <option value="minuto">Minuto</option>
+                  </select>
+                </label>
+                <button className="btn btn-secondary an-volumen-aplicar" type="submit" disabled={!borradorDentroLimite}>Aplicar rango</button>
+              </form>
+              <p className="an-volumen-limite">Máximo: 6 h por minuto · 90 días por hora · 365 días por día.</p>
+              {volumen.isPending && !volumen.data ? <LoadingSkeleton tipo="lineas" cantidad={3} /> : null}
+              {volumen.isError && <div className="error-box" role="alert"><span className="error-text">{errorText(volumen.error)}</span></div>}
+              {volumenData && <VolumenLlamadas
+                data={volumenData.puntos}
+                titulo={`Peticiones por ${volumenData.intervalo}`}
+                intervalo={volumenData.intervalo}
+                puntoSeleccionado={intervaloActivo?.at}
+                onSeleccionPunto={setPuntoSeleccionado}
+              />}
               <div className="an-dia-detalle" aria-live="polite">
                 <div className="an-dia-detalle-cabeza">
                   <div>
-                    <strong>{diaActivo ? diaCompleto(diaActivo.day) : "Sin días registrados"}</strong>
-                    <span>{diaActivo ? `${diaActivo.calls} ${diaActivo.calls === 1 ? "llamada" : "llamadas"} en total` : "Selecciona un día de la gráfica."}</span>
+                    <strong>{intervaloActivo && volumenData ? fechaPunto(intervaloActivo.at, volumenData.intervalo, true) : "Sin intervalos registrados"}</strong>
+                    <span>{intervaloActivo ? `${intervaloActivo.calls} ${intervaloActivo.calls === 1 ? "petición" : "peticiones"} · ${compact(intervaloActivo.tokens)} tokens` : "Selecciona una barra para ver el detalle."}</span>
                   </div>
                   <label className="an-campo an-dia-filtro">
-                    <span className="an-campo-etiqueta">Modelo del día</span>
-                    <select className="an-select" value={modeloDiaActivo} onChange={(event) => setModeloDia(event.target.value)}>
+                    <span className="an-campo-etiqueta">Modelo del intervalo</span>
+                    <select className="an-select" value={modeloIntervaloActivo} onChange={(event) => setModeloIntervalo(event.target.value)}>
                       <option value="">Todos los modelos</option>
-                      {opcionesModeloDia.map((id) => <option key={id} value={id}>{id}</option>)}
+                      {opcionesModeloIntervalo.map((id) => <option key={id} value={id}>{id}</option>)}
                     </select>
                   </label>
                 </div>
-                {!diaActivo || modelosDiaFiltrados.length === 0 ? (
-                  <p className="an-nota">{diaActivo?.calls ? "No hay detalle por modelo para este día." : "No se registraron llamadas en este día."}</p>
+                {!intervaloActivo || modelosIntervaloFiltrados.length === 0 ? (
+                  <p className="an-nota">{intervaloActivo?.calls ? "No hay detalle por modelo para este intervalo." : "No se registraron peticiones en este intervalo."}</p>
                 ) : (
-                  <ul className="an-dia-modelos" aria-label={`Llamadas por modelo el ${diaCompleto(diaActivo.day)}`}>
-                    {modelosDiaFiltrados.map((m) => (
+                  <ul className="an-dia-modelos" aria-label="Peticiones y tokens por modelo en el intervalo seleccionado">
+                    {modelosIntervaloFiltrados.map((m) => (
                       <li key={`${m.provider}/${m.model}`}>
                         <span><b>{m.model}</b><small>{m.provider}</small></span>
-                        <strong>{m.calls} {m.calls === 1 ? "llamada" : "llamadas"}</strong>
+                        <strong>{compact(m.tokens)} tok · {m.calls} {m.calls === 1 ? "petición" : "peticiones"}</strong>
                       </li>
                     ))}
                   </ul>
@@ -421,9 +493,17 @@ export function AnalyticsPage() {
                 <div className="an-panel-cabeza">
                   <div className="an-panel-texto">
                     <h2 id="an-modelos-titulo" className="an-panel-titulo">Distribución por modelo</h2>
-                    <p className="an-panel-sub">Consumo agrupado de tokens y coste</p>
+                    <p className="an-panel-sub">Tokens registrados y equivalente de precio API</p>
                   </div>
                   <span className="an-chip">{data.byModel.length} activos</span>
+                </div>
+
+                <div className="an-equivalencia-total" aria-label="Estimación equivalente a precios API públicos">
+                  <strong>Equivalente API del uso con tokens medidos</strong>
+                  <b>{equivalenciasApi.length ? `≈ ${usd(totalEquivalenteApi)}` : "No disponible"}</b>
+                  <span>
+                    {compact(tokensConTarifa)} tokens medidos con tarifa conocida · {equivalenciasApi.length} de {modelosMedidos.length} modelos con uso medido. No es un cargo real.
+                  </span>
                 </div>
 
                 {data.byModel.length === 0 ? (
@@ -444,8 +524,15 @@ export function AnalyticsPage() {
                                 {parsed.proveedor}
                               </span>
                             </div>
-                            <span className="an-modelo-valor">
-                              {compact(r.tokens)} tok • {usd(r.cost)}
+                            <span className="an-modelo-valor">{compact(r.tokens)} tok · {compact(r.calls)} peticiones</span>
+                          </div>
+                          <div className="an-modelo-equivalencias">
+                            <span>Coste registrado: {usd(r.cost)}</span>
+                            <span title={`Estimación con ${r.measuredCalls} de ${r.calls} llamadas que reportaron tokens medidos`}>
+                              Equivalente API: {(() => {
+                                const estimado = estimadoApiPorModelo(r.model, r.measuredInputTokens, r.measuredOutputTokens, r.measuredCalls);
+                                return estimado === null ? "no disponible" : `≈ ${usd(estimado)}`;
+                              })()}
                             </span>
                           </div>
                           <div className="an-pista" aria-hidden="true">
@@ -456,6 +543,7 @@ export function AnalyticsPage() {
                     })}
                   </ul>
                 )}
+                <p className="an-nota">El equivalente API usa precios publicados del catálogo y solo llamadas con tokens medidos. Es una referencia, no un cargo real; los modelos sin tarifa conocida aparecen como «no disponible».</p>
               </section>
 
               {data.budget && (
@@ -539,10 +627,10 @@ export function AnalyticsPage() {
                     <thead>
                       <tr>
                         <th scope="col">Modelo</th>
-                        <th scope="col" className="an-numero">Tareas completadas</th>
+                        <th scope="col" className="an-numero">Peticiones</th>
                         <th scope="col" className="an-numero">Tokens totales</th>
                         <th scope="col" className="an-numero">Duración media</th>
-                        <th scope="col" className="an-numero">Coste acumulado</th>
+                        <th scope="col" className="an-numero">Coste registrado</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -563,8 +651,8 @@ export function AnalyticsPage() {
                               <span className="an-proveedor-chip">{parsed.proveedor}</span>
                               </div>
                             </th>
-                            <td data-etiqueta="Tareas completadas" className="an-numero">
-                              {m.tareas > 0 ? `${m.tareas} ${m.tareas === 1 ? "tarea" : "tareas"}` : "Solo chat / directa"}
+                            <td data-etiqueta="Peticiones" className="an-numero">
+                              {compact(m.calls)}
                             </td>
                             <td data-etiqueta="Tokens totales" className="an-numero">
                               {compact(m.tokens)}
@@ -572,7 +660,7 @@ export function AnalyticsPage() {
                             <td data-etiqueta="Duración media" className="an-numero">
                               {formatDuracion(m.duracionMediaSeg)}
                             </td>
-                            <td data-etiqueta="Coste acumulado" className="an-numero">
+                            <td data-etiqueta="Coste registrado" className="an-numero">
                               {usd(m.cost)}
                             </td>
                           </tr>

@@ -160,9 +160,10 @@ export function inyectarSkillsEnPrompt(
   const menciones = detectarMencionesSkills(prompt);
   const nombres = [...new Set([...menciones, ...skillsAutomaticas(prompt)])];
   if (nombres.length === 0) return { promptFinal: prompt, skillsInvocadas: [] };
+  const esVideo = nombres.some((nombre) => ["motion-design", "hyperframes", "hyperframes-cli", "instagram-agent", "ig-reel"].includes(nombre));
 
   const skills = resolverSkillsInvocadas(nombres, projectId);
-  if (skills.length === 0) return { promptFinal: prompt, skillsInvocadas: [] };
+  if (skills.length === 0 && !esVideo) return { promptFinal: prompt, skillsInvocadas: [] };
 
   const bloques = skills.map((s) => {
     return [
@@ -172,11 +173,19 @@ export function inyectarSkillsEnPrompt(
     ].join("\n");
   });
 
+  const estandarVideo = esVideo ? [
+    "--- ESTÁNDAR DE DISEÑO Y ENTREGA DE VIDEO ---",
+    "Si el usuario aporta un video de referencia, inspecciona varios fotogramas y extrae ritmo, encuadre, jerarquía tipográfica, paleta y transiciones para usarlos como guía visual, sin copiar contenido protegido.",
+    "Define una idea por escena, un inicio que enganche, máximo dos familias tipográficas, una paleta coherente con contraste legible en móvil, márgenes seguros y subtítulos sincronizados que no tapen elementos importantes. Usa movimiento con intención y varía el ritmo; evita pantallas vacías o negras entre escenas.",
+    "Antes de entregar, revisa fotogramas del inicio, centro y final a tamaño de teléfono; comprueba textos cortados o solapados, contraste, sincronía de voz/subtítulos, audio y duración del MP4. Entrega el archivo accesible en el chat y enlázalo en la respuesta final.",
+    "--- FIN DEL ESTÁNDAR DE VIDEO ---",
+  ].join("\n") : "";
+
   const encabezado = [
     "[SKILLS ACTIVADAS POR EL USUARIO]",
     "Aplica estas skills, seleccionadas por el usuario o por el tipo de tarea:",
     "",
-    bloques.join("\n\n"),
+    [...bloques, estandarVideo].filter(Boolean).join("\n\n"),
     "",
     "DIRECTIVA OBLIGATORIA: Aplica y respeta estrictamente los principios, workflows, herramientas y buenas prácticas descritas en las skills activadas arriba para responder y resolver esta petición.",
     "---",

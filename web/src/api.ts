@@ -1220,6 +1220,12 @@ export const api = {
     if (filtros.modelo) q.set("modelo", filtros.modelo);
     return request<Analytics>(`/api/analytics?${q.toString()}`);
   },
+  getAnalyticsVolume: (filtros: { desde: string; hasta: string; intervalo: "dia" | "hora" | "minuto"; proyecto?: string | null; modelo?: string | null }) => {
+    const q = new URLSearchParams({ desde: filtros.desde, hasta: filtros.hasta, intervalo: filtros.intervalo });
+    if (filtros.proyecto) q.set("proyecto", filtros.proyecto);
+    if (filtros.modelo) q.set("modelo", filtros.modelo);
+    return request<AnalyticsVolume>(`/api/analytics/volumen?${q.toString()}`);
+  },
   listSessions: () => request<AuthSession[]>("/api/sesiones"),
   revokeSession: (id: string) => request<{ ok: boolean }>(`/api/sesiones/${id}`, { method: "DELETE" }),
   closeOtherSessions: () => request<{ ok: boolean; revocadas: number }>("/api/sesiones/cerrar-otras", { method: "POST", body: "{}" }),
@@ -1284,6 +1290,20 @@ export type Preferences = {
 };
 
 export type CalidadUso = { tokensMedidos: number; tokensEstimados: number; costesEstimados: number; sinTokens: number; sinCoste: number; historicos: number };
+export type AnalyticsVolume = {
+  intervalo: "dia" | "hora" | "minuto";
+  desde: string;
+  hasta: string;
+  puntos: {
+    at: string;
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    tokens: number;
+    estimados: number;
+    modelos: { model: string; provider: string; calls: number; inputTokens: number; outputTokens: number; tokens: number; estimados: number }[];
+  }[];
+};
 export type Analytics = {
   calidad?: CalidadUso;
   byTask?: (CalidadUso & { taskId: string; calls: number; tokens: number; cost: number })[];
@@ -1298,6 +1318,12 @@ export type Analytics = {
   byModel: {
     model: string;
     cost: number;
+    inputTokens: number;
+    outputTokens: number;
+    measuredInputTokens: number;
+    measuredOutputTokens: number;
+    measuredCalls: number;
+    estimatedCalls: number;
     tokens: number;
     calls: number;
     tareas: number;

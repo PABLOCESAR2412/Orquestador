@@ -418,6 +418,11 @@ try {
         mesActual: { costoUsd: 1, costoEstimadoUsd: 1, costesEstimados: 6, costesNoDisponibles: 0, costesDesconocidos: 0, tokens: 4000, tokensMedidos: 4000, tokensEstimados: 0, tokensNoDisponibles: 0, tokensDesconocidos: 0, llamadasSinTokens: 0, llamadas: 6 },
         precision: "registro_telo",
       }], googleLive: { conectado: true, estado: "activo", mensaje: "Clave válida", ultimaComprobacion: now } };
+      else if (path === "/api/analytics/volumen") {
+        const intervalo = params.get("intervalo") ?? "dia";
+        const at = intervalo === "dia" ? now.slice(0, 10) : intervalo === "hora" ? `${now.slice(0, 13)}:00:00` : `${now.slice(0, 16)}:00`;
+        data = { intervalo, desde: params.get("desde"), hasta: params.get("hasta"), puntos: [{ at, calls: 1, inputTokens: 8, outputTokens: 2, tokens: 10, estimados: 0, modelos: [{ model: "google/prueba", provider: "google", calls: 1, inputTokens: 8, outputTokens: 2, tokens: 10, estimados: 0 }] }] };
+      }
       else if (path === "/api/analytics") data = {
         days: 30, filtros: { proyecto: null, modelo: null }, proyectos: [], modelos: [], budget: null, usoJev: [],
         totals: { calls: 1, inputTokens: sinDatos ? 0 : 8, outputTokens: sinDatos ? 0 : 2, cost: 0 }, byDay: [{ day: now.slice(0, 10), calls: 1, cost: 0, tokens: sinDatos ? 0 : 10, tokensEstimados: 0, modelos: [{ model: "google/prueba", provider: "google", calls: 1, tokens: sinDatos ? 0 : 10, estimados: 0 }] }], byModel: [{ model: "opencode/muse-spark-1.3-contributor-free-con-nombre-extenso", tareas: 0, tokens: 3100000, duracionMediaSeg: 591, cost: 0, calls: 2 }],
@@ -1475,9 +1480,24 @@ try {
     const barraDia = page.locator(".an-barra-grupo[tabindex='0']").first();
     await barraDia.focus();
     const detalleDia = page.getByRole("tooltip");
-    await detalleDia.getByText("Llamadas", { exact: true }).waitFor();
-    await detalleDia.getByText(/google · google\/prueba/).waitFor();
+    await detalleDia.getByText("Peticiones", { exact: true }).waitFor();
+    await detalleDia.getByText(/google\/prueba/).waitFor();
+    assert.equal(await detalleDia.evaluate(el => getComputedStyle(el).overflowY), "visible", "el tooltip no crea un scroll interno");
     await page.getByText(/registros con tokens medidos/).waitFor();
+    const agrupacionVolumen = page.getByLabel("Agrupar por");
+    const aplicarRangoVolumen = page.getByRole("button", { name: "Aplicar rango", exact: true });
+    await agrupacionVolumen.selectOption("hora");
+    await aplicarRangoVolumen.click();
+    await page.locator('svg[aria-label="Peticiones por hora"]').waitFor();
+    await agrupacionVolumen.selectOption("minuto");
+    assert.equal(await aplicarRangoVolumen.isDisabled(), true, "el rango amplio se limita antes de pedir datos por minuto");
+    const fechaLocal = ms => new Date(ms - new Date(ms).getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+    const finReferencia = new Date(now).getTime();
+    await page.getByLabel("Desde").fill(fechaLocal(finReferencia - 5 * 60 * 60_000));
+    await page.getByLabel("Hasta").fill(fechaLocal(finReferencia));
+    assert.equal(await aplicarRangoVolumen.isDisabled(), false, "el filtro por minuto permite rangos de hasta seis horas");
+    await aplicarRangoVolumen.click();
+    await page.locator('svg[aria-label="Peticiones por minuto"]').waitFor();
     const tablaModelos = page.locator(".an-tabla-modelos");
     await tablaModelos.scrollIntoViewIfNeeded();
     assert.equal(await tablaModelos.evaluate(el => el.scrollWidth > el.parentElement.clientWidth + 1), false, "los nombres largos no desbordan el panel de ejecuciones");
@@ -1493,7 +1513,7 @@ try {
     sinDatos = true;
     await page.reload();
     await page.getByText("No disponible", { exact: true }).first().waitFor();
-    assert.equal(await page.getByText("No disponible", { exact: true }).count(), 2);
+    assert.equal(await page.getByText("No disponible", { exact: true }).count(), 3);
     const origenTarea = page.getByRole("table", { name: /Uso de IA por origen/ }).getByRole("row").filter({ hasText: "Tareas del agente" });
     assert.equal(await origenTarea.getByRole("cell").nth(1).textContent(), "—");
     conversacionesDisponibles = true; sinDatos = false;

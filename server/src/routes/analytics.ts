@@ -6,9 +6,15 @@ type Totals = { calls: number; input: number; output: number; cost: number };
 type DiaModeloRow = { model: string; provider: string; calls: number; tokens: number; estimados: number };
 type DayRow = { day: string; cost: number; tokens: number; calls: number; tokensEstimados: number; modelos: DiaModeloRow[] };
 type StatusRow = { status: string; n: number };
-type UsoModeloRow = { model: string; cost: number; tokens: number; calls: number };
+type UsoModeloRow = {
+  model: string; cost: number; inputTokens: number; outputTokens: number; measuredInputTokens: number; measuredOutputTokens: number;
+  measuredCalls: number; estimatedCalls: number; tokens: number; calls: number;
+};
 type UsoTipoRow = { tipo: "chat" | "tarea" | "otro"; calls: number; tokens: number; cost: number; tokensEstimados: number; sinTokens: number; sinCoste: number };
 type TareaModeloRow = { model: string; tareas: number; duracion: number | null };
+type VolumenModeloRow = {
+  at: string; model: string; provider: string; calls: number; inputTokens: number; outputTokens: number; tokens: number; estimados: number;
+};
 
 const TASK_STATUSES = ["queued", "analyzing", "waiting_approval", "running", "interrupted", "sin_cuota", "done", "failed", "cancelled"] as const;
 
@@ -24,6 +30,82 @@ const PROYECTO_DE_USO =
 const filtro = (valor: string | undefined): string | null => valor?.trim() || null;
 
 export const analytics = new Hono();
+
+// Volumen con rango preciso para explorar día, hora o minuto sin cambiar los totales generales.
+analytics.get("/analytics/volumen", (c) => {
+  const intervalo = c.req.query("intervalo") ?? "dia";
+  const formatos: Record<string, { unidadMs: number; sql: string; maxIntervalos: number }> = {
+    minuto: { unidadMs: 60_000, sql: "%Y-%m-%d %H:%M:00", maxIntervalos: 6 * 60 },
+    hora: { unidadMs: 3_600_000, sql: "%Y-%m-%d %H:00:00", maxIntervalos: 90 * 24 },
+    dia: { unidadMs: 86_400_000, sql: "%Y-%m-%d", maxIntervalos: 365 },
+  };
+  const formato = formatos[intervalo];
+  if (!formato) return c.json({ error: "El intervalo debe ser minuto, hora o dia." }, 400);
+
+  const desdeTexto = c.req.query("desde");
+  const hastaTexto = c.req.query("hasta");
+  const desdeMs = desdeTexto ? Date.parse(desdeTexto) : NaN;
+  const hastaMs = hastaTexto ? Date.parse(hastaTexto) : NaN;
+  if (!Number.isFinite(desdeMs) || !Number.isFinite(hastaMs) || desdeMs > hastaMs) {
+    return c.json({ error: "Indica un rango de fechas válido, con inicio anterior al final." }, 400);
+  }
+  const intervalos = Math.floor(hastaMs / formato.unidadMs) - Math.floor(desdeMs / formato.unidadMs);
+  if (intervalos > formato.maxIntervalos) {
+    const limite = intervalo === "minuto" ? "6 horas" : intervalo === "hora" ? "90 días" : "365 días";
+    return c.json({ error: `El rango máximo para este intervalo es ${limite}.` }, 400);
+  }
+
+  const fechaSql = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+  const desde = fechaSql(desdeMs);
+  const hasta = fechaSql(hastaMs);
+  const proyecto = filtro(c.req.query("proyecto"));
+  const modelo = filtro(c.req.query("modelo"));
+  const condiciones = ["datetime(u.created_at) >= datetime(?)", "datetime(u.created_at) <= datetime(?)"];
+  const params: string[] = [desde, hasta];
+  if (proyecto) {
+    condiciones.push(`${PROYECTO_DE_USO} = ?`);
+    params.push(proyecto);
+  }
+  if (modelo) {
+    condiciones.push("u.model = ?");
+    params.push(modelo);
+  }
+  const where = `WHERE ${condiciones.join(" AND ")}`;
+  const bucketSql = `strftime('${formato.sql}', u.created_at)`;
+  const filas = db.query<{
+    at: string; calls: number; inputTokens: number; outputTokens: number; tokens: number; estimados: number;
+  }, string[]>(`SELECT ${bucketSql} AS at, COUNT(*) AS calls,
+      COALESCE(SUM(u.input_tokens), 0) AS inputTokens,
+      COALESCE(SUM(u.output_tokens + COALESCE(u.reasoning_tokens, 0)), 0) AS outputTokens,
+      COALESCE(SUM(u.input_tokens + u.output_tokens + COALESCE(u.reasoning_tokens, 0)), 0) AS tokens,
+      COALESCE(SUM(u.tokens_precision='estimado'), 0) AS estimados
+    FROM usage u ${where} GROUP BY at`).all(...params);
+  const modelos = db.query<VolumenModeloRow, string[]>(`SELECT ${bucketSql} AS at, u.model, u.provider, COUNT(*) AS calls,
+      COALESCE(SUM(u.input_tokens), 0) AS inputTokens,
+      COALESCE(SUM(u.output_tokens + COALESCE(u.reasoning_tokens, 0)), 0) AS outputTokens,
+      COALESCE(SUM(u.input_tokens + u.output_tokens + COALESCE(u.reasoning_tokens, 0)), 0) AS tokens,
+      COALESCE(SUM(u.tokens_precision='estimado'), 0) AS estimados
+    FROM usage u ${where} GROUP BY at, u.model, u.provider`).all(...params);
+
+  const porBucket = new Map(filas.map((fila) => [fila.at, fila]));
+  const modelosPorBucket = new Map<string, VolumenModeloRow[]>();
+  for (const fila of modelos) {
+    const lista = modelosPorBucket.get(fila.at) ?? [];
+    lista.push(fila);
+    modelosPorBucket.set(fila.at, lista);
+  }
+  const primero = Math.floor(desdeMs / formato.unidadMs) * formato.unidadMs;
+  const ultimo = Math.floor(hastaMs / formato.unidadMs) * formato.unidadMs;
+  const puntos = [];
+  for (let ms = primero; ms <= ultimo; ms += formato.unidadMs) {
+    const at = intervalo === "dia" ? new Date(ms).toISOString().slice(0, 10) : new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+    puntos.push({
+      ...(porBucket.get(at) ?? { at, calls: 0, inputTokens: 0, outputTokens: 0, tokens: 0, estimados: 0 }),
+      modelos: (modelosPorBucket.get(at) ?? []).map(({ at: _at, ...fila }) => fila).sort((a, b) => b.calls - a.calls),
+    });
+  }
+  return c.json({ intervalo, desde, hasta, puntos });
+});
 
 // GET /api/analytics?days=30&proyecto=<id>&modelo=<id>  (days de 7 a 365)
 analytics.get("/analytics", (c) => {
@@ -174,6 +256,12 @@ analytics.get("/analytics", (c) => {
     .query<UsoModeloRow, string[]>(
       `SELECT u.model AS model,
               COALESCE(SUM(u.cost), 0) AS cost,
+              COALESCE(SUM(u.input_tokens), 0) AS inputTokens,
+              COALESCE(SUM(u.output_tokens + COALESCE(u.reasoning_tokens, 0)), 0) AS outputTokens,
+              COALESCE(SUM(CASE WHEN u.tokens_precision='medida' THEN u.input_tokens ELSE 0 END), 0) AS measuredInputTokens,
+              COALESCE(SUM(CASE WHEN u.tokens_precision='medida' THEN u.output_tokens + COALESCE(u.reasoning_tokens, 0) ELSE 0 END), 0) AS measuredOutputTokens,
+              COALESCE(SUM(u.tokens_precision='medida'), 0) AS measuredCalls,
+              COALESCE(SUM(u.tokens_precision='estimado'), 0) AS estimatedCalls,
               COALESCE(SUM(u.input_tokens + u.output_tokens + COALESCE(u.reasoning_tokens, 0)), 0) AS tokens,
               COUNT(*) AS calls
          FROM usage u ${usoWhere}
@@ -191,23 +279,34 @@ analytics.get("/analytics", (c) => {
     )
     .all(...tareaParams);
 
-  type FilaModelo = { model: string; cost: number; tokens: number; calls: number; tareas: number; duracion: number | null };
+  type FilaModelo = {
+    model: string; cost: number; inputTokens: number; outputTokens: number; measuredInputTokens: number; measuredOutputTokens: number;
+    measuredCalls: number; estimatedCalls: number; tokens: number; calls: number; tareas: number; duracion: number | null;
+  };
   const porModelo = new Map<string, FilaModelo>();
   for (const r of usoPorModelo) {
-    porModelo.set(r.model, { model: r.model, cost: r.cost, tokens: r.tokens, calls: r.calls, tareas: 0, duracion: null });
+    porModelo.set(r.model, { ...r, tareas: 0, duracion: null });
   }
   for (const r of tareasPorModelo) {
-    const fila = porModelo.get(r.model) ?? { model: r.model, cost: 0, tokens: 0, calls: 0, tareas: 0, duracion: null };
+    const fila = porModelo.get(r.model) ?? {
+      model: r.model, cost: 0, inputTokens: 0, outputTokens: 0, measuredInputTokens: 0, measuredOutputTokens: 0,
+      measuredCalls: 0, estimatedCalls: 0, tokens: 0, calls: 0, tareas: 0, duracion: null,
+    };
     fila.tareas = r.tareas;
     fila.duracion = r.duracion;
     porModelo.set(r.model, fila);
   }
   const byModel = [...porModelo.values()]
     .sort((a, b) => b.cost - a.cost || b.tokens - a.tokens || b.tareas - a.tareas)
-    .slice(0, 12)
     .map((f) => ({
       model: f.model,
       cost: f.cost,
+      inputTokens: f.inputTokens,
+      outputTokens: f.outputTokens,
+      measuredInputTokens: f.measuredInputTokens,
+      measuredOutputTokens: f.measuredOutputTokens,
+      measuredCalls: f.measuredCalls,
+      estimatedCalls: f.estimatedCalls,
       tokens: f.tokens,
       calls: f.calls,
       tareas: f.tareas,

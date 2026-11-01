@@ -187,6 +187,12 @@ main.an-principal {
 .an-dia-detalle-cabeza > div strong { color: var(--ink); font-size: 14px; }
 .an-dia-detalle-cabeza > div span { color: var(--ink-2); font-family: var(--font-mono); font-size: 12px; }
 .an-dia-filtro { flex-basis: 220px; }
+.an-volumen-filtros { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(130px,.6fr) auto; align-items: end; gap: 10px; margin: 4px 0 2px; }
+.an-volumen-intervalo { flex-basis: 130px; }
+.an-volumen-aplicar { min-height: 40px; white-space: nowrap; }
+.an-volumen-filtros input { min-width: 0; }
+.an-volumen-limite { margin: 8px 0 0; color: var(--ink-2); font-size: 11px; line-height: 1.4; }
+.an-error { margin: 0; color: var(--danger); font-size: 13px; line-height: 1.45; }
 .an-dia-modelos { display: grid; gap: 6px; max-height: 240px; overflow-y: auto; margin: 0; padding: 0 6px 0 0; list-style: none; }
 .an-dia-modelos li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .an-dia-modelos li > span { display: grid; gap: 2px; min-width: 0; }
@@ -203,6 +209,7 @@ main.an-principal {
 
 /* Gráfica de llamadas diarias (SVG hecho a mano en an-volumen.tsx) */
 .an-grafica { position: relative; width: 100%; min-width: 0; }
+.an-grafica-scroll { width: 100%; max-width: 100%; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-color: var(--line-strong) transparent; }
 .an-grafica svg { display: block; overflow: visible; }
 .an-eje { stroke: var(--line-strong); stroke-width: 1; }
 .an-barra { fill: var(--bar); }
@@ -213,9 +220,7 @@ main.an-principal {
 .an-tooltip-dia {
   position: absolute;
   z-index: 2;
-  width: min(220px, calc(100% - 16px));
-  max-height: 130px;
-  overflow: auto;
+  width: min(260px, calc(100% - 16px));
   padding: 12px;
   border: 1px solid var(--line-strong);
   border-radius: 10px;
@@ -231,8 +236,8 @@ main.an-principal {
 .an-tooltip-dia small { display: block; margin-top: 5px; }
 .an-tooltip-dia ul { list-style: none; display: grid; gap: 6px; margin: 10px 0 0; padding: 8px 0 0; border-top: 1px solid var(--line); }
 .an-tooltip-dia li { display: grid; gap: 2px; min-width: 0; }
-.an-tooltip-dia li span { overflow-wrap: anywhere; color: var(--ink-2); }
-.an-tooltip-dia li b { font-family: var(--font-mono); font-size: 11px; font-weight: 500; }
+.an-tooltip-dia li span { overflow: hidden; color: var(--ink-2); text-overflow: ellipsis; white-space: nowrap; }
+.an-tooltip-dia li b { font-family: var(--font-mono); font-size: 10px; font-weight: 500; white-space: nowrap; }
 .an-tooltip-dia .an-tooltip-mas { color: var(--ink-2); }
 .an-barra.is-hoy { fill: var(--ink); }
 .an-valor-hoy { fill: var(--ink); font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
@@ -258,6 +263,11 @@ main.an-principal {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+.an-modelo-equivalencias { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--ink-2); font-family: var(--font-mono); font-size: 11px; line-height: 1.4; }
+.an-equivalencia-total { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: baseline; gap: 4px 12px; margin: 0 0 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.an-equivalencia-total strong { color: var(--ink); font-size: 13px; }
+.an-equivalencia-total b { color: var(--ink); font-family: var(--font-mono); font-size: 15px; font-weight: 600; }
+.an-equivalencia-total span { grid-column: 1 / -1; color: var(--ink-2); font-size: 11px; line-height: 1.4; }
 .an-pista { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
 .an-pista-relleno { display: block; height: 100%; border-radius: inherit; background: var(--bar); }
 
@@ -308,6 +318,8 @@ main.an-principal {
   .an-kpis { grid-template-columns: minmax(0, 1fr); }
   .an-dia-detalle-cabeza { align-items: stretch; }
   .an-dia-filtro { flex-basis: 100%; }
+  .an-volumen-filtros { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  .an-volumen-aplicar { grid-column: 1 / -1; }
   .an-kpi-valor { font-size: 30px; }
   .an-tabla thead { display: none; }
   .an-tabla,
