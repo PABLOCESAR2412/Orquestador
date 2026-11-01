@@ -21,6 +21,15 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 - [x] Las respuestas de trabajos largos y skills ahora deben usar títulos y listas legibles. En solicitudes de video, Telo valida que el MP4 exista y pueda servirse, enlaza el archivo y, si falta, hace un único intento de recuperación en la misma sesión; si no lo consigue, declara la entrega incompleta. CI Linux del PR #161 pasó en servidor e interfaz, incluida la suite unificada y sus pruebas de integración. Pendiente verificarlo en la VM con un render real.
 - [~] La primera columna de tablas queda compacta y sin salto por carácter; las tablas anchas conservan el desplazamiento de su contenedor. Pendiente revisión visual en escritorio y móvil.
 
+## Calidad de video, actividad y analíticas — 31 de octubre de 2026
+
+- [~] Las solicitudes de video activan una guía breve de diseño: jerarquía tipográfica, paleta, contraste móvil, ritmo, transiciones y revisión de fotogramas; exige enlazar el MP4 final. Revisé visualmente muestras del usuario: tienen identidad y composición consistentes, pero algunos intermedios son demasiado oscuros; la guía pide evitarlos.
+- [~] El proceso del chat diferencia supervisor y subagentes con iconos y separación visual, incluidos los pasos de herramientas.
+- [~] El volumen permite filtrar un rango de fecha y hora, agrupar por día, hora o minuto y consultar peticiones/tokens por modelo. Los intervalos se agrupan en UTC; el rango seleccionado usa la hora local del navegador.
+- [~] Analíticas presenta el equivalente a tarifa API pública por modelo solo con tokens medidos y tarifas conocidas; diferencia coste registrado y equivalencia, que no representa facturación real.
+- [x] Verificación local: typecheck del servidor, pruebas focalizadas de analíticas y skills de video, build y smoke visual en 390/1440 px aprobados. El smoke omite decodificación de video porque no se configuró un fixture para esa prueba.
+- [ ] Pendiente: confirmar en la VM filtros con uso real, tarifas que el catálogo no publique y render/entrega real de video.
+
 ## Selector y oficina — 31 de octubre de 2026
 
 - [~] Selector: integraciones plegadas inicialmente, identificación compacta y barra accesible de esfuerzo con confirmación. Mantiene proveedor en modelos destacados.

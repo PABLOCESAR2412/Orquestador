@@ -5,6 +5,12 @@
   "cambios": [
     {
       "fecha": "2026-10-31",
+      "tipo": "mediano",
+      "titulo": "Analíticas: filtros por fecha y hora, uso detallado y equivalente API; chat diferencia supervisor y subagentes y refuerza el estándar visual de video",
+      "pr": 162
+    },
+    {
+      "fecha": "2026-10-31",
       "tipo": "minimo",
       "titulo": "Chat: estructura mejor los reportes y verifica el MP4 antes de dar un video por entregado",
       "pr": 161

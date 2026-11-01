@@ -5,7 +5,7 @@ import { partirMensaje } from "../lib/adjuntos";
 import { effortLabel } from "../lib/model";
 import { urlAdjuntoImagenChat, type FormatoDocumento, type SubagentChat } from "../api";
 import { Contenido, copiarTexto, type ReferenciaArchivo } from "./chat-contenido";
-import { CompactacionContexto, ProcesoAgente, ProcesoGuardado, SubagentesTurno } from "./chat-proceso";
+import { CompactacionContexto, MarcaActor, ProcesoAgente, ProcesoGuardado, SubagentesTurno } from "./chat-proceso";
 import { esResumenCompactacion } from "../../../shared/compactacion";
 import { FORMATOS_OPCIONES } from "./documentos";
 import type { PasoActividad } from "../api";
@@ -768,6 +768,11 @@ export function IndicadorPensando({
       estado = ultimaAccion.titulo;
     }
   }
+  const actorEnEstado = estado.match(/\[(Supervisor|(?:Subagente|Subagent|Agente)(?:\s*[:#-][^\]]+)?)\]\s*/i);
+  const actorEstado = actorEnEstado?.[0].trim().slice(1, -1);
+  const inicioActorEstado = actorEnEstado?.index ?? -1;
+  const prefijoEstado = actorEnEstado ? estado.slice(0, inicioActorEstado).replace(/\s*[·:]\s*$/, "").trim() : "";
+  const detalleEstado = actorEnEstado ? estado.slice(inicioActorEstado + actorEnEstado[0].length) : "";
   const etapaVisible = ultimaAccion
     ? etiquetaHerramienta(ultimaHerramienta)
     : ultimaNarracion?.startsWith("Solicitud recibida")
@@ -812,7 +817,13 @@ export function IndicadorPensando({
         </summary>
         <div className="tl-actividad-live-cuerpo">
           <div className="tl-pensando" title={ultimaAccion?.titulo ?? estado} aria-live="polite">
-            <span className="tl-pensando-texto">{estado}</span>
+            <span className="tl-pensando-texto">
+              {actorEstado ? <>
+                {prefijoEstado && <><span className="tl-pensando-prefijo">{prefijoEstado}</span><span className="tl-proceso-separador" aria-hidden="true">·</span></>}
+                <MarcaActor actor={actorEstado} />
+                <span className="tl-pensando-detalle">{detalleEstado}</span>
+              </> : estado}
+            </span>
             {(ultimaAccion || orquestacionActiva) && <span className="tl-paso-spinner" role="img" aria-label={orquestacionActiva ? "Supervisor en curso" : "Acción en curso"} />}
           </div>
             {silencioVisible && (

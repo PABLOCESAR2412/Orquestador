@@ -121,6 +121,8 @@ test("los alias históricos resuelven a skills oficiales y las tareas de video u
   expect(video.skillsInvocadas).toContain("hyperframes-cli");
   expect(video.skillsInvocadas).toContain("media-use");
   expect(video.skillsInvocadas).not.toContain("hyperframes-video");
+  expect(video.promptFinal).toContain("ESTÁNDAR DE DISEÑO Y ENTREGA DE VIDEO");
+  expect(video.promptFinal).toContain("Entrega el archivo accesible en el chat y enlázalo en la respuesta final.");
 
   const explicita = inyectarSkillsEnPrompt("Usa $hyperframes-video para renderizar este proyecto.");
   expect(explicita.skillsInvocadas).toContain("hyperframes");

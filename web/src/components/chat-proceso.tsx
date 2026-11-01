@@ -111,6 +111,22 @@ function familiaDe(herramienta: string | null): Familia {
   return FAMILIA[h] || "otro";
 }
 
+export function MarcaActor({ actor }: { actor: string }) {
+  const supervisor = /supervisor/i.test(actor);
+  const subagente = /subagente|subagent/i.test(actor);
+  return (
+    <span className={`tl-actor-marca${supervisor ? " is-supervisor" : subagente ? " is-subagente" : " is-agente"}`} title={supervisor ? "Supervisor" : subagente ? "Subagente" : actor}>
+      {supervisor ? (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M12 3 20 6v5c0 5-3.4 8.3-8 10-4.6-1.7-8-5-8-10V6l8-3Z" />
+          <path d="m9 12 2 2 4-4" />
+        </svg>
+      ) : subagente ? ICONOS.subagente : ICONOS.otro}
+      <strong>{actor}</strong>
+    </span>
+  );
+}
+
 function esTextoPlanJson(texto: string): boolean {
   if (!texto) return false;
   const limpio = texto.trim();
@@ -136,6 +152,9 @@ function AccionFila({ paso }: { paso: PasoActividad }) {
   const primeraLinea = vista.split("\n").find((l) => l.trim()) ?? "";
   const fallo = paso.estado === "error";
   const enCurso = paso.estado === "en_curso";
+  const prefijoActor = paso.titulo.match(/^\[(Supervisor|Subagente(?:\s*[:#-][^\]]+)?|Subagent(?:\s*[:#-][^\]]+)?|Agente(?:\s*[:#-][^\]]+)?)\]\s*/i);
+  const titulo = prefijoActor ? paso.titulo.slice(prefijoActor[0].length) : paso.titulo;
+  const actor = prefijoActor ? prefijoActor[0].trim().slice(1, -1) : null;
   return (
     <details className={`tl-paso-accion${fallo ? " is-error" : ""}${enCurso ? " is-running" : ""}`}>
       <summary className="tl-paso-resumen">
@@ -145,7 +164,8 @@ function AccionFila({ paso }: { paso: PasoActividad }) {
           </svg>
         </span>
         <span className="tl-paso-familia">{ICONOS[familiaDe(paso.herramienta)]}</span>
-        <span className="tl-paso-titulo">{paso.titulo}</span>
+        {actor ? <MarcaActor actor={actor} /> : <span className="tl-actor-vacio" aria-hidden="true" />}
+        <span className="tl-paso-titulo">{titulo}</span>
         <span
           className="tl-paso-estado"
           role="img"
@@ -184,8 +204,8 @@ export function ProcesoAgente({
         p.tipo === "texto" ? (
           <li key={p.seq} className="tl-proceso-texto">
             {esResumenCompactacion(p.titulo) ? <CompactacionContexto texto={p.titulo} /> : <>
-              <strong className="tl-proceso-actor">{actor}</strong>
-              <span aria-hidden="true"> · </span>
+              <MarcaActor actor={actor} />
+              <span className="tl-proceso-separador" aria-hidden="true">·</span>
               {p.titulo}
             </>}
           </li>
@@ -362,7 +382,7 @@ function SubagenteFila({ hijo, onAbrir, actividadVisible }: { hijo: SubagentChat
         <span className="tl-subagente-pulso" aria-hidden="true" />
         <div className="tl-subagente-identidad">
           <strong>{hijo.title}</strong>
-          <span>{hijo.subagent_agent || "Subagente"}{hijo.model ? ` · ${hijo.model}` : ""}</span>
+          <span className="tl-subagente-modelo"><MarcaActor actor={hijo.subagent_agent || "Subagente"} />{hijo.model ? ` · ${hijo.model}` : ""}</span>
         </div>
         <span className={`tl-subagente-estado${enCurso ? " is-running" : ""}${hijo.subagent_status === "failed" ? " is-error" : ""}`}>
           {estado}

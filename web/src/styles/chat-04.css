@@ -52,6 +52,9 @@
 .tl-subagente-identidad { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; gap: 2px; }
 .tl-subagente-identidad strong { overflow: hidden; color: var(--ink); font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .tl-subagente-identidad > span { overflow: hidden; color: var(--ink-2); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.tl-subagente-identidad > .tl-subagente-modelo { display: flex; align-items: center; gap: 5px; }
+.tl-subagente-modelo .tl-actor-marca strong { color: var(--ink-2); font-size: 11px; font-weight: 500; }
+.tl-subagente-modelo .tl-actor-marca svg { width: 12px; height: 12px; }
 .tl-subagente-estado { flex: 0 0 auto; color: var(--ink-2); font-size: 11px; }
 .tl-subagente-estado.is-running { color: var(--signal); }
 .tl-subagente-estado.is-error,.tl-subagente-resultado.is-error { color: var(--danger); }
@@ -112,7 +115,18 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.tl-proceso-actor { color: var(--ink); font-weight: 650; }
+.tl-actor-marca {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-2);
+  vertical-align: middle;
+}
+.tl-actor-marca svg { flex: 0 0 auto; color: var(--ink-2); }
+.tl-actor-marca.is-supervisor svg { color: var(--signal); }
+.tl-actor-marca strong { color: var(--ink); font-weight: 650; }
+.tl-proceso-separador { margin: 0 5px; color: var(--ink-3); }
 .tl-proceso-accion { min-width: 0; }
 .tl-paso-accion {
   min-width: 0;
@@ -122,9 +136,9 @@
 }
 .tl-paso-resumen {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto auto minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 8px;
+  column-gap: 10px;
   row-gap: 2px;
   padding: 8px 10px;
   color: var(--ink);
@@ -147,6 +161,7 @@
   color: var(--ink);
 }
 .tl-paso-familia { display: inline-grid; place-items: center; color: var(--ink-2); }
+.tl-actor-vacio { min-width: 0; }
 .tl-paso-titulo {
   min-width: 0;
   overflow: hidden;
@@ -170,7 +185,7 @@
   .tl-paso-spinner { animation-duration: 2.5s; }
 }
 .tl-paso-vista {
-  grid-column: 3 / 5;
+  grid-column: 4 / 6;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
