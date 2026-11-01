@@ -5,6 +5,7 @@ import { notifyWorker } from "./worker";
 // Única forma de crear una tarea: la usan POST /api/tasks, los reintentos y el planificador.
 
 export type NuevaTarea = {
+  workMode?: "plan" | "build";
   prompt: string;
   model: string;
   effort: string | null;
@@ -41,7 +42,7 @@ export function crearTarea(opts: NuevaTarea): string {
         .get(opts.messageId, opts.conversationId)?.id ?? null
       : null;
     db.query(
-      "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id, retry_of, conversation_id, message_id, provider_session_id, provider_session_model, source_branch, source_base_branch, source_pr_number) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO tasks (id, title, prompt, model, effort, status, project_id, retry_of, conversation_id, message_id, provider_session_id, provider_session_model, source_branch, source_base_branch, source_pr_number, work_mode) VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ).run(
       id,
       titulo,
@@ -57,6 +58,7 @@ export function crearTarea(opts: NuevaTarea): string {
       opts.sourceBranch ?? null,
       opts.sourceBaseBranch ?? null,
       opts.sourcePrNumber ?? null,
+      opts.workMode ?? "build",
     );
     registrarEvento(id, "creada", detalle);
     if (retryOf) registrarEvento(retryOf, "reintento_creado", `Nueva tarea ${id.slice(0, 8)}`);

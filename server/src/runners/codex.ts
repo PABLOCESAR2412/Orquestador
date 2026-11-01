@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { carpetaEntregables } from "../entregables";
 import { hallarEjecutable } from "../ejecutable";
 import { ErrorAgente, entornoDelAgente, estimarUso, type RunResult, type Usage } from "./opencode";
-import { iniciarVigilante, leerConTope, leerLineasAcotadas } from "./proteccion";
+import { iniciarVigilante, leerConTope, leerLineasAcotadas, TIEMPO_PRIMERA_RESPUESTA_MS, ERROR_PRIMERA_RESPUESTA, esActividadUtil } from "./proteccion";
 import type { ImagenAgente } from "../chat-adjuntos";
 import { argumentosConfigMcpCodex, type ServidorMcpAgente } from "../conexiones-mcp";
 import { deltaNoRegistrada, guardarTotalesSesion, leerTotalesSesion, sumarTotales, totalesDelEventoTokenCount, type TotalesCodex } from "./tokens-codex";
@@ -81,6 +81,7 @@ interface OpcionesCodex {
   // Vigilante de inactividad: corta el grupo del proceso si lleva sin emitir nada más del
   // tope (misma protección que el runner de OpenCode, ver proteccion.ts).
   tiempoSinActividadMs?: number | null;
+  tiempoPrimeraRespuestaMs?: number;
   // Nivel de esfuerzo del modelo (variant); en Codex es el reasoning del modelo.
   variant?: string | null;
   signal?: AbortSignal;
@@ -211,12 +212,14 @@ async function intentoCodex(opts: OpcionesCodex & {
   };
 
   const drenaje = new AbortController();
+  const primeraRespuesta = iniciarVigilante({ tiempoSinActividadMs: opts.tiempoPrimeraRespuestaMs ?? TIEMPO_PRIMERA_RESPUESTA_MS, cortar: () => terminarGrupo(proc) });
   const lectura = leerLineasAcotadas(proc.stdout, 2 * 1024 * 1024, (l) => {
           vigilante.patada();
           try { opts.onLinea?.(l); } catch { /* La actividad no interrumpe la lectura de uso. */ }
 
           try {
             const ev = JSON.parse(l);
+            if (esActividadUtil(ev)) primeraRespuesta.detener();
             if (ev.type === "thread.started" && ev.thread_id) {
               sessionId = ev.thread_id;
               opts.onSesion?.(ev.thread_id);
@@ -295,6 +298,7 @@ async function intentoCodex(opts: OpcionesCodex & {
     stderr = res[1];
     code = res[2];
 
+    if (primeraRespuesta.silenciado()) throw new ErrorAgente(ERROR_PRIMERA_RESPUESTA, "");
     if (code !== 0 || falloFatalCodex) {
       const detalle = ultimoError
         || stderr.trim()
@@ -331,6 +335,7 @@ async function intentoCodex(opts: OpcionesCodex & {
     if (relojDrenaje) clearTimeout(relojDrenaje);
     if (timer) clearTimeout(timer);
     vigilante.detener();
+    primeraRespuesta.detener();
     if (onAbort) opts.signal?.removeEventListener("abort", onAbort);
     registrarPendiente();
   }

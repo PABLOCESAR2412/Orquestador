@@ -961,6 +961,12 @@ const migrations: Migration[] = [
     name: "056_modelo_real_auxiliar",
     sql: `ALTER TABLE chat_orquestacion_etapas ADD COLUMN actual_model TEXT;`,
   },
+  {
+    name: "057_modo_trabajo",
+    sql: `ALTER TABLE conversations ADD COLUMN work_mode TEXT NOT NULL DEFAULT 'build' CHECK (work_mode IN ('plan','build'));
+      ALTER TABLE messages ADD COLUMN work_mode TEXT NOT NULL DEFAULT 'build' CHECK (work_mode IN ('plan','build'));
+      ALTER TABLE tasks ADD COLUMN work_mode TEXT NOT NULL DEFAULT 'build' CHECK (work_mode IN ('plan','build'));`,
+  },
 ];
 
 function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {

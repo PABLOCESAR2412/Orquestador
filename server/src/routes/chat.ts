@@ -70,6 +70,7 @@ export function numeroPullRequestParaFusionar(texto: string): number | null {
 }
 
 type ConversationRow = {
+  work_mode: "plan" | "build";
   id: string;
   model: string | null;
   effort: string | null;
@@ -141,7 +142,7 @@ type Message = {
   effort: string | null;
   sesion_compactada?: number;
 };
-type TurnoUsuario = { id: string; role: "user"; content: string };
+type TurnoUsuario = { work_mode?: "plan" | "build"; id: string; role: "user"; content: string };
 
 export const chat = new Hono();
 
@@ -174,7 +175,7 @@ chat.get("/conversations", (c) => {
                  created_at DESC, rowid DESC) AS rn
           FROM tasks WHERE conversation_id IS NOT NULL
       )
-      SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name,
+      SELECT c.id, c.work_mode, c.title, c.model, c.effort, c.project_id, p.name AS project_name,
              c.pinned_at, c.cuota_modelo, c.created_at, m.last_msg_at, c.rowid AS conv_rowid,
              c.orquestacion_habilitada, c.orquestacion_modelos_personalizados, c.orquestacion_seleccion_automatica, c.orquestacion_trabajadores,
              c.runner_session_id IS NOT NULL AS tiene_sesion,
@@ -191,7 +192,7 @@ chat.get("/conversations", (c) => {
     .all();
 
   const hijos = db.query<Subchat, []>(`
-    SELECT c.id,c.title,c.model,c.effort,c.project_id,p.name AS project_name,c.runner_session_id IS NOT NULL AS tiene_sesion,c.parent_conversation_id,c.parent_turn_id,
+    SELECT c.id,c.work_mode,c.title,c.model,c.effort,c.project_id,p.name AS project_name,c.runner_session_id IS NOT NULL AS tiene_sesion,c.parent_conversation_id,c.parent_turn_id,
            c.subagent_turn_id,c.subagent_agent,c.subagent_prompt,c.subagent_status,c.subagent_result,
            c.created_at,MAX(c.created_at,COALESCE((SELECT MAX(m.created_at) FROM messages m WHERE m.conversation_id=c.id),c.created_at)) AS last_message_at
       FROM conversations c
@@ -392,7 +393,7 @@ chat.get("/conversations/:id/turnos/:turno/subagentes", (c) => {
     return c.json({ error: "conversation_not_found" }, 404);
   }
   const filas = db.query<Subchat, [string, string]>(`
-    SELECT c.id,c.title,c.model,c.effort,c.project_id,p.name AS project_name,c.parent_conversation_id,c.parent_turn_id,
+    SELECT c.id,c.work_mode,c.title,c.model,c.effort,c.project_id,p.name AS project_name,c.parent_conversation_id,c.parent_turn_id,
            c.subagent_turn_id,c.subagent_agent,c.subagent_prompt,c.subagent_status,c.subagent_result,
            c.created_at,MAX(c.created_at,COALESCE((SELECT MAX(m.created_at) FROM messages m WHERE m.conversation_id=c.id),c.created_at)) AS last_message_at
       FROM conversations c LEFT JOIN projects p ON p.id=c.project_id
@@ -477,7 +478,7 @@ chat.get("/conversations/:id/contexto", (c) => {
     createdAt: string;
     lastActivity: string | null;
   }, [string]>(`
-    SELECT c.id, c.title, c.provider, c.model, c.effort,
+    SELECT c.id, c.work_mode, c.title, c.provider, c.model, c.effort,
            c.runner_session_id AS sessionId, c.runner_session_model AS sessionModel,
            c.created_at AS createdAt,
            MAX(c.created_at,
@@ -893,7 +894,7 @@ chat.get("/conversations/:id/tasks", (c) => {
   const id = c.req.param("id");
   if (!leerConversacion(id)) return c.json({ error: "conversation_not_found" }, 404);
   const filas = db.query<{ plan: string | null; reporte: string | null; [key: string]: unknown }, [string]>(
-    "SELECT id,title,status,model,modelo_agotado,effort,plan,reporte,plan_aprobado_en,plan_hash,approved_hash,error,conversation_id,created_at,started_at,finished_at FROM tasks WHERE conversation_id=? ORDER BY created_at,rowid",
+    "SELECT id,work_mode,title,status,model,modelo_agotado,effort,plan,reporte,plan_aprobado_en,plan_hash,approved_hash,error,conversation_id,created_at,started_at,finished_at FROM tasks WHERE conversation_id=? ORDER BY created_at,rowid",
   ).all(id);
   const json = (valor: string | null): unknown => {
     try { return valor ? JSON.parse(valor) : null; } catch { return null; }
@@ -909,7 +910,7 @@ function leerConversacion(id: string): ConversationRow | null {
   return (
     db
       .query<ConversationRow, [string]>(
-        "SELECT c.id,c.model,c.effort,c.runner_session_id,c.runner_session_model,c.project_id,c.cuota_modelo,c.parent_conversation_id,c.subagent_workspace,c.subagent_config_dir,c.orquestacion_habilitada,c.orquestacion_modelos_personalizados,c.orquestacion_seleccion_automatica,c.orquestacion_trabajadores,p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id=c.project_id WHERE c.id=?",
+        "SELECT c.id,c.work_mode,c.model,c.effort,c.runner_session_id,c.runner_session_model,c.project_id,c.cuota_modelo,c.parent_conversation_id,c.subagent_workspace,c.subagent_config_dir,c.orquestacion_habilitada,c.orquestacion_modelos_personalizados,c.orquestacion_seleccion_automatica,c.orquestacion_trabajadores,p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id=c.project_id WHERE c.id=?",
       )
       .get(id) ?? null
   );
@@ -972,6 +973,7 @@ function encolarTurno(conv: ConversationRow, turno: TurnoUsuario, model: string)
   db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(conv.id);
   return crearTarea({
     prompt: turno.content,
+    workMode: turno.work_mode ?? conv.work_mode,
     model,
     effort: conv.effort,
     projectId: conv.project_id,
@@ -985,16 +987,18 @@ function encolarTurno(conv: ConversationRow, turno: TurnoUsuario, model: string)
 // El mensaje del usuario se guarda antes de ejecutar: así aparece en los demás dispositivos
 // y no se pierde si el agente falla.
 function guardarMensajeUsuario(conversationId: string, content: string): TurnoUsuario {
-  const msg: TurnoUsuario = { id: crypto.randomUUID(), role: "user", content };
+  const work_mode = db.query<{work_mode: "plan" | "build"}, [string]>("SELECT work_mode FROM conversations WHERE id=?").get(conversationId)?.work_mode ?? "build";
+  const msg: TurnoUsuario = { work_mode, id: crypto.randomUUID(), role: "user", content };
   let delegacionOrigen: string | null = null;
   db.transaction(() => {
     delegacionOrigen = origenDelegacionParaMensaje(conversationId, content, msg.id);
-    db.query("INSERT INTO messages (id, conversation_id, role, content, delegacion_origen) VALUES (?, ?, ?, ?, ?)").run(
+    db.query("INSERT INTO messages (id, conversation_id, role, content, delegacion_origen, work_mode) VALUES (?, ?, ?, ?, ?, ?)").run(
       msg.id,
       conversationId,
       msg.role,
       msg.content,
       delegacionOrigen,
+      work_mode,
     );
     db.query("UPDATE conversations SET title = ? WHERE id = ? AND title = 'Nuevo chat'").run(
       content.replace(/<<telo-imagen id="[a-f\d-]{36}" nombre="[^"]*">>/gi, "[Imagen adjunta]").trim().slice(0, 60) || "Imagen adjunta",
@@ -1047,8 +1051,8 @@ function guardarAviso(conversationId: string, texto: string): void {
 }
 
 function turnoReintentable(conversationId: string, messageId: string, content: string, tieneSesion: boolean): { turno: TurnoUsuario; rowid: number; continuar: boolean } | null {
-  const original = db.query<{ id: string; content: string; rowid: number }, [string, string]>(
-    "SELECT id, content, rowid FROM messages WHERE id=? AND conversation_id=? AND role='user'",
+  const original = db.query<{ id: string; content: string; work_mode: "plan" | "build"; rowid: number }, [string, string]>(
+    "SELECT id, content, work_mode, rowid FROM messages WHERE id=? AND conversation_id=? AND role='user'",
   ).get(messageId, conversationId);
   if (!original || original.content !== content) return null;
 
@@ -1062,7 +1066,7 @@ function turnoReintentable(conversationId: string, messageId: string, content: s
     return null;
   }
   const continuar = tieneSesion || mensajesPosteriores.some((mensaje) => /^El agente (?:superó el límite de|tardó más de) \d+ minutos/i.test(mensaje.content));
-  return { turno: { id: original.id, role: "user", content: original.content }, rowid: original.rowid, continuar };
+  return { turno: { id: original.id, role: "user", content: original.content, work_mode: original.work_mode }, rowid: original.rowid, continuar };
 }
 
 function limpiarAvisosReintentados(conversationId: string, rowid: number | undefined): void {
@@ -1162,7 +1166,8 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
     });
     const inicioSupervisor = Date.now();
     const opcionesEjecucion: OpcionesAgente = {
-      solicitudSkills: prompt,
+      workMode: turno.work_mode ?? conv.work_mode,
+      solicitudSkills: turno.content,
       modelosAuxiliares: perfilesSubagente?.modelos,
       prompt: promptCoordinador,
       model,
@@ -1222,7 +1227,7 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       },
     };
     result = await ejecutarAgente(opcionesEjecucion);
-    if (requiereEntregaVideo(turno.content)) {
+    if ((turno.work_mode ?? conv.work_mode) !== "plan" && requiereEntregaVideo(turno.content)) {
       const raices = raicesArchivosConversacion(conv);
       let rutaVideo = buscarVideoVerificado(result.textoFinal, raices);
       if (!rutaVideo) {
@@ -1380,15 +1385,15 @@ export function arrancarSiguienteEnCola(conversationId: string): void {
   const conv = leerConversacion(conversationId);
   if (!conv || conversacionEnCurso(conversationId)) return;
   const pendiente = db
-    .query<{ id: string; content: string }, [string]>(
-      "SELECT id, content FROM messages WHERE conversation_id=? AND role='user' AND en_cola=1 ORDER BY created_at ASC, rowid ASC LIMIT 1",
+    .query<{ id: string; content: string; work_mode: "plan" | "build" }, [string]>(
+      "SELECT id, content, work_mode FROM messages WHERE conversation_id=? AND role='user' AND en_cola=1 ORDER BY created_at ASC, rowid ASC LIMIT 1",
     )
     .get(conversationId);
   if (!pendiente) return;
   if (conv.cuota_modelo) return; // Cuota agotada: espera el «Seguir» del usuario.
   db.query("UPDATE messages SET en_cola = 0 WHERE id = ?").run(pendiente.id);
   const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
-  iniciarTurno(conv, { id: pendiente.id, role: "user", content: pendiente.content }, pendiente.content, model);
+  iniciarTurno(conv, { id: pendiente.id, role: "user", content: pendiente.content, work_mode: pendiente.work_mode }, pendiente.content, model);
 }
 
 // Al arrancar el servidor no hay turnos en curso. Si el último mensaje de un chat es del usuario, la
@@ -1460,7 +1465,7 @@ chat.post("/conversations/:id/messages", async (c) => {
   const numeroPr = numeroPullRequestParaFusionar(content);
   // Las demás órdenes directas de Git crean una tarjeta de autorización, sin ejecutar al agente.
   const pedido = /^(?:(?:haz|hacer|ejecuta|realiza|crea|crear|prepara|reintenta|por favor)\s+)*(?:de nuevo\s+)?(?:(?:un|el)\s+)?(?:git\s+(init|commit|push)|(?:un\s+)?(commit|push|pr)|(?:gh\s+pr\s+create)|(pull request))(?:\s+.*)?[.!]?$/i.exec(content);
-  if ((pedido || numeroPr !== null) && conv.project_id) {
+  if ((reintento?.turno.work_mode ?? conv.work_mode) !== "plan" && (pedido || numeroPr !== null) && conv.project_id) {
     const turno = reintento?.turno ?? guardarMensajeUsuario(conversationId, content);
     const accion = numeroPr !== null
       ? "merge"

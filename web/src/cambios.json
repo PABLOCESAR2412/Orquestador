@@ -5,6 +5,12 @@
   "cambios": [
     {
       "fecha": "2026-11-01",
+      "tipo": "mediano",
+      "titulo": "Chat: Planear en solo lectura, referencias visuales con seis fotogramas, skills acotadas y optimización RTK verificada",
+      "pr": 167
+    },
+    {
+      "fecha": "2026-11-01",
       "tipo": "minimo",
       "titulo": "Chat: respeta el modelo elegido por defecto, exige autorizar respaldos y evita duplicar eventos de consumo",
       "pr": 166

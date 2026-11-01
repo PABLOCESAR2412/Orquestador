@@ -1,8 +1,12 @@
 // La CLI JSON solo publica herramientas terminadas. Este plugin local recoge los estados
 // que faltan, sin copiar texto parcial ni razonamiento y sin hacer peticiones al proveedor.
-export function pluginSeguimientoOpenCode(salida: string, sesion: string | null): string {
+import { comandoConRtk } from "../rtk";
+
+export function pluginSeguimientoOpenCode(salida: string, sesion: string | null, rtk: string | null = null): string {
   return `import { appendFileSync } from "node:fs";
 const salida = ${JSON.stringify(salida)};
+const rtk = ${JSON.stringify(rtk)};
+const comandoConRtk = ${comandoConRtk.toString()};
 let raiz = ${JSON.stringify(sesion)};
 let eventos = 0, bytes = 0, actividad = 0, ultimaEmision = 0;
 const herramientas = new Set();
@@ -18,6 +22,11 @@ const emitir = (dato) => {
 };
 const estado = (status, extra = {}) => emitir({ type: "telo.provider", sessionID: raiz, status, actividad, ...extra });
 export const TeloSeguimiento = async () => ({
+  "tool.execute.before": async (input, output) => {
+    if (input.tool === "bash" && typeof output.args?.command === "string") {
+      output.args.command = comandoConRtk(output.args.command, rtk);
+    }
+  },
   event: async ({ event }) => {
     if (eventos >= 5000) return;
     const props = event?.properties || {};

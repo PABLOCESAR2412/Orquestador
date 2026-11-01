@@ -3,6 +3,17 @@
 // evita que la salida del agente crezca en RAM sin límite.
 const DESCANSO_VIGILANTE_MS = 15_000;
 export const TIEMPO_SIN_ACTIVIDAD_PREDETERMINADO_MS = 15 * 60_000;
+export const TIEMPO_PRIMERA_RESPUESTA_MS = 3 * 60_000;
+export const ERROR_PRIMERA_RESPUESTA = "El proveedor no empezó a responder en tres minutos. Se cerró la ejecución y se conservan la sesión y los archivos; puedes reanudar o elegir otro modelo.";
+
+// Busy, latidos y reintentos no son evidencia de que el modelo esté trabajando.
+export function esActividadUtil(evento: any): boolean {
+  return (evento?.type === "telo.provider" && evento.status === "generating" && evento.actividad > 0)
+    || (evento?.type === "text" && Boolean(evento.part?.text?.trim()))
+    || evento?.type === "tool_use"
+    || (evento?.type === "item.started" && ["command_execution", "mcp_tool_call", "file_change"].includes(evento.item?.type))
+    || (evento?.type === "item.completed" && ["agent_message", "reasoning", "command_execution", "mcp_tool_call", "file_change"].includes(evento.item?.type));
+}
 
 // Un 0 en el entorno no debe apagar accidentalmente la única protección contra
 // runners bloqueados. Para desactivar el vigilante en pruebas, el llamador pasa null.

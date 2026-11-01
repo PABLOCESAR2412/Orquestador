@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, symlinkSync, copyFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -27,6 +27,21 @@ beforeEach(() => {
 
 const { config } = await import("../src/config");
 const { eliminarPerfilCodex, eliminarPerfilOpenCode, prepararPerfilCodex, prepararPerfilOpenCode, prefijoAislamiento, prepararDirectorioOpenCode, requisitosCodexDenieganLecturaSensibles } = await import("../src/runners/aislamiento");
+
+test.skipIf(process.platform !== "linux" || !process.env.TELO_TEST_RTK_BINARY)("RTK real dentro de Bubblewrap conserva el fallo y su evidencia", async () => {
+  const workspace = join(proyectos, "rtk");
+  mkdirSync(workspace, { recursive: true });
+  mkdirSync(join(home, ".local", "bin"), { recursive: true });
+  const rtk = join(home, ".local", "bin", "rtk");
+  copyFileSync(process.env.TELO_TEST_RTK_BINARY!, rtk);
+  chmodSync(rtk, 0o755);
+  writeFileSync(join(workspace, "fallo.test.ts"), 'import {test,expect} from "bun:test"; test("FALLO-VERIFICABLE",()=>expect(1).toBe(2));');
+  const p = Bun.spawn([...prefijoAislamiento(workspace), rtk, "bun", "test"], { cwd: workspace, env: { HOME: home, PATH: process.env.PATH ?? "" }, stdout: "pipe", stderr: "pipe" });
+  const [salida, error, codigo] = await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text(), p.exited]);
+  expect(codigo).not.toBe(0);
+  expect(salida + error).toContain("FALLO-VERIFICABLE");
+  expect(salida + error).toMatch(/Expected|expect|fail/i);
+});
 
 test("la política administrada de Codex debe denegar credenciales y configuración global en las rutas visibles", () => {
   const home = join(raiz, "policy-home");

@@ -111,7 +111,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
       await Bun.sleep(25);
     }
   }
-  async function nueva(model = "opencode/normal") {
+  async function nueva(model = "opencode/normal", workMode: "plan" | "build" = "build") {
     const proyecto = crypto.randomUUID(),
       conversacion = crypto.randomUUID();
     const repo = join(proyectos, "worker-" + proyecto);
@@ -144,6 +144,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     }
     db.query("INSERT INTO conversations(id,project_id) VALUES (?,?)").run(conversacion, proyecto);
     const id = crearTarea({
+      workMode,
       prompt: "Crear el archivo permitido",
       model,
       effort: null,
@@ -165,6 +166,22 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
       body: JSON.stringify({ hash, decision: "approve" }),
     });
   }
+
+  test("Planear termina con un plan sin ejecutar el obrero ni aprobar operaciones", async () => {
+    const {id, conversacion, clon} = await nueva("opencode/git", "plan");
+    await esperar(() => ["done", "failed"].includes(fila(id).status), id);
+    expect(fila(id).status).toBe("done");
+    expect(fila(id).plan_aprobado_en).toBeNull();
+    expect(fila(id).reporte).toBeNull();
+    expect(JSON.parse(fila(id).plan).supuestos).toContain("solo lectura verificada");
+    expect(existsSync(join(clon, "escritura-analizador.txt"))).toBe(false);
+    expect(existsSync(join(clon, "permitido.txt"))).toBe(false);
+    expect(db.query("SELECT 1 FROM repository_actions WHERE task_id=?").get(id)).toBeNull();
+    const contenido = db.query<{content:string},[string]>("SELECT content FROM messages WHERE conversation_id=? AND role='assistant' ORDER BY rowid DESC LIMIT 1").get(conversacion)!.content;
+    expect(contenido).toContain("### Pasos");
+    expect(contenido).toContain("Comprobación propuesta");
+    expect(contenido).toContain("Construir");
+  });
 
   test("analiza en solo lectura, espera aprobación y ejecuta sin poder hacer commit", async () => {
     const { id, conversacion, clon } = await nueva();

@@ -1,5 +1,29 @@
 # Despliegue automático en el VM
 
+## Referencias visuales, Planear y RTK
+
+El selector del chat distingue Construir (flujo habitual) y Planear (workspace y entregables en solo lectura). Planear termina después de entregar el plan; no aprueba operaciones ni ejecuta el obrero. Para aplicarlo, selecciona Construir y envía una nueva petición. Cada mensaje y tarea conservan el modo que tenían al entrar en la cola. La migración 057 conserva el comportamiento previo como `build`. Antes de volver a código anterior a esta migración, termina o cancela los turnos/tareas pendientes en modo Planear: ese código no conoce la restricción. Conserva las columnas nuevas al revertir código.
+
+Las imágenes llegan a ambos runners como archivos de solo lectura. Un MP4/WebM se transforma localmente en seis muestras con tiempos, duración y resolución; el audio y el clip completo no se envían. Esto permite revisar composición y estilo, pero no certifica todos los movimientos ni la sincronía del audio. Telo rechaza la entrada visual cuando el catálogo declara que el modelo no la admite; una capacidad desconocida no se presenta como verificada. No se sustituye el modelo por ello.
+
+La guía común resume Caveman lite/Ponytail sin cargar dos documentos completos. La selección automática usa el encargo actual, no las instrucciones dentro de los adjuntos. Se limita a ocho skills, 16.000 caracteres de cuerpos y 8.000 por cuerpo; las guías mayores quedan como referencias para leer completas bajo demanda. Una tarea de video ya no activa también tres guías de interfaz. Las skills son apoyo: no cambian permisos, formato ni el modo de trabajo.
+
+Después del merge y de confirmar el despliegue del commit nuevo:
+
+```bash
+cd /home/orquestador/orquestador
+bash deploy/instalar-rtk.sh
+bash deploy/verificar-agentes.sh
+```
+
+El instalador de [RTK OSS 1.1.0](https://github.com/rtk-ai/rtk/releases/tag/v1.1.0) es para Linux x86_64. Verifica SHA-256, extrae solo el binario esperado y no ejecuta scripts remotos. Se ejecuta como `orquestador`, sin sudo; una versión existente distinta requiere revisión manual. No necesitas otra clave ni reiniciar Telo: se detecta en nuevas ejecuciones en un máximo de 60 segundos. El verificador usa agentes sintéticos y bases temporales, sin consumir tus proveedores.
+
+El plugin de OpenCode envuelve comandos simples compatibles de Git, búsquedas y pruebas. Conserva comandos compuestos, redirecciones y formatos para máquinas; el agente puede ejecutar el original si necesita el detalle completo. Codex recibe la disponibilidad real y la guía para usar RTK en comandos; sus herramientas nativas de lectura no pasan por ese plugin. RTK filtra salidas locales, no enruta inferencia ni garantiza un porcentaje de ahorro. Su estado dentro del sandbox es efímero.
+
+La espera hasta la primera actividad útil tiene un límite de tres minutos en ambos runners. `busy`, reintentos y latidos no lo reinician; texto, generación observada o inicio de herramientas sí demuestran actividad. Una vez iniciada una herramienta, ese límite no corta un render largo. Esto limita la espera inicial, no impone una duración máxima a todo el trabajo. Se conservan sesión y archivos al cortar. Una ejecución antigua que siga atascada debe detenerse desde el chat antes del despliegue.
+
+Prueba manual tras actualizar: en Planear, adjunta una captura y pide un diagnóstico; debe proponer pasos sin editar archivos. En Construir, pide aplicar la corrección y verifica las pruebas y el resultado. Adjunta un video y comprueba la etiqueta «6 fotogramas · sin audio», el contenido visible y el modelo efectivo. La calidad del diagnóstico aún depende de las capacidades reales del modelo; esta preparación no convierte un modelo de texto en uno visual.
+
 ## Actualizador y comprobación de agentes (noviembre de 2026)
 
 Si existe `/etc/orquestador/deploy.env` pero `systemctl show orquestador-deploy.service -p EnvironmentFiles` no muestra el archivo, la unidad instalada es anterior a la configuración del PAT. Actualizar el checkout no reinstala unidades de systemd. Tras recibir este cambio:

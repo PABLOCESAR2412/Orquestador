@@ -11,6 +11,7 @@ type Body = {
   effort?: string | null;
   title?: string;
   pinned?: boolean;
+  work_mode?: "plan" | "build";
   orquestacion_habilitada?: boolean;
   orquestacion_modelos_personalizados?: boolean;
   orquestacion_seleccion_automatica?: boolean;
@@ -31,6 +32,7 @@ settings.patch("/conversations/:id", async (c) => {
 
   const body = await c.req.json<Body>().catch(() => null);
   if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "invalid_request" }, 400);
+  if (body.work_mode !== undefined && body.work_mode !== "plan" && body.work_mode !== "build") return c.json({ error: "invalid_request" }, 400);
   if (body.pinned !== undefined && typeof body.pinned !== "boolean") return c.json({ error: "invalid_request" }, 400);
   if (body.orquestacion_habilitada !== undefined && typeof body.orquestacion_habilitada !== "boolean") return c.json({ error: "invalid_request" }, 400);
   if (body.orquestacion_modelos_personalizados !== undefined && typeof body.orquestacion_modelos_personalizados !== "boolean") return c.json({ error: "invalid_request" }, 400);
@@ -85,6 +87,7 @@ settings.patch("/conversations/:id", async (c) => {
   }
 
   db.transaction(() => {
+    if (body.work_mode !== undefined) db.query("UPDATE conversations SET work_mode=? WHERE id=?").run(body.work_mode, id);
     if (body.title !== undefined) db.query("UPDATE conversations SET title = ? WHERE id = ?").run(body.title.trim(), id);
     if (body.pinned !== undefined) db.query("UPDATE conversations SET pinned_at = CASE WHEN ? THEN COALESCE(pinned_at, datetime('now')) ELSE NULL END WHERE id = ?").run(body.pinned ? 1 : 0, id);
     if (cambiaConfiguracion) db.query("UPDATE conversations SET model = ?, effort = ? WHERE id = ?").run(body.model === undefined ? row.model : body.model, body.effort === undefined ? row.effort : body.effort, id);
@@ -98,11 +101,11 @@ settings.patch("/conversations/:id", async (c) => {
       if (campos.length) db.query(`UPDATE conversations SET ${campos.join(", ")} WHERE id=?`).run(...valores, id);
     }
   })();
-  if (cambiaConfiguracion || cambiaOrquestacion) publicar({ tipo: "configuracion_chat", conversacion_id: id });
+  if (cambiaConfiguracion || cambiaOrquestacion || body.work_mode !== undefined) publicar({ tipo: "configuracion_chat", conversacion_id: id });
 
   const actual = db
-    .query<{ id: string; title: string; model: string | null; effort: string | null; pinned_at: string | null; orquestacion_habilitada: number; orquestacion_modelos_personalizados: number; orquestacion_seleccion_automatica: number; orquestacion_trabajadores: string }, [string]>(
-      "SELECT id, title, model, effort, pinned_at, orquestacion_habilitada, orquestacion_modelos_personalizados, orquestacion_seleccion_automatica, orquestacion_trabajadores FROM conversations WHERE id = ?",
+    .query<{ id: string; work_mode: "plan" | "build"; title: string; model: string | null; effort: string | null; pinned_at: string | null; orquestacion_habilitada: number; orquestacion_modelos_personalizados: number; orquestacion_seleccion_automatica: number; orquestacion_trabajadores: string }, [string]>(
+      "SELECT id, work_mode, title, model, effort, pinned_at, orquestacion_habilitada, orquestacion_modelos_personalizados, orquestacion_seleccion_automatica, orquestacion_trabajadores FROM conversations WHERE id = ?",
     )
     .get(id);
   let trabajadores: Trabajador[] = [];

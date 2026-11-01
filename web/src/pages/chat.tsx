@@ -52,6 +52,7 @@ import "../styles-chat.css";
 import "../styles-flujo.css";
 
 type Patch = {
+  work_mode?: "plan" | "build";
   model?: string | null;
   effort?: string | null;
   title?: string;
@@ -554,6 +555,7 @@ export function ChatPage() {
           c.id === selectedId
             ? {
                 ...c,
+                work_mode: patch.work_mode ?? c.work_mode,
                 model: patch.model !== undefined ? patch.model : c.model,
                 effort: patch.effort !== undefined ? patch.effort : c.effort,
                 title: patch.title !== undefined ? patch.title : c.title,
@@ -1392,8 +1394,9 @@ export function ChatPage() {
     {
       id: "plan",
       etiqueta: "/plan",
-      descripcion: "Genera un plan de acción estructurado paso a paso",
+      descripcion: "Planear en solo lectura, sin ejecutar cambios",
       ejecutar: () => {
+        configure.mutate({ work_mode: "plan" });
         cambiarBorrador("Analiza el estado del proyecto y genera un plan de acción estructurado paso a paso para: ");
         window.setTimeout(() => inputRef.current?.focus(), 0);
       },
@@ -2188,7 +2191,7 @@ export function ChatPage() {
                       : lectura.tipo === "imagen"
                         ? "Se envía al agente como entrada visual; el modelo debe admitir imágenes"
                         : lectura.tipo === "video"
-                          ? "Se envía al agente como una hoja de 4 fotogramas; requiere un modelo con entrada de imágenes y no incluye el audio"
+                          ? "Se envía al agente como una hoja de 6 fotogramas; requiere un modelo con entrada de imágenes y no incluye el audio"
                           : lectura.motivo;
                     const estado =
                       lectura.tipo === "texto"
@@ -2196,7 +2199,7 @@ export function ChatPage() {
                         : lectura.tipo === "imagen"
                           ? `${etiquetaBytes(lectura.tamano)} · se envía al agente`
                           : lectura.tipo === "video"
-                            ? `${etiquetaBytes(lectura.tamano)} · 4 fotogramas · sin audio`
+                            ? `${etiquetaBytes(lectura.tamano)} · 6 fotogramas · sin audio`
                         : lectura.tipo === "solo_vista"
                           ? `${etiquetaBytes(lectura.tamano)} · no se envía · solo texto`
                           : "No se añadió";
@@ -2346,6 +2349,10 @@ export function ChatPage() {
               {/* Selector conjunto de modelo y esfuerzo, uso y envío. */}
               <div className="tl-composer-barra">
                 <div className="tl-composer-izq">
+                  <select className="tl-boton tl-boton-compacto" aria-label="Modo de trabajo" value={current?.work_mode ?? "build"} disabled={!current || configure.isPending || pensando} onChange={e => configure.mutate({ work_mode: e.target.value as "plan" | "build" })} title="Planear solo lee y propone. Construir ejecuta con las aprobaciones actuales.">
+                    <option value="build">Construir</option>
+                    <option value="plan">Planear · solo lectura</option>
+                  </select>
                   <button
                     type="button"
                     className="tl-accion-icono"
@@ -2489,7 +2496,7 @@ export function ChatPage() {
               </div>
             </div>
             <p className="tl-composer-nota">
-              Los agentes trabajan en el servidor de forma persistente. Revisa sus cambios antes de aplicarlos.
+              {current?.work_mode === "plan" ? "Planear: solo lectura. Recibirás un plan; para ejecutarlo, selecciona Construir y envía una nueva petición." : "Los agentes trabajan en el servidor de forma persistente. Revisa sus cambios antes de aplicarlos."}
             </p>
           </form>
           )}

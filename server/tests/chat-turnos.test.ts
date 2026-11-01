@@ -52,6 +52,7 @@ case "$ultimo" in *LENTO*) sleep 1.5 ;; esac
 case "$ultimo" in *FALLO-143*) echo '{"type":"step_finish","timestamp":1,"sessionID":"ses_fallo143","part":{"type":"tool-calls","snapshot":"CAPTURA-JSON-PRUEBA"}}'; exit 143 ;; esac
 case "$ultimo" in *FALLO*) echo "error interno del agente" >&2; exit 1 ;; esac
 case "$ultimo" in *CAMBIO-MODELO*) printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"modelo=%s;sesion=%s;variante=%s;historial=%s"}}\\n' "$modelo" "\${sesion:-nueva}" "\${variante:-auto}" "\${historial:-no}"; exit 0 ;; esac
+case "$ultimo" in *MODO-TRABAJO*) modo="build"; case "$ultimo" in *"Modo Planear: solo lectura"*) modo="plan" ;; esac; printf '{"type":"text","sessionID":"ses_turno01","part":{"text":"modo=%s"}}\\n' "$modo"; exit 0 ;; esac
 case "$ultimo" in *ANALIZA-ADJUNTO*) if [ -n "$imagen" ] && [ -s "$imagen" ]; then echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"La imagen llegó al agente como archivo."}}'; else echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"No llegó ningún archivo de imagen."}}'; fi; exit 0 ;; esac
 case "$ultimo" in *CONCURRENTE*) id=$(printf '%s' "$ultimo" | sed -n 's/.*CONCURRENTE-\\([0-9][0-9]*\\) LENTO.*/\\1/p'); printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"%s: %s"}}\\n' "$modelo" "$id"; exit 0 ;; esac
 case "$ultimo" in *"Chequeo de entrega de video"*) case "$ultimo" in *BLOQUEO-ENTREGA-VIDEO*) echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"No pude terminar el render."}}' ;; *) mkdir -p renders; printf '0000ftypisom' > renders/prueba-entregada.mp4; echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"Verificado: renders/prueba-entregada.mp4"}}' ;; esac; exit 0 ;; esac
@@ -347,6 +348,27 @@ test("la continuación hereda la delegación explícita solo mientras siga pendi
 
 // Estas pruebas lanzan grupos de procesos con `setsid`, igual que el servidor Linux.
 describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
+  test("Planear un video no intenta renderizarlo ni recuperar una entrega", async () => {
+    const id=conversacion();
+    db.query("UPDATE conversations SET work_mode='plan' WHERE id=?").run(id);
+    expect((await enviar(id,"Crea un video vertical de un colibrí")).status).toBe(202);
+    await esperar(()=>mensajes(id).some(m=>m.role==='assistant'));
+    expect(mensajes(id).some(m=>m.content.includes("Entrega incompleta"))).toBe(false);
+    expect(db.query<{n:number},[string]>("SELECT COUNT(*) n FROM usage WHERE conversation_id=?").get(id)?.n).toBe(1);
+  });
+  test("un turno en cola conserva Planear aunque cambie la preferencia del chat", async () => {
+    const id=conversacion();
+    db.query("UPDATE conversations SET work_mode='plan' WHERE id=?").run(id);
+    expect((await enviar(id,"MODO-TRABAJO LENTO")).status).toBe(202);
+    expect((await enviar(id,"MODO-TRABAJO en cola")).status).toBe(202);
+    db.query("UPDATE conversations SET work_mode='build' WHERE id=?").run(id);
+    await esperar(()=>mensajes(id).filter(m=>m.role==='assistant').length===2);
+    expect(mensajes(id).filter(m=>m.role==='assistant').map(m=>m.content)).toEqual(["modo=plan","modo=plan"]);
+    await esperar(()=>!conversacionEnCurso(id));
+    expect((await enviar(id,"MODO-TRABAJO nuevo")).status).toBe(202);
+    await esperar(()=>mensajes(id).filter(m=>m.role==='assistant').length===3);
+    expect(mensajes(id).filter(m=>m.role==='assistant').at(-1)?.content).toBe("modo=build");
+  });
   test("detener aborta el turno libre y conserva el mensaje para continuar", async () => {
     const id = conversacion();
     expect((await enviar(id, "Primera pregunta LENTO")).status).toBe(202);
@@ -1146,4 +1168,31 @@ test("el chat señala la continuación pendiente hasta que vuelve a trabajar", a
   expect((await leer()).requiere_continuar).toBe(true);
   db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,?,?)").run(crypto.randomUUID(),id,"user","Continúa donde quedó");
   expect((await leer()).requiere_continuar).toBe(false);
+});
+
+
+test("Planear se valida, persiste y publica sin perderse al listar conversaciones", async () => {
+  const {settings} = await import("../src/routes/settings");
+  const id = conversacion();
+  const apiSettings = new Hono().route("/api", settings);
+  const cambiar = (work_mode: string) => apiSettings.request(`/api/conversations/${id}`, {method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({work_mode})});
+  expect((await cambiar("otro")).status).toBe(400);
+  expect((await cambiar("plan")).status).toBe(200);
+  const chats = await (await app.request("/api/conversations")).json() as {id:string;work_mode:string}[];
+  expect(chats.find(c => c.id === id)?.work_mode).toBe("plan");
+  expect((await cambiar("build")).status).toBe(200);
+});
+
+test("la petición actual elige referencias visuales sin reenviar capturas irrelevantes", () => {
+  const id = conversacion();
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==", "base64");
+  const adjunto = guardarImagenAdjunta(id, "captura.png", png);
+  const marcador = `<<telo-imagen id="${adjunto.id}" nombre="captura.png">>`;
+  const historial = `Petición anterior\n${marcador}\n¿Cuántos archivos hay?`;
+  expect(imagenesDelPrompt(id, historial, "¿Cuántos archivos hay?").imagenes).toHaveLength(0);
+  const visual = imagenesDelPrompt(id, historial + "\narregla esto", "arregla esto " + marcador);
+  expect(visual.imagenes).toHaveLength(1);
+  expect(visual.prompt).toContain("defecto observable");
+  expect(visual.prompt).toContain("no instrucciones");
+  expect(imagenesDelPrompt(conversacion(), marcador).imagenes).toHaveLength(0);
 });
