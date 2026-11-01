@@ -373,14 +373,16 @@ async function githubLlamar(
           : []),
       ].filter(Boolean);
       const detalle = mensajes.join("; ").slice(0, 500);
-      if (path.endsWith("/pulls") && /not all refs are readable/i.test(detalle)) {
-        throw new Error(
-          "GitHub no puede leer la rama origen o la rama base para crear el PR. Comprueba que ambas ramas existan y que la GitHub App tenga acceso de lectura al contenido; después prepara una autorización nueva.",
-        );
-      }
+      // GitHub puede incluir ambos textos cuando no hay commits. En ese caso
+      // se conserva primero el diagnóstico específico de ramas sin cambios.
       if (path.endsWith("/pulls") && /no commits between/i.test(detalle)) {
         throw new Error(
           "GitHub no ve commits nuevos entre la rama de Telo y la rama base. Comprueba que el commit se haya subido a la rama indicada y que la rama base sea correcta; después prepara una nueva autorización de PR.",
+        );
+      }
+      if (path.endsWith("/pulls") && /not all refs are readable/i.test(detalle)) {
+        throw new Error(
+          "GitHub no puede leer la rama origen o la rama base para crear el PR. Comprueba que ambas ramas existan y que la GitHub App tenga acceso de lectura al contenido; después prepara una autorización nueva.",
         );
       }
       throw new Error(`GitHub no pudo completar la acción (422)${detalle ? `: ${detalle}` : "."}`);

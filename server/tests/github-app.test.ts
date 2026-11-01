@@ -288,7 +288,7 @@ test("un 422 con refs ilegibles explica el acceso de lectura que necesita el PR"
   );
 });
 
-test("un 422 sin commits explica que hay que subir cambios a la rama origen", async () => {
+test("un 422 combinado conserva primero el diagnóstico de rama sin commits", async () => {
   globalThis.fetch = (async (url: any) => {
     if (String(url).endsWith("/app/installations?per_page=100")) {
       return Response.json([{ id: 456, account: { login: "Pablo" }, repository_selection: "selected" }]);
@@ -298,7 +298,7 @@ test("un 422 sin commits explica que hay que subir cambios a la rama origen", as
     }
     return new Response(JSON.stringify({
       message: "Validation Failed",
-      errors: [{ resource: "PullRequest", field: "head", code: "invalid", message: "No commits between main and telo/0e680496" }],
+      errors: [{ resource: "PullRequest", field: "head", code: "invalid", message: "No commits between main and telo/0e680496; not all refs are readable" }],
     }), { status: 422, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
 
