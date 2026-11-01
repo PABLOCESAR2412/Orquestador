@@ -4,7 +4,7 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 1 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
-## Referencias visuales, Planear y optimización — 1 de noviembre de 2026
+## Referencias visuales, Planear y optimización — PR #167, 1 de noviembre de 2026
 
 - [x] Planear/Construir en el compositor y /plan: migración 057 aditiva, build por defecto y modo guardado por mensaje/tarea. Planear fuerza solo lectura en el punto común, bloquea secretos operativos y aprendizaje, termina después del analizador y no pasa por aprobación ni obrero. Construir conserva el flujo actual. Prueba Linux con Bubblewrap real: nueve escenarios del worker aprobados, incluido un plan con operaciones Git propuestas sin ninguna acción de publicación creada; regresión de cola conserva el modo original.
 - [x] Referencias visuales: guía de diagnóstico para «arregla esto», archivos de solo lectura para ambos runners, selección del turno actual y reutilización explícita del historial. No reenviar capturas irrelevantes. Capacidad visual tomada de metadatos declarados (formatos v1/v2); si es falsa, detener antes de la inferencia sin sustituir modelo. La capacidad desconocida no se afirma como verificada. Pruebas de aislamiento entre chats, recepción de archivos y veto de un modelo de texto aprobadas.
