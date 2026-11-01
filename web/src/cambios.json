@@ -6,6 +6,12 @@
     {
       "fecha": "2026-11-01",
       "tipo": "mediano",
+      "titulo": "Ajustes: instala Wrangler y Vercel con versiones fijadas y guía el acceso SSH sin exponer OAuth al sandbox",
+      "pr": 169
+    },
+    {
+      "fecha": "2026-11-01",
+      "tipo": "mediano",
       "titulo": "Ajustes: corrige el diagnóstico GitHub, separa uso real de cuenta y organiza CLI, DeepSeek y Antigravity",
       "pr": 169
     },

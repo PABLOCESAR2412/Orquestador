@@ -1437,3 +1437,13 @@ Implementación: PR #107 https://github.com/PABLOCESAR2412/Orquestador/pull/107.
 - [x] Ajustes: retirada la etiqueta Datos del servidor y la hora junto a las pestañas, con sus estilos sin uso. Sin cambios en las métricas. Validación: compilación web. PR #107.
 
 - [x] Ejecuciones recientes: ancho fijo de columnas, nombres/encabezados con salto de línea y proveedor separado; contención del desplazamiento horizontal en tablas. Playwright con nombre de modelo largo confirma tabla dentro del panel y página sin desborde a 390/1440 px; build web aprobado. Datos y cálculos sin cambios. PR #107.
+
+# Publicación de demos con Wrangler y Vercel — 1 de noviembre de 2026
+
+- [x] Ajustes instala Wrangler `4.156.0` y Vercel CLI `65.5.0` con versiones fijadas, muestra su estado y ofrece comandos copiables de inicio de sesión y despliegue desde SSH. Ambos admiten publicación por CLI sin vincular un repositorio; un sitio estático de demo no necesita base de datos.
+- [x] Las sesiones OAuth permanecen en el HOME del usuario `orquestador`. Bubblewrap oculta el HOME al agente, así que ni `.wrangler` ni `.vercel` se montan en el sandbox. La publicación automática iniciada por un agente todavía requiere una acción de servidor con aprobación explícita; no se entregan estas credenciales al modelo.
+- [x] El error de la captura es un HTTP 500 genérico. La clasificación existente lo considera transitorio, reanuda la sesión e intenta tres veces con esperas; solo cambia a otro modelo si la política y los respaldos configurados lo permiten. La captura no trae logs ni identificador de solicitud para atribuir el 500 a Telo o a un proveedor concreto.
+- [x] Verificación local: pruebas dirigidas del servidor, 26 aprobadas y 19 omitidas en Windows (flujos que requieren Linux/setsid); TypeScript del servidor y build web aprobados; Playwright UI smoke aprobado a 390 y 1440 px, incluidos comandos copiables y ausencia de scroll horizontal. El MP4 de fixture no se configuró y esa parte del smoke se omitió.
+- [ ] Instalar en la VM, autorizar la cuenta personal de Cloudflare y Vercel desde sus flujos de dispositivo, comprobar `whoami` y hacer una publicación de vista previa real. Esta rama no instala ni inicia sesión en la VM antes del merge.
+
+Referencias oficiales: [Cloudflare Wrangler login por dispositivo](https://developers.cloudflare.com/workers/wrangler/commands/general/), [Cloudflare Pages Direct Upload](https://developers.cloudflare.com/pages/get-started/direct-upload/), [Vercel login](https://vercel.com/docs/cli/login), [Vercel deploy desde CLI sin Git](https://vercel.com/docs/deployments).

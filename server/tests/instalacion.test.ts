@@ -140,6 +140,21 @@ describe.skipIf(process.platform === "win32")("instalación de OpenCode", () => 
   });
 });
 
+describe("CLIs de publicación", () => {
+  test("Wrangler y Vercel usan versiones fijadas y están en la lista segura de instalación", async () => {
+    for (const [id, comando] of [
+      ["wrangler", "npm install -g --prefix ~/.opencode wrangler@4.156.0"],
+      ["vercel", "npm install -g --prefix ~/.opencode vercel@65.5.0"],
+    ]) {
+      const res = await herramientas.request(`/herramientas/${id}/instalacion`);
+      expect(res.status).toBe(200);
+      const cuerpo = (await res.json()) as { herramienta: string; comando: string; instalada: boolean };
+      expect(cuerpo).toMatchObject({ herramienta: id, comando });
+      expect(typeof cuerpo.instalada).toBe("boolean");
+    }
+  });
+});
+
 describe("integración Hermes", () => {
   test("publica solo el instalador oficial y no lo marca como runner de tareas", async () => {
     const res = await herramientas.request("/herramientas/hermes/instalacion");
