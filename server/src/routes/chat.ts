@@ -1414,6 +1414,8 @@ async function ejecutarAnalisisOrquestado(
       ON CONFLICT(origin_turn_id,role) DO UPDATE SET
         model=excluded.model,status='running',result=NULL,started_at_ms=excluded.started_at_ms,finished_at_ms=NULL
     `).run(conv.id, origenTurnoId, trabajador.rol, trabajador.model, Date.now());
+    // La etapa gestionada ya está guardada; una continuación puede reutilizarla sin relanzar perfiles.
+    marcarDelegacionConsumida(conv.id, origenTurnoId);
     registrarActividad(conv.id, turnoId, {
       tipo: "texto",
       texto: `${etiquetaAuxiliar}: encargo del Supervisor: ${GUIAS_TRABAJADOR[trabajador.rol]}`,
