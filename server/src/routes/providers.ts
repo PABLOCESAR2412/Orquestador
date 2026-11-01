@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { proveedorConClave, tieneClaveProveedor, valorClaveApiProveedor } from "../claves-proveedor";
 import { cancelarLoginCodex, confirmarLoginCodex, estadoLoginCodex, iniciarLoginCodex, LoginError, sesionCodexConectada } from "../login-cli";
-import { cancelarLoginAntigravity, enviarCodigoAntigravity, estadoLoginAntigravity, iniciarLoginAntigravity, LoginAntigravityError } from "../login-antigravity";
 import { hallarEjecutable } from "../ejecutable";
 import { carpetaHome } from "../hogar";
 import { listarModelosCodex } from "../modelos-codex";
@@ -200,6 +199,53 @@ providers.post("/providers/:id/probar", async (c) => {
   }
 });
 
+// El balance es información de cuenta oficial y solo se consulta al abrir el panel.
+// No se devuelve la clave ni se mezcla con el uso agregado que Telo registra en Analytics.
+providers.get("/providers/deepseek/balance", async (c) => {
+  const comprobadoEn = new Date().toISOString();
+  const clave = valorClaveApiProveedor("deepseek");
+  if (!clave) return c.json({ estado: "sin_clave", balanceInfos: [], comprobadoEn });
+
+  try {
+    const respuesta = await fetch("https://api.deepseek.com/user/balance", {
+      headers: { Accept: "application/json", Authorization: `Bearer ${clave}` },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!respuesta.ok) {
+      return c.json({
+        estado: respuesta.status === 401 || respuesta.status === 403 ? "clave_invalida" : "no_disponible",
+        balanceInfos: [],
+        comprobadoEn,
+      });
+    }
+    const cuerpo = await respuesta.json() as {
+      is_available?: unknown;
+      balance_infos?: unknown;
+    };
+    const balanceInfos = Array.isArray(cuerpo.balance_infos)
+      ? cuerpo.balance_infos.flatMap((dato) => {
+          if (!dato || typeof dato !== "object") return [];
+          const item = dato as Record<string, unknown>;
+          if ((item.currency !== "USD" && item.currency !== "CNY") || typeof item.total_balance !== "string") return [];
+          return [{
+            currency: item.currency,
+            totalBalance: item.total_balance,
+            grantedBalance: typeof item.granted_balance === "string" ? item.granted_balance : null,
+            toppedUpBalance: typeof item.topped_up_balance === "string" ? item.topped_up_balance : null,
+          }];
+        })
+      : [];
+    return c.json({
+      estado: balanceInfos.length ? "activo" : "no_disponible",
+      disponible: typeof cuerpo.is_available === "boolean" ? cuerpo.is_available : null,
+      balanceInfos,
+      comprobadoEn,
+    });
+  } catch {
+    return c.json({ estado: "no_disponible", balanceInfos: [], comprobadoEn });
+  }
+});
+
 // Inicio de sesión de Codex por código de dispositivo (ver login-cli.ts). Solo Codex tiene este flujo.
 providers.get("/providers/codex/login", async (c) => c.json(await estadoLoginCodex()));
 providers.get("/providers/codex/models", async (c) => {
@@ -221,32 +267,3 @@ providers.post("/providers/codex/login", async (c) => {
 });
 providers.delete("/providers/codex/login", async (c) => c.json(await cancelarLoginCodex()));
 providers.post("/providers/codex/confirmar", async (c) => c.json(await confirmarLoginCodex()));
-
-// Antigravity requiere un TTY remoto: el servidor presenta su URL y devuelve al prompt el código de Google.
-providers.get("/providers/antigravity/login", (c) => {
-  c.header("Cache-Control", "no-store");
-  return c.json(estadoLoginAntigravity());
-});
-providers.post("/providers/antigravity/login", (c) => {
-  c.header("Cache-Control", "no-store");
-  try {
-    return c.json(iniciarLoginAntigravity(), 202);
-  } catch (err) {
-    if (err instanceof LoginAntigravityError) return c.json({ error: err.code }, err.status);
-    throw err;
-  }
-});
-providers.post("/providers/antigravity/confirmar", async (c) => {
-  c.header("Cache-Control", "no-store");
-  const cuerpo = await c.req.json().catch(() => null) as { codigo?: unknown } | null;
-  try {
-    return c.json(await enviarCodigoAntigravity(cuerpo?.codigo));
-  } catch (err) {
-    if (err instanceof LoginAntigravityError) return c.json({ error: err.code }, err.status);
-    throw err;
-  }
-});
-providers.delete("/providers/antigravity/login", (c) => {
-  c.header("Cache-Control", "no-store");
-  return c.json(cancelarLoginAntigravity());
-});

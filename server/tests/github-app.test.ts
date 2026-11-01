@@ -116,6 +116,33 @@ test("rechaza repositorios de otra cuenta sin solicitar un token más amplio", a
   expect(llamadas).toBe(1);
 });
 
+test("el error de instalación identifica el repositorio, el permiso y el enlace de configuración", async () => {
+  let llamada = 0;
+  globalThis.fetch = (async () => {
+    llamada++;
+    if (llamada === 1) return Response.json([{
+      id: 456,
+      account: { login: "Pablo", name: "Telo-Orquestador" },
+      repository_selection: "selected",
+      html_url: "https://github.com/settings/installations/456",
+    }]);
+    return Response.json({ message: "Resource not accessible by integration" }, { status: 403 });
+  }) as unknown as typeof fetch;
+  await seleccionarInstalacionGithubApp(456);
+  let fallo: unknown;
+  try {
+    await tokenGithubAppParaRepo("https://github.com/Pablo/Gestor-Tareas.git", { contents: "write" });
+  } catch (error) {
+    fallo = error;
+  }
+  expect(fallo).toBeInstanceOf(Error);
+  expect((fallo as Error & { code: string }).code).toBe("github_app_sin_acceso");
+  expect((fallo as Error).message).toContain("Pablo/Gestor-Tareas");
+  expect((fallo as Error).message).toContain("Contents: Read and write");
+  expect((fallo as Error).message).toContain("https://github.com/settings/installations/456");
+  expect((fallo as Error).message).toContain("incluye este repo o todos los repos");
+});
+
 test("crear un PR prioriza el token temporal aunque exista una sesión anterior", async () => {
   let llamada = 0;
   globalThis.fetch = (async (url: any, init: any) => {

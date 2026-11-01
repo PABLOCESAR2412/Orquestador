@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type KeyboardEvent as TeclaReact, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as TeclaReact, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { api, reintentarConsultaTransitoria, type ModelInfo, type Preferences, type ProviderStatus } from "../api";
@@ -12,6 +12,7 @@ import "../styles-ajustes.css";
 import { InstalarHerramienta } from "../components/instalar-herramienta";
 import { AntigravityCard } from "../components/antigravity";
 import { LoginCodexPanel } from "../components/login-codex";
+import { copiarTexto } from "../components/chat-contenido";
 import { SkillsEditor } from "../components/skills-editor";
 import { TemaPanel } from "../components/settings/panel-tema";
 import { NotificacionesPanel } from "../components/settings/panel-notificaciones";
@@ -36,9 +37,9 @@ const PROVEEDOR_DE_PREFIJO: Record<string, string> = { openai: "codex" };
 const PESTANAS_PROVEEDOR = [
   { id: "google", texto: "Google Gemini" },
   { id: "groq", texto: "Groq Cloud" },
+  { id: "deepseek", texto: "DeepSeek" },
   { id: "nvidia", texto: "NVIDIA NIM" },
   { id: "openrouter", texto: "OpenRouter" },
-  { id: "opencode", texto: "OpenCode" },
 ] as const;
 const PESTANAS_LOCALES: { id: IntegracionLocal; texto: string }[] = [
   { id: "cli", texto: "CLIs instalados" },
@@ -168,7 +169,7 @@ export function SettingsPage() {
   const primarioId = proveedorDeModelo(value?.defaultModel);
   const respaldoId = proveedorDeModelo(prefs.data?.fallbackModel);
   const etiquetaDe = (p: ProviderStatus): string | null =>
-    p.id === primarioId ? "Primario" : p.id === respaldoId ? "Respaldo" : p.id === "codex" ? "Sesión" : p.id === "hermes" ? "Piloto" : p.variable === null ? "Local" : null;
+    p.id === primarioId ? "Primario" : p.id === respaldoId ? "Respaldo" : p.id === "codex" ? "Sesión" : p.variable === null ? "Local" : null;
 
   // Diagnóstico interno para distinguir una clave que no expone modelos de una conexión válida.
   const modelosDe = (id: string): { total: number; enSelector: number } | null => {
@@ -190,11 +191,11 @@ export function SettingsPage() {
     document.getElementById(`aj-tab-${siguiente.id}`)?.focus();
   };
 
-  const configurados = proveedores.data?.filter((p) => p.configured).length ?? 0;
+  const configurados = proveedores.data?.filter((p) => p.configured && PESTANAS_PROVEEDOR.some((tab) => tab.id === p.id)).length ?? 0;
   const proveedoresPrincipales = proveedores.data?.filter((p) => PESTANAS_PROVEEDOR.some((tab) => tab.id === p.id)) ?? [];
   const proveedorActivo = proveedoresPrincipales.find((p) => p.id === proveedorSeleccionado) ?? proveedoresPrincipales[0];
-  const proveedoresAdicionales = proveedores.data?.filter((p) => !PESTANAS_PROVEEDOR.some((tab) => tab.id === p.id)) ?? [];
   const proveedorCodex = proveedores.data?.find((p) => p.id === "codex");
+  const proveedorOpenCode = proveedores.data?.find((p) => p.id === "opencode");
   const conexionesTtsLista = (conexionesTts.data?.conexiones ?? []).filter((conexion) => /voice|voz|tts|speech/i.test(conexion.nombre));
   const datos = servidor.data;
   const herramientaMedia = (nombre: string) => datos?.herramientas.find((herramienta) => herramienta.nombre === nombre);
@@ -347,16 +348,6 @@ export function SettingsPage() {
                         tabLabelId={`aj-proveedor-tab-${proveedorActivo.id}`}
                       />
                     )}
-                    {proveedoresAdicionales.length > 0 && (
-                      <div className="aj-proveedores-adicionales" aria-label="Acceso local y otros proveedores">
-                        {proveedoresAdicionales.map((p) => (
-                          <Fragment key={p.id}>
-                            <TarjetaProveedor p={p} etiqueta={etiquetaDe(p)} modelos={modelosDe(p.id)} />
-                            {p.id === "codex" && <AntigravityCard />}
-                          </Fragment>
-                        ))}
-                      </div>
-                    )}
                   </>
                 )}
               </section>
@@ -365,7 +356,7 @@ export function SettingsPage() {
                 <div className="aj-seccion-cabecera">
                   <div>
                     <h2 id="aj-herramientas-locales-titulo" className="aj-titulo-seccion">CLIs y herramientas locales</h2>
-                    <p className="aj-nota">Estado de los programas del servidor que usan las tareas y el flujo de medios.</p>
+                    <p className="aj-nota">Estado de los programas del servidor y acceso a sus sesiones locales.</p>
                   </div>
                 </div>
                 <div className="aj-proveedores-pestanas" role="tablist" aria-label="Integraciones locales">
@@ -419,8 +410,9 @@ export function SettingsPage() {
                           );
                         })}
                       </div>
-                      <div className="aj-proveedores-adicionales" aria-label="Acceso a sesiones CLI">
+                      <div className="aj-proveedores-adicionales" aria-label="Acceso a CLIs y sesiones">
                         {proveedorCodex && <TarjetaProveedor p={proveedorCodex} etiqueta={etiquetaDe(proveedorCodex)} modelos={modelosDe(proveedorCodex.id)} />}
+                        {proveedorOpenCode && <TarjetaProveedor p={proveedorOpenCode} etiqueta={null} modelos={modelosDe(proveedorOpenCode.id)} />}
                         <AntigravityCard />
                       </div>
                     </div>
@@ -923,6 +915,7 @@ function TarjetaProveedor({
   const endpoints: Record<string, string> = {
     google: "generativelanguage.googleapis.com",
     groq: "api.groq.com/openai/v1",
+    deepseek: "api.deepseek.com/v1",
     nvidia: "integrate.api.nvidia.com/v1",
     openrouter: "openrouter.ai/api/v1",
   };
@@ -1049,7 +1042,11 @@ function TarjetaProveedor({
         </div>
       )}
       {nota && <p className="aj-nota aj-nota-aviso">{nota}</p>}
-      {p.id === "opencode" && !p.configured && <InstalarHerramienta id="opencode" nombre="OpenCode" />}
+      {p.id === "opencode" && (
+        <InstalarHerramienta id="opencode" nombre="OpenCode">
+          <SesionOpenCode />
+        </InstalarHerramienta>
+      )}
       {p.id === "codex" && (
         <InstalarHerramienta id="codex" nombre="Codex">
           <LoginCodexPanel />
@@ -1061,6 +1058,27 @@ function TarjetaProveedor({
         </InstalarHerramienta>
       )}
     </article>
+  );
+}
+
+function SesionOpenCode() {
+  const [copia, setCopia] = useState<string | null>(null);
+  const comando = "opencode auth login";
+  return (
+    <div className="aj-campo">
+      <div className="aj-campo-etiqueta"><span>Sesión de OpenCode</span></div>
+      <p className="aj-nota">En una terminal SSH de la VM, como usuario <code>orquestador</code>, ejecuta este comando para iniciar sesión o cambiar la cuenta. La sesión queda en el perfil local de OpenCode.</p>
+      <div className="instalar-acciones">
+        <code className="aj-mono">{comando}</code>
+        <button type="button" className="aj-btn" onClick={async () => {
+          setCopia(await copiarTexto(comando) ? "Comando copiado." : "No se pudo copiar el comando.");
+        }}>
+          {copia === "Comando copiado." ? "Comando copiado" : "Copiar comando"}
+        </button>
+      </div>
+      {copia && <p className="aj-nota" role="status">{copia}</p>}
+      <p className="aj-nota">El inicio interactivo se completa en el CLI. Telo no guarda ni muestra las credenciales OAuth de OpenCode.</p>
+    </div>
   );
 }
 

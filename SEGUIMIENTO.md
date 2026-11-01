@@ -4,6 +4,15 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 1 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## GitHub, cuotas de cuenta y acceso a CLIs — rama fix/settings-auth-usage-20261101
+
+- [x] GitHub App: un fallo al emitir el token ahora identifica repositorio, permiso de escritura y enlace de configuración de la instalación. La prueba reproduce 403 y valida esos datos. La App aún debe añadirse al repositorio de destino y recibir `Contents` y/o `Pull requests: Read and write` en GitHub para habilitar el push real.
+- [x] Codex CLI: `exec` y `resume` incluyen `--skip-git-repo-check` para workspaces de tarea que no contienen `.git`. El sandbox y sus permisos permanecen sin cambios. Regresión de argv aprobada.
+- [x] Uso: el panel dejó de duplicar Analytics y no presenta costes o cuotas sin respaldo oficial. Conserva la cuota de sesión de Codex, consulta el balance oficial de DeepSeek y enlaza las consolas verificadas para otros proveedores. Prueba sintética del endpoint DeepSeek y smoke de interfaz aprobados; no se consultaron cuentas reales.
+- [x] Ajustes: DeepSeek aparece como motor de inferencia; OpenCode, Codex y Antigravity se presentan una sola vez en herramientas locales; Hermes y xAI quedan ocultos. Antigravity mantiene el login interactivo en su propio CLI por SSH; Telo no recibe el código ni reutiliza esa sesión.
+- [x] Validación local: 46 pruebas focalizadas del servidor, typecheck, build web y smoke Playwright a 390/1440 px aprobados. El smoke no hace llamadas a proveedores reales; la captura de video se omitió por no configurar un fixture.
+- [ ] Pendiente en VM/GitHub: añadir `PABLOCESAR2412/Gestor-Tareas` a la instalación de `Telo-Orquestador`, aceptar el permiso de escritura necesario y repetir push/PR. Verificar Antigravity y el acceso OAuth de OpenCode manualmente en la terminal SSH del usuario `orquestador`.
+
 ## Correcciones de chat, cuotas y broker — PR #168, 1 de noviembre de 2026
 
 - [x] Codex: reproducido el error de Bubblewrap de la captura. Se usaba como origen una ruta que solo existía dentro del sandbox. El montaje ahora toma el archivo real del host y conserva autenticación/configuración en solo lectura. Prueba con Bubblewrap real: ambos alias se leen, no se pueden escribir, el estado del perfil sí se escribe y la autenticación no se copia al perfil persistente.

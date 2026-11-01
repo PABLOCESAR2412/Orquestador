@@ -842,6 +842,28 @@ button:disabled { opacity: 0.4; cursor: default; }
   padding: 2px 0 10px;
   border-bottom: 1px solid var(--line);
 }
+.usage-account-quota {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.usage-account-quota > .btn-usage {
+  align-self: flex-start;
+  text-decoration: none;
+}
+.usage-account-balance {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+}
+.usage-account-balance strong {
+  font-size: 20px;
+  color: var(--ink);
+}
 .usage-window:last-of-type { padding-bottom: 0; border-bottom: 0; }
 .usage-window-heading {
   display: flex;
