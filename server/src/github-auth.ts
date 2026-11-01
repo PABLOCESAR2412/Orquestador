@@ -7,6 +7,7 @@ type InstalacionGithubAppGuardada = {
   name: string;
   avatar_url: string;
   repository_selection: "all" | "selected";
+  configuration_url?: string | null;
 };
 
 export function instalacionGithubApp(): InstalacionGithubAppGuardada | null {

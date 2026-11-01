@@ -17,24 +17,23 @@ export function AntigravityCard() {
             </svg>
           </span>
           <div className="aj-tarjeta-texto">
-            <h3 id="aj-antigravity-titulo">Antigravity CLI · Piloto</h3>
-            <p className="aj-descripcion-tarjeta">Instala el harness de Google en la VM y autorízalo con tu cuenta.</p>
+            <h3 id="aj-antigravity-titulo">Antigravity CLI</h3>
+            <p className="aj-descripcion-tarjeta">CLI independiente; conserva su propia sesión y cuota.</p>
           </div>
         </div>
         <div className="aj-estado-proveedor" role="status">
           <span className="aj-proveedor-punto" aria-hidden="true" />
-          Configuración del piloto
+          Inicio por SSH
         </div>
       </div>
       <div className="aj-campos">
         <p className="aj-nota">
-          La instalación se hace desde Telo. Para iniciar sesión, abre una terminal SSH como usuario <code>orquestador</code>,
-          ejecuta <code>~/.local/bin/agy</code>, abre en tu equipo la URL que muestra y escribe allí el código que entrega Google.
-          No uses <code>sudo</code> para que Telo y la terminal compartan la instalación y la sesión.
+          Abre una terminal SSH como usuario <code>orquestador</code>, ejecuta <code>~/.local/bin/agy</code>,
+          abre la URL que imprime en tu navegador y pega el código de Google directamente en esa misma terminal. No escribas el código en Telo ni uses <code>sudo</code>.
         </p>
         <p className="aj-nota">
-          La CLI necesita una terminal interactiva para este acceso remoto. Tras autorizar, escribe <code>/usage</code> para ver uso restante y reinicios por modelo; luego <code>/exit</code> para cerrarla. Esta cuota corresponde a Antigravity y no al uso de Gemini API.
-          Este paso instala y autentica Antigravity; todavía no cambia el runner de chats y tareas de Telo.
+          La CLI necesita esa terminal interactiva para autorizar. Después escribe <code>/usage</code> para ver el uso restante y los reinicios por modelo; escribe <code>/exit</code> al terminar.
+          Esa cuota es de Antigravity, aparte de Gemini API. Telo no importa esta sesión ni la usa para chats o tareas.
         </p>
         <p className="aj-nota">
           <a href="https://antigravity.google/docs/install?tab=cli" target="_blank" rel="noopener noreferrer">
@@ -51,7 +50,7 @@ export function AntigravityCard() {
           <button type="button" className="aj-btn aj-btn-primario" onClick={async () => {
             setCopiado(await copiarTexto("~/.local/bin/agy") ? "Comando copiado." : "No se pudo copiar. Selecciona el comando y cópialo.");
           }}>
-            Copiar comando de inicio de sesión
+            Copiar comando para SSH
           </button>
           <code className="aj-mono">~/.local/bin/agy</code>
           {copiado && <span className="aj-nota" role="status">{copiado}</span>}

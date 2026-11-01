@@ -306,7 +306,7 @@ export function errorText(err: unknown): string {
         return textoErrorConAyuda(
           "GitHub no concedió acceso al repositorio.",
           err.detail,
-          "confirma que la GitHub App esté instalada en ese repo y tenga el permiso requerido, y vuelve a autorizar la acción.",
+          "incluye ese repositorio en la instalación de la App y concede el permiso de escritura indicado; después vuelve a autorizar la acción.",
         );
       case "git_action":
         return textoErrorConAyuda(

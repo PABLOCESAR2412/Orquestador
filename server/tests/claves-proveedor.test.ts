@@ -410,6 +410,35 @@ describe("GET /providers", () => {
     });
     delete process.env.NVIDIA_API_KEY;
   });
+
+  test("consulta el balance oficial de DeepSeek sin devolver ni registrar la clave", async () => {
+    const secreto = "deepseek-balance-test-secret";
+    guardarClaveProveedor("deepseek", secreto);
+    const fetchOriginal = globalThis.fetch;
+    let encabezado = "";
+    globalThis.fetch = (async (url: any, init?: RequestInit) => {
+      expect(String(url)).toBe("https://api.deepseek.com/user/balance");
+      encabezado = new Headers(init?.headers).get("Authorization") ?? "";
+      return Response.json({
+        is_available: true,
+        balance_infos: [{ currency: "USD", total_balance: "12.50", granted_balance: "2.50", topped_up_balance: "10.00" }],
+      });
+    }) as typeof fetch;
+    try {
+      const respuesta = await providers.request("/providers/deepseek/balance");
+      const texto = await respuesta.text();
+      expect(respuesta.status).toBe(200);
+      expect(encabezado).toBe(`Bearer ${secreto}`);
+      expect(texto).not.toContain(secreto);
+      expect(JSON.parse(texto)).toMatchObject({
+        estado: "activo",
+        disponible: true,
+        balanceInfos: [{ currency: "USD", totalBalance: "12.50", grantedBalance: "2.50", toppedUpBalance: "10.00" }],
+      });
+    } finally {
+      globalThis.fetch = fetchOriginal;
+    }
+  });
 });
 
 

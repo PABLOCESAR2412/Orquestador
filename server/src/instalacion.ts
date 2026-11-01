@@ -57,6 +57,22 @@ const ACCIONES = {
     ejecutable: () => join(carpetaHome(), ".local", "bin", "hermes"),
     binario: "hermes",
   },
+  wrangler: {
+    nombre: "Cloudflare Wrangler",
+    comando: "npm install -g --prefix ~/.opencode wrangler@4.156.0",
+    programa: "npm",
+    argv: (prefijo) => ["install", "-g", "--prefix", prefijo, "wrangler@4.156.0"],
+    ejecutable: (prefijo) => join(prefijo, "bin", "wrangler"),
+    binario: "wrangler",
+  },
+  vercel: {
+    nombre: "Vercel CLI",
+    comando: "npm install -g --prefix ~/.opencode vercel@65.5.0",
+    programa: "npm",
+    argv: (prefijo) => ["install", "-g", "--prefix", prefijo, "vercel@65.5.0"],
+    ejecutable: (prefijo) => join(prefijo, "bin", "vercel"),
+    binario: "vercel",
+  },
 } satisfies Record<string, Accion>;
 
 export type HerramientaInstalable = keyof typeof ACCIONES;
@@ -161,7 +177,7 @@ export function iniciarInstalacion(id: string): InstalacionPublica {
   if (["antigravity", "hermes"].includes(id) && hallarEjecutable("curl") === null) throw new InstalacionError("curl_no_disponible", 503);
 
   const prefijo = carpetaDeInstalacion();
-  if (id === "opencode" || id === "codex") mkdirSync(prefijo, { recursive: true });
+  if (["opencode", "codex", "wrangler", "vercel"].includes(id)) mkdirSync(prefijo, { recursive: true });
 
   let proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
   try {

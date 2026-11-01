@@ -230,11 +230,25 @@ export async function tokenGithubAppParaRepo(
     repositories: [repo],
     permissions: permisos,
   };
-  const respuesta = await llamarGithub<{ token: string }>(
-    `/app/installations/${instalacion.id}/access_tokens`,
-    jwtDeApp(),
-    body,
-  );
+  let respuesta: { token: string };
+  try {
+    respuesta = await llamarGithub<{ token: string }>(
+      `/app/installations/${instalacion.id}/access_tokens`,
+      jwtDeApp(),
+      body,
+    );
+  } catch (error) {
+    if (!(error instanceof ErrorGithubApp) || error.code !== "github_app_sin_acceso") throw error;
+    const destino = instalacion.configuration_url ?? "https://github.com/settings/installations";
+    const permisosNecesarios = permisos.pull_requests
+      ? "Pull requests"
+      : "Contents";
+    throw new ErrorGithubApp(
+      "github_app_sin_acceso",
+      `GitHub denegó la instalación de Telo para ${owner}/${repo}. Abre ${destino} y en Configure incluye este repo o todos los repos. En Developer settings → GitHub Apps → Telo-Orquestador → Permissions & events, confirma ${permisosNecesarios}: Read and write y acepta la actualización de permisos. Después reintenta.`,
+      403,
+    );
+  }
   if (!respuesta.token) throw new ErrorGithubApp("github_app_token_invalido", "GitHub no devolvió una credencial de instalación.");
 
   return respuesta.token;

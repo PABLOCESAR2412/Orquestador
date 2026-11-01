@@ -4,6 +4,15 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 1 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## GitHub, cuotas de cuenta y acceso a CLIs — rama fix/settings-auth-usage-20261101
+
+- [x] GitHub App: un fallo al emitir el token ahora identifica repositorio, permiso de escritura y enlace de configuración de la instalación. La prueba reproduce 403 y valida esos datos. La App aún debe añadirse al repositorio de destino y recibir `Contents` y/o `Pull requests: Read and write` en GitHub para habilitar el push real.
+- [x] Codex CLI: `exec` y `resume` incluyen `--skip-git-repo-check` para workspaces de tarea que no contienen `.git`. El sandbox y sus permisos permanecen sin cambios. Regresión de argv aprobada.
+- [x] Uso: el panel dejó de duplicar Analytics y no presenta costes o cuotas sin respaldo oficial. Conserva la cuota de sesión de Codex, consulta el balance oficial de DeepSeek y enlaza las consolas verificadas para otros proveedores. Prueba sintética del endpoint DeepSeek y smoke de interfaz aprobados; no se consultaron cuentas reales.
+- [x] Ajustes: DeepSeek aparece como motor de inferencia; OpenCode, Codex y Antigravity se presentan una sola vez en herramientas locales; Hermes y xAI quedan ocultos. Antigravity mantiene el login interactivo en su propio CLI por SSH; Telo no recibe el código ni reutiliza esa sesión.
+- [x] Validación local: 46 pruebas focalizadas del servidor, typecheck, build web y smoke Playwright a 390/1440 px aprobados. El smoke no hace llamadas a proveedores reales; la captura de video se omitió por no configurar un fixture.
+- [ ] Pendiente en VM/GitHub: añadir `PABLOCESAR2412/Gestor-Tareas` a la instalación de `Telo-Orquestador`, aceptar el permiso de escritura necesario y repetir push/PR. Verificar Antigravity y el acceso OAuth de OpenCode manualmente en la terminal SSH del usuario `orquestador`.
+
 ## Correcciones de chat, cuotas y broker — PR #168, 1 de noviembre de 2026
 
 - [x] Codex: reproducido el error de Bubblewrap de la captura. Se usaba como origen una ruta que solo existía dentro del sandbox. El montaje ahora toma el archivo real del host y conserva autenticación/configuración en solo lectura. Prueba con Bubblewrap real: ambos alias se leen, no se pueden escribir, el estado del perfil sí se escribe y la autenticación no se copia al perfil persistente.
@@ -1428,3 +1437,13 @@ Implementación: PR #107 https://github.com/PABLOCESAR2412/Orquestador/pull/107.
 - [x] Ajustes: retirada la etiqueta Datos del servidor y la hora junto a las pestañas, con sus estilos sin uso. Sin cambios en las métricas. Validación: compilación web. PR #107.
 
 - [x] Ejecuciones recientes: ancho fijo de columnas, nombres/encabezados con salto de línea y proveedor separado; contención del desplazamiento horizontal en tablas. Playwright con nombre de modelo largo confirma tabla dentro del panel y página sin desborde a 390/1440 px; build web aprobado. Datos y cálculos sin cambios. PR #107.
+
+# Publicación de demos con Wrangler y Vercel — 1 de noviembre de 2026
+
+- [x] Ajustes instala Wrangler `4.156.0` y Vercel CLI `65.5.0` con versiones fijadas, muestra su estado y ofrece comandos copiables de inicio de sesión y despliegue desde SSH. Ambos admiten publicación por CLI sin vincular un repositorio; un sitio estático de demo no necesita base de datos.
+- [x] Las sesiones OAuth permanecen en el HOME del usuario `orquestador`. Bubblewrap oculta el HOME al agente, así que ni `.wrangler` ni `.vercel` se montan en el sandbox. La publicación automática iniciada por un agente todavía requiere una acción de servidor con aprobación explícita; no se entregan estas credenciales al modelo.
+- [x] El error de la captura es un HTTP 500 genérico. La clasificación existente lo considera transitorio, reanuda la sesión e intenta tres veces con esperas; solo cambia a otro modelo si la política y los respaldos configurados lo permiten. La captura no trae logs ni identificador de solicitud para atribuir el 500 a Telo o a un proveedor concreto.
+- [x] Verificación local: pruebas dirigidas del servidor, 26 aprobadas y 19 omitidas en Windows (flujos que requieren Linux/setsid); TypeScript del servidor y build web aprobados; Playwright UI smoke aprobado a 390 y 1440 px, incluidos comandos copiables y ausencia de scroll horizontal. El MP4 de fixture no se configuró y esa parte del smoke se omitió.
+- [ ] Instalar en la VM, autorizar la cuenta personal de Cloudflare y Vercel desde sus flujos de dispositivo, comprobar `whoami` y hacer una publicación de vista previa real. Esta rama no instala ni inicia sesión en la VM antes del merge.
+
+Referencias oficiales: [Cloudflare Wrangler login por dispositivo](https://developers.cloudflare.com/workers/wrangler/commands/general/), [Cloudflare Pages Direct Upload](https://developers.cloudflare.com/pages/get-started/direct-upload/), [Vercel login](https://vercel.com/docs/cli/login), [Vercel deploy desde CLI sin Git](https://vercel.com/docs/deployments).

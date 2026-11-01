@@ -53,6 +53,7 @@ test("arranque y resume conservan sandbox, perfil y permisos de solo lectura", a
     }
     expect(capturas[0]?.args).toContain('sandbox_mode="workspace-write"');
     expect(capturas[1]?.args).toContain('sandbox_mode="read-only"');
+    expect(capturas.every(({ args }) => args.includes("--skip-git-repo-check"))).toBe(true);
     expect(capturas[1]?.args).toContain("resume");
     for (const captura of capturas) {
       expect(captura.args).not.toContain("--dangerously-bypass-approvals-and-sandbox");

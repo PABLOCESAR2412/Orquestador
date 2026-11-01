@@ -270,6 +270,13 @@ export type CuotaCodex = {
   comprobadoEn: string;
 };
 
+export type BalanceDeepSeek = {
+  estado: "activo" | "sin_clave" | "clave_invalida" | "no_disponible";
+  disponible?: boolean | null;
+  balanceInfos: { currency: "USD" | "CNY"; totalBalance: string; grantedBalance: string | null; toppedUpBalance: string | null }[];
+  comprobadoEn: string;
+};
+
 export type UsoProveedor = {
   id: string;
   nombre: string;
@@ -773,15 +780,6 @@ export type LoginCodex = {
   iniciada: string | null;
 };
 
-export type LoginAntigravity = {
-  estado: "inactivo" | "esperando" | "verificando" | "conectado" | "fallido";
-  instalada: boolean;
-  conectada: boolean;
-  url: string | null;
-  motivo: string | null;
-  iniciada: string | null;
-};
-
 export type ModeloCodex = { id: string; name: string; context: number; variants: string[] };
 
 export type SkillResumen = {
@@ -1098,6 +1096,7 @@ export const api = {
     request<Task>(`/api/programadas/${id}/ejecutar`, { method: "POST", body: "{}" }),
   usage: () => request<{ generado: string; proveedores: UsoProveedor[]; googleLive?: GoogleLiveMetrics }>("/api/uso"),
   codexUsage: (forzar = false) => request<CuotaCodex>(`/api/providers/codex/usage${forzar ? "?refresh=1" : ""}`),
+  deepseekBalance: () => request<BalanceDeepSeek>("/api/providers/deepseek/balance"),
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
   googleDriveArchives: () => request<AlmacenamientoDrive>("/api/google-drive/archives"),
   archivarTareaDrive: (id: string) => request<{ id: string; task_id: string; action: "archive"; state: "queued" }>(`/api/google-drive/archives/${id}`, { method: "POST", body: "{}" }),
@@ -1119,10 +1118,6 @@ export const api = {
   iniciarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "POST", body: "{}" }),
   cancelarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "DELETE" }),
   confirmarCodexLogin: () => request<LoginCodex>("/api/providers/codex/confirmar", { method: "POST" }),
-  antigravityLogin: () => request<LoginAntigravity>("/api/providers/antigravity/login"),
-  iniciarAntigravityLogin: () => request<LoginAntigravity>("/api/providers/antigravity/login", { method: "POST", body: "{}" }),
-  enviarCodigoAntigravity: (codigo: string) => request<LoginAntigravity>("/api/providers/antigravity/confirmar", { method: "POST", body: JSON.stringify({ codigo }) }),
-  cancelarAntigravityLogin: () => request<LoginAntigravity>("/api/providers/antigravity/login", { method: "DELETE" }),
   // Cuenta global de GitHub (en Ajustes) para operar sin claves SSH por proyecto.
   githubCuenta: () => request<GithubCuenta>("/api/github/cuenta"),
   listMcpConnections: () => request<ConexionesMcpEstado>("/api/conexiones"),

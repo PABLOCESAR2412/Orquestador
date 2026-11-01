@@ -354,10 +354,13 @@ try {
       else if (path === "/api/providers") data = [
         { id: "opencode", name: "OpenCode", configured: true, implemented: true, hint: "CLI instalado.", variable: null, enAgente: true, guardable: false, guardada: false, sesion: false },
         { id: "codex", name: "Codex", configured: codexSesionEnPicker, implemented: true, hint: "Sesión de Codex.", variable: null, enAgente: codexSesionEnPicker, guardable: false, guardada: false, sesion: codexSesionEnPicker },
+        { id: "hermes", name: "Hermes Agent", configured: true, implemented: false, hint: "Piloto.", variable: null, enAgente: false, guardable: false, guardada: false, sesion: false },
         { id: "google", name: "Google (Gemini)", configured: true, implemented: true, hint: "Clave de prueba.", variable: "GOOGLE_GENERATIVE_AI_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
         { id: "groq", name: "Groq", configured: false, implemented: true, hint: "Clave de prueba.", variable: "GROQ_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
+        { id: "deepseek", name: "DeepSeek", configured: true, implemented: true, hint: "Clave de prueba.", variable: "DEEPSEEK_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
         { id: "nvidia", name: "NVIDIA", configured: true, implemented: true, hint: "Clave de prueba.", variable: "NVIDIA_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
         { id: "openrouter", name: "OpenRouter", configured: false, implemented: true, hint: "Clave de prueba.", variable: "OPENROUTER_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
+        { id: "xai", name: "xAI", configured: true, implemented: true, hint: "Clave de prueba.", variable: "XAI_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
       ];
       else if (/^\/api\/providers\/[^/]+\/probar$/.test(path)) data = { ok: true, modelos: 7 };
       else if (path === "/api/providers/codex/models") data = { generado: now, models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", context: 100000, variants: ["high"] }] };
@@ -1258,18 +1261,15 @@ try {
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.locator(".tl-aviso-generacion-media").waitFor({ state: "detached" });
     await page.getByRole("button", { name: "Uso", exact: true }).click();
-    const panelUso = page.getByRole("dialog", { name: "Uso del proveedor" });
+    const panelUso = page.getByRole("dialog", { name: "Cuota del proveedor" });
     await panelUso.waitFor();
-    await panelUso.getByText("Últimos 7 días", { exact: true }).waitFor();
+    await panelUso.getByText("Consulta de cuenta", { exact: true }).waitFor();
     const textoUso = await panelUso.textContent();
-    assert.equal(await panelUso.locator('[role="meter"]').count(), 0, "no se presentan porcentajes/cuotas ficticios");
-    assert.equal(textoUso.includes("Últimos 7 días"), true);
-    assert.equal(textoUso.includes("Últimas 5 horas"), true);
-    assert.equal(textoUso.includes("Mes actual (UTC)"), true);
-    assert.equal(textoUso.includes("Estimación de coste"), true);
-    assert.equal(textoUso.includes("El plan Google AI Plus y la cuota de Antigravity son aparte"), true);
-    assert.equal(await panelUso.getByRole("link", { name: "Google AI Studio · Usage" }).getAttribute("href"), "https://aistudio.google.com/usage");
-    assert.equal(/\b(?:restantes|RPD|RPM|cuota restante)\b/i.test(textoUso), false);
+    assert.equal(await panelUso.locator(".usage-window").count(), 0, "el popover no duplica los agregados de Analíticas");
+    assert.equal(textoUso.includes("Telo no consulta una cuota oficial de esta cuenta"), true);
+    assert.equal(textoUso.includes("Últimos 7 días"), false);
+    assert.equal(textoUso.includes("Estimación de coste"), false);
+    assert.equal(await panelUso.getByRole("link", { name: "Uso y límites de Gemini API ↗" }).getAttribute("href"), "https://aistudio.google.com/usage");
     await page.keyboard.press("Escape");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/chat-uso-${width}.png` });
@@ -1393,8 +1393,17 @@ try {
     await page.getByRole("heading", { name: "Ajustes y Servidor", exact: true }).waitFor();
     assert.equal(await page.getByRole("heading", { name: "Cuenta de Google", exact: true }).count(), 0);
     const proveedoresInferencia = page.getByRole("tablist", { name: "Proveedores de inferencia" });
-    await proveedoresInferencia.getByRole("tab", { name: "Google Gemini" }).waitFor();
+    const tabGemini = proveedoresInferencia.getByRole("tab", { name: "Google Gemini" });
+    await tabGemini.evaluate((tab) => tab.scrollIntoView({ block: "nearest", inline: "center" }));
+    await tabGemini.waitFor();
     assert.equal(await proveedoresInferencia.getByRole("tab").count(), 5);
+    await page.getByText("3 configurados", { exact: true }).waitFor();
+    assert.equal(await proveedoresInferencia.getByRole("tab", { name: "OpenCode", exact: true }).count(), 0, "OpenCode se configura en la sección CLI");
+    await proveedoresInferencia.getByRole("tab", { name: "DeepSeek", exact: true }).click();
+    await page.getByRole("tabpanel", { name: "DeepSeek" }).waitFor();
+    assert.equal(await page.getByRole("heading", { name: "Hermes Agent", exact: true }).count(), 0, "Hermes queda oculto en Ajustes");
+    assert.equal(await page.getByRole("heading", { name: "xAI", exact: true }).count(), 0, "xAI no se ofrece en Ajustes");
+    await proveedoresInferencia.getByRole("tab", { name: "Google Gemini", exact: true }).click();
     const panelGemini = page.getByRole("tabpanel", { name: "Google Gemini" });
     await panelGemini.getByRole("button", { name: "Mostrar ajustes", exact: true }).click();
     await panelGemini.getByRole("button", { name: "Editar", exact: true }).click();
@@ -1444,6 +1453,19 @@ try {
     await escalaRestablecer.press("ArrowLeft");
     await escalaRestablecer.press("ArrowLeft");
     await page.goto(`${base}/ajustes`);
+    const tarjetaWrangler = page.locator('article[aria-labelledby="aj-wrangler-titulo"]');
+    await tarjetaWrangler.waitFor();
+    assert.equal(await tarjetaWrangler.getByText("Crear Pages una vez", { exact: true }).count(), 1);
+    assert.equal(await tarjetaWrangler.getByText(/--branch preview/).count(), 1, "Cloudflare indica una subida sin Git a una rama de vista previa");
+    await tarjetaWrangler.getByRole("button", { name: "Copiar", exact: true }).first().click();
+    await page.getByRole("status").filter({ hasText: "Comando copiado: Iniciar sesión." }).waitFor();
+    const tarjetaVercel = page.locator('article[aria-labelledby="aj-vercel-titulo"]');
+    await tarjetaVercel.getByText(/vercel deploy \/ruta\/al\/proyecto/).waitFor();
+    const listaClis = page.locator('[aria-label="Estado de CLI del servidor"]');
+    assert.equal(await listaClis.getByText("Wrangler CLI", { exact: true }).count(), 1);
+    assert.equal(await listaClis.getByText("Vercel CLI", { exact: true }).count(), 1);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/publicacion-cli-${width}.png` });
     const tarjetaNotificaciones = page.locator('article[aria-labelledby="ajustes-notificaciones"]');
     await tarjetaNotificaciones.scrollIntoViewIfNeeded();
     const interruptorNotificaciones = tarjetaNotificaciones.getByRole("switch", { name: "Notificaciones del sistema" });
@@ -1485,6 +1507,11 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/jev-ajustes-${width}.png` });
     const accesoCodex = page.locator(".aj-proveedores-adicionales");
+    assert.equal(await page.getByRole("heading", { name: "Codex", exact: true }).count(), 1, "Codex tiene una sola tarjeta en CLIs locales");
+    assert.equal(await page.getByRole("heading", { name: "OpenCode", exact: true }).count(), 1, "OpenCode tiene una sola tarjeta en CLIs locales");
+    assert.equal(await page.getByRole("heading", { name: "Antigravity CLI", exact: true }).count(), 1, "Antigravity tiene una sola guía de acceso SSH");
+    assert.equal(await page.getByRole("heading", { name: "Hermes Agent", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("heading", { name: "xAI", exact: true }).count(), 0);
     await accesoCodex.getByRole("button", { name: "Copiar código", exact: true }).first().click();
     await accesoCodex.getByText("Código copiado.", { exact: true }).first().waitFor();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "ABCD-EFGH");
