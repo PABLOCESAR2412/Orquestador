@@ -36,7 +36,7 @@ TELO_GITHUB_CI_TOKEN=github_pat_REEMPLAZAR_EN_EL_EDITOR
 Después de incorporar la unidad actualizada desde `main`, recárgala y ejecuta un ciclo manual para comprobar los registros:
 
 ```bash
-sudo cp ~/orquestador/deploy/orquestador-deploy.service /etc/systemd/system/
+sudo cp ~/orquestador/orquestador/deploy/orquestador-deploy.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl start orquestador-deploy.service
 journalctl -u orquestador-deploy.service -n 30 --no-pager
