@@ -57,6 +57,7 @@ type Patch = {
   title?: string;
   pinned?: boolean;
   orquestacion_habilitada?: boolean;
+  orquestacion_modelos_personalizados?: boolean;
   orquestacion_seleccion_automatica?: boolean;
   orquestacion_trabajadores?: TrabajadorOrquestacion[];
 };
@@ -556,6 +557,7 @@ export function ChatPage() {
                 model: patch.model !== undefined ? patch.model : c.model,
                 effort: patch.effort !== undefined ? patch.effort : c.effort,
                 title: patch.title !== undefined ? patch.title : c.title,
+                orquestacion_modelos_personalizados: patch.orquestacion_modelos_personalizados !== undefined ? patch.orquestacion_modelos_personalizados : c.orquestacion_modelos_personalizados,
                 orquestacion_habilitada: patch.orquestacion_habilitada !== undefined ? patch.orquestacion_habilitada : c.orquestacion_habilitada,
                 orquestacion_seleccion_automatica: patch.orquestacion_seleccion_automatica !== undefined ? patch.orquestacion_seleccion_automatica : c.orquestacion_seleccion_automatica,
                 orquestacion_trabajadores: patch.orquestacion_trabajadores !== undefined ? patch.orquestacion_trabajadores : c.orquestacion_trabajadores,
@@ -2570,6 +2572,7 @@ export function ChatPage() {
               modelo={current.model}
               esfuerzo={current.effort}
               habilitada={Boolean(current.orquestacion_habilitada)}
+              modelosPersonalizados={Boolean(current.orquestacion_modelos_personalizados)}
               preactivarAuxiliares={orquestacionDesdeAgente}
               trabajadores={current.orquestacion_trabajadores ?? []}
               modelos={modelList}

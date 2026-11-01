@@ -1,3 +1,4 @@
+import { auxiliaresEnVivo, type AuxiliarVivo } from "../lib/auxiliares-actividad";
 import { useEffect, useRef, useState } from "react";
 import { haceTexto, tiempoTranscurrido } from "../lib/tiempo";
 import { interpretarRespuestaTarea } from "../lib/respuesta-tarea";
@@ -483,58 +484,6 @@ function promptCorreccion(reporte: NonNullable<ReturnType<typeof interpretarResp
     reporte.cambios.length ? `Archivos reportados:\n${reporte.cambios.map((c) => `- ${c.archivo}`).join("\n")}` : "",
     "Explica la causa concreta, aplica la corrección y vuelve a ejecutar las pruebas afectadas. Informa el resultado real. No hagas commit, push ni PR.",
   ].filter(Boolean).join("\n\n");
-}
-
-type RolAuxiliarVivo = "arquitectura" | "seguridad" | "verificacion";
-type AuxiliarVivo = {
-  rol: RolAuxiliarVivo;
-  modelo: string;
-  estado: "running" | "done" | "failed" | "cancelled";
-  avance: string;
-  instruccion: string | null;
-  pasos: PasoActividad[];
-};
-
-function auxiliaresEnVivo(pasos: PasoActividad[]): AuxiliarVivo[] {
-  const auxiliares = new Map<RolAuxiliarVivo, AuxiliarVivo>();
-  const hito = /^Auxiliar (arquitectura|seguridad|verificacion) \(([^)]+)\):\s*(.+)$/i;
-  const accion = /^\[(arquitectura|seguridad|verificacion)\]\s*(.+)$/i;
-  for (const paso of pasos) {
-    const texto = paso.tipo === "texto" ? paso.titulo : "";
-    const resultadoHito = texto.match(hito);
-    const resultadoAccion = paso.tipo === "accion" ? paso.titulo.match(accion) : null;
-    const rol = (resultadoHito?.[1] ?? resultadoAccion?.[1]) as RolAuxiliarVivo | undefined;
-    if (!rol) continue;
-    let auxiliar = auxiliares.get(rol);
-    if (!auxiliar) {
-      auxiliar = {
-        rol,
-        modelo: resultadoHito?.[2] ?? "Modelo auxiliar",
-        estado: "running",
-        avance: "Preparando revisión de solo lectura",
-        instruccion: null,
-        pasos: [],
-      };
-      auxiliares.set(rol, auxiliar);
-    }
-    if (resultadoHito) {
-      const detalle = resultadoHito[3].replace(/[.!]+$/, "");
-      if (/^encargo del supervisor:/i.test(detalle)) {
-        auxiliar.instruccion = detalle.replace(/^encargo del supervisor:\s*/i, "");
-        continue;
-      }
-      auxiliar.avance = detalle;
-      if (/termin[oó] la revisi[oó]n/i.test(detalle)) auxiliar.estado = "done";
-      else if (/fall[oó]:/i.test(detalle)) auxiliar.estado = "failed";
-      else if (/cancel[oó]/i.test(detalle)) auxiliar.estado = "cancelled";
-      else auxiliar.estado = "running";
-    } else if (resultadoAccion && paso.tipo === "accion") {
-      auxiliar.pasos.push({ ...paso, titulo: resultadoAccion[2] });
-      auxiliar.avance = paso.titulo.replace(/^\[[^\]]+\]\s*/, "");
-      if (paso.estado === "error") auxiliar.estado = "failed";
-    }
-  }
-  return [...auxiliares.values()];
 }
 
 function PanelAuxiliaresVivos({ auxiliares }: { auxiliares: AuxiliarVivo[] }) {

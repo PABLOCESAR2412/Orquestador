@@ -78,7 +78,7 @@ try {
   assert.equal(db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM conversations WHERE parent_conversation_id=?").get(chatLegacy)?.n, 0);
   const proyectoGestionado = crypto.randomUUID(), chatGestionado = crypto.randomUUID(), turnoGestionado = crypto.randomUUID();
   db.query("INSERT INTO projects(id,name) VALUES (?,'Gestionado')").run(proyectoGestionado);
-  db.query("INSERT INTO conversations(id,project_id,orquestacion_habilitada,orquestacion_trabajadores) VALUES (?,?,1,?)")
+  db.query("INSERT INTO conversations(id,project_id,orquestacion_habilitada,orquestacion_modelos_personalizados,orquestacion_trabajadores) VALUES (?,?,1,1,?)")
     .run(chatGestionado, proyectoGestionado, JSON.stringify([{ model: "codex/revisor", rol: "seguridad" }]));
   db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,'user','Usa subagentes para auditar el proyecto')").run(turnoGestionado, chatGestionado);
   const gestionada = crearTarea({ ...base, projectId: proyectoGestionado, conversationId: chatGestionado, messageId: turnoGestionado, prompt: "Usa subagentes para auditar el proyecto" });
@@ -103,6 +103,15 @@ try {
   const porDefecto = crearTarea({ ...base, projectId: null, conversationId: sinConfig, messageId: turnoSinConfig, prompt: "Usa varios agentes para investigar el proyecto" });
   await esperar(() => estado(porDefecto).status === "waiting_approval");
   assert.equal(llamadas.filter((l) => l.taskId === porDefecto && l.usageRole?.startsWith("reviewer:")).length, 3);
+  const legado = crypto.randomUUID(), turnoGemini = crypto.randomUUID();
+  const previos = JSON.stringify([{ model: "opencode/big-pickle", rol: "arquitectura" }]);
+  db.query("INSERT INTO conversations(id,model,orquestacion_habilitada,orquestacion_trabajadores) VALUES(?,?,1,?)").run(legado,"google/gemini-test",previos);
+  db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,'user','Usa varios agentes')").run(turnoGemini,legado);
+  const hereda = crearTarea({ ...base, model: "google/gemini-test", projectId: null, conversationId: legado, messageId: turnoGemini, prompt: "Usa varios agentes para investigar" });
+  await esperar(() => estado(hereda).status === "waiting_approval");
+  const heredados = llamadas.filter((l) => l.taskId === hereda && l.usageRole?.startsWith("reviewer:"));
+  assert.equal(heredados.length,3); assert(heredados.every((l)=>l.model==="google/gemini-test"));
+  assert.equal(db.query<{ orquestacion_trabajadores: string }, [string]>("SELECT orquestacion_trabajadores FROM conversations WHERE id=?").get(legado)?.orquestacion_trabajadores,previos);
   console.log("turnos de tareas verificados");
   db.close();
   process.exit(0);

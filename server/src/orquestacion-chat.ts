@@ -7,6 +7,7 @@ export type ConfiguracionAnalisisChat = {
   id: string;
   project_id: string | null;
   orquestacion_trabajadores: string;
+  orquestacion_modelos_personalizados?: number | boolean;
 };
 
 export type RolTrabajadorOrquestacion = "arquitectura" | "seguridad" | "verificacion";
@@ -76,11 +77,12 @@ export async function ejecutarAnalisisOrquestado(
   modeloCoordinador: string,
   taskId?: string,
 ): Promise<string[]> {
-  let trabajadores = leerTrabajadoresOrquestacion(conv.orquestacion_trabajadores);
+  let trabajadores = conv.orquestacion_modelos_personalizados
+    ? leerTrabajadoresOrquestacion(conv.orquestacion_trabajadores) : [];
   if (!trabajadores.length) {
     registrarActividad(conv.id, turnoId, {
       tipo: "texto",
-      texto: "No hay auxiliares configurados: usaré el modelo de este chat en revisiones independientes, según tu petición.",
+      texto: `Los auxiliares usarán el modelo seleccionado para este turno: ${modeloCoordinador}. Los modelos diferentes requieren selección explícita en Supervisor.`,
     });
     trabajadores = [
       { model: modeloCoordinador, rol: "arquitectura" },

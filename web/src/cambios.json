@@ -5,6 +5,12 @@
   "cambios": [
     {
       "fecha": "2026-11-01",
+      "tipo": "minimo",
+      "titulo": "Chat: los auxiliares heredan el modelo seleccionado y reflejan correctamente fallos, cancelación y revisiones reutilizadas",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-01",
       "tipo": "grande",
       "titulo": "Agentes: aísla red y credenciales con broker, registra uso nativo y retira skills obsoletas al reanudar",
       "pr": 164
