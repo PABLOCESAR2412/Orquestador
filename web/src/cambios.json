@@ -5,6 +5,12 @@
   "cambios": [
     {
       "fecha": "2026-10-31",
+      "tipo": "minimo",
+      "titulo": "Chat: estructura mejor los reportes y verifica el MP4 antes de dar un video por entregado",
+      "pr": 161
+    },
+    {
+      "fecha": "2026-10-31",
       "tipo": "mediano",
       "titulo": "Agentes: conserva revisiones explícitas por etapas y muestra uso por modelo; oficina actualizada por eventos",
       "pr": 160

@@ -18,6 +18,7 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 ## Presentación de respuestas del chat — 31 de octubre de 2026
 
 - [~] Se refuerza el contrato del chat para responder en el idioma del usuario y omitir razonamiento privado, borradores y notas internas. No se añadió un filtro heurístico que pueda borrar respuestas válidas. Pendiente validar en la VM con una tarea larga.
+- [~] Las respuestas de trabajos largos y skills ahora deben usar títulos y listas legibles. En solicitudes de video, Telo valida que el MP4 exista y pueda servirse, enlaza el archivo y, si falta, hace un único intento de recuperación en la misma sesión; si no lo consigue, declara la entrega incompleta. Pruebas unitarias locales aprobadas; el caso de integración del chat requiere CI Linux porque depende de `setsid`. Pendiente verificarlo en la VM con un render real.
 - [~] La primera columna de tablas queda compacta y sin salto por carácter; las tablas anchas conservan el desplazamiento de su contenedor. Pendiente revisión visual en escritorio y móvil.
 
 ## Selector y oficina — 31 de octubre de 2026

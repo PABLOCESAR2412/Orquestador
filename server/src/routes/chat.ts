@@ -8,7 +8,7 @@ import { pausaTareasPorDespliegue, registrarPausaActiva, registrarTrabajo } from
 import { db } from "../db";
 import { publicar } from "../bus";
 import { AislamientoError, eliminarPerfilCodex, eliminarPerfilOpenCode } from "../runners/aislamiento";
-import { ejecutarAgente, ErrorCuota, promptContinuacion, type ResultadoAgente } from "../ejecutar";
+import { ejecutarAgente, ErrorCuota, promptContinuacion, type OpcionesAgente, type ResultadoAgente } from "../ejecutar";
 import { sesionCompatible } from "../conversacion-contexto";
 import { getPreferences } from "../preferences";
 import { projectRepoPath } from "./projects";
@@ -29,6 +29,7 @@ import { eliminarPerfilSubagentes, pideSubagentes, prepararSubagentes } from "..
 import { cerrarSubagentesDelTurno, registrarEventoSubagente } from "../subagentes-chat";
 import { ArchivoError, buscarArchivosPorNombre, leerArchivo, leerImagen, leerPdf, leerVideo, leerRecursoHtml, normalizarRuta } from "../archivos-proyecto";
 import { contarImagenesMarcadas, eliminarImagenesConversacion, guardarImagenAdjunta, idsImagenesMarcadas, leerImagenAdjunta, MAX_IMAGENES_MENSAJE } from "../chat-adjuntos";
+import { anexarEnlaceVideo, buscarVideoVerificado, promptRecuperarEntregaVideo, requiereEntregaVideo } from "../entrega-video";
 
 const DEFAULT_MODEL = "opencode/big-pickle";
 // Texto de un mensaje: incluye los adjuntos de texto. El cuerpo HTTP sigue limitado a 64 KB.
@@ -1189,7 +1190,7 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       texto: `Contexto preparado. Solicitud enviada al modelo ${model}; esperando actividad observable del proveedor.`,
     });
     const inicioSupervisor = Date.now();
-    result = await ejecutarAgente({
+    const opcionesEjecucion: OpcionesAgente = {
       prompt: promptCoordinador,
       model,
       variant: conv.effort,
@@ -1246,10 +1247,39 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
           texto: `Se agotó la cuota de ${agotado}; continúo automáticamente con ${siguiente}.`,
         });
       },
-    });
+    };
+    result = await ejecutarAgente(opcionesEjecucion);
+    if (requiereEntregaVideo(turno.content)) {
+      const raices = raicesArchivosConversacion(conv);
+      let rutaVideo = buscarVideoVerificado(result.textoFinal, raices);
+      if (!rutaVideo) {
+        registrarActividad(conversationId, turno.id, {
+          tipo: "texto",
+          texto: "La respuesta todavía no incluye un MP4 verificable; estoy comprobando el workspace y la carpeta de entregables antes de cerrar el turno.",
+        });
+        const respuestaAnterior = result;
+        result = await ejecutarAgente({
+          ...opcionesEjecucion,
+          model: respuestaAnterior.modelo || model,
+          variant: respuestaAnterior.variante,
+          sessionId: respuestaAnterior.sessionId,
+          sessionModel: respuestaAnterior.modelo || model,
+          prompt: promptRecuperarEntregaVideo(turno.content, respuestaAnterior.textoFinal),
+        });
+        rutaVideo = buscarVideoVerificado(result.textoFinal, raices);
+      }
+      if (rutaVideo) {
+        result = { ...result, textoFinal: anexarEnlaceVideo(result.textoFinal, rutaVideo) };
+      } else {
+        result = {
+          ...result,
+          textoFinal: `${result.textoFinal.trim()}\n\n**Entrega incompleta:** No encontré un MP4 válido en las carpetas accesibles del chat después de intentar recuperar la entrega. No puedo confirmar que el video esté entregado; vuelve a pedir que genere y enlace el archivo si el bloqueo persiste.`,
+        };
+      }
+    }
     registrarActividad(conversationId, turno.id, {
       tipo: "texto",
-      texto: `El supervisor terminó la respuesta en ${((Date.now() - inicioSupervisor) / 1000).toFixed(1)} s; guardando el resultado.`,
+      texto: `El supervisor terminó y verificó la respuesta en ${((Date.now() - inicioSupervisor) / 1000).toFixed(1)} s; guardando el resultado.`,
     });
     turnoTerminado = true;
   } catch (err) {

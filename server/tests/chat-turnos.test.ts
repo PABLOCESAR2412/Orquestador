@@ -54,6 +54,7 @@ case "$ultimo" in *FALLO*) echo "error interno del agente" >&2; exit 1 ;; esac
 case "$ultimo" in *CAMBIO-MODELO*) printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"modelo=%s;sesion=%s;variante=%s;historial=%s"}}\\n' "$modelo" "\${sesion:-nueva}" "\${variante:-auto}" "\${historial:-no}"; exit 0 ;; esac
 case "$ultimo" in *ANALIZA-ADJUNTO*) if [ -n "$imagen" ] && [ -s "$imagen" ]; then echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"La imagen llegó al agente como archivo."}}'; else echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"No llegó ningún archivo de imagen."}}'; fi; exit 0 ;; esac
 case "$ultimo" in *CONCURRENTE*) id=$(printf '%s' "$ultimo" | sed -n 's/.*CONCURRENTE-\\([0-9][0-9]*\\) LENTO.*/\\1/p'); printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"%s: %s"}}\\n' "$modelo" "$id"; exit 0 ;; esac
+case "$ultimo" in *"Chequeo de entrega de video"*) case "$ultimo" in *BLOQUEO-ENTREGA-VIDEO*) echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"No pude terminar el render."}}' ;; *) mkdir -p renders; printf '0000ftypisom' > renders/prueba-entregada.mp4; echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"Verificado: renders/prueba-entregada.mp4"}}' ;; esac; exit 0 ;; esac
 case "$ultimo" in *"Termina la respuesta que quedó a medias"*) if [ -z "$sesion" ]; then sesion="ses_turno01"; fi; printf '{"type":"text","sessionID":"%s","part":{"type":"text","text":"continuacion;sesion=%s"}}\\n' "$sesion" "$sesion"; exit 0 ;; esac
 case "$ultimo" in *CONTRATO-EJECUCION-PRUEBA*) case "$ultimo" in *"Contrato de ejecución común de Telo"*) resultado="Contrato común presente." ;; *) resultado="Contrato común ausente." ;; esac; printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"%s"}}\\n' "$resultado"; exit 0 ;; esac
 echo '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"Respuesta lista."}}'
@@ -375,9 +376,24 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
       const respuesta = await enviar(id, prompt);
       expect(respuesta.status).toBe(202);
       await esperar(() => mensajes(id).some((mensaje) => mensaje.role === "assistant"));
-      expect(mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content).toBe("Respuesta lista.");
+      const contenido = mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content ?? "";
+      if (prompt.includes("video")) {
+        expect(contenido).toContain("## Video entregado");
+        expect(contenido).toContain("renders/prueba-entregada.mp4");
+      } else {
+        expect(contenido).toBe("Respuesta lista.");
+      }
       expect(db.query<{ total: number }, [string]>("SELECT COUNT(*) AS total FROM media_jobs WHERE conversation_id=?").get(id)?.total).toBe(0);
     }
+  });
+
+  test("no presenta como entregado un video si ni el agente ni Telo encuentran un MP4 válido", async () => {
+    const id = conversacion("opencode/big-pickle");
+    expect((await enviar(id, "Crea un video BLOQUEO-ENTREGA-VIDEO")).status).toBe(202);
+    await esperar(() => mensajes(id).some((mensaje) => mensaje.role === "assistant"));
+    const contenido = mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content ?? "";
+    expect(contenido).toContain("Entrega incompleta");
+    expect(contenido).not.toContain("## Video entregado");
   });
 
   test("inyecta el contrato común aunque el chat use un runner de OpenCode", async () => {

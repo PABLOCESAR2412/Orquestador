@@ -36,6 +36,8 @@ afterAll(() => {
 describe("registro inmediato del uso del agente", () => {
   test("las respuestas de chat incluyen una guía visual breve para los entregables", () => {
     expect(conEstilo("Crea un gráfico con estos datos", "chat")).toContain("Calidad visual por defecto");
+    expect(conEstilo("Investiga y corrige estos defectos", "chat")).toContain("no las encadenes en un párrafo largo");
+    expect(conEstilo("Crea un video", "chat")).toContain("no lo presentes como terminado hasta comprobar que el MP4 existe");
   });
 
   test("el contrato común respeta el formato del llamador y exige evidencia comprobable", () => {
