@@ -4,7 +4,7 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 1 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
-## Correcciones de chat, cuotas y broker — PR pendiente, 1 de noviembre de 2026
+## Correcciones de chat, cuotas y broker — PR #168, 1 de noviembre de 2026
 
 - [x] Codex: reproducido el error de Bubblewrap de la captura. Se usaba como origen una ruta que solo existía dentro del sandbox. El montaje ahora toma el archivo real del host y conserva autenticación/configuración en solo lectura. Prueba con Bubblewrap real: ambos alias se leen, no se pueden escribir, el estado del perfil sí se escribe y la autenticación no se copia al perfil persistente.
 - [x] Atajos Git: siete consultas normales que empezaban por commit/push/pr/pull request llegan al agente. Se mantienen las órdenes explícitas y la aprobación existente, incluidos «git commit sin push» y «prepara de nuevo el git commit y push». Regresiones de rutas y acciones Git aprobadas.

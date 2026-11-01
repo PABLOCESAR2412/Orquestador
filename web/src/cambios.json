@@ -7,7 +7,7 @@
       "fecha": "2026-11-01",
       "tipo": "minimo",
       "titulo": "Corrige arranque de Codex, intención Git, límites temporales, contexto de proyectos, precios desconocidos y rutas seguras de inferencia",
-      "pr": null
+      "pr": 168
     },
     {
       "fecha": "2026-11-01",
