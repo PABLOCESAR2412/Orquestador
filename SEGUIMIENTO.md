@@ -4,7 +4,7 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 1 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
-## Revisión del flujo de chat, aislamiento y despliegue — 1 de noviembre de 2026
+## Revisión del flujo de chat, aislamiento y despliegue — PR #164, 1 de noviembre de 2026
 
 - [x] Linux local (Ubuntu 24.04, Bun 1.4.2): suite unificada con 689 pruebas aprobadas, 10 omitidas y ningún fallo en 89 archivos. Integración adicional del worker: 8 aprobadas con Bubblewrap real. Web: 67 aprobadas; typecheck del servidor y build web aprobados. Smoke UI aprobado a 390 y 1440 px; decodificación de video omitida sin fixture. Además, 11 pruebas de red y aislamiento aprobadas como usuario Linux sin privilegios. El build conserva el aviso de tamaño de paquetes.
 - [x] Delegación solo por petición explícita: chats libres y de proyecto comparten auditoría gestionada; sin configuración guardada se usan hasta tres revisores del modelo elegido. Los encargos, modelos y acciones se publican, las etapas terminadas se reutilizan y el obrero queda único. Prueba: worker-turnos, incluido chat sin Supervisor guardado y petición directa posterior.
