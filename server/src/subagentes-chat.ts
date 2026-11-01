@@ -1,5 +1,7 @@
 import { db } from "./db";
 import { itemDeLinea, registrarActividad } from "./actividad";
+import { registrarUsoAgente } from "./registro-uso-agente";
+import { usoDelEvento } from "./runners/opencode";
 
 type Captura = {
   parentConversationId: string;
@@ -8,6 +10,7 @@ type Captura = {
   configDir: string;
   model: string;
   eventLine: string;
+  taskId?: string;
 };
 
 type EventoSubagente = {
@@ -20,6 +23,9 @@ type EventoSubagente = {
   line?: unknown;
   status?: unknown;
   result?: unknown;
+  messageId?: unknown;
+  tokens?: unknown;
+  cost?: unknown;
 };
 
 const texto = (valor: unknown, max: number): string =>
@@ -105,6 +111,21 @@ export function registrarEventoSubagente(captura: Captura): void {
     hija = conversacionHija(captura.parentConversationId, sessionId);
   }
   if (!hija) return;
+
+  if (evento.kind === "usage") {
+    const messageId = texto(evento.messageId, 128), modelo = texto(evento.model, 200);
+    const t = evento.tokens as { input?: unknown; output?: unknown } | undefined;
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(messageId) || !/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._:/-]+$/.test(modelo) ||
+      !t || ![t.input, t.output].every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0)) return;
+    const uso = usoDelEvento({ type: "usage", part: { tokens: evento.tokens as any, cost: evento.cost as number } });
+    if (!uso) return;
+    const padre = db.query<{ project_id: string | null }, [string]>("SELECT project_id FROM conversations WHERE id=?").get(captura.parentConversationId);
+    registrarUsoAgente(modelo, uso, { conversationId: captura.parentConversationId, turnId: captura.parentTurnId,
+      projectId: padre?.project_id, taskId: captura.taskId, usageRole: `subagent:${sessionId}`,
+      providerEventId: `opencode:${sessionId}:${messageId}` });
+    db.query("UPDATE conversations SET model=? WHERE id=?").run(modelo, hija.id);
+    return;
+  }
 
   if (evento.kind === "activity") {
     const linea = texto(evento.line, 80_000);

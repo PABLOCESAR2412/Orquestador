@@ -443,7 +443,7 @@ export function SubagentesTurno({
   const hijos = hijosFijos ?? subagentes.data ?? [];
   if (hijos.length === 0 && !(enCurso && mostrarEspera)) return null;
   const titulo = hijos.length === 0
-    ? "Aún no hay subagentes"
+    ? "Subchats nativos"
     : hijos.length === 1
       ? "Se creó 1 subagente"
       : `Se crearon ${hijos.length} subagentes`;
@@ -461,7 +461,7 @@ export function SubagentesTurno({
         {resumen && <span>{resumen}</span>}
       </summary>
       {subagentes.isError && <p className="tl-nota">No se pudo actualizar el estado de los subagentes.</p>}
-      {hijos.length === 0 && <p className="tl-nota">Los auxiliares del Supervisor se ejecutan en «Actividad en vivo» y no crean subchats de OpenCode. Aquí solo aparecen los subchats que el modelo principal crea con la herramienta task. Para usar auxiliares, configura y guarda el Supervisor para este chat; sus modelos usan las conexiones de «Configuración → Proveedores IA».</p>}
+      {hijos.length === 0 && <p className="tl-nota">Las revisiones de los auxiliares de Telo aparecen en «Actividad en vivo», con su función y modelo. Al pedir varios agentes se ejecutan aunque no hayas configurado el Supervisor. Esta sección muestra únicamente los subchats nativos que cree el motor.</p>}
       {hijos.map((hijo) => <SubagenteFila key={hijo.id} hijo={hijo} onAbrir={onAbrir} actividadVisible={abierto} />)}
     </details>
   );

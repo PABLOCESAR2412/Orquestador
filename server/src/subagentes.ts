@@ -8,6 +8,7 @@ export { pideSubagentes } from "../../shared/delegacion";
 const MAX_MODELOS = 3;
 
 export type PreparacionSubagentes = {
+  modelos: string[];
   instruccion: string;
   directorio: string;
   rutaCaptura: string;
@@ -128,8 +129,9 @@ export async function prepararSubagentes(opts: {
     { encoding: "utf8", flag: "wx", mode: 0o600 },
   );
   const plugin = `import { appendFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
-const salida = ${JSON.stringify(rutaCaptura)};
+const salida = fileURLToPath(new URL("../subagentes.ndjson", import.meta.url));
 const hijos = new Set();
 const llamadas = new Map();
 const pendientes = new Map();
@@ -193,6 +195,11 @@ const tomarPendiente = (parentId, titulo) => {
 export const TeloSubagentes = async () => ({
   event: async ({ event }) => {
     const props = event?.properties || {};
+    const mensaje = props.info;
+    if (event?.type === "message.updated" && mensaje?.role === "assistant" && mensaje.time?.completed && hijos.has(mensaje.sessionID)) {
+      emitir({ kind: "usage", sessionId: mensaje.sessionID, messageId: mensaje.id,
+        model: mensaje.providerID + "/" + mensaje.modelID, tokens: mensaje.tokens, cost: mensaje.cost });
+    }
     if (event?.type === "message.part.updated") {
       const parte = props.part;
       if (parte?.type === "tool" && String(parte.tool || "").toLowerCase() === "task") {
@@ -268,6 +275,7 @@ function emitError(sessionId, error) {
   writeFileSync(pluginPath, plugin, { encoding: "utf8", flag: "wx", mode: 0o600 });
   writeFileSync(rutaCaptura, "", { encoding: "utf8", flag: "wx", mode: 0o600 });
   return {
+    modelos: seleccionados.map((modelo) => modelo.id),
     directorio,
     rutaCaptura,
     instruccion: [

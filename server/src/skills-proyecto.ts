@@ -620,9 +620,10 @@ export async function instalarSkillComando(ambito: AmbitoSkills, comando: unknow
     contenido = `---\n${campos.join("\n")}\n---${cabecera[2]}${contenido.slice(cabecera[0].length)}`;
   }
   if (esUiUxProMax) {
+    const rutaSkill = ambito.ambito === "proyecto" ? ".opencode/skills/ui-ux-pro-max" : "$HOME/.config/opencode/skills/ui-ux-pro-max";
     contenido = contenido.replaceAll(
       "${CLAUDE_PLUGIN_ROOT}/.claude/skills/ui-ux-pro-max",
-      "$HOME/.config/opencode/skills/ui-ux-pro-max",
+      rutaSkill,
     );
     contenido += [
       "",
