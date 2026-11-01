@@ -16,11 +16,11 @@ Desde Telo: clona Test, pide un cambio mínimo en un archivo de prueba, revisa e
 
 Un timer de systemd revisa `main` cada 5 minutos y comparte con el respaldo un `flock`. Si el cambio se limita a `web/src/*.css`, `web/src/cambios.json` y documentación (`README.md`, `SEGUIMIENTO.md` o este archivo), no crea una pausa ni reinicia el servidor. La interfaz se compila en una carpeta temporal; primero se publican los assets con hash y al final se sustituye `index.html`, para que las tareas y las pestañas abiertas sigan usando archivos completos. Los assets antiguos se conservan para clientes que aún los soliciten.
 
-Antes de desplegar cualquier commit de `main`, el timer consulta la API de GitHub para ese SHA y exige que los checks `servidor` e `interfaz` terminen con `success`. Si un check sigue en curso, falta o falla, ese ciclo se pospone; el siguiente vuelve a consultar y acepta una nueva ejecución de CI sin requerir otro commit. La falta de autenticación o un error de red también bloquea el despliegue. El token solo se usa en `orquestador-deploy.service`, nunca se pasa al servicio web ni a los agentes.
+Antes de desplegar cualquier commit de `main`, el timer consulta GitHub Actions para ese SHA, toma la ejecución más reciente del workflow `.github/workflows/ci.yml` disparada por un `push` a `main` y exige que los trabajos `servidor` e `interfaz` terminen con `success`. Si falta una ejecución, sigue en curso, falla o falta un trabajo, ese ciclo se pospone; el siguiente vuelve a consultar sin requerir otro commit. La falta de autenticación, permiso o red también bloquea el despliegue. El PAT solo se usa durante esta consulta en `orquestador-deploy.service` y se elimina del entorno antes de compilar; nunca se pasa al servicio web ni a los agentes.
 
 La instalación de Antigravity descarga el instalador oficial por HTTPS, limita su tamaño y comprueba su sintaxis antes de ejecutarlo. Google no publica un checksum o firma verificable para ese script; TLS protege el transporte, pero no ofrece una verificación criptográfica independiente del contenido.
 
-Como el repositorio es privado, crea un token fine-grained limitado a `PABLOCESAR2412/Orquestador` con permiso **Checks: Read-only**. En el VM crea el archivo de entorno y edítalo directamente; no pegues el valor en el chat ni en un comando:
+Como el repositorio es privado, crea un token fine-grained limitado al repositorio `PABLOCESAR2412/Orquestador` con **Repository permissions → Actions: Read-only**. Los PAT fine-grained no ofrecen el permiso `Checks`; por eso el actualizador lee los workflow runs y sus jobs mediante la API de Actions. No habilites permisos de escritura. Si el PAT ya se creó sin `Actions: Read-only`, GitHub no permite cambiar sus permisos: crea otro con ese alcance. En el VM edita el archivo directamente; no pegues el valor en el chat ni en un comando:
 
 ```bash
 sudo install -o root -g root -m 600 /dev/null /etc/orquestador/deploy.env
@@ -33,14 +33,30 @@ Contenido dentro del editor:
 TELO_GITHUB_CI_TOKEN=github_pat_REEMPLAZAR_EN_EL_EDITOR
 ```
 
-Después de incorporar la unidad actualizada desde `main`, recárgala y ejecuta un ciclo manual para comprobar los registros:
+Al pasar desde la versión que consultaba la API Checks, el primer despliegue de este cambio tiene que ser manual: el actualizador viejo no puede usar un PAT fine-grained para esa API. Guarda el PAT en `deploy.env` y, cuando no haya tareas activas, actualiza así el checkout. Primero comprueba que `git status --short` no muestre cambios; si aparecen archivos, consérvalos y no uses `reset`.
 
 ```bash
-sudo cp ~/orquestador/orquestador/deploy/orquestador-deploy.service /etc/systemd/system/
-sudo systemctl daemon-reload
+sudo systemctl stop orquestador-deploy.timer
+sudo systemctl stop orquestador.service
+cd ~/orquestador/orquestador
+git status --short
+git fetch origin main
+git merge --ff-only origin/main
+(cd server && bun install --frozen-lockfile)
+(cd web && bun install --frozen-lockfile && bun run build)
+sudo systemctl start orquestador.service
+curl -fsS http://127.0.0.1:3000/api/health
+sudo systemctl start orquestador-deploy.timer
+```
+
+Después de ese primer cambio, `systemd` vuelve a leer `EnvironmentFile` al iniciar cada ciclo. Para comprobar manualmente la puerta nueva:
+
+```bash
 sudo systemctl start orquestador-deploy.service
 journalctl -u orquestador-deploy.service -n 30 --no-pager
 ```
+
+Un `403` indica que al PAT le falta `Actions: Read-only` o que GitHub no lo autorizó para ese repositorio; un `404` suele indicar que el repositorio no está incluido en el alcance del token. En ambos casos el actualizador conserva la versión instalada y vuelve a intentarlo en el siguiente ciclo.
 
 Los demás cambios se tratan como potencialmente capaces de afectar el chat o las tareas: la API rechaza nuevas escrituras, el worker deja de tomar trabajos y una señal exclusiva hace que los turnos activos se detengan y queden reanudables. Se conserva la sesión del proveedor y el workspace; al volver el servicio, el usuario puede continuar manualmente. La cola y los planes pendientes de aprobación se conservan. Si algún proceso no termina dentro del plazo, el ciclo se pospone sin detener el servicio. Una vez drenado, el actualizador para el servicio, avanza `main`, instala dependencias congeladas y compila. Después arranca y comprueba `/api/health`; ante un build o arranque fallido, restaura el código anterior, reinstala, recompila y verifica. La base conserva las migraciones aditivas.
 
