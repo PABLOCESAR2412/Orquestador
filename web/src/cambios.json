@@ -5,6 +5,12 @@
   "cambios": [
     {
       "fecha": "2026-10-31",
+      "tipo": "minimo",
+      "titulo": "Despliegue: usa Actions de GitHub con PAT fine-grained de solo lectura para validar CI",
+      "pr": null
+    },
+    {
+      "fecha": "2026-10-31",
       "tipo": "mediano",
       "titulo": "Analíticas: filtros por fecha y hora, uso detallado y equivalente API; chat diferencia supervisor y subagentes y refuerza el estándar visual de video",
       "pr": 162
