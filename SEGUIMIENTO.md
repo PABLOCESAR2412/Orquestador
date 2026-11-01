@@ -4,7 +4,7 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 1 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
-## Respeto del modelo elegido y auditoría de consumo — posterior al PR #165, 1 de noviembre de 2026
+## Respeto del modelo elegido y auditoría de consumo — PR #166, 1 de noviembre de 2026
 
 - [x] El resumen real de la VM aportado por el usuario sitúa el último consumo registrado de DeepSeek antes del primer uso de Gemini del periodo examinado. Predominan registros históricos sin rol. Esa tabla no acredita llamadas simultáneas ocultas; los intentos rechazados sin tokens tampoco se deducen de ella.
 - [x] Se corrige el aviso: identifica la ejecución anterior pausada y el modelo seleccionado para continuar. Cambiar el selector no se presenta como si ya se hubiese reanudado la tarea.
