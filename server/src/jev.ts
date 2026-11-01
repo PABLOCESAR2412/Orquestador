@@ -236,3 +236,4 @@ export async function clasificarTareaJev(args: {
     : 0;
   return { categoria: answer.choice, confianza: confidence };
 }
+

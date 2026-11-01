@@ -1179,7 +1179,10 @@ export async function limpiarCopias(): Promise<void> {
         )
         .get(id);
       if (muyVieja) {
-        if (!muyVieja.conversation_id) eliminarPerfilOpenCode(id);
+        if (!muyVieja.conversation_id) {
+          eliminarPerfilOpenCode(id);
+          eliminarPerfilCodex(id);
+        }
         if (existsSync(carpetaTarea(id)) && !existsSync(rutaClon(id))) {
           rmSync(carpetaTarea(id), { recursive: true, force: true });
         }

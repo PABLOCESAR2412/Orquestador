@@ -21,7 +21,7 @@ const TIEMPO_CACHE_MS = 30_000;
 const TIEMPO_HERRAMIENTA_MS = 3_000;
 const TIEMPO_DF_MS = 5_000;
 const MAX_ENTRADAS_ALMACENAMIENTO = 250_000;
-const HERRAMIENTAS = ["opencode", "bwrap", "git", "bun", "node", "ffmpeg", "ffprobe"] as const;
+const HERRAMIENTAS = ["opencode", "codex", "agy", "script", "bwrap", "git", "bun", "node", "ffmpeg", "ffprobe"] as const;
 const RAIZ_REPOSITORIO = resolve(import.meta.dir, "../../..");
 
 // Entorno mínimo para los comandos de diagnóstico: nunca se pasan variables TELO_* ni claves.
@@ -95,12 +95,13 @@ async function medirCarpetas(): Promise<Carpeta[]> {
   const datos = resolve(config.dataDir);
   const sinProyectos = { bytes: 0, archivos: 0, truncado: false };
   const medir = (ruta: string) => medirCarpeta(ruta, MAX_ENTRADAS_ALMACENAMIENTO);
-  const [tareas, chat, respaldos, proyectos, perfiles, entregables, adjuntos] = await Promise.all([
+  const [tareas, chat, respaldos, proyectos, perfiles, perfilesCodex, entregables, adjuntos] = await Promise.all([
     medir(join(datos, "tasks")),
     medir(join(datos, "chat-workspace")),
     medir(join(datos, "respaldos-migracion")),
     config.projectsDir ? medir(resolve(config.projectsDir)) : Promise.resolve(sinProyectos),
     medir(join(datos, "perfiles-opencode")),
+    medir(join(datos, "perfiles-codex")),
     medir(join(datos, "entregables")),
     medir(join(datos, "chat-attachments")),
   ]);
@@ -111,7 +112,7 @@ async function medirCarpetas(): Promise<Carpeta[]> {
     { nombre: "respaldos-migracion", ...respaldos },
     { nombre: "base de datos", ...base, truncado: false },
     { nombre: "proyectos", ...proyectos },
-    { nombre: "sesiones de agentes", ...perfiles },
+    { nombre: "sesiones de agentes", bytes: perfiles.bytes + perfilesCodex.bytes, archivos: perfiles.archivos + perfilesCodex.archivos, truncado: perfiles.truncado || perfilesCodex.truncado },
     { nombre: "entregables", ...entregables },
     { nombre: "adjuntos", ...adjuntos },
   ];

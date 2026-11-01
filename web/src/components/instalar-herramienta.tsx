@@ -41,6 +41,7 @@ export function InstalarHerramienta({ id, nombre, children }: Props) {
     if (datos?.estado === "lista") {
       void qc.invalidateQueries({ queryKey: ["providers"] });
       void qc.invalidateQueries({ queryKey: ["models"] });
+      void qc.invalidateQueries({ queryKey: ["servidor"] });
     }
   }, [datos?.estado, qc]);
 

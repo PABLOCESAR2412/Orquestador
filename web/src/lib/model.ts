@@ -200,6 +200,10 @@ export function motivoTexto(motivo: string | null): string | null {
       return "La operación tardó demasiado y se detuvo.";
     case "login_no_completado":
       return "El inicio de sesión no se completó. Vuelve a intentarlo.";
+    case "antigravity_login_no_confirmado":
+      return "Google no confirmó el acceso. Revisa el código y vuelve a iniciar sesión.";
+    case "antigravity_login_sin_enlace":
+      return "Antigravity no mostró el enlace de Google. Completa su configuración inicial por SSH y vuelve a intentar.";
     case "cancelado":
       return "Inicio de sesión cancelado.";
     default:
@@ -483,6 +487,16 @@ export function errorText(err: unknown): string {
         return "Esa herramienta no se puede instalar desde Telo.";
       case "codex_no_instalado":
         return "Codex no está instalado en el servidor, así que no se puede iniciar sesión desde aquí.";
+      case "antigravity_no_instalado":
+        return "Antigravity CLI no está instalado. Instálalo desde esta pantalla y vuelve a intentarlo.";
+      case "antigravity_terminal_no_disponible":
+        return "La VM no tiene el comando `script` para abrir la terminal segura. Instala `util-linux` y vuelve a intentar.";
+      case "antigravity_inicio_fallido":
+        return "No se pudo abrir Antigravity en la terminal del servidor. Comprueba que el CLI siga instalado.";
+      case "antigravity_codigo_invalido":
+        return "El código de Google no tiene el formato esperado. Cópialo de nuevo y vuelve a intentar.";
+      case "antigravity_login_no_espera_codigo":
+        return "Antigravity no está esperando un código. Inicia un nuevo flujo de autorización.";
       case "login_en_curso":
         return "Ya hay un inicio de sesión en curso. Termínalo o cancélalo antes de empezar otro.";
       case "skill_nombre_invalido":

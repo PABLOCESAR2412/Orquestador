@@ -70,6 +70,8 @@ const projectDetailRoute = createRoute({
   path: "/proyectos/$id",
   component: ProjectDetailPage,
 });
+const brainRoute = createRoute({ getParentRoute: () => rootRoute, path: "/cerebro", component: BrainPage });
+const officeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/oficina", component: OfficePage });
 const analyticsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/analiticas", component: AnalyticsPage });
 const brainRoute = createRoute({ getParentRoute: () => rootRoute, path: "/cerebro", component: BrainPage });
 const officeRoute = createRoute({ getParentRoute: () => rootRoute, path: "/oficina", component: OfficePage });

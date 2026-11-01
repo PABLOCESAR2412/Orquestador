@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { proveedorConClave, tieneClaveProveedor, valorClaveApiProveedor } from "../claves-proveedor";
 import { cancelarLoginCodex, confirmarLoginCodex, estadoLoginCodex, iniciarLoginCodex, LoginError, sesionCodexConectada } from "../login-cli";
+import { cancelarLoginAntigravity, enviarCodigoAntigravity, estadoLoginAntigravity, iniciarLoginAntigravity, LoginAntigravityError } from "../login-antigravity";
 import { hallarEjecutable } from "../ejecutable";
 import { carpetaHome } from "../hogar";
 import { listarModelosCodex } from "../modelos-codex";
@@ -216,3 +217,32 @@ providers.post("/providers/codex/login", async (c) => {
 });
 providers.delete("/providers/codex/login", async (c) => c.json(await cancelarLoginCodex()));
 providers.post("/providers/codex/confirmar", async (c) => c.json(await confirmarLoginCodex()));
+
+// Antigravity requiere un TTY remoto: el servidor presenta su URL y devuelve al prompt el código de Google.
+providers.get("/providers/antigravity/login", (c) => {
+  c.header("Cache-Control", "no-store");
+  return c.json(estadoLoginAntigravity());
+});
+providers.post("/providers/antigravity/login", (c) => {
+  c.header("Cache-Control", "no-store");
+  try {
+    return c.json(iniciarLoginAntigravity(), 202);
+  } catch (err) {
+    if (err instanceof LoginAntigravityError) return c.json({ error: err.code }, err.status);
+    throw err;
+  }
+});
+providers.post("/providers/antigravity/confirmar", async (c) => {
+  c.header("Cache-Control", "no-store");
+  const cuerpo = await c.req.json().catch(() => null) as { codigo?: unknown } | null;
+  try {
+    return c.json(await enviarCodigoAntigravity(cuerpo?.codigo));
+  } catch (err) {
+    if (err instanceof LoginAntigravityError) return c.json({ error: err.code }, err.status);
+    throw err;
+  }
+});
+providers.delete("/providers/antigravity/login", (c) => {
+  c.header("Cache-Control", "no-store");
+  return c.json(cancelarLoginAntigravity());
+});

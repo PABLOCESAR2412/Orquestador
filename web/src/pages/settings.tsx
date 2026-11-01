@@ -22,6 +22,7 @@ import { PanelConexiones } from "../components/settings/panel-conexiones";
 const ALERT_OPTIONS = [50, 60, 70, 80, 90, 100];
 
 type Pestana = "personalizacion" | "proveedores" | "conexiones" | "servidor" | "almacenamiento";
+type IntegracionLocal = "cli" | "decodificador" | "tts";
 const PESTANAS: { id: Pestana; texto: string }[] = [
   { id: "personalizacion", texto: "Personalización" },
   { id: "proveedores", texto: "Proveedores IA" },
@@ -39,6 +40,11 @@ const PESTANAS_PROVEEDOR = [
   { id: "openrouter", texto: "OpenRouter" },
   { id: "opencode", texto: "OpenCode" },
 ] as const;
+const PESTANAS_LOCALES: { id: IntegracionLocal; texto: string }[] = [
+  { id: "cli", texto: "CLIs instalados" },
+  { id: "decodificador", texto: "Decodificador" },
+  { id: "tts", texto: "Voz · TTS" },
+];
 
 function proveedorDeModelo(modelo: string | null | undefined): string | null {
   if (!modelo) return null;
@@ -62,8 +68,15 @@ export function SettingsPage() {
   const [budgetText, setBudgetText] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [proveedorSeleccionado, setProveedorSeleccionado] = useState<string>(PESTANAS_PROVEEDOR[0].id);
+  const [integracionLocal, setIntegracionLocal] = useState<IntegracionLocal>("cli");
   const [localError, setLocalError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const conexionesTts = useQuery({
+    queryKey: ["mcp-connections"],
+    queryFn: api.listMcpConnections,
+    enabled: pestana === "proveedores" && integracionLocal === "tts",
+    staleTime: 30_000,
+  });
 
   const value: Preferences | undefined = draft ?? prefs.data;
 
@@ -181,7 +194,10 @@ export function SettingsPage() {
   const proveedoresPrincipales = proveedores.data?.filter((p) => PESTANAS_PROVEEDOR.some((tab) => tab.id === p.id)) ?? [];
   const proveedorActivo = proveedoresPrincipales.find((p) => p.id === proveedorSeleccionado) ?? proveedoresPrincipales[0];
   const proveedoresAdicionales = proveedores.data?.filter((p) => !PESTANAS_PROVEEDOR.some((tab) => tab.id === p.id)) ?? [];
+  const proveedorCodex = proveedores.data?.find((p) => p.id === "codex");
+  const conexionesTtsLista = (conexionesTts.data?.conexiones ?? []).filter((conexion) => /voice|voz|tts|speech/i.test(conexion.nombre));
   const datos = servidor.data;
+  const herramientaMedia = (nombre: string) => datos?.herramientas.find((herramienta) => herramienta.nombre === nombre);
   const plataforma = datos?.proceso.plataforma;
   const eyebrow = ["Sistema / Control", plataforma].filter(Boolean).join(" · ");
 
@@ -343,6 +359,111 @@ export function SettingsPage() {
                     )}
                   </>
                 )}
+              </section>
+
+              <section className="aj-seccion" aria-labelledby="aj-herramientas-locales-titulo">
+                <div className="aj-seccion-cabecera">
+                  <div>
+                    <h2 id="aj-herramientas-locales-titulo" className="aj-titulo-seccion">CLIs y herramientas locales</h2>
+                    <p className="aj-nota">Estado de los programas del servidor que usan las tareas y el flujo de medios.</p>
+                  </div>
+                </div>
+                <div className="aj-proveedores-pestanas" role="tablist" aria-label="Integraciones locales">
+                  {PESTANAS_LOCALES.map((tab, indice) => {
+                    const seleccionado = integracionLocal === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        id={`aj-local-tab-${tab.id}`}
+                        type="button"
+                        role="tab"
+                        aria-selected={seleccionado}
+                        aria-controls={`aj-local-panel-${tab.id}`}
+                        tabIndex={seleccionado ? 0 : -1}
+                        className={`aj-proveedor-tab${seleccionado ? " is-activa" : ""}`}
+                        onClick={() => setIntegracionLocal(tab.id)}
+                        onKeyDown={(event) => {
+                          if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+                          event.preventDefault();
+                          const direccion = event.key === "ArrowRight" ? 1 : -1;
+                          const siguiente = PESTANAS_LOCALES[(indice + direccion + PESTANAS_LOCALES.length) % PESTANAS_LOCALES.length];
+                          setIntegracionLocal(siguiente.id);
+                          document.getElementById(`aj-local-tab-${siguiente.id}`)?.focus();
+                        }}
+                      >
+                        {tab.texto}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div
+                  id={`aj-local-panel-${integracionLocal}`}
+                  role="tabpanel"
+                  aria-labelledby={`aj-local-tab-${integracionLocal}`}
+                  className="aj-integracion-local-panel"
+                  tabIndex={0}
+                >
+                  {integracionLocal === "cli" && (
+                    <div className="aj-stack">
+                      <div className="aj-herramientas-locales" aria-label="Estado de CLI del servidor">
+                        {(["opencode", "codex", "agy", "script"] as const).map((nombre) => {
+                          const herramienta = herramientaMedia(nombre);
+                          const etiqueta = nombre === "agy" ? "Antigravity CLI" : nombre === "script" ? "Terminal remota para OAuth" : `${nombre[0].toUpperCase()}${nombre.slice(1)} CLI`;
+                          return (
+                            <div className="aj-herramienta-local" key={nombre}>
+                              <div><strong>{etiqueta}</strong><small>{herramienta?.version ?? (servidor.isPending ? "Consultando estado del servidor…" : "Versión no disponible")}</small></div>
+                              <span className={`aj-estado-proveedor${herramienta?.disponible ? " is-conectado" : herramienta ? " is-error" : ""}`} role="status">
+                                <span className="aj-proveedor-punto" aria-hidden="true" />{herramienta?.disponible ? "Instalado" : herramienta ? "No instalado" : "Sin datos"}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="aj-proveedores-adicionales" aria-label="Acceso a sesiones CLI">
+                        {proveedorCodex && <TarjetaProveedor p={proveedorCodex} etiqueta={etiquetaDe(proveedorCodex)} modelos={modelosDe(proveedorCodex.id)} />}
+                        <AntigravityCard />
+                      </div>
+                    </div>
+                  )}
+                  {integracionLocal === "decodificador" && (
+                    <div className="aj-herramientas-locales">
+                      <p className="aj-nota">FFmpeg decodifica y convierte audio y video; FFprobe comprueba metadatos y duración.</p>
+                      {(["ffmpeg", "ffprobe"] as const).map((nombre) => {
+                        const herramienta = herramientaMedia(nombre);
+                        return (
+                          <div className="aj-herramienta-local" key={nombre}>
+                            <div>
+                              <strong>{nombre === "ffmpeg" ? "FFmpeg" : "FFprobe"}</strong>
+                              <small>{herramienta?.version ?? (servidor.isPending ? "Consultando estado del servidor…" : "Versión no disponible")}</small>
+                            </div>
+                            <span className={`aj-estado-proveedor${herramienta?.disponible ? " is-conectado" : herramienta ? " is-error" : ""}`} role="status">
+                              <span className="aj-proveedor-punto" aria-hidden="true" />{herramienta?.disponible ? "Instalado" : herramienta ? "No instalado" : "Sin datos"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {integracionLocal === "tts" && (
+                    <div className="aj-herramientas-locales">
+                      <p className="aj-nota">Telo usa un proveedor MCP de voz, como VoiceStudio. Que esté habilitado confirma el registro, no una generación de audio.</p>
+                      {conexionesTts.isPending && <p className="aj-nota">Consultando conexiones…</p>}
+                      {conexionesTts.isError && <p className="aj-error" role="alert">{errorText(conexionesTts.error)}</p>}
+                      {conexionesTts.isSuccess && (conexionesTtsLista.length ? conexionesTtsLista.map((conexion) => (
+                        <div className="aj-herramienta-local" key={conexion.id}>
+                          <div><strong>{conexion.nombre}</strong><small>Servidor MCP de voz · la generación se verifica desde la tarea que lo usa</small></div>
+                          <span className={`aj-estado-proveedor${conexion.habilitada ? " is-conectado" : " is-error"}`} role="status">
+                            <span className="aj-proveedor-punto" aria-hidden="true" />{conexion.habilitada ? "Habilitado" : "Pausado"}
+                          </span>
+                        </div>
+                      )) : (
+                        <div className="aj-herramienta-local">
+                          <div><strong>No se detectó un MCP con nombre de voz</strong><small>Añade VoiceStudio u otro servidor MCP que exponga una herramienta de voz en Ajustes → Conexiones. El nombre permite identificarlo, pero no confirma que genere audio.</small></div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </section>
 
               <section className="aj-seccion" aria-labelledby="aj-funciones-auxiliares-titulo">
