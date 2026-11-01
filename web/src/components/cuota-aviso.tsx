@@ -2,6 +2,7 @@
 // Lo usan las tareas (sin_cuota) y los chats (cuota_modelo). Seguir solo se activa con otro modelo.
 type Props = {
   modeloAgotado: string;
+  modeloSeleccionado?: string;
   puedeSeguir: boolean;
   seguirPendiente?: boolean;
   onCambiarModelo: () => void;
@@ -11,6 +12,7 @@ type Props = {
 
 export function AvisoCuota({
   modeloAgotado,
+  modeloSeleccionado,
   puedeSeguir,
   seguirPendiente = false,
   onCambiarModelo,
@@ -19,9 +21,10 @@ export function AvisoCuota({
 }: Props) {
   return (
     <section className="cuota-aviso" aria-label="Sin cuota">
-      <p className="cuota-aviso-titulo">Se acabó la cuota de {modeloAgotado}.</p>
+      <p className="cuota-aviso-titulo">La ejecución anterior se pausó por cuota en {modeloAgotado}.</p>
       <p className="cuota-aviso-texto">
-        Cambia de modelo y pulsa Seguir. Continúa donde se quedó, sin repetir lo que ya hizo.
+        {modeloSeleccionado && <>Modelo seleccionado para continuar: <strong>{modeloSeleccionado}</strong>. </>}
+        {puedeSeguir ? "Pulsa Seguir para iniciar con ese modelo y conservar el trabajo anterior." : "Elige otro modelo y pulsa Seguir para conservar el trabajo anterior."}
       </p>
       <p className="cuota-aviso-ayuda">
         Este límite depende de la cuenta o clave del proveedor del modelo; ChatGPT Plus se administra por separado.

@@ -12,6 +12,7 @@ process.env.TELO_AISLAMIENTO = "desactivado";
 const { runOpenCode } = await import("../src/runners/opencode");
 const { itemDeLinea } = await import("../src/actividad");
 const { db } = await import("../src/db");
+const { registrarUsoAgente } = await import("../src/registro-uso-agente");
 afterAll(() => {
   db.close();
   for (const [k, v] of Object.entries(previos)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
@@ -71,5 +72,22 @@ test("tres fallos internos explícitos cierran con error recuperable sin esperar
   try {
     await expect(runOpenCode({ cwd: raiz, model: "opencode/prueba", prompt: "Analiza", timeoutMs: null, tiempoSinActividadMs: null, onSesion: id => { sesion = id; } })).rejects.toThrow("tres reintentos internos");
     expect(String(sesion)).toBe("ses_guardada");
+  } finally { spawn.mockRestore(); }
+});
+
+test("un paso de uso repetido se suma una vez, también después de reanudar", async () => {
+  const evento = (id: string) => JSON.stringify({ type: "step_finish", sessionID: "ses_uso_unico", part: { id, type: "step-finish", tokens: { input: 100, output: 10, reasoning: 0, cache: { read: 0 } }, cost: 0 } });
+  const spawn = spyOn(Bun, "spawn").mockImplementation((() => ({ pid: 2147483647, stdout: new Blob([[evento("prt_uno"), evento("prt_uno"), evento("prt_dos"), JSON.stringify({ type: "text", sessionID: "ses_uso_unico", part: { text: "Resultado" } })].join("\n") + "\n"]).stream(), stderr: new Blob([]).stream(), exited: Promise.resolve(0) })) as unknown as typeof Bun.spawn);
+  try {
+    for (let n = 0; n < 2; n++) {
+      let registros = 0;
+      const r = await runOpenCode({ cwd: raiz, model: "google/prueba", prompt: "Consulta", timeoutMs: null, onUso: (uso) => {
+        registros++;
+        registrarUsoAgente("google/prueba", uso, { providerEventId: uso.providerEventId });
+      } });
+      expect(r.usage?.input).toBe(200);
+      expect(registros).toBe(2);
+    }
+    expect(db.query("SELECT COUNT(*) AS n,SUM(input_tokens) AS tokens FROM usage WHERE provider_event_id LIKE 'opencode:step:ses_uso_unico:%'").get()).toEqual({ n: 2, tokens: 200 });
   } finally { spawn.mockRestore(); }
 });

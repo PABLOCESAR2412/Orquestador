@@ -1289,6 +1289,7 @@ export type Preferences = {
   // Modelo de respaldo si el principal responde 429 o un error del servidor del proveedor.
   fallbackModel: string | null;
   quotaFallbackModels: string[];
+  fallbackMode?: "selected" | "configured" | "automatic";
   compartirContextoChats?: boolean;
 };
 

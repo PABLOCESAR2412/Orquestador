@@ -8,6 +8,7 @@ export type Preferences = {
   fallbackModel: string | null;
   // Modelos probados en orden solo cuando el proveedor confirma que una cuota se agotó.
   quotaFallbackModels: string[];
+  fallbackMode: "selected" | "configured" | "automatic";
   monthlyBudgetUsd: number | null;
   budgetAlertPercent: number;
   compartirContextoChats: boolean;
@@ -18,6 +19,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   defaultEffort: null,
   fallbackModel: null,
   quotaFallbackModels: [],
+  fallbackMode: "selected",
   monthlyBudgetUsd: null,
   budgetAlertPercent: 80,
   compartirContextoChats: false,

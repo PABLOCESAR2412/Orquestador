@@ -1896,6 +1896,7 @@ export function ChatPage() {
               {modeloAgotadoChat && !pensando && !conversacionPadre && (
                 <AvisoCuota
                   modeloAgotado={modelList.find((m) => m.id === modeloAgotadoChat)?.name ?? modeloAgotadoChat}
+                  modeloSeleccionado={modelList.find((m) => m.id === current?.model)?.name ?? current?.model ?? undefined}
                   puedeSeguir={!!current?.model && current.model !== modeloAgotadoChat}
                   seguirPendiente={siguiendoActual}
                   onCambiarModelo={() => setPickerOpen(true)}

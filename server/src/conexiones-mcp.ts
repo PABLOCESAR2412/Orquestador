@@ -41,7 +41,7 @@ export function configuracionOpenCodeMcp(servidores: ServidorMcpAgente[], modelo
     // Los títulos de sesión y las tareas ligeras usan el `small_model`. Sin esta línea
     // OpenCode escoge un modelo barato del catálogo del proveedor, y en la cuenta de
     // opencode eso aterriza en modelos que no incluye el plan (402) o gratis con límite
-    // estricto (429). Fijamos el mismo modelo que la tarea ya usa: garantizado disponible.
+    // estricto (429). Fijamos el mismo modelo elegido para la tarea; su cuota puede agotarse.
     ...(modelo ? { small_model: modelo } : {}),
     mcp: Object.fromEntries(servidores.map((servidor) => [servidor.clave, {
       type: "remote",

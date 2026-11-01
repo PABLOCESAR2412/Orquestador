@@ -156,7 +156,7 @@ test.skipIf(!Bun.which("setsid"))("recupera una sesión OpenCode perdida y recon
 
 test.skipIf(!Bun.which("setsid"))("el respaldo continúa el trabajo previo con una sesión y un prompt seguros", async () => {
   rmSync(contador, { force: true });
-  savePreferences({ ...DEFAULT_PREFERENCES, fallbackModel: "opencode/respaldo" });
+  savePreferences({ ...DEFAULT_PREFERENCES, fallbackMode: "configured", fallbackModel: "opencode/respaldo" });
   invalidarModelos();
   const resultado = await ejecutarAgente({
     prompt: "FALLBACK-SEGURIDAD: termina el cambio sin repetirlo",
@@ -177,7 +177,7 @@ test.skipIf(!Bun.which("setsid"))("el respaldo continúa el trabajo previo con u
 
 test.skipIf(!Bun.which("setsid"))("un modelo gratuito no recurre automáticamente a un respaldo de pago", async () => {
   rmSync(contador, { force: true });
-  savePreferences({ ...DEFAULT_PREFERENCES, fallbackModel: "opencode/respaldo-pago" });
+  savePreferences({ ...DEFAULT_PREFERENCES, fallbackMode: "configured", fallbackModel: "opencode/respaldo-pago" });
   invalidarModelos();
   await expect(ejecutarAgente({
     prompt: "FALLBACK-SEGURIDAD: termina el cambio sin repetirlo",
@@ -192,7 +192,7 @@ test.skipIf(!Bun.which("setsid"))("un modelo gratuito no recurre automáticament
 test.skipIf(!Bun.which("setsid"))("agota los respaldos elegidos, continúa con uno gratis y no repite cuotas conocidas", async () => {
   db.query("DELETE FROM app_settings WHERE key='modelos_sin_cuota'").run();
   rmSync(contador, { force: true });
-  savePreferences({ ...DEFAULT_PREFERENCES, quotaFallbackModels: ["opencode/respaldo"] });
+  savePreferences({ ...DEFAULT_PREFERENCES, fallbackMode: "automatic", quotaFallbackModels: ["opencode/respaldo"] });
   invalidarModelos();
   const cambios: string[] = [];
   try {
@@ -216,10 +216,30 @@ test.skipIf(!Bun.which("setsid"))("agota los respaldos elegidos, continúa con u
   }
 });
 
+for (const modo of ["selected", "configured"] as const) test.skipIf(!Bun.which("setsid"))(`${modo}: no ejecuta modelos que la política no autoriza`, async () => {
+  db.query("DELETE FROM app_settings WHERE key='modelos_sin_cuota'").run();
+  rmSync(contador, { force: true });
+  savePreferences({ ...DEFAULT_PREFERENCES, fallbackMode: modo, fallbackModel: "opencode/respaldo", quotaFallbackModels: ["opencode/respaldo"] });
+  invalidarModelos();
+  try {
+    await expect(ejecutarAgente({ prompt: "CUOTA-CADENA", model: "opencode/prueba", cwd: raiz })).rejects.toThrow(modo === "selected" ? "opencode/prueba" : "opencode/respaldo");
+    expect(readFileSync(contador, "utf8")).toBe(modo === "selected" ? "1\n" : "2\n");
+  } finally { savePreferences(DEFAULT_PREFERENCES); db.query("DELETE FROM app_settings WHERE key='modelos_sin_cuota'").run(); }
+});
+
+test.skipIf(!Bun.which("setsid"))("el modo predeterminado no cambia de modelo por un 5xx aunque haya respaldo guardado", async () => {
+  rmSync(contador, { force: true });
+  savePreferences({ ...DEFAULT_PREFERENCES, fallbackModel: "opencode/respaldo" });
+  try {
+    await expect(ejecutarAgente({ prompt: "FALLBACK-SEGURIDAD", model: "opencode/prueba", cwd: raiz })).rejects.toThrow();
+    expect(readFileSync(contador, "utf8")).toBe("4\n");
+  } finally { savePreferences(DEFAULT_PREFERENCES); }
+});
+
 for (const caso of ["CUOTA-AUTH", "CUOTA-TEMP"]) test.skipIf(!Bun.which("setsid"))(`${caso}: un respaldo no disponible no bloquea la alternativa gratuita`, async () => {
   db.query("DELETE FROM app_settings WHERE key='modelos_sin_cuota'").run();
   rmSync(contador, { force: true });
-  savePreferences({ ...DEFAULT_PREFERENCES, quotaFallbackModels: ["opencode/respaldo"] });
+  savePreferences({ ...DEFAULT_PREFERENCES, fallbackMode: "automatic", quotaFallbackModels: ["opencode/respaldo"] });
   invalidarModelos();
   try {
     const resultado = await ejecutarAgente({ prompt: `${caso}: termina la tarea`, model: "opencode/prueba", cwd: raiz });

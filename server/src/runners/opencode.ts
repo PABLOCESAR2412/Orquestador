@@ -29,7 +29,7 @@ export function sesionValida(id: unknown): id is string {
   return typeof id === "string" && PATRON_SESION.test(id);
 }
 
-export type Usage = { input: number; output: number; reasoning: number; cacheRead: number; cost: number; tokensMedidos?: boolean; tokensEstimados?: boolean; costeDisponible?: boolean };
+export type Usage = { input: number; output: number; reasoning: number; cacheRead: number; cost: number; tokensMedidos?: boolean; tokensEstimados?: boolean; costeDisponible?: boolean; providerEventId?: string };
 
 export function estimarUso(prompt: string, respuesta: string): Usage {
   return {
@@ -52,6 +52,7 @@ type OpenCodeEvent = {
   sessionID?: string;
   error?: unknown;
   part?: {
+    id?: string;
     type?: string;
     text?: string;
     cost?: number;
@@ -90,6 +91,8 @@ export function usoDelEvento(ev: OpenCodeEvent): Usage | null {
   const reasoning = numero(t?.reasoning ?? t?.reasoning_tokens);
   const cacheRead = numero(t?.cache?.read ?? t?.cached_tokens ?? t?.cacheReadTokens);
   const cost = numero(costVal);
+  const providerEventId = sesionValida(ev.sessionID) && sesionValida(ev.part?.id)
+    ? `opencode:step:${ev.sessionID}:${ev.part.id}` : undefined;
 
   if (input === 0 && output === 0 && cost === 0 && !esEventoFin) return null;
 
@@ -101,6 +104,7 @@ export function usoDelEvento(ev: OpenCodeEvent): Usage | null {
     cost,
     tokensMedidos: input > 0 || output > 0,
     costeDisponible: typeof costVal === "number" && Number.isFinite(costVal) && costVal >= 0,
+    ...(providerEventId ? { providerEventId } : {}),
   };
 }
 
@@ -483,10 +487,15 @@ async function ejecutarOpenCode(opts: {
   env.OPENCODE_CONFIG_CONTENT = JSON.stringify({
     ...inline,
     ...opts.red?.configuracion,
+    model: opts.model,
+    small_model: opts.model,
     permission: { ...(typeof inline.permission === "object" ? inline.permission : {}), task },
     agent: {
       ...inline.agent,
-      build: { ...inline.agent?.build, permission: { ...(typeof inline.agent?.build?.permission === "object" ? inline.agent.build.permission : {}), task } },
+      ...Object.fromEntries(["plan", "general", "explore", "compaction"].map((nombre) => [nombre, { ...inline.agent?.[nombre], model: opts.model }])),
+      title: { ...inline.agent?.title, model: opts.model, disable: true },
+      summary: { ...inline.agent?.summary, model: opts.model, disable: true },
+      build: { ...inline.agent?.build, model: opts.model, permission: { ...(typeof inline.agent?.build?.permission === "object" ? inline.agent.build.permission : {}), task } },
     },
   });
   if (opts.perfilOpenCodeDir && aislamientoActivo()) {
@@ -538,6 +547,7 @@ async function ejecutarOpenCode(opts: {
   void aborted.catch(() => {});
 
   let sesionAvisada: string | null = null;
+  const usosVistos = new Set<string>();
   const alLeerLinea = (linea: string) => {
     vigilante.patada();
     let ev: OpenCodeEvent | undefined;
@@ -548,7 +558,10 @@ async function ejecutarOpenCode(opts: {
     }
     const uso = ev && usoDelEvento(ev);
     // No ocultar un fallo de persistencia como si fuera una línea JSON inválida.
-    if (uso && (uso.input > 0 || uso.output > 0 || uso.cost > 0)) opts.onUso?.(uso);
+    if (uso && (uso.input > 0 || uso.output > 0 || uso.cost > 0) && (!uso.providerEventId || !usosVistos.has(uso.providerEventId))) {
+      if (uso.providerEventId) usosVistos.add(uso.providerEventId);
+      opts.onUso?.(uso);
+    }
     // Un fallo del llamador (p. ej. al escribir el registro) no debe cortar al agente.
     if (opts.onLinea) {
       try {
@@ -631,6 +644,7 @@ async function ejecutarOpenCode(opts: {
   let textoTrasHerramientas = "";
   let sessionId: string | null = null;
   let usage: Usage | null = null;
+  const usosSumados = new Set<string>();
 
   for (const ev of events) {
     if (sesionValida(ev.sessionID)) sessionId = ev.sessionID;
@@ -644,7 +658,8 @@ async function ejecutarOpenCode(opts: {
     // Lo dicho antes de una herramienta es narración del paso, no la respuesta final.
     if (ev.part?.type === "tool") textoTrasHerramientas = "";
     const paso = usoDelEvento(ev);
-    if (paso) {
+    if (paso && (!paso.providerEventId || !usosSumados.has(paso.providerEventId))) {
+      if (paso.providerEventId) usosSumados.add(paso.providerEventId);
       usage ??= { input: 0, output: 0, reasoning: 0, cacheRead: 0, cost: 0 };
       usage.input += paso.input;
       usage.output += paso.output;

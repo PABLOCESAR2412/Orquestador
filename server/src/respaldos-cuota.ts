@@ -30,7 +30,7 @@ export function modelosSinCuota(projectId?: string | null, ahora = Date.now()): 
   return new Set(leer(ahora).filter((v) => v.ambito === ambito(projectId)).map((v) => v.modelo));
 }
 
-export function candidatosPorCuota(catalogo: ModelInfo[], preferidos: string[], actual: string, conectados: ReadonlySet<string>, agotados: ReadonlySet<string> = new Set()): ModelInfo[] {
+export function candidatosPorCuota(catalogo: ModelInfo[], preferidos: string[], actual: string, conectados: ReadonlySet<string>, agotados: ReadonlySet<string> = new Set(), automaticos = false): ModelInfo[] {
   const elegidos = new Set([actual]);
   const guardados = preferidos.flatMap((id) => {
     const info = catalogo.find((m) => m.id === id);
@@ -38,6 +38,7 @@ export function candidatosPorCuota(catalogo: ModelInfo[], preferidos: string[], 
     elegidos.add(id);
     return [info];
   });
+  if (!automaticos) return guardados;
   // Sin precio explícito, cero en el catálogo no demuestra gratuidad. Codex solo entra por elección guardada.
   const gratis = catalogo.filter((m) => !elegidos.has(m.id) && !agotados.has(m.id) && m.free && m.priceKnown === true && m.provider !== "codex" && conectados.has(m.provider))
     .sort((a, b) => Number(b.provider !== actual.split("/")[0]) - Number(a.provider !== actual.split("/")[0]) || Number(b.recommended) - Number(a.recommended) || b.context - a.context || a.id.localeCompare(b.id));

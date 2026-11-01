@@ -5,6 +5,12 @@
   "cambios": [
     {
       "fecha": "2026-11-01",
+      "tipo": "minimo",
+      "titulo": "Chat: respeta el modelo elegido por defecto, exige autorizar respaldos y evita duplicar eventos de consumo",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-01",
       "tipo": "mediano",
       "titulo": "Agentes: continúa tras agotar cuotas con respaldos elegidos y alternativas gratuitas conectadas, conservando etapas y modelo real",
       "pr": 165
