@@ -338,6 +338,7 @@ try {
       else if (path === "/api/models/intelligence") data = { configurado: true, disponible: true, version: 4.3, modelos: [{ slug: "prueba", name: "Google Test", creador: "Google", score: 42.5 }] };
       else if (path === "/api/models/usage") data = { counts: { "groq/llama-test": 12, "google/prueba": 5, "nvidia/nemotron-test": 3 } };
       else if (path === "/api/models") data = { models: [
+        { id: "google/precio-pendiente", provider:"google", name:"Precio pendiente", inputUsd:0, outputUsd:0, priceKnown:false, context:1000, variants:[], free:false, costTier:"desconocido", costWarning:"Precio no disponible", group:"Gemini", recommended:true },
         { id: "opencode/claude-fable-5", provider: "opencode", name: "Claude Fable 5", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Claude", recommended: true },
         { id: "codex/gpt-5-codex", provider: "codex", name: "GPT-5 Codex", inputUsd: 0, outputUsd: 0, context: 100000, variants: ["high"], free: false, costTier: "medio", costWarning: null, group: "Codex", recommended: true },
         { id: "google/prueba", provider: "google", name: "Google Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Gemini", recommended: true },
@@ -684,6 +685,15 @@ try {
     assert.equal(await selectorModelo.locator(".picker-intelligence").filter({ hasText: "AA 42,5" }).count(), 1);
     // El buscador filtra el catálogo y muestra el proveedor en la cabecera del grupo.
     const campoBusca = selectorModelo.locator(".picker-search");
+    await campoBusca.fill("Precio pendiente");
+    const precioPendiente=selectorModelo.locator(".picker-item").filter({hasText:"Precio pendiente"});
+    await precioPendiente.waitFor();
+    assert.match(await precioPendiente.textContent(),/Precio no disponible/);
+    await selectorModelo.getByRole("button",{name:"Solo gratis",exact:true}).click();
+    assert.equal(await precioPendiente.count(),0,"un precio desconocido no pasa el filtro gratis");
+    await selectorModelo.getByRole("button",{name:"Solo gratis",exact:true}).click();
+    await precioPendiente.waitFor();
+    await page.screenshot({path:`scratch/capturas-ci/precio-desconocido-${width}.png`});
     await campoBusca.fill("other");
     await selectorModelo.locator(".picker-item").filter({ hasText: "Other Test" }).waitFor();
     assert.match(await selectorModelo.locator(".picker-conteo").innerText(), /1 modelo/);
@@ -1524,7 +1534,7 @@ try {
     await selectorModelos.getByRole("button", { name: "Mostrar modelos de Codex CLI · sesión de ChatGPT", exact: true }).click();
     assert.equal(await gruposCodex.isVisible(), true);
     await selectorModelos.getByRole("button", { name: "Solo gratis", exact: true }).click();
-    assert.equal(await selectorModelos.locator(".picker-conteo").textContent(), conteoConCodex?.replace(/\d+/, String(Number(conteoConCodex.match(/\d+/)?.[0]) - 1)), "Codex no aparece como modelo gratis ni infla el conteo");
+    assert.equal(await selectorModelos.locator(".picker-conteo").textContent(), conteoConCodex?.replace(/\d+/, String(Number(conteoConCodex.match(/\d+/)?.[0]) - 2)), "Codex y los modelos sin precio no aparecen como gratis ni inflan el conteo");
     await selectorModelos.getByRole("button", { name: "Solo gratis", exact: true }).click();
     assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).isDisabled(), false);
     assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).count(), 1, "el catálogo de sesión evita duplicar el modelo de Codex incluido en /api/models");

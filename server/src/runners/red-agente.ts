@@ -34,6 +34,8 @@ const PROVEEDORES: Record<string, { base: string; variables: string[]; auth?: "g
   nvidia: { base: "https://integrate.api.nvidia.com/v1", variables: ["NVIDIA_API_KEY"] },
   openrouter: { base: "https://openrouter.ai/api/v1", variables: ["OPENROUTER_API_KEY"] },
   openai: { base: "https://api.openai.com/v1", variables: ["OPENAI_API_KEY"] },
+  deepseek: { base: "https://api.deepseek.com/v1", variables: ["DEEPSEEK_API_KEY"] },
+  xai: { base: "https://api.x.ai/v1", variables: ["XAI_API_KEY"] },
   anthropic: { base: "https://api.anthropic.com/v1", variables: ["ANTHROPIC_API_KEY"], auth: "anthropic" },
 };
 
@@ -53,6 +55,16 @@ function credencialOpenCode(proveedor: string): string | null {
     }
   }
   return null;
+}
+
+// El catálogo y el runner comparten la misma capacidad. OAuth de OpenCode sin broker
+// específico queda fuera; la integración nativa Codex mantiene su propio flujo de sesión.
+export function proveedorCompatibleConBroker(proveedor: string, extraEnv: Record<string, string> = {}): boolean {
+  const especificacion = PROVEEDORES[proveedor];
+  if (!especificacion) return false;
+  if (especificacion.variables.some(v => extraEnv[v] || process.env[v])) return true;
+  try { credencialOpenCode(proveedor); return true; }
+  catch { return false; }
 }
 
 type RutaInferencia = { proveedor: string; base: URL; modelos: Set<string>; credencial: string; auth?: "google" | "anthropic" };
@@ -116,7 +128,8 @@ export async function prepararRedAgente(
           body = Buffer.concat(chunks);
           const path = inferencia[2]!;
           const base = ruta.base.pathname;
-          if (ruta.auth === "google") {
+          const formatoGoogle = ruta.auth === "google" || (ruta.proveedor === "opencode" && path.startsWith(`${base}/models/`));
+          if (formatoGoogle) {
             const model = path.startsWith(`${base}/models/`) ? path.slice(`${base}/models/`.length).split(":")[0]! : "";
             if (!ruta.modelos.has(decodeURIComponent(model)) || !/:(?:streamGenerateContent|generateContent|countTokens)$/.test(path)) { fallo(res); return; }
           } else {
@@ -127,7 +140,7 @@ export async function prepararRedAgente(
           destino = new URL(ruta.base.origin + path + url.search);
           destino.searchParams.delete("key");
           for (const name of ["authorization", "x-api-key", "x-goog-api-key", "cookie"]) delete headers[name];
-          headers[ruta.auth === "google" ? "x-goog-api-key" : ruta.auth === "anthropic" ? "x-api-key" : "authorization"] = ruta.auth ? ruta.credencial : `Bearer ${ruta.credencial}`;
+          headers[formatoGoogle ? "x-goog-api-key" : ruta.auth === "anthropic" ? "x-api-key" : "authorization"] = formatoGoogle || ruta.auth === "anthropic" ? ruta.credencial : `Bearer ${ruta.credencial}`;
           headers["accept-encoding"] = "identity";
           headers["content-length"] = String(body.length);
         } else {
@@ -155,7 +168,8 @@ export async function prepararRedAgente(
         });
         peticion.on("socket", seguir);
         peticion.on("error", () => fallo(res, 502));
-        peticion.setTimeout(120_000, () => peticion.destroy());
+        // La inferencia puede razonar sin bytes; la vigilan y cancelan los runners.
+        peticion.setTimeout(inferencia ? 0 : 120_000, () => peticion.destroy());
         res.on("close", () => peticion.destroy());
         if (body) peticion.end(body); else req.pipe(peticion);
       })().catch(() => fallo(res));

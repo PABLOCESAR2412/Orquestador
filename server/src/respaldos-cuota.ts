@@ -34,7 +34,7 @@ export function candidatosPorCuota(catalogo: ModelInfo[], preferidos: string[], 
   const elegidos = new Set([actual]);
   const guardados = preferidos.flatMap((id) => {
     const info = catalogo.find((m) => m.id === id);
-    if (!info || elegidos.has(id) || agotados.has(id) || (!info.free && info.provider !== "codex") || !conectados.has(info.provider)) return [];
+    if (!info || elegidos.has(id) || agotados.has(id) || (info.provider !== "codex" && (!info.free || info.priceKnown !== true)) || !conectados.has(info.provider)) return [];
     elegidos.add(id);
     return [info];
   });

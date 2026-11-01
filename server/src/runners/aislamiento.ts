@@ -355,9 +355,8 @@ export function prefijoAislamiento(
       const destino = join(home, ".codex");
       args.push("--dir", destino, "--bind", perfilCodexReal, destino);
       for (const archivo of configuracionCodexGlobal) {
-        // Codex lee autenticación desde su perfil; el mismo archivo temporal es necesario
-        // porque HOME ya está oculto al montar las credenciales originales.
-        args.push("--ro-bind", join("/tmp/telo-codex-global", archivo.nombre), join(destino, archivo.nombre));
+        // Bubblewrap resuelve los orígenes en el host, no en los destinos ya montados.
+        args.push("--ro-bind", archivo.ruta, join(destino, archivo.nombre));
       }
     }
     if (perfilOpenCodeDir) {

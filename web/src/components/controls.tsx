@@ -3,6 +3,7 @@ import type { CostTier } from "../api";
 import { effortLabel, tierBars, TIER_LABEL } from "../lib/model";
 
 export function CostMeter({ tier }: { tier: CostTier }) {
+  if (tier === "desconocido") return <span className="meter" role="img" aria-label="Precio no disponible">?</span>;
   const on = tierBars(tier);
   return (
     <span className="meter" role="img" aria-label={`Costo: ${TIER_LABEL[tier]}`}>

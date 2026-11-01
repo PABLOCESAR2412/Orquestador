@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, symlinkSync, copyFileSync, chmodSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, symlinkSync, copyFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -27,6 +27,33 @@ beforeEach(() => {
 
 const { config } = await import("../src/config");
 const { eliminarPerfilCodex, eliminarPerfilOpenCode, prepararPerfilCodex, prepararPerfilOpenCode, prefijoAislamiento, prepararDirectorioOpenCode, requisitosCodexDenieganLecturaSensibles } = await import("../src/runners/aislamiento");
+
+test.skipIf(process.platform !== "linux" || !Bun.which("bwrap"))("Codex monta credenciales reales del host sin usar destinos internos como orígenes", async () => {
+  const workspace = join(proyectos, "codex-montaje");
+  mkdirSync(workspace, { recursive: true });
+  const anterior = process.env.CODEX_HOME;
+  delete process.env.CODEX_HOME;
+  const global = join(home, ".codex");
+  mkdirSync(global, { recursive: true });
+  const previos = ["auth.json", "config.toml"].map(nombre => ({nombre, contenido: existsSync(join(global, nombre)) ? readFileSync(join(global, nombre)) : null}));
+  const auth = '{"tokens":{"access_token":"credencial-sintetica"}}';
+  writeFileSync(join(global, "auth.json"), auth);
+  writeFileSync(join(global, "config.toml"), 'model="prueba"\n');
+  try {
+    const perfil = await prepararPerfilCodex("montaje-codex");
+    const args = prefijoAislamiento(workspace, true, [], undefined, undefined, undefined, undefined, undefined, perfil);
+    const script = 'test -s "$HOME/.codex/auth.json" && test -s /tmp/telo-codex-global/auth.json && test -s "$HOME/.codex/config.toml" && touch "$HOME/.codex/estado-prueba" && ! (echo fallo > "$HOME/.codex/auth.json") && ! (echo fallo > /tmp/telo-codex-global/auth.json)';
+    const p = Bun.spawn([...args, "sh", "-c", script], { cwd: workspace, env: { HOME: home, PATH: process.env.PATH ?? "" }, stdout: "pipe", stderr: "pipe" });
+    const [codigo, error] = await Promise.all([p.exited, new Response(p.stderr).text()]);
+    expect({codigo,error:codigo ? error : ""}).toEqual({codigo:0,error:""});
+    expect(readFileSync(join(global, "auth.json"), "utf8")).toBe(auth);
+    expect(readFileSync(join(perfil, "auth.json"), "utf8")).toBe("");
+    expect(existsSync(join(workspace, "estado-prueba"))).toBe(false);
+  } finally {
+    for (const p of previos) { if (p.contenido) writeFileSync(join(global, p.nombre), p.contenido); else rmSync(join(global, p.nombre)); }
+    if (anterior === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = anterior;
+  }
+});
 
 test.skipIf(process.platform !== "linux" || !process.env.TELO_TEST_RTK_BINARY)("RTK real dentro de Bubblewrap conserva el fallo y su evidencia", async () => {
   const workspace = join(proyectos, "rtk");
@@ -150,7 +177,7 @@ test.skipIf(process.platform === "win32" || !Bun.which("bwrap"))("Codex monta su
   expect(args).toContain(auth);
   expect(args).not.toContain("/tmp/telo-codex-global/config.toml");
   expect(args.some((arg, indice) => arg === "--ro-bind" && args[indice + 1] === auth && args[indice + 2] === authTemporal)).toBe(true);
-  expect(args.some((arg, indice) => arg === "--ro-bind" && args[indice + 1] === authTemporal && args[indice + 2] === authDestino)).toBe(true);
+  expect(args.some((arg, indice) => arg === "--ro-bind" && args[indice + 1] === auth && args[indice + 2] === authDestino)).toBe(true);
   eliminarPerfilCodex("chat-con-codex");
 });
 

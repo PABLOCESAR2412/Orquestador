@@ -349,3 +349,16 @@ describe("seguir un chat sin cuota", () => {
     expect(lista.find((c) => c.id === id)?.cuota_modelo).toBe("opencode/a");
   });
 });
+
+
+test("Google: RPM/TPM y RESOURCE_EXHAUSTED ambiguo se reintentan sin declarar cuota agotada", () => {
+  const error = (message: string, details: unknown[]=[]) => new ErrorAgente("Google HTTP 429",JSON.stringify({error:{code:429,status:"RESOURCE_EXHAUSTED",message,details}}));
+  for(const mensaje of ["Quota exceeded. Please check your plan and billing details. Requests per minute exceeded.","Quota exceeded for GenerateContentInputTokensPerModelPerMinute-FreeTier", "Resource has been exhausted (e.g. check quota)."]){
+    expect(esErrorDeCuota(error(mensaje))).toBe(false);
+    expect(esErrorTransitorioDelProveedor(error(mensaje))).toBe(true);
+  }
+  for(const mensaje of ["Quota exceeded for GenerateRequestsPerDayPerProjectPerModel-FreeTier", "Quota exceeded: daily limit; also requests per minute", "billing_hard_limit reached", "Quota exceeded, limit: 0"]){
+    expect(esErrorDeCuota(error(mensaje))).toBe(true);
+    expect(esErrorTransitorioDelProveedor(error(mensaje))).toBe(false);
+  }
+});

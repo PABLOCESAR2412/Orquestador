@@ -19,6 +19,8 @@ export const PROVEEDORES_CON_CLAVE: ProveedorConClave[] = [
   { id: "nvidia", etiqueta: "NVIDIA", variables: ["NVIDIA_API_KEY"] },
   { id: "google", etiqueta: "Google (Gemini)", variables: ["GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"] },
   { id: "openrouter", etiqueta: "OpenRouter", variables: ["OPENROUTER_API_KEY"] },
+  { id: "deepseek", etiqueta: "DeepSeek", variables: ["DEEPSEEK_API_KEY"] },
+  { id: "xai", etiqueta: "xAI", variables: ["XAI_API_KEY"] },
 ];
 
 export function esClaveDeInferencia(variable: string): boolean {
@@ -105,7 +107,8 @@ export function claveDeAuthJson(id: string): string | null {
       if (!entrada) continue;
       if (typeof entrada === "string" && entrada.trim()) return entrada.trim();
       if (typeof entrada === "object" && entrada !== null) {
-        const ent = entrada as { key?: string; apiKey?: string; token?: string; access_token?: string };
+        const ent = entrada as { type?: string; key?: string; apiKey?: string; token?: string; access_token?: string };
+        if (ent.type === "oauth") continue; // Una sesión no es una API key reutilizable.
         const k = ent.key || ent.apiKey || ent.token || ent.access_token;
         if (typeof k === "string" && k.trim()) return k.trim();
       }

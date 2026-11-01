@@ -8,7 +8,7 @@ for herramienta in bun bwrap python3 git; do
 done
 bun run typecheck
 if [ -x "$HOME/.local/bin/rtk" ]; then export TELO_TEST_RTK_BINARY="$HOME/.local/bin/rtk"; fi
-bun test tests/red-agente.test.ts tests/aislamiento.test.ts tests/skills-seguras.test.ts tests/subagentes.test.ts tests/subagentes-chat.test.ts tests/worker-turnos.test.ts tests/ejecucion-contexto.test.ts tests/espera-proveedor.test.ts tests/rtk.test.ts tests/chat-turnos.test.ts tests/resolucion-skills.test.ts
+bun test tests/red-agente.test.ts tests/aislamiento.test.ts tests/skills-seguras.test.ts tests/subagentes.test.ts tests/subagentes-chat.test.ts tests/worker-turnos.test.ts tests/ejecucion-contexto.test.ts tests/espera-proveedor.test.ts tests/rtk.test.ts tests/chat-turnos.test.ts tests/resolucion-skills.test.ts tests/broker-rutas.test.ts tests/cuota.test.ts tests/models.test.ts tests/respaldos-cuota.test.ts tests/mejoras-arquitectura.test.ts tests/claves-proveedor.test.ts
 TELO_TEST_WORKER=1 bun test tests/worker-flujo.test.ts
 echo 'Aislamiento, broker, skills y worker comprobados con proveedores sintéticos.'
 echo 'La respuesta de tus proveedores y sus cuotas se comprueban después desde el chat.'

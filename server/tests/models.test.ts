@@ -27,3 +27,13 @@ test("conserva el Gemini del proveedor oficial de Google y elimina el duplicado 
   expect(catalogo.map((m) => m.id)).toEqual(["google/gemini-4-argon"]);
   expect(catalogo[0]?.provider).toBe("google");
 });
+
+
+test("un catálogo sin precio o con precio parcial/inválido no demuestra gratuidad", () => {
+  for(const cost of [undefined,{input:0},{input:-1,output:0}]){
+    const m=parseModels(`google/sin-precio\n${JSON.stringify({name:'Sin precio',cost})}\n`)[0]!;
+    expect(m.free).toBe(false);expect(m.priceKnown).toBe(false);expect(m.costTier).toBe('desconocido');expect(m.costWarning).toContain('precio verificable');
+  }
+  const gratis=parseModels('google/gratis\n{"cost":{"input":0,"output":0}}\n')[0]!;
+  expect(gratis.free).toBe(true);expect(gratis.priceKnown).toBe(true);
+});
