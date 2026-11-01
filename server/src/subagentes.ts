@@ -5,7 +5,7 @@ import { getModels } from "./models";
 
 import { pideSubagentes } from "../../shared/delegacion";
 export { pideSubagentes } from "../../shared/delegacion";
-const MAX_MODELOS = 4;
+const MAX_MODELOS = 3;
 
 export type PreparacionSubagentes = {
   instruccion: string;
@@ -101,6 +101,7 @@ export async function prepararSubagentes(opts: {
         `description: Subagente temporal ${slug(modelo.id)} para la tarea solicitada`,
         "mode: subagent",
         "permission:",
+        ...(opts.soloLectura ? ["  \"*\": deny", "  read: allow", "  glob: allow", "  grep: allow", "  list: allow", "  edit: deny", "  write: deny", "  bash: deny"] : []),
         "  task: deny",
         `model: ${idModelo}`,
         "---",

@@ -826,6 +826,18 @@
 .aj-campo-doble .aj-input {
   flex: 1 1 200px;
 }
+.aj-cadena-cuota { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.aj-modelos-cuota { display: flex; flex-direction: column; gap: 8px; padding: 0; margin: 0; list-style: none; }
+.aj-modelo-cuota { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
+.aj-modelo-cuota-posicion { display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); color: var(--ink-2); font-size: 12px; }
+.aj-modelo-cuota-nombre { display: flex; flex: 1 1 auto; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.aj-modelo-cuota-nombre small { color: var(--ink-2); font-size: 11px; }
+.aj-modelo-cuota-acciones { display: flex; flex-wrap: wrap; gap: 5px; }
+@media (max-width: 560px) {
+  .aj-modelo-cuota { align-items: flex-start; flex-wrap: wrap; }
+  .aj-modelo-cuota-nombre { flex-basis: calc(100% - 44px); }
+  .aj-modelo-cuota-acciones { margin-left: 34px; }
+}
 
 /* Conexiones MCP: lista compacta, controles en línea y formularios que caben en móvil. */
 .aj-conexiones-intro { max-width: 72ch; margin-top: 6px; }

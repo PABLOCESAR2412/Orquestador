@@ -6,6 +6,8 @@ export type Preferences = {
   defaultEffort: string | null;
   // Modelo de respaldo si el principal responde 429 o 5xx. Null: sin respaldo.
   fallbackModel: string | null;
+  // Modelos probados en orden solo cuando el proveedor confirma que una cuota se agotó.
+  quotaFallbackModels: string[];
   monthlyBudgetUsd: number | null;
   budgetAlertPercent: number;
   compartirContextoChats: boolean;
@@ -15,6 +17,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   defaultModel: null,
   defaultEffort: null,
   fallbackModel: null,
+  quotaFallbackModels: [],
   monthlyBudgetUsd: null,
   budgetAlertPercent: 80,
   compartirContextoChats: false,

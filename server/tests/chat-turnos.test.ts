@@ -18,7 +18,7 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 const { db } = await import("../src/db");
 const { config } = await import("../src/config");
 const { conversacionEnCurso, ocuparConversacion, liberarConversacion } = await import("../src/ocupacion");
-const { chat, avisarTurnosInterrumpidos } = await import("../src/routes/chat");
+const { chat, avisarTurnosInterrumpidos, esContinuacionDelegada, origenDelegacionParaMensaje } = await import("../src/routes/chat");
 const { guardarImagenAdjunta, imagenesDelPrompt } = await import("../src/chat-adjuntos");
 const { reservarAgente } = await import("../src/capacidad-agentes");
 
@@ -325,6 +325,25 @@ test("detener libera una ocupación huérfana para que el chat no quede bloquead
   }
 });
 
+test("la continuación hereda la delegación explícita solo mientras siga pendiente", () => {
+  const id = conversacion();
+  const solicitud = crypto.randomUUID();
+  db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,'user',?)")
+    .run(solicitud, id, "Quiero que utilices varios agentes para revisar esto");
+
+  expect(esContinuacionDelegada("Seguir donde se quedó")).toBe(true);
+  expect(origenDelegacionParaMensaje(id, "Seguir donde se quedó", crypto.randomUUID())).toBe(solicitud);
+
+  const seguir = crypto.randomUUID();
+  db.query("INSERT INTO messages (id,conversation_id,role,content,delegacion_origen) VALUES (?,?,'user',?,?)")
+    .run(seguir, id, "Seguir donde se quedó", solicitud);
+  expect(origenDelegacionParaMensaje(id, "continúa", crypto.randomUUID())).toBe(solicitud);
+
+  db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,'assistant','Respuesta final')")
+    .run(crypto.randomUUID(), id);
+  expect(origenDelegacionParaMensaje(id, "Seguir donde se quedó", crypto.randomUUID())).toBeNull();
+});
+
 // Estas pruebas lanzan grupos de procesos con `setsid`, igual que el servidor Linux.
 describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
   test("detener aborta el turno libre y conserva el mensaje para continuar", async () => {
@@ -396,6 +415,33 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     const actividad = db.query<{ titulo: string }, [string]>("SELECT titulo FROM chat_actividad WHERE conversation_id=? ORDER BY seq").all(id).map((p) => p.titulo).join("\n");
     expect(actividad).toContain("Auxiliar seguridad (google/gemini-test): inició");
     expect(actividad).not.toContain("Auxiliar arquitectura");
+  });
+
+  test("una continuación en cola conserva la delegación del turno y no relanza auxiliares ya usados", async () => {
+    const id = conversacion();
+    db.query("UPDATE conversations SET orquestacion_habilitada=1, orquestacion_trabajadores=? WHERE id=?").run(JSON.stringify([
+      { rol: "arquitectura", model: "openai/gpt-4.1-mini" },
+    ]), id);
+
+    expect((await enviar(id, "Quiero que utilices varios agentes para analizar esta tarea LENTO")).status).toBe(202);
+    await esperar(() => conversacionEnCurso(id));
+    expect((await enviar(id, "Seguir donde se quedó")).status).toBe(202);
+    await esperar(() => mensajes(id).filter((mensaje) => mensaje.role === "assistant").length === 2);
+
+    const turnos = db.query<{ id: string; content: string; delegacion_origen: string | null }, [string]>(
+      "SELECT id,content,delegacion_origen FROM messages WHERE conversation_id=? AND role='user' ORDER BY rowid",
+    ).all(id);
+    expect(turnos[0]?.delegacion_origen).toBe(turnos[0]?.id);
+    expect(turnos[1]?.content).toBe("Seguir donde se quedó");
+    expect(turnos[1]?.delegacion_origen).toBe(turnos[0]?.id);
+    expect(db.query<{ delegacion_consumida: number }, [string]>(
+      "SELECT delegacion_consumida FROM messages WHERE id=?",
+    ).get(turnos[0]!.id)?.delegacion_consumida).toBe(1);
+
+    const actividad = db.query<{ titulo: string }, [string]>(
+      "SELECT titulo FROM chat_actividad WHERE conversation_id=? ORDER BY seq",
+    ).all(id).map((paso) => paso.titulo);
+    expect(actividad.filter((titulo) => titulo.includes("Auxiliar arquitectura") && titulo.includes("inició la revisión de solo lectura"))).toHaveLength(1);
   });
 
   test("el runner recibe el archivo de imagen adjuntado al mensaje", async () => {
@@ -962,6 +1008,47 @@ describe("contexto por conversación", () => {
 
     const inexistente = await app.request("/api/conversations/no-existe/contexto");
     expect(inexistente.status).toBe(404);
+  });
+});
+
+describe("uso por turno", () => {
+  test("separa el uso de supervisor y revisores y excluye otros turnos", async () => {
+    const id = conversacion("openai/gpt-6-luna");
+    const turnoId = crypto.randomUUID();
+    const otroTurnoId = crypto.randomUUID();
+    db.query("INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'user', 'Audita', '2026-10-31 12:00:00')")
+      .run(turnoId, id);
+    db.query("INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, 'assistant', 'Resultado', '2026-10-31 12:00:12')")
+      .run(crypto.randomUUID(), id);
+    const insertarUso = db.query(`INSERT INTO usage (
+      id,conversation_id,provider,model,input_tokens,output_tokens,cost,tokens_precision,cost_precision,turn_id,usage_role
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?)`);
+    insertarUso.run(crypto.randomUUID(), id, "openai", "openai/gpt-6-luna", 100, 20, 0.01, "medida", "estimado", turnoId, "supervisor");
+    insertarUso.run(crypto.randomUUID(), id, "groq", "groq/revisor-seguridad", 40, 10, 0.004, "estimado", "estimado", turnoId, "reviewer:seguridad");
+    insertarUso.run(crypto.randomUUID(), id, "openai", "openai/gpt-6-luna", 900, 100, 0, "desconocida", "desconocida", otroTurnoId, "supervisor");
+
+    const respuesta = await app.request(`/api/conversations/${id}/turnos/${turnoId}/uso`);
+    const datos = await respuesta.json() as {
+      turnId: string; duracionMs: number | null; llamadas: number; tokensMedidos: number;
+      tokensEstimados: number; costeEstimadoUsd: number;
+      porEtapa: { role: string; provider: string; model: string; calls: number }[];
+    };
+    expect(respuesta.status).toBe(200);
+    expect(datos).toMatchObject({
+      turnId: turnoId,
+      duracionMs: 12_000,
+      llamadas: 2,
+      tokensMedidos: 120,
+      tokensEstimados: 50,
+      costeEstimadoUsd: 0.014,
+    });
+    expect(datos.porEtapa).toHaveLength(2);
+    expect(datos.porEtapa).toContainEqual(expect.objectContaining({
+      role: "reviewer:seguridad", provider: "groq", model: "groq/revisor-seguridad", calls: 1,
+    }));
+    expect(datos.porEtapa).toContainEqual(expect.objectContaining({
+      role: "supervisor", provider: "openai", model: "openai/gpt-6-luna", calls: 1,
+    }));
   });
 });
 

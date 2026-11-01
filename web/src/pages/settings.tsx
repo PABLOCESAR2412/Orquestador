@@ -168,7 +168,7 @@ export function SettingsPage() {
   const primarioId = proveedorDeModelo(value?.defaultModel);
   const respaldoId = proveedorDeModelo(prefs.data?.fallbackModel);
   const etiquetaDe = (p: ProviderStatus): string | null =>
-    p.id === primarioId ? "Primario" : p.id === respaldoId ? "Respaldo" : p.id === "codex" ? "Sesión" : p.variable === null ? "Local" : null;
+    p.id === primarioId ? "Primario" : p.id === respaldoId ? "Respaldo" : p.id === "codex" ? "Sesión" : p.id === "hermes" ? "Piloto" : p.variable === null ? "Local" : null;
 
   // Diagnóstico interno para distinguir una clave que no expone modelos de una conexión válida.
   const modelosDe = (id: string): { total: number; enSelector: number } | null => {
@@ -348,9 +348,12 @@ export function SettingsPage() {
                       />
                     )}
                     {proveedoresAdicionales.length > 0 && (
-                      <div className="aj-proveedores-adicionales" aria-label="Otras APIs">
-                        {proveedoresAdicionales.filter((p) => p.id !== "codex").map((p) => (
-                          <TarjetaProveedor key={p.id} p={p} etiqueta={etiquetaDe(p)} modelos={modelosDe(p.id)} />
+                      <div className="aj-proveedores-adicionales" aria-label="Acceso local y otros proveedores">
+                        {proveedoresAdicionales.map((p) => (
+                          <Fragment key={p.id}>
+                            <TarjetaProveedor p={p} etiqueta={etiquetaDe(p)} modelos={modelosDe(p.id)} />
+                            {p.id === "codex" && <AntigravityCard />}
+                          </Fragment>
                         ))}
                       </div>
                     )}
@@ -525,6 +528,7 @@ export function SettingsPage() {
                     </div>
 
                     <SelectorRespaldo models={models.data?.models ?? []} modelosListos={models.isSuccess} prefs={prefs.data} />
+                    <SelectorAlternativasCuota models={models.data?.models ?? []} modelosListos={models.isSuccess} prefs={prefs.data} />
                     {models.isError && (
                       <div className="aj-error-bloque" role="alert">
                         <p className="aj-error">{errorText(models.error)}</p>
@@ -731,6 +735,103 @@ function SelectorRespaldo({
   );
 }
 
+function SelectorAlternativasCuota({
+  models,
+  modelosListos,
+  prefs,
+}: {
+  models: ModelInfo[];
+  modelosListos: boolean;
+  prefs: Preferences | undefined;
+}) {
+  const qc = useQueryClient();
+  const guardar = useMutation({
+    mutationFn: (quotaFallbackModels: string[]) => api.savePreferences({ quotaFallbackModels }),
+    onSettled: () => void qc.invalidateQueries({ queryKey: ["preferences"] }),
+  });
+  const guardados = prefs?.quotaFallbackModels ?? [];
+  const ids = guardar.isPending ? (guardar.variables ?? guardados) : guardados;
+  const [nuevo, setNuevo] = useState("");
+  const disponibles = models.filter((m) => (m.free || m.provider === "codex") && !ids.includes(m.id));
+  const guardarLista = (siguiente: string[]) => guardar.mutate(siguiente);
+
+  return (
+    <div className="aj-cadena-cuota">
+      <div className="aj-fila-campo">
+        <label htmlFor="modelo-alternativo-cuota" className="aj-campo-etiqueta-fija">
+          Cambiar si se agota la cuota
+        </label>
+        <div className="aj-campo-doble">
+          <select
+            id="modelo-alternativo-cuota"
+            className="aj-input"
+            value={nuevo}
+            disabled={!prefs || guardar.isPending || !modelosListos || disponibles.length === 0 || ids.length >= 20}
+            onChange={(event) => setNuevo(event.target.value)}
+          >
+            <option value="">Añadir modelo gratis o de Codex</option>
+            {disponibles.map((modelo) => (
+              <option key={modelo.id} value={modelo.id}>
+                {modelo.name} · {modelo.provider === "codex" ? "plan ChatGPT" : "gratis"}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="aj-btn"
+            disabled={!nuevo || guardar.isPending || ids.length >= 20}
+            onClick={() => {
+              if (!nuevo || ids.includes(nuevo)) return;
+              guardarLista([...ids, nuevo]);
+              setNuevo("");
+            }}
+          >
+            Añadir
+          </button>
+        </div>
+      </div>
+      <p className="aj-nota">
+        Si el proveedor confirma que se agotó la cuota, Telo prueba estos modelos en orden y muestra el cambio en la actividad.
+        Se admiten hasta 20 modelos con coste cero o cubiertos por la sesión Codex; los modelos con cobro por API no pueden entrar.
+        Si también se agotan, el chat o tarea queda listo para continuar cuando elijas otro modelo.
+      </p>
+      {ids.length > 0 && (
+        <ol className="aj-modelos-cuota" aria-label="Orden de modelos alternativos">
+          {ids.map((id, indice) => {
+            const modelo = models.find((item) => item.id === id);
+            return (
+              <li className="aj-modelo-cuota" key={id}>
+                <span className="aj-modelo-cuota-posicion" aria-hidden="true">{indice + 1}</span>
+                <span className="aj-modelo-cuota-nombre">
+                  {modelo?.name ?? id}
+                  <small>{modelo?.provider === "codex" ? "Usa el cupo de tu plan ChatGPT" : modelo ? "Gratis según el catálogo actual" : "No disponible en el catálogo; se omitirá"}</small>
+                </span>
+                <div className="aj-modelo-cuota-acciones">
+                  <button type="button" className="aj-btn" aria-label={`Subir ${modelo?.name ?? id}`} disabled={indice === 0 || guardar.isPending} onClick={() => {
+                    const orden = [...ids];
+                    [orden[indice - 1], orden[indice]] = [orden[indice], orden[indice - 1]];
+                    guardarLista(orden);
+                  }}>↑</button>
+                  <button type="button" className="aj-btn" aria-label={`Bajar ${modelo?.name ?? id}`} disabled={indice === ids.length - 1 || guardar.isPending} onClick={() => {
+                    const orden = [...ids];
+                    [orden[indice + 1], orden[indice]] = [orden[indice], orden[indice + 1]];
+                    guardarLista(orden);
+                  }}>↓</button>
+                  <button type="button" className="aj-btn" disabled={guardar.isPending} onClick={() => guardarLista(ids.filter((actual) => actual !== id))}>
+                    Quitar
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {guardar.isPending && <p className="aj-nota" role="status">Guardando orden…</p>}
+      {guardar.isError && <p className="aj-error" role="alert">{errorText(guardar.error)}</p>}
+    </div>
+  );
+}
+
 function Kpi({
   etiqueta,
   icono,
@@ -779,7 +880,7 @@ function TarjetaProveedor({
   tabLabelId?: string;
 }) {
   // Codex está activo cuando hay sesión autenticada; los otros motores requieren clave disponible para agentes.
-  const listo = p.id === "codex" || p.id === "opencode" ? p.configured : p.configured && p.enAgente;
+  const listo = p.id === "codex" || p.id === "opencode" ? p.configured : p.id === "hermes" ? false : p.configured && p.enAgente;
   const sinClave = p.variable === null;
   const nota = notaEstado(p, modelos);
   const esMotorDirecto = p.id !== "opencode" && p.id !== "codex" && PESTANAS_PROVEEDOR.some((tab) => tab.id === p.id);
@@ -831,6 +932,11 @@ function TarjetaProveedor({
             <span className="aj-proveedor-punto" aria-hidden="true" />
             {p.configured ? "CLI instalado en el servidor" : "CLI no instalado"}
           </div>
+        ) : p.id === "hermes" ? (
+          <div className="aj-estado-proveedor" role="status">
+            <span className="aj-proveedor-punto" aria-hidden="true" />
+            Runner desactivado
+          </div>
         ) : esMotorDirecto ? (
           <div className={`aj-estado-proveedor${prueba.data?.ok ? " is-conectado" : errorPrueba ? " is-error" : ""}`} role="status">
             <span className="aj-proveedor-punto" aria-hidden="true" />
@@ -866,7 +972,22 @@ function TarjetaProveedor({
       </div>
 
       {(credencialesAbiertas || !p.guardable) && <div className="aj-campos" id={`aj-prov-campos-${p.id}`}>
-        {p.id === "codex" ? (
+        {p.id === "hermes" ? (
+          <div className="aj-campo">
+            <div className="aj-campo-etiqueta"><span>Preparar sesión del piloto</span></div>
+            {p.sesion ? (
+              <p className="aj-nota">Se detectaron credenciales Codex propias de Hermes. Esto no confirma que el plan permita llamadas ni activa el runner.</p>
+            ) : !p.configured ? (
+              <p className="aj-nota">Instala Hermes desde el botón de abajo. Después inicia su OAuth propio desde una terminal SSH del VM.</p>
+            ) : (
+              <>
+                <p className="aj-nota">En una terminal SSH del VM, como usuario <code>orquestador</code>, ejecuta:</p>
+                <pre className="aj-registros-texto">HERMES_HOME="$HOME/.hermes-telo" ~/.local/bin/hermes config set auth.adopt_external_logins false{"\n"}HERMES_HOME="$HOME/.hermes-telo" ~/.local/bin/hermes auth add openai-codex --type oauth</pre>
+                <p className="aj-nota aj-nota-aviso">Hermes guarda su OAuth aparte. No importes ni uses a la vez el mismo token de Codex CLI: los tokens de actualización son de un solo uso y pueden invalidar la otra sesión. Hermes tampoco documenta cómo cada plan de ChatGPT consume su cuota.</p>
+              </>
+            )}
+          </div>
+        ) : p.id === "codex" ? (
           <div className="aj-campo">
             <div className="aj-campo-etiqueta"><span>Sesión de Codex</span></div>
             <div className="aj-entrada">
@@ -894,7 +1015,7 @@ function TarjetaProveedor({
           </div>
         ) : null}
 
-        {p.id !== "codex" && <div className="aj-campo">
+        {p.id !== "codex" && p.id !== "hermes" && <div className="aj-campo">
           <div className="aj-campo-etiqueta">
             <span>{p.id === "opencode" ? "Tipo de conexión" : "Endpoint base"}</span>
           </div>
@@ -917,6 +1038,11 @@ function TarjetaProveedor({
       {p.id === "codex" && (
         <InstalarHerramienta id="codex" nombre="Codex">
           <LoginCodexPanel />
+        </InstalarHerramienta>
+      )}
+      {p.id === "hermes" && (
+        <InstalarHerramienta id="hermes" nombre="Hermes Agent">
+          <p className="aj-nota">Hermes está instalado. La sesión se prepara por SSH con el comando mostrado arriba. El piloto de ejecución sigue desactivado hasta validar aislamiento y cancelación.</p>
         </InstalarHerramienta>
       )}
     </article>
@@ -1201,6 +1327,7 @@ function notaEstado(p: ProviderStatus, modelos: { total: number } | null): strin
   if (p.id === "opencode") return p.configured ? null : "El CLI de OpenCode no se encontró en el servidor.";
   // Codex: la sesión se inicia desde su panel; los agentes pueden seleccionarlo.
   if (p.id === "codex") return p.configured ? "Sesión conectada con ChatGPT. Los modelos de Codex están disponibles en el selector." : null;
+  if (p.id === "hermes") return "Preparación del harness. Hermes todavía no ejecuta chats ni tareas de Telo.";
   if (!p.configured) return p.guardable ? null : `Falta ${p.variable ?? "la clave"} en el archivo de entorno del servidor.`;
   if (!p.enAgente) {
     return `La clave está configurada, pero no llega a los agentes: agrégala a TELO_AGENTE_VARIABLES en el archivo de entorno del servidor.`;
@@ -1480,6 +1607,14 @@ function IconoGuardar() {
 }
 
 function IconoProveedor({ id }: { id: string }) {
+  if (id === "hermes") {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" {...TRAZO}>
+        <path d="M12 3v18M4.5 7.5 19.5 16.5M19.5 7.5 4.5 16.5" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    );
+  }
   if (id === "opencode") {
     return (
       <svg width="18" height="18" viewBox="0 0 24 24" {...TRAZO}>

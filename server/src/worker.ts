@@ -272,7 +272,8 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
   let turnoTerminado = false;
   const turnoChat = turnoDeTarea(task);
   try {
-    if (aprender || analizarConSubagentes) {
+    // Solo el analizador puede delegar y sus auxiliares son de lectura. El obrero queda único.
+    if (analizarConSubagentes) {
       perfilesSubagente = await prepararSubagentes({
         // El prompt de la fase obrero ya incluye el plan, pero la autorización para delegar
         // viene de la petición original del usuario.
@@ -280,7 +281,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
         modelo: task.model,
         esfuerzo: task.effort,
         idEjecucion: crypto.randomUUID(),
-        soloLectura: analizarConSubagentes,
+        soloLectura: true,
       });
     }
     const promptAvisos = ctx.avisos?.length
@@ -299,6 +300,8 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
       signal: controller.signal,
       taskId: task.id,
       conversationId: task.conversation_id,
+      turnId: turnoChat?.id,
+      usageRole: estadoActual(task.id) === "analyzing" ? "analyzer" : "worker",
       soloLectura: estadoActual(task.id) === "analyzing",
       projectId: task.project_id,
       opencodeConfigDir: perfilesSubagente?.directorio,
@@ -343,6 +346,9 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
           if (turnoChat && item) registrarActividad(task.conversation_id, turnoChat.id, item);
         }
         publicar({ tipo: "salida", task_id: task.id, linea: recortarLinea(linea) });
+      },
+      onCambioModeloCuota: (agotado, siguiente) => {
+        registrarEvento(task.id, "modelo_respaldo", `Cuota agotada en ${agotado}; continúo automáticamente con ${siguiente}.`);
       },
     });
     if (result.modelo !== modeloSolicitado || result.variante !== esfuerzoSolicitado) {

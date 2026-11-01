@@ -89,4 +89,3 @@ describe("baúl Markdown del cerebro", () => {
     }
   });
 });
-

@@ -85,7 +85,7 @@ export function InstalarHerramienta({ id, nombre, children }: Props) {
         <div className="instalar-confirmar" role="group" aria-label={`Confirmar instalación de ${nombre}`}>
           <p className="aj-nota">
             Se ejecutará en el servidor el comando <code className="aj-mono">{datos?.comando}</code>. Tarda uno o dos
-            minutos y necesita {id === "antigravity" ? "curl y bash" : "npm instalado en la VM"}.
+            minutos y necesita {id === "antigravity" || id === "hermes" ? "curl y bash" : "npm instalado en la VM"}.
           </p>
           <div className="instalar-acciones">
             <button

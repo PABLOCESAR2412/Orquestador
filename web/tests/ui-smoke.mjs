@@ -107,6 +107,7 @@ try {
     let reintentos = [];
     let skillInstallRequests = 0;
     let skillSaveRequests = 0;
+    const brainNotes = [];
     let politicaDisco = { automatica: false, umbral: 85, intervaloHoras: 24, antiguedadDias: 7 };
     let ultimoDisco = null;
     let escriturasPreferencias = 0;
@@ -375,6 +376,28 @@ try {
       else if (path === "/api/tasks") { taskListRequests++; data = [{ id: "regular-1", title: "Prompt ordinario del chat", model: "google/prueba", status: "done", created_at: now }]; }
       else if (path === "/api/programadas") data = [{ id: "schedule-1", titulo: "Resumen diario", prompt: "Preparar resumen", model: "google/prueba", effort: null, project_id: null, project_name: null, frecuencia: "diaria", cada_horas: null, hora: "08:00", activa: true, proxima_en: now, ultima_ejecucion: null, ultima_tarea_id: null, created_at: now }];
       else if (path === "/api/projects") data = [{ id: "p1", name: "Pruebas", en_proceso: true }];
+      else if (path === "/api/cerebro/notas" && route.request().method() === "GET") {
+        const projectId = params.get("project_id");
+        const query = (params.get("q") ?? "").toLocaleLowerCase();
+        const notas = brainNotes.filter(nota => (nota.project_id ?? null) === (projectId ?? null) && (!query || `${nota.title} ${nota.content}`.toLocaleLowerCase().includes(query)));
+        data = { notas: notas.map(({ content, ...nota }) => ({ ...nota, resumen: content.slice(0, 180) })), total: notas.length, busqueda: "local" };
+      }
+      else if (path === "/api/cerebro/notas" && route.request().method() === "POST") {
+        const body = route.request().postDataJSON();
+        const nota = { id: `brain-${brainNotes.length + 1}`, project_id: body.project_id, title: body.title, content: body.content, created_at: now, updated_at: now };
+        brainNotes.push(nota);
+        return route.fulfill({ status: 201, json: nota });
+      }
+      else if (path === "/api/cerebro/grafo") data = { nodos: brainNotes.map(({ id, title }) => ({ id, title })), enlaces: [], limitado: false };
+      else if (path.startsWith("/api/cerebro/notas/")) {
+        const nota = brainNotes.find(item => item.id === path.split("/").at(-1));
+        if (!nota) return route.fulfill({ status: 404, json: { error: "note_not_found" } });
+        if (route.request().method() === "GET") data = nota;
+        else if (route.request().method() === "PUT") {
+          Object.assign(nota, route.request().postDataJSON(), { updated_at: new Date().toISOString() });
+          data = nota;
+        } else if (route.request().method() === "DELETE") { brainNotes.splice(brainNotes.indexOf(nota), 1); data = { ok: true }; }
+      }
       else if (path === "/api/documentos" && route.request().method() === "POST") data = { id: "doc1", conversation_id: "c1", titulo: "Documento de prueba", formato: "md", bytes: 123, created_at: now };
       else if (path === "/api/documentos/doc1/vista") {
         return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: "<!doctype html><html><body><p>Vista previa de prueba</p></body></html>" });
@@ -435,6 +458,20 @@ try {
     await page.getByText("Conversaciones", { exact: true }).waitFor();
     await page.getByRole("heading", { name: "Bienvenido a Telo", exact: true }).waitFor();
     await page.getByRole("button", { name: "Nuevo chat", exact: true }).waitFor();
+    await page.goto(`${base}/cerebro`);
+    await page.getByRole("heading", { name: "Cerebro", exact: true }).waitFor();
+    await page.getByText("Este baúl está vacío. Crea una nota o importa Markdown.", { exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "el cerebro cabe en el ancho de la pantalla");
+    await page.getByRole("button", { name: "+ Nota", exact: true }).click();
+    await page.getByLabel("Título de la nota").waitFor();
+    assert.equal(await page.getByLabel("Título de la nota").inputValue(), "Nota nueva");
+    await page.getByLabel("Contenido Markdown").fill("# Nota nueva\n\n[[Pruebas]]");
+    await page.getByRole("button", { name: "Guardar", exact: true }).click();
+    await page.getByText("Cambios guardados.", { exact: true }).waitFor();
+    assert.equal(brainNotes[0]?.content, "# Nota nueva\n\n[[Pruebas]]");
+    await page.screenshot({ path: `scratch/capturas-ci/cerebro-${width}.png` });
+    await page.goto(`${base}/chat`);
+    await page.getByRole("heading", { name: "Bienvenido a Telo", exact: true }).waitFor();
     const marcaChatNuevo = page.locator(".tl-vacio-emblema");
     assert.equal(await marcaChatNuevo.locator("svg").count(), 1, "el chat nuevo reutiliza el símbolo de Telo");
     assert.equal(await marcaChatNuevo.locator(".tl-vacio-orbita").count(), 2, "el símbolo tiene dos líneas orbitales");
@@ -613,7 +650,7 @@ try {
     assert.match(await selectorModelo.locator(".picker-tus-modelos").innerText(), /Llama Test/);
     assert.match(await selectorModelo.locator(".picker-tus-modelos").innerText(), /Google Test/);
     assert.equal(await selectorModelo.locator(".picker-intelligence").filter({ hasText: "AA 42,5" }).count(), 1);
-    // El buscador filtra el catálogo en vivo, esconde "Tus modelos" y marca el proveedor en cada fila.
+    // El buscador filtra el catálogo y muestra el proveedor en la cabecera del grupo.
     const campoBusca = selectorModelo.locator(".picker-search");
     await campoBusca.fill("other");
     await selectorModelo.locator(".picker-item").filter({ hasText: "Other Test" }).waitFor();
@@ -1163,7 +1200,8 @@ try {
     assert.equal(textoUso.includes("Últimas 5 horas"), true);
     assert.equal(textoUso.includes("Mes actual (UTC)"), true);
     assert.equal(textoUso.includes("Estimación de coste"), true);
-    assert.equal(textoUso.includes("saldo ni los límites efectivos"), true);
+    assert.equal(textoUso.includes("El plan Google AI Plus y la cuota de Antigravity son aparte"), true);
+    assert.equal(await panelUso.getByRole("link", { name: "Google AI Studio · Usage" }).getAttribute("href"), "https://aistudio.google.com/usage");
     assert.equal(/\b(?:restantes|RPD|RPM|cuota restante)\b/i.test(textoUso), false);
     await page.keyboard.press("Escape");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
@@ -1370,12 +1408,13 @@ try {
     assert.equal((await tarjetaJev.textContent()).includes("Telo decide qué guardar"), true);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/jev-ajustes-${width}.png` });
-    await page.getByRole("button", { name: "Copiar código", exact: true }).click();
-    await page.getByText("Código copiado.", { exact: true }).waitFor();
+    const accesoCodex = page.locator(".aj-proveedores-adicionales");
+    await accesoCodex.getByRole("button", { name: "Copiar código", exact: true }).first().click();
+    await accesoCodex.getByText("Código copiado.", { exact: true }).first().waitFor();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "ABCD-EFGH");
-    assert.equal(await page.locator(".login-codex-enlace").getAttribute("href"), "https://auth.openai.com/codex/device");
-    await page.getByText("Ver salida del terminal", { exact: true }).click();
-    await page.locator(".login-codex-paso").scrollIntoViewIfNeeded();
+    assert.equal(await accesoCodex.locator(".login-codex-enlace").first().getAttribute("href"), "https://auth.openai.com/codex/device");
+    await accesoCodex.getByText("Ver salida del terminal", { exact: true }).first().click();
+    await accesoCodex.locator(".login-codex-paso").first().scrollIntoViewIfNeeded();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/login-${width}.png` });
     const nuevaSkill = page.getByRole("button", { name: "Nueva skill", exact: true });
@@ -1411,17 +1450,18 @@ try {
     assert.equal(await gruposGroq.isHidden(), true, "las integraciones empiezan contraídas");
     await selectorModelos.getByRole("button", { name: "Mostrar modelos de Groq API", exact: true }).click();
     assert.equal(await gruposGroq.isVisible(), true, "se puede volver a expandir la integración");
+    await selectorModelos.getByRole("button", { name: "Ocultar modelos de Groq API", exact: true }).click();
+    assert.equal(await gruposGroq.isHidden(), true, "se puede plegar el catálogo completo de una integración");
     const gruposCodex = selectorModelos.locator("#picker-integracion-codex-sesion");
     const conteoConCodex = await selectorModelos.locator(".picker-conteo").textContent();
-    assert.equal(await gruposCodex.isHidden(), true, "Codex empieza plegado");
+    assert.equal(await gruposCodex.isHidden(), true, "el catálogo de Codex empieza plegado");
     await selectorModelos.getByRole("button", { name: "Mostrar modelos de Codex CLI · sesión de ChatGPT", exact: true }).click();
     assert.equal(await gruposCodex.isVisible(), true);
     await selectorModelos.getByRole("button", { name: "Solo gratis", exact: true }).click();
-    const modelosGratis = await selectorModelos.locator(".picker-conteo").textContent();
-    assert.equal(Number(conteoConCodex?.match(/[0-9]+/)?.[0]) - Number(modelosGratis?.match(/[0-9]+/)?.[0]), 1, "Codex no aparece como gratis ni infla el conteo");
+    assert.equal(await selectorModelos.locator(".picker-conteo").textContent(), conteoConCodex?.replace(/\d+/, String(Number(conteoConCodex.match(/\d+/)?.[0]) - 1)), "Codex no aparece como modelo gratis ni infla el conteo");
     await selectorModelos.getByRole("button", { name: "Solo gratis", exact: true }).click();
     assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).isDisabled(), false);
-    assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).count(), 1, "Codex no se duplica entre los dos catálogos");
+    assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).count(), 1, "el catálogo de sesión evita duplicar el modelo de Codex incluido en /api/models");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/modelos-${width}.png` });
     console.log(`${width}px: código de acceso comprobado`);

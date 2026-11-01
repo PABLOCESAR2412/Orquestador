@@ -49,6 +49,14 @@ const ACCIONES = {
     ejecutable: () => join(carpetaHome(), ".local", "bin", "agy"),
     binario: "agy",
   },
+  hermes: {
+    nombre: "Hermes Agent",
+    comando: "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive --skip-browser --skip-computer-use",
+    programa: "bash",
+    argv: () => ["-o", "pipefail", "-c", "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive --skip-browser --skip-computer-use"],
+    ejecutable: () => join(carpetaHome(), ".local", "bin", "hermes"),
+    binario: "hermes",
+  },
 } satisfies Record<string, Accion>;
 
 export type HerramientaInstalable = keyof typeof ACCIONES;
@@ -65,7 +73,7 @@ export type InstalacionPublica = {
   terminada: string | null;
   // Código legible (ver errorText en la web). null si no hay error.
   motivo: string | null;
-  // Últimas líneas de la salida de npm, redactadas.
+  // Últimas líneas de la salida del instalador, redactadas.
   salida: string;
 };
 
@@ -147,17 +155,19 @@ export function iniciarInstalacion(id: string): InstalacionPublica {
   if (instalada(id)) throw new InstalacionError("ya_instalada", 409);
 
   const accion = ACCIONES[id];
-  if (hallarEjecutable(accion.programa) === null) throw new InstalacionError(id === "antigravity" ? "bash_no_disponible" : "npm_no_disponible", 503);
-  if (id === "antigravity" && hallarEjecutable("curl") === null) throw new InstalacionError("curl_no_disponible", 503);
+  if (hallarEjecutable(accion.programa) === null) {
+    throw new InstalacionError(["antigravity", "hermes"].includes(id) ? "bash_no_disponible" : "npm_no_disponible", 503);
+  }
+  if (["antigravity", "hermes"].includes(id) && hallarEjecutable("curl") === null) throw new InstalacionError("curl_no_disponible", 503);
 
   const prefijo = carpetaDeInstalacion();
-  mkdirSync(prefijo, { recursive: true });
+  if (id === "opencode" || id === "codex") mkdirSync(prefijo, { recursive: true });
 
   let proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
   try {
     proc = lanzarEnGrupo([accion.programa, ...accion.argv(prefijo)], entornoInstalacion());
   } catch {
-    throw new InstalacionError("npm_no_disponible", 503);
+    throw new InstalacionError(["antigravity", "hermes"].includes(id) ? "bash_no_disponible" : "npm_no_disponible", 503);
   }
 
   estados.set(id, {

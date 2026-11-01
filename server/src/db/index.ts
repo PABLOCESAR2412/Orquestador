@@ -894,6 +894,15 @@ const migrations: Migration[] = [
     sql: `ALTER TABLE tasks ADD COLUMN message_id TEXT REFERENCES messages(id) ON DELETE SET NULL;`,
   },
   {
+    // Conserva el permiso explícito para delegar a través de continuaciones del mismo trabajo.
+    name: "050_delegacion_en_continuaciones",
+    sql: `
+      ALTER TABLE messages ADD COLUMN delegacion_origen TEXT;
+      ALTER TABLE messages ADD COLUMN delegacion_consumida INTEGER NOT NULL DEFAULT 0 CHECK (delegacion_consumida IN (0,1));
+      CREATE INDEX messages_delegacion_origen ON messages(delegacion_origen) WHERE delegacion_origen IS NOT NULL;
+    `,
+  },
+  {
     // Notas Markdown propias del baúl de Telo, separadas por proyecto.
     name: "051_cerebro_notas",
     sql: `
@@ -917,6 +926,27 @@ const migrations: Migration[] = [
       tokens_entrada INTEGER, tokens_salida INTEGER,
       modelo TEXT
     );`,
+  },
+  {
+    // Asocia uso y revisiones delegadas al turno para medirlas y reanudarlas sin repetir trabajo terminado.
+    name: "053_auditoria_por_etapas",
+    sql: `
+      ALTER TABLE usage ADD COLUMN turn_id TEXT;
+      ALTER TABLE usage ADD COLUMN usage_role TEXT NOT NULL DEFAULT 'unknown';
+      CREATE INDEX usage_turn_role ON usage(conversation_id, turn_id, usage_role);
+      CREATE TABLE chat_orquestacion_etapas (
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        origin_turn_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK (role IN ('arquitectura','seguridad','verificacion')),
+        model TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('running','done','failed','interrupted')),
+        result TEXT,
+        started_at_ms INTEGER NOT NULL,
+        finished_at_ms INTEGER,
+        PRIMARY KEY (origin_turn_id, role)
+      );
+      CREATE INDEX chat_orquestacion_etapas_conversation ON chat_orquestacion_etapas(conversation_id, origin_turn_id);
+    `,
   },
 ];
 

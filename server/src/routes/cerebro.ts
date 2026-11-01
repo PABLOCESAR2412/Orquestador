@@ -132,4 +132,3 @@ cerebro.delete("/cerebro/notas/:id", (c) => {
   const resultado = db.query("DELETE FROM brain_notes WHERE id=?").run(c.req.param("id"));
   return resultado.changes ? c.json({ ok: true }) : c.json({ error: "note_not_found" }, 404);
 });
-

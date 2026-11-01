@@ -41,10 +41,14 @@ export type OpcionesAgente = {
   onSesion?: (sessionId: string | null, model: string | null) => void;
   onLinea?: (linea: string) => void;
   onSubagente?: (linea: string) => void;
+  // Informa los cambios automáticos de modelo por cuota agotada.
+  onCambioModeloCuota?: (agotado: string, siguiente: string) => void;
   // Solo para la tarea: registra el cambio de modelo en su historial.
   taskId?: string;
   projectId?: string | null;
   conversationId?: string | null;
+  turnId?: string | null;
+  usageRole?: string;
   soloLectura?: boolean;
   // Solo para la tarea: pide al agente escribir la memoria del proyecto al final y la guarda.
   aprender?: boolean;
@@ -67,7 +71,6 @@ export const CONTRATO_EJECUCION = [
   "- Comprueba contexto y herramientas antes de usarlas; no afirmes capacidades sin verificarlas.",
   "- Dependencias ausentes: reinstala con lockfile frozen/ci; el analizador no instala.",
   "- Resuelve el objetivo con el cambio/investigación mínimos, en el workspace y dentro de las autorizaciones.",
-  "- Guarda en el workspace scripts, recursos y artefactos que deban sobrevivir a reinicios; reserva /tmp para datos desechables, nunca como única copia.",
   "- Reportes/documentos: guarda en entregables y enlaza. Al repo solo por petición. No hagas commit/PR ni muevas archivos sin autorización.",
   "- Investiga y cita enlaces directos en Markdown. Prioriza fuentes primarias fiables (documentación, estudios, libros, videos, informes, datasets); atribuye autor/editor si consta y nunca inventes enlaces ni fuentes. Si no puedes consultar, dilo.",
   "- Para imagen, video o voz, usa herramientas locales gratuitas o MCP configurados, no APIs de pago. Verifica TTS antes de prometer voz; si falta, entrega sin voz.",
@@ -131,7 +134,7 @@ export function estimarCosteGemini(modelo: string, inputTokens: number, outputTo
 export function registrarUsoAgente(
   modelo: string,
   uso: Usage,
-  contexto: Pick<OpcionesAgente, "conversationId" | "projectId" | "taskId">,
+  contexto: Pick<OpcionesAgente, "conversationId" | "projectId" | "taskId" | "turnId" | "usageRole">,
 ): void {
   const modeloCanonico = canonicalizarModelo(modelo);
   const provider = proveedorDeModelo(modeloCanonico);
@@ -145,14 +148,16 @@ export function registrarUsoAgente(
 
   db.query(
     `INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens,
-      reasoning_tokens, cache_read_tokens, cost, project_id, task_id, tokens_precision, cost_precision)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      reasoning_tokens, cache_read_tokens, cost, project_id, task_id, tokens_precision, cost_precision,
+      turn_id, usage_role)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     crypto.randomUUID(), contexto.conversationId ?? null, provider, modeloCanonico,
     uso.input, uso.output, uso.reasoning, uso.cacheRead, costo,
     contexto.projectId ?? null, contexto.taskId ?? null,
     uso.tokensEstimados ? "estimado" : uso.tokensMedidos === undefined ? "desconocida" : uso.tokensMedidos ? "medida" : "no_disponible",
     costPrecision,
+    contexto.turnId ?? null, contexto.usageRole ?? "unknown",
   );
 }
 
@@ -161,7 +166,8 @@ export function registrarUsoAgente(
 const PATRON_MODELO_NO_ENCONTRADO = /model[_ ]not found|unknown model|no such model/i;
 // Solo límites definitivos (no cualquier 429): la tarea o el chat se detienen para que el usuario elija otro modelo.
 const PATRON_CUOTA = /(?:\b(?:quota|cuota)\b.*\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|reach(?:ed)?|agotad[ao]|consumid[ao])\b|\b(?:exceed(?:ed)?|exhaust(?:ed)?|deplet(?:ed)?|agotad[ao]|consumid[ao])\b.*\b(?:quota|cuota)\b|\busage limit\b.*\b(?:hit|reach(?:ed)?|exceed(?:ed)?|exhaust(?:ed)?)\b|\b(?:hit|reach(?:ed)?|exceed(?:ed)?|exhaust(?:ed)?)\b.*\busage limit\b|\b(?:you(?:'ve| have)?\s+)?(?:hit|reach(?:ed)?|exceed(?:ed)?)\s+(?:your\s+)?(?:daily|weekly|monthly|billing|usage|account|plan|subscription)\s+(?:free\s+)?(?:model\s+)?(?:request|call|token|usage)?\s*limit\b|\b(?:daily|weekly|monthly|billing|account|plan|subscription)\s+(?:free\s+)?(?:model\s+)?(?:request|call|token|usage)?\s*limit\s+(?:hit|reach(?:ed)?|exceed(?:ed)?|exhaust(?:ed)?)\b|\bfree usage\b.*\b(?:exhaust(?:ed)?|reach(?:ed)?|exceed(?:ed)?)\b|\bfree[-_ ]models?[-_ ]per[-_ ](?:day|month)\b|\b(?:daily|monthly)\s+(?:free\s+)?(?:model\s+)?(?:request|usage)\s+limit\b|\bresource[_ ]exhausted\b|\b(?:billing[_ .-]?)?hard[_ .-]?limit[_ .-]?(?:reached|exceeded)\b|\b(?:quota|usage)[_ .-]?(?:limit[_ .-]?)?(?:reached|exceeded|exhausted)\b|\binsufficient[_ .-]?(?:quota|balance|credits?)\b|\bcredit[_ .-]?balance[_ .-]?(?:exhausted|insufficient)\b|\binsufficient\s+(?:account\s+)?(?:funds|balance|credits?)\b|\b(?:sin|no hay)\s+(?:saldo|cr[eé]ditos)\b)/i;
-// OpenRouter y otros gateways pueden responder 402 cuando el prompt pide más tokens de los que caben en el presupuesto por solicitud; eso no agota la cuota de la cuenta.
+// OpenRouter y otros gateways pueden responder 402 cuando el prompt pide más tokens de los
+// que caben en el presupuesto actual. Eso no significa que se haya agotado la cuota de la cuenta.
 const PATRON_PRESUPUESTO_POR_SOLICITUD = /more credits|fewer max_tokens|can only afford|requested up to\s+[\d,]+/i;
 
 // Se lanza cuando el modelo se quedó sin cuota. `modelo` es el último que se intentó; `sessionId`, la
@@ -225,20 +231,27 @@ export function codigoHttpDelProveedor(err: unknown): number | null {
       message?: unknown;
       status?: unknown;
       statusCode?: unknown;
+      httpStatus?: unknown;
       error?: {
         message?: unknown;
         status?: unknown;
         statusCode?: unknown;
-        data?: { status?: unknown; statusCode?: unknown };
+        httpStatus?: unknown;
+        data?: { status?: unknown; statusCode?: unknown; httpStatus?: unknown; error?: { status?: unknown; statusCode?: unknown } };
       };
     };
-    const candidatos = [
+    const candidatos: unknown[] = [
       evento.statusCode,
       evento.status,
+      evento.httpStatus,
       evento.error?.data?.statusCode,
       evento.error?.data?.status,
+      evento.error?.data?.httpStatus,
+      evento.error?.data?.error?.statusCode,
+      evento.error?.data?.error?.status,
       evento.error?.statusCode,
       evento.error?.status,
+      evento.error?.httpStatus,
     ];
     const codigo = candidatos
       .map((valor) => typeof valor === "string" && /^\d{3}$/.test(valor) ? Number(valor) : valor)
@@ -354,6 +367,7 @@ export function conInstrucciones(
 export const ESTILO_CHAT = [
   "Estilo de respuesta, presentación y razonamiento nativo de Telo (no lo menciones en la respuesta):",
   "- Conversación natural: habla como un agente que responde al usuario, no como un generador de planes. No repitas planes, listas de pasos ni frases de arranque en cada turno; anuncia brevemente una acción solo si ayuda a entender una espera y entrega el resultado cuando termines.",
+  "- Respuesta final: escribe solo la respuesta útil para el usuario, en su idioma. No muestres razonamiento privado, borradores, notas para ti, hipótesis descartadas ni conversaciones internas; resume únicamente acciones realizadas, resultados comprobados y bloqueos reales. No entregues una respuesta provisional como si fuera el resultado.",
   "- Si necesitas documentarte sobre librerías o frameworks modernos, usa skills del proyecto (como context7) o inspecciona el código existente.",
   "- Trabaja de forma unitaria salvo que el usuario pida expresamente delegar en la petición actual. Aplicar una skill o un agente predefinido no autoriza crear subagentes. Usa solo los perfiles que Telo habilite para este turno.",
   "- Jerarquía visual: Da primero la respuesta o el resultado. Usa ## y ### solo si la explicación tiene secciones reales; en respuestas cortas, usa un párrafo claro. No pongas todo en negrita: reserva **negrita** para etiquetas o conceptos puntuales.",
@@ -657,6 +671,36 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
           detalle,
         );
       }
+    }
+
+    if (esErrorDeCuota(err)) {
+      let ultimoAgotado = opts.model;
+      const modelosProbados = new Set([opts.model]);
+      const alternativas = getPreferences().quotaFallbackModels ?? [];
+      const catalogo = await getModels().catch(() => []);
+      for (const alternativa of alternativas) {
+        if (modelosProbados.has(alternativa)) continue;
+        modelosProbados.add(alternativa);
+        const info = catalogo.find((modelo) => modelo.id === alternativa);
+        // Defensa adicional si el catálogo cambió después de guardar las preferencias.
+        if (!info || (!info.free && info.provider !== "codex")) continue;
+        const variante = opts.variant && info.variants.includes(opts.variant) ? opts.variant : undefined;
+        opts.onCambioModeloCuota?.(ultimoAgotado, alternativa);
+        try {
+          const parametros = baseParaModelo(alternativa, variante);
+          // Un proveedor distinto no comparte sesión; continúa desde el historial y el workspace actuales.
+          parametros.prompt = promptContinuacion(parametros.prompt, false);
+          const resultado = await ejecutarConRunner(alternativa, parametros);
+          return terminar(resultado, alternativa, variante ?? null);
+        } catch (errorAlternativa) {
+          const tiempoAgotado = opts.timeoutMs !== undefined && opts.timeoutMs !== null && Date.now() - inicio >= opts.timeoutMs;
+          if (tiempoAgotado || opts.signal?.aborted) throw limpiarError(errorAlternativa);
+          if (!esErrorDeCuota(errorAlternativa)) throw limpiarError(errorAlternativa);
+          ultimoAgotado = alternativa;
+          err = errorAlternativa;
+        }
+      }
+      throw new ErrorCuota(ultimoAgotado, sesion);
     }
 
     const modeloNoEncontrado = esErrorModeloNoEncontrado(err);

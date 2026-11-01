@@ -193,7 +193,7 @@ export function motivoTexto(motivo: string | null): string | null {
   if (!motivo) return null;
   switch (motivo) {
     case "npm_fallo":
-      return "npm no pudo instalar OpenCode. Revisa la salida de abajo.";
+      return "El instalador no pudo completar la instalación. Revisa la salida de abajo.";
     case "no_visible_tras_instalar":
       return "La instalación terminó, pero el CLI no aparece en el servidor. Revisa la salida de abajo.";
     case "tiempo_agotado":
@@ -478,11 +478,11 @@ export function errorText(err: unknown): string {
       case "npm_no_disponible":
         return "No encuentro npm en el servidor. Hace falta Node.js (que trae npm) instalado en el VM.";
       case "bash_no_disponible":
-        return "No encuentro bash en el servidor. Antigravity necesita bash para instalarse.";
+        return "No encuentro bash en el servidor. Este instalador lo necesita para continuar.";
       case "curl_no_disponible":
         return "No encuentro curl en el servidor. Instálalo en la VM e inténtalo de nuevo.";
       case "ya_instalada":
-        return "OpenCode ya está instalado en el servidor.";
+        return "Esta herramienta ya está instalada en el servidor.";
       case "herramienta_desconocida":
         return "Esa herramienta no se puede instalar desde Telo.";
       case "codex_no_instalado":
@@ -631,6 +631,10 @@ export function errorText(err: unknown): string {
         return "Git tardó demasiado y se canceló. Por dónde empezar: revisa la conexión al remoto y vuelve a intentar cuando termine cualquier otra operación de Git.";
       case "invalid_model":
         return "Ese modelo no es válido.";
+      case "quota_fallback_requires_free_model":
+        return "El cambio automático solo admite modelos sin coste API o de tu sesión Codex.";
+      case "invalid_quota_fallback_models":
+        return "Elige hasta 20 modelos distintos para la lista automática.";
       case "invalid_effort":
         return "Ese nivel de esfuerzo no es válido.";
       case "secreto_detectado":

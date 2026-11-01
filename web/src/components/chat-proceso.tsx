@@ -224,9 +224,16 @@ export function ProcesoGuardado({
     // Un turno terminado no cambia: se guarda en caché para no pedirlo otra vez al volver.
     staleTime: Infinity,
   });
+  const uso = useQuery({
+    queryKey: ["uso-turno", conversacionId, turnoId],
+    queryFn: () => api.listTurnoUso(conversacionId, turnoId),
+    enabled: abierto,
+    staleTime: Infinity,
+  });
 
   const acciones = pasos.data?.filter((p) => p.tipo === "accion").length ?? 0;
   const etiqueta = pasos.data ? `Proceso · ${acciones} ${acciones === 1 ? "acción" : "acciones"}` : "Ver proceso";
+  const numero = (n: number) => n.toLocaleString("es-EC");
 
   return (
     <div className="tl-proceso-wrap">
@@ -262,6 +269,27 @@ export function ProcesoGuardado({
       </button>
       {abierto && (
         <div className="tl-proceso-cuerpo">
+          {uso.data && uso.data.llamadas > 0 && (
+            <details className="tl-proceso-wrap">
+              <summary className="tl-proceso-boton">Uso registrado · {uso.data.llamadas} llamadas</summary>
+              <div className="tl-proceso-cuerpo">
+                <p className="tl-nota">
+                  {uso.data.duracionMs !== null && `Duración ${Math.max(0, uso.data.duracionMs / 1000).toFixed(1)} s · `}
+                  {numero(uso.data.tokensMedidos)} tokens medidos · {numero(uso.data.tokensEstimados)} estimados · coste estimado ${uso.data.costeEstimadoUsd.toFixed(4)} USD
+                  {uso.data.sinTokens > 0 && ` · ${uso.data.sinTokens} llamadas sin dato de tokens`}
+                  {(uso.data.sinCoste + uso.data.costeDesconocido) > 0 && ` · ${uso.data.sinCoste + uso.data.costeDesconocido} llamadas sin coste verificable`}
+                </p>
+                <ul className="tl-nota">
+                  {uso.data.porEtapa.map((fila) => (
+                    <li key={`${fila.role}:${fila.provider}:${fila.model}`}>
+                      {fila.role === "supervisor" ? "Supervisor" : fila.role === "analyzer" ? "Analizador" : fila.role === "worker" ? "Obrero" : fila.role.startsWith("reviewer:") ? `Revisor ${fila.role.slice("reviewer:".length)}` : "Etapa no identificada"} · {fila.provider}/{fila.model}: {fila.calls} llamadas, {numero(fila.tokensMedidos)} tokens medidos, {numero(fila.tokensEstimados)} estimados; {fila.costeEstimadoUsd ? `$${fila.costeEstimadoUsd.toFixed(4)} estimados` : "sin coste estimado"}.
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </details>
+          )}
+          {uso.isError && <p className="tl-nota">No se pudo cargar el uso de este turno.</p>}
           {pasos.isPending && !pasos.data && <LoadingSkeleton tipo="lineas" cantidad={3} />}
           {pasos.isError && (
             <div className="error-box" role="alert">

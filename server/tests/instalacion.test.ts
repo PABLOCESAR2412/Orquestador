@@ -139,3 +139,16 @@ describe.skipIf(process.platform === "win32")("instalación de OpenCode", () => 
     expect(readFileSync(join(HOME_PRUEBA, ".opencode", "bin", "opencode"), "utf8")).toContain("opencode-falso");
   });
 });
+
+describe("integración Hermes", () => {
+  test("publica solo el instalador oficial y no lo marca como runner de tareas", async () => {
+    const res = await herramientas.request("/herramientas/hermes/instalacion");
+    expect(res.status).toBe(200);
+    const cuerpo = (await res.json()) as { herramienta: string; comando: string; estado: string };
+    expect(cuerpo.herramienta).toBe("hermes");
+    expect(cuerpo.comando).toBe(
+      "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive --skip-browser --skip-computer-use",
+    );
+    expect(cuerpo.estado).toBe("inactiva");
+  });
+});

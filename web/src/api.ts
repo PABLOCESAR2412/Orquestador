@@ -253,6 +253,21 @@ export type GoogleLiveMetrics = {
   ultimaComprobacion: string;
 };
 
+export type CuotaCodex = {
+  estado: "activo" | "sin_cli" | "sin_sesion" | "no_disponible";
+  plan: string | null;
+  ventanas: {
+    id: string;
+    nombre: string;
+    usadoPorcentaje: number;
+    restantePorcentaje: number;
+    duracionMinutos: number | null;
+    reiniciaEn: string | null;
+  }[];
+  reiniciosDisponibles: number | null;
+  comprobadoEn: string;
+};
+
 export type UsoProveedor = {
   id: string;
   nombre: string;
@@ -577,6 +592,30 @@ export type PasoActividad = {
   titulo: string;
   detalle: string | null;
   estado: "hecha" | "error" | "texto" | "en_curso";
+};
+
+export type UsoTurno = {
+  turnId: string;
+  duracionMs: number | null;
+  llamadas: number;
+  tokensMedidos: number;
+  tokensEstimados: number;
+  sinTokens: number;
+  costeEstimadoUsd: number;
+  sinCoste: number;
+  costeDesconocido: number;
+  porEtapa: {
+    role: string;
+    provider: string;
+    model: string;
+    calls: number;
+    tokensMedidos: number;
+    tokensEstimados: number;
+    sinTokens: number;
+    costeEstimadoUsd: number;
+    sinCoste: number;
+    costeDesconocido: number;
+  }[];
 };
 
 export type MedioJob = {
@@ -916,6 +955,8 @@ export const api = {
   // Pasos del agente de un turno (el id es el del mensaje del usuario).
   listTurnoActividad: (conversacionId: string, turnoId: string) =>
     request<PasoActividad[]>(`/api/conversations/${conversacionId}/turnos/${turnoId}/actividad`),
+  listTurnoUso: (conversacionId: string, turnoId: string) =>
+    request<UsoTurno>(`/api/conversations/${conversacionId}/turnos/${turnoId}/uso`),
   listSubagentes: (conversacionId: string, turnoId: string) =>
     request<SubagentChat[]>(`/api/conversations/${conversacionId}/turnos/${turnoId}/subagentes`),
   capacidadesMedios: () => request<CapacidadesMediosApi>("/api/media/capacidades"),
@@ -1049,6 +1090,7 @@ export const api = {
   runProgramada: (id: string) =>
     request<Task>(`/api/programadas/${id}/ejecutar`, { method: "POST", body: "{}" }),
   usage: () => request<{ generado: string; proveedores: UsoProveedor[]; googleLive?: GoogleLiveMetrics }>("/api/uso"),
+  codexUsage: (forzar = false) => request<CuotaCodex>(`/api/providers/codex/usage${forzar ? "?refresh=1" : ""}`),
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
   googleDriveArchives: () => request<AlmacenamientoDrive>("/api/google-drive/archives"),
   archivarTareaDrive: (id: string) => request<{ id: string; task_id: string; action: "archive"; state: "queued" }>(`/api/google-drive/archives/${id}`, { method: "POST", body: "{}" }),
@@ -1237,6 +1279,7 @@ export type Preferences = {
   budgetAlertPercent: number;
   // Modelo de respaldo si el principal responde 429 o un error del servidor del proveedor.
   fallbackModel: string | null;
+  quotaFallbackModels: string[];
   compartirContextoChats?: boolean;
 };
 

@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { getPreferences, savePreferences, type Preferences } from "../preferences";
-import { validateSelection } from "../models";
+import { getModels, validateSelection } from "../models";
 
 const ALLOWED_FIELDS = new Set([
   "defaultModel",
   "defaultEffort",
   "fallbackModel",
+  "quotaFallbackModels",
   "monthlyBudgetUsd",
   "budgetAlertPercent",
   "compartirContextoChats",
@@ -59,6 +60,29 @@ preferences.put("/preferences", async (c) => {
     } catch (err) {
       return c.json({ error: "models_unavailable", detail: String(err) }, 503);
     }
+  }
+
+  if (body.quotaFallbackModels !== undefined) {
+    if (!Array.isArray(body.quotaFallbackModels) || body.quotaFallbackModels.length > 20) {
+      return c.json({ error: "invalid_quota_fallback_models" }, 400);
+    }
+    const ids = body.quotaFallbackModels;
+    if (ids.some((id) => typeof id !== "string" || !id) || new Set(ids).size !== ids.length) {
+      return c.json({ error: "invalid_quota_fallback_models" }, 400);
+    }
+    let catalogo;
+    try {
+      catalogo = await getModels();
+    } catch (err) {
+      return c.json({ error: "models_unavailable", detail: String(err) }, 503);
+    }
+    for (const id of ids as string[]) {
+      const modelo = catalogo.find((item) => item.id === id);
+      if (!modelo) return c.json({ error: "invalid_model" }, 400);
+      // Evita usar saldo API de forma inesperada. Codex consume el cupo de la sesión de ChatGPT.
+      if (!modelo.free && modelo.provider !== "codex") return c.json({ error: "quota_fallback_requires_free_model" }, 400);
+    }
+    next.quotaFallbackModels = ids as string[];
   }
 
   const budget = next.monthlyBudgetUsd;

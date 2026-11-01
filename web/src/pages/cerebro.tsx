@@ -5,7 +5,6 @@ import { useShell } from "../components/shell-context";
 import { api, type BrainNote, type BrainNoteSummary } from "../api";
 import { errorText } from "../lib/model";
 import "../styles-cerebro.css";
-import { GrafoGraphifyVista, leerGrafoGraphify, type GrafoGraphify } from "../components/grafo-graphify";
 
 function descargar(nombre: string, texto: string) {
   const url = URL.createObjectURL(new Blob([texto], { type: "text/markdown;charset=utf-8" }));
@@ -79,8 +78,6 @@ export function BrainPage() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [notice, setNotice] = useState("");
-  const [grafoImportado, setGrafoImportado] = useState<GrafoGraphify | null>(null);
-  const [errorGrafo, setErrorGrafo] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
   const projects = useQuery({ queryKey: ["projects"], queryFn: api.listProjects });
@@ -176,18 +173,6 @@ export function BrainPage() {
           <p>Notas Markdown propias de Telo. La búsqueda y el mapa se calculan aquí, sin llamar a modelos.</p>
         </div>
         <div className="cerebro-acciones">
-          <label className="btn-ghost graphify-importar">Importar grafo de Graphify
-            <input type="file" accept=".json,application/json" hidden onChange={async (event) => {
-              const archivo = event.target.files?.[0];
-              if (!archivo) return;
-              try {
-                if (archivo.size > 8 * 1024 * 1024) throw new Error("El archivo supera el límite de 8 MB.");
-                setGrafoImportado(leerGrafoGraphify(await archivo.text()));
-                setErrorGrafo("");
-              } catch (error) { setErrorGrafo(error instanceof Error ? error.message : "No se pudo leer el grafo."); }
-              event.target.value = "";
-            }} />
-          </label>
           <input ref={importRef} type="file" accept=".md,text/markdown,text/plain" multiple hidden onChange={(event) => {
             if (modificado && !window.confirm("Hay cambios sin guardar. ¿Descartarlos antes de importar?")) { event.target.value = ""; return; }
             void importarArchivos(event.target.files);
@@ -196,8 +181,6 @@ export function BrainPage() {
           <button className="btn-primary" type="button" disabled={crear.isPending} onClick={() => crear.mutate()}>{crear.isPending ? "Creando…" : "+ Nota"}</button>
         </div>
       </header>
-      {errorGrafo && <p className="cerebro-error" role="alert">{errorGrafo}</p>}
-      {grafoImportado && <><div className="cerebro-grafo-head"><strong>Grafo de Graphify</strong><button className="btn-ghost" type="button" onClick={() => setGrafoImportado(null)}>Cerrar grafo</button></div><GrafoGraphifyVista grafo={grafoImportado} /></>}
       <div className="cerebro-layout">
         <aside className="cerebro-lista" aria-label="Notas">
           <label className="cerebro-label" htmlFor="cerebro-ambito">Baúl</label>
@@ -260,4 +243,3 @@ export function BrainPage() {
     </main>
   );
 }
-

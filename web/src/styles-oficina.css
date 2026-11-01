@@ -38,4 +38,3 @@
 .oficina .oficina-persona::before,.oficina .oficina-persona::after,.oficina .oficina-persona span { display:none; }
 @keyframes oficina-cuadros { from { background-position-x:0; } to { background-position-x:133.333%; } }
 @media(prefers-reduced-motion:reduce){.oficina .oficina-persona{animation:none}}
-

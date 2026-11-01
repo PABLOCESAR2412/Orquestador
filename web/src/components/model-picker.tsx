@@ -464,13 +464,12 @@ export function ModelPicker({
             </div>
             <div className="picker-esfuerzo-barra">
               <strong aria-hidden="true">{esfuerzoValido ? effortLabel(esfuerzoValido) : "Auto"}</strong>
-              <div className="picker-esfuerzo-niveles" role="group" aria-label="Nivel de esfuerzo">
-                {[null, ...draftModel.variants].map((nivel) => (
-                  <button key={nivel ?? "auto"} type="button" aria-label={nivel ? effortLabel(nivel) : "Auto"}
-                    aria-pressed={nivel === esfuerzoValido} title={nivel ? effortLabel(nivel) : "Auto"}
-                    onClick={() => elegir(draftModel, nivel)}><span aria-hidden="true" /></button>
-                ))}
-              </div>
+              <input type="range" min="0" max={draftModel.variants.length} step="1" list="niveles-esfuerzo"
+                value={esfuerzoValido ? draftModel.variants.indexOf(esfuerzoValido) + 1 : 0}
+                aria-label="Nivel de esfuerzo" aria-valuetext={esfuerzoValido ? effortLabel(esfuerzoValido) : "Auto"}
+                onChange={(event) => elegir(draftModel, draftModel.variants[Number(event.target.value) - 1] ?? null)} />
+              <datalist id="niveles-esfuerzo">{[null, ...draftModel.variants].map((nivel, i) => <option key={nivel ?? "auto"} value={i} label={nivel ? effortLabel(nivel) : "Auto"} />)}</datalist>
+              <button type="button" className="ghost" onClick={() => elegir(draftModel, null)}>Auto</button>
               <button type="button" className="ghost" onClick={() => setEligiendoEsfuerzo(false)}>Volver a modelos</button>
             </div>
           </div>

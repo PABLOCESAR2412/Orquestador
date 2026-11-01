@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Conversation } from "../api";
 import { useShell } from "../components/shell-context";
+import { useEventosVivos } from "../lib/eventos-vivos";
 import "../styles-oficina.css";
 
 function estado(c: Conversation) {
@@ -18,15 +19,21 @@ function estado(c: Conversation) {
 export function OfficePage() {
   const navigate = useNavigate();
   const { setSelectedConversationId } = useShell();
+  const queryClient = useQueryClient();
   const [seleccion, setSeleccion] = useState<string | null>(null);
-  const conversaciones = useQuery({ queryKey: ["conversations"], queryFn: api.listConversations, refetchInterval: 10_000, refetchIntervalInBackground: false });
+  const { conectado } = useEventosVivos({}, (evento) => {
+    if (evento.tipo === "chat" || evento.tipo === "configuracion_chat") {
+      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    }
+  });
+  const conversaciones = useQuery({ queryKey: ["conversations"], queryFn: api.listConversations, refetchInterval: 30_000, refetchIntervalInBackground: false });
   const principales = (conversaciones.data ?? []).filter((c) => !c.parent_conversation_id);
   const ordenados = [...principales].sort((a, b) => Number(Boolean(b.en_proceso || b.ocupada || b.pendiente_aprobacion)) - Number(Boolean(a.en_proceso || a.ocupada || a.pendiente_aprobacion)));
   const visibles = ordenados;
   const actual = visibles.find((c) => c.id === seleccion) ?? visibles[0];
   const abrir = (id: string) => { setSelectedConversationId(id); void navigate({ to: "/chat" }); };
   return <main className="oficina container">
-    <header className="oficina-cabecera"><div><h1>Oficina</h1><p>Supervisores, conversaciones y sus subagentes en un espacio compartido.</p></div><span>Actualización cada 10 segundos</span></header>
+    <header className="oficina-cabecera"><div><h1>Oficina</h1><p>Supervisores, conversaciones y sus subagentes en un espacio compartido.</p></div><span>{conectado ? "Estados en vivo" : "Respaldo cada 30 segundos"}</span></header>
     {conversaciones.isError && <p role="alert">No se pudieron cargar los agentes. <button type="button" onClick={() => void conversaciones.refetch()}>Reintentar</button></p>}
     <div className="oficina-distribucion">
       <section className="oficina-plano" aria-label="Oficina de agentes">
@@ -55,4 +62,3 @@ export function OfficePage() {
     </div>
   </main>;
 }
-

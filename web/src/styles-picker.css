@@ -166,8 +166,3 @@
 .picker-esfuerzo-barra { display: grid; gap: 8px; min-width: 0; text-align: center; }
 .picker-esfuerzo-barra input { width: 100%; accent-color: var(--primary); cursor: pointer; }
 .picker-esfuerzo-barra input:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
-.picker-esfuerzo-niveles { display: flex; align-items: center; border-radius: 999px; background: var(--surface-2); }
-.picker-esfuerzo-niveles button { display: grid; place-items: center; flex: 1 1 0; min-width: 0; min-height: 40px; padding: 0; border: 0; border-radius: 999px; background: transparent; cursor: pointer; }
-.picker-esfuerzo-niveles button span { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-2); }
-.picker-esfuerzo-niveles button[aria-pressed="true"] span { width: 16px; height: 16px; background: var(--signal); }
-.picker-esfuerzo-niveles button:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }

@@ -86,6 +86,30 @@ type ConversationRow = {
 };
 type RolTrabajadorOrquestacion = "arquitectura" | "seguridad" | "verificacion";
 type TrabajadorOrquestacion = { model: string; rol: RolTrabajadorOrquestacion };
+const ROLES_TRABAJADOR_ORQUESTACION = new Set<string>(["arquitectura", "seguridad", "verificacion"]);
+
+function leerTrabajadoresOrquestacion(valor: string): TrabajadorOrquestacion[] {
+  try {
+    const parsed: unknown = JSON.parse(valor);
+    if (!Array.isArray(parsed)) return [];
+    const roles = new Set<RolTrabajadorOrquestacion>();
+    const trabajadores: TrabajadorOrquestacion[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") continue;
+      const candidato = item as Record<string, unknown>;
+      if (typeof candidato.model !== "string" || typeof candidato.rol !== "string" ||
+        !ROLES_TRABAJADOR_ORQUESTACION.has(candidato.rol)) continue;
+      const rol = candidato.rol as RolTrabajadorOrquestacion;
+      if (roles.has(rol)) continue;
+      roles.add(rol);
+      trabajadores.push({ model: candidato.model, rol });
+      if (trabajadores.length === 3) break;
+    }
+    return trabajadores;
+  } catch {
+    return [];
+  }
+}
 type Subchat = {
   id: string;
   title: string;
@@ -215,14 +239,7 @@ chat.get("/conversations", (c) => {
       const enCurso = !pendienteAprobacion && (conversacionEnCurso(r.id) || (tarea ? ["queued", "analyzing", "running"].includes(tarea.status) : false));
       const completada = tarea?.status === "done";
 
-      let trabajadores: TrabajadorOrquestacion[] = [];
-      try {
-        const parsed: unknown = JSON.parse(r.orquestacion_trabajadores);
-        if (Array.isArray(parsed)) trabajadores = parsed.filter((t): t is TrabajadorOrquestacion =>
-          Boolean(t && typeof t === "object" && typeof t.model === "string" &&
-            ["arquitectura", "seguridad", "verificacion"].includes(t.rol)),
-        );
-      } catch {}
+      const trabajadores = leerTrabajadoresOrquestacion(r.orquestacion_trabajadores);
       const { orquestacion_trabajadores: _trabajadoresJson, orquestacion_habilitada: orquestacionHabilitada, orquestacion_seleccion_automatica: seleccionAutomatica, ...resto } = r;
       return {
         ...resto,
@@ -337,6 +354,55 @@ chat.delete("/conversations/:id", (c) => {
 // Pasos del agente de un turno (el id es el del mensaje del usuario). Se piden al abrir "Ver proceso".
 chat.get("/conversations/:id/turnos/:turno/actividad", (c) => {
   return c.json(actividadDelTurno(c.req.param("id"), c.req.param("turno")));
+});
+
+chat.get("/conversations/:id/turnos/:turno/uso", (c) => {
+  const conversationId = c.req.param("id");
+  const turnId = c.req.param("turno");
+  if (!db.query("SELECT 1 FROM conversations WHERE id=?").get(conversationId)) {
+    return c.json({ error: "conversation_not_found" }, 404);
+  }
+  if (!db.query("SELECT 1 FROM messages WHERE id=? AND conversation_id=? AND role='user'").get(turnId, conversationId)) {
+    return c.json({ error: "turn_not_found" }, 404);
+  }
+  const porEtapa = db.query<{
+    role: string; provider: string; model: string; calls: number;
+    tokensMedidos: number; tokensEstimados: number; sinTokens: number;
+    costeEstimadoUsd: number; sinCoste: number; costeDesconocido: number;
+  }, [string, string]>(`
+    SELECT usage_role AS role, provider, model, COUNT(*) AS calls,
+           COALESCE(SUM(CASE WHEN tokens_precision='medida' THEN input_tokens+output_tokens ELSE 0 END),0) AS tokensMedidos,
+           COALESCE(SUM(CASE WHEN tokens_precision='estimado' THEN input_tokens+output_tokens ELSE 0 END),0) AS tokensEstimados,
+           COALESCE(SUM(tokens_precision IN ('no_disponible','desconocida')),0) AS sinTokens,
+           COALESCE(SUM(CASE WHEN cost_precision='estimado' THEN cost ELSE 0 END),0) AS costeEstimadoUsd,
+           COALESCE(SUM(cost_precision='no_disponible'),0) AS sinCoste,
+           COALESCE(SUM(cost_precision='desconocida'),0) AS costeDesconocido
+      FROM usage WHERE conversation_id=? AND turn_id=?
+     GROUP BY usage_role,provider,model ORDER BY usage_role,provider,model
+  `).all(conversationId, turnId);
+  const mensajes = db.query<{ inicio: string; rowid: number }, [string, string]>(
+    "SELECT created_at AS inicio,rowid FROM messages WHERE id=? AND conversation_id=? AND role='user'",
+  ).get(turnId, conversationId)!;
+  const duracionMs = db.query<{ ms: number | null }, [string, number, string, number, string]>(`
+    SELECT CAST((julianday((
+      SELECT MIN(a.created_at) FROM messages a
+       WHERE a.conversation_id=? AND a.role='assistant' AND a.rowid>?
+         AND a.rowid<COALESCE((SELECT MIN(siguiente.rowid) FROM messages siguiente
+                                WHERE siguiente.conversation_id=? AND siguiente.role='user' AND siguiente.rowid>?),9223372036854775807)
+    ))-julianday(?))*86400000 AS INTEGER) AS ms
+  `).get(conversationId, mensajes.rowid, conversationId, mensajes.rowid, mensajes.inicio)?.ms ?? null;
+  return c.json({
+    turnId,
+    duracionMs,
+    llamadas: porEtapa.reduce((suma, fila) => suma + fila.calls, 0),
+    tokensMedidos: porEtapa.reduce((suma, fila) => suma + fila.tokensMedidos, 0),
+    tokensEstimados: porEtapa.reduce((suma, fila) => suma + fila.tokensEstimados, 0),
+    sinTokens: porEtapa.reduce((suma, fila) => suma + fila.sinTokens, 0),
+    costeEstimadoUsd: porEtapa.reduce((suma, fila) => suma + fila.costeEstimadoUsd, 0),
+    sinCoste: porEtapa.reduce((suma, fila) => suma + fila.sinCoste, 0),
+    costeDesconocido: porEtapa.reduce((suma, fila) => suma + fila.costeDesconocido, 0),
+    porEtapa,
+  });
 });
 
 chat.get("/conversations/:id/turnos/:turno/subagentes", (c) => {
@@ -940,12 +1006,15 @@ function encolarTurno(conv: ConversationRow, turno: TurnoUsuario, model: string)
 // y no se pierde si el agente falla.
 function guardarMensajeUsuario(conversationId: string, content: string): TurnoUsuario {
   const msg: TurnoUsuario = { id: crypto.randomUUID(), role: "user", content };
+  let delegacionOrigen: string | null = null;
   db.transaction(() => {
-    db.query("INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, ?, ?)").run(
+    delegacionOrigen = origenDelegacionParaMensaje(conversationId, content, msg.id);
+    db.query("INSERT INTO messages (id, conversation_id, role, content, delegacion_origen) VALUES (?, ?, ?, ?, ?)").run(
       msg.id,
       conversationId,
       msg.role,
       msg.content,
+      delegacionOrigen,
     );
     db.query("UPDATE conversations SET title = ? WHERE id = ? AND title = 'Nuevo chat'").run(
       content.replace(/<<telo-imagen id="[a-f\d-]{36}" nombre="[^"]*">>/gi, "[Imagen adjunta]").trim().slice(0, 60) || "Imagen adjunta",
@@ -953,6 +1022,39 @@ function guardarMensajeUsuario(conversationId: string, content: string): TurnoUs
     );
   })();
   return msg;
+}
+
+export function esContinuacionDelegada(content: string): boolean {
+  const texto = content.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  return /^(?:(?:sigue|seguir|continua|continuar|reanuda|reanudar|retoma|retomar)(?:\s+(?:donde\s+(?:se\s+)?quedo|desde\s+donde\s+quedo|con\s+(?:eso|lo\s+mismo|la\s+tarea)))?|continue(?:\s+where\s+(?:you\s+)?left\s+off)?|resume|keep going|pick up where you left off)[.!…]*$/.test(texto);
+}
+
+export function origenDelegacionParaMensaje(conversationId: string, content: string, messageId: string): string | null {
+  if (pideSubagentes(content)) return messageId;
+  if (!esContinuacionDelegada(content)) return null;
+
+  const ultimaRespuesta = db.query<{ rowid: number | null }, [string]>(
+    "SELECT MAX(rowid) AS rowid FROM messages WHERE conversation_id=? AND role='assistant'",
+  ).get(conversationId)?.rowid ?? 0;
+  const anteriores = db.query<{ id: string; content: string; delegacion_origen: string | null }, [string, number]>(
+    "SELECT id,content,delegacion_origen FROM messages WHERE conversation_id=? AND role='user' AND rowid>? ORDER BY rowid DESC LIMIT 32",
+  ).all(conversationId, ultimaRespuesta);
+
+  for (const anterior of anteriores) {
+    if (anterior.delegacion_origen) return anterior.delegacion_origen;
+    if (pideSubagentes(anterior.content)) {
+      db.query("UPDATE messages SET delegacion_origen=? WHERE id=? AND conversation_id=?")
+        .run(anterior.id, anterior.id, conversationId);
+      return anterior.id;
+    }
+    if (!esContinuacionDelegada(anterior.content)) return null;
+  }
+  return null;
+}
+
+function marcarDelegacionConsumida(conversationId: string, origen: string | null): void {
+  if (!origen) return;
+  db.query("UPDATE messages SET delegacion_consumida=1 WHERE id=? AND conversation_id=?").run(origen, conversationId);
 }
 
 // Un aviso del sistema en el chat (un fallo, una interrupción). Queda guardado: se ve en cualquier dispositivo.
@@ -1049,16 +1151,34 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
     });
     const cwd = conv.subagent_workspace || join(carpetaWorkspaceChat(), conv.parent_conversation_id ?? conversationId);
     mkdirSync(cwd, { recursive: true });
-    const delegacionSolicitada = pideSubagentes(prompt);
+    const mensajeDelegacion = db.query<{ delegacion_origen: string | null }, [string, string]>(
+      "SELECT delegacion_origen FROM messages WHERE id=? AND conversation_id=? AND role='user'",
+    ).get(turno.id, conversationId);
+    let delegacionOrigen = mensajeDelegacion?.delegacion_origen ??
+      (pideSubagentes(turno.content) || pideSubagentes(prompt) ? turno.id : null);
+    if (delegacionOrigen && !mensajeDelegacion?.delegacion_origen) {
+      db.query("UPDATE messages SET delegacion_origen=? WHERE id=? AND conversation_id=?")
+        .run(delegacionOrigen, turno.id, conversationId);
+    }
+    const delegacionConsumida = delegacionOrigen
+      ? db.query<{ delegacion_consumida: number }, [string, string]>(
+          "SELECT delegacion_consumida FROM messages WHERE id=? AND conversation_id=?",
+        ).get(delegacionOrigen, conversationId)?.delegacion_consumida === 1
+      : false;
+    // La ruta gestionada de Telo conserva permiso durante una reanudación: vuelve a cargar
+    // los resultados completados y solo repite etapas incompletas. El marcador de consumo
+    // sigue evitando relanzar perfiles nativos de OpenCode.
+    const delegacionSolicitada = Boolean(delegacionOrigen) && (conv.orquestacion_habilitada || !delegacionConsumida);
     const analisisOrquestado = conv.orquestacion_habilitada && delegacionSolicitada && !conv.parent_conversation_id
-      ? await ejecutarAnalisisOrquestado(conv, turno.id, prompt, cwd, signal, model)
+      ? await ejecutarAnalisisOrquestado(conv, turno.id, delegacionOrigen ?? turno.id, prompt, cwd, signal, model)
       : [];
+    if (delegacionSolicitada && !conv.orquestacion_habilitada && !signal.aborted) marcarDelegacionConsumida(conversationId, delegacionOrigen);
     // Los subagentes no crean otra generación de subchats: el usuario sigue al supervisor y a sus hijos directos.
     perfilesSubagente = conv.parent_conversation_id
       ? null
-      : conv.orquestacion_habilitada && !(delegacionSolicitada && analisisOrquestado.length === 0)
+      : conv.orquestacion_habilitada
         ? null
-        : await prepararSubagentes({ prompt, modelo: model, esfuerzo: conv.effort, idEjecucion: crypto.randomUUID() });
+        : await prepararSubagentes({ prompt, modelo: model, esfuerzo: conv.effort, idEjecucion: crypto.randomUUID(), soloLectura: true });
     const configSubagentes = perfilesSubagente?.directorio ?? conv.subagent_config_dir ?? undefined;
     const promptCoordinador = [
       ...analisisOrquestado,
@@ -1081,12 +1201,17 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       signal,
       projectId: conv.project_id,
       conversationId,
+      turnId: turno.id,
+      usageRole: "supervisor",
       estilo: "chat",
       opencodeConfigDir: configSubagentes,
       opencodeSubagentesTracePath: perfilesSubagente?.rutaCaptura,
       onSubagente: perfilesSubagente ? (linea) => {
         try {
-          if ((JSON.parse(linea) as { kind?: string }).kind === "created") huboSubagentes = true;
+          if ((JSON.parse(linea) as { kind?: string }).kind === "created") {
+            huboSubagentes = true;
+            marcarDelegacionConsumida(conversationId, delegacionOrigen);
+          }
         } catch {}
         registrarEventoSubagente({
           parentConversationId: conversationId,
@@ -1114,6 +1239,12 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
               ...(item.callId ? { callId: `supervisor:${item.callId}` } : {}),
             }
           : item);
+      },
+      onCambioModeloCuota: (agotado, siguiente) => {
+        registrarActividad(conversationId, turno.id, {
+          tipo: "texto",
+          texto: `Se agotó la cuota de ${agotado}; continúo automáticamente con ${siguiente}.`,
+        });
       },
     });
     registrarActividad(conversationId, turno.id, {
@@ -1227,19 +1358,13 @@ function contextoRecienteOrquestacion(conversationId: string, turnoId: string): 
 async function ejecutarAnalisisOrquestado(
   conv: ConversationRow,
   turnoId: string,
+  origenTurnoId: string,
   prompt: string,
   cwd: string,
   signal: AbortSignal,
   modeloCoordinador: string,
 ): Promise<string[]> {
-  let trabajadores: TrabajadorOrquestacion[] = [];
-  try {
-    const parsed: unknown = JSON.parse(conv.orquestacion_trabajadores);
-    if (Array.isArray(parsed)) trabajadores = parsed.filter((t): t is TrabajadorOrquestacion =>
-      Boolean(t && typeof t === "object" && typeof t.model === "string" &&
-        ["arquitectura", "seguridad", "verificacion"].includes(t.rol)),
-    );
-  } catch {}
+  let trabajadores = leerTrabajadoresOrquestacion(conv.orquestacion_trabajadores);
   if (!trabajadores.length) {
     registrarActividad(conv.id, turnoId, {
       tipo: "texto",
@@ -1276,6 +1401,21 @@ async function ejecutarAnalisisOrquestado(
       registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `${etiquetaAuxiliar}: cancelado junto con el turno.` });
       return { trabajador, texto: "Análisis cancelado junto con el turno." };
     }
+    const etapaGuardada = db.query<{ model: string; status: string; result: string | null }, [string, string, string]>(
+      "SELECT model,status,result FROM chat_orquestacion_etapas WHERE conversation_id=? AND origin_turn_id=? AND role=?",
+    ).get(conv.id, origenTurnoId, trabajador.rol);
+    if (etapaGuardada?.model === trabajador.model && etapaGuardada.status === "done" && etapaGuardada.result) {
+      registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `${etiquetaAuxiliar}: reutilicé la revisión ya completada; no repetí esa llamada.` });
+      return { trabajador, texto: etapaGuardada.result };
+    }
+    db.query(`
+      INSERT INTO chat_orquestacion_etapas(conversation_id,origin_turn_id,role,model,status,result,started_at_ms,finished_at_ms)
+      VALUES(?,?,?,?,'running',NULL,?,NULL)
+      ON CONFLICT(origin_turn_id,role) DO UPDATE SET
+        model=excluded.model,status='running',result=NULL,started_at_ms=excluded.started_at_ms,finished_at_ms=NULL
+    `).run(conv.id, origenTurnoId, trabajador.rol, trabajador.model, Date.now());
+    // La etapa gestionada ya está guardada; una continuación puede reutilizarla sin relanzar perfiles.
+    marcarDelegacionConsumida(conv.id, origenTurnoId);
     registrarActividad(conv.id, turnoId, {
       tipo: "texto",
       texto: `${etiquetaAuxiliar}: encargo del Supervisor: ${GUIAS_TRABAJADOR[trabajador.rol]}`,
@@ -1289,7 +1429,7 @@ async function ejecutarAnalisisOrquestado(
       const resultado = await ejecutarAgente({
         prompt: [
           `Eres un auxiliar de ${trabajador.rol} de Telo. ${GUIAS_TRABAJADOR[trabajador.rol]}`,
-          "Lee el contexto y los archivos necesarios, pero no modifiques archivos, no ejecutes comandos que cambien el entorno y no realices acciones externas. Devuelve solo un análisis conciso con evidencia y recomendaciones; el supervisor comprobará tus conclusiones.",
+          "Lee el contexto y los archivos necesarios, pero no modifiques archivos, no ejecutes comandos que cambien el entorno y no realices acciones externas. Devuelve como máximo 5 hallazgos con rutas, líneas y evidencia; no vuelques archivos ni transcripciones. El supervisor comprobará tus conclusiones.",
           bloqueContexto,
           "Solicitud del usuario:", prompt,
         ].join("\n\n"),
@@ -1301,6 +1441,8 @@ async function ejecutarAnalisisOrquestado(
         signal: controlador.signal,
         projectId: conv.project_id,
         conversationId: conv.id,
+        turnId: turnoId,
+        usageRole: `reviewer:${trabajador.rol}`,
         estilo: "chat",
         soloLectura: true,
         // No mostramos texto de análisis privado: solo pasos observables del auxiliar.
@@ -1314,7 +1456,9 @@ async function ejecutarAnalisisOrquestado(
           });
         },
       });
-      const texto = resultado.textoFinal.slice(0, 3500) || "El modelo no devolvió análisis.";
+      const texto = resultado.textoFinal.trim().slice(0, 1800) || "El modelo no devolvió análisis.";
+      db.query("UPDATE chat_orquestacion_etapas SET status='done',result=?,finished_at_ms=? WHERE conversation_id=? AND origin_turn_id=? AND role=?")
+        .run(texto, Date.now(), conv.id, origenTurnoId, trabajador.rol);
       registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `${etiquetaAuxiliar}: terminó la revisión en ${((Date.now() - inicioAuxiliar) / 1000).toFixed(1)} s.` });
       return { trabajador, texto };
     } catch (error) {
@@ -1322,6 +1466,8 @@ async function ejecutarAnalisisOrquestado(
       const detalle = cancelado
         ? "se canceló junto con el turno"
         : `falló tras ${((Date.now() - inicioAuxiliar) / 1000).toFixed(1)} s: ${mensajeSeguro(error).slice(0, 240)}`;
+      db.query("UPDATE chat_orquestacion_etapas SET status=?,result=?,finished_at_ms=? WHERE conversation_id=? AND origin_turn_id=? AND role=?")
+        .run(cancelado ? "interrupted" : "failed", cancelado ? null : detalle, Date.now(), conv.id, origenTurnoId, trabajador.rol);
       registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `${etiquetaAuxiliar}: ${detalle}.` });
       return { trabajador, texto: cancelado ? "Análisis cancelado junto con el turno." : `No se obtuvo análisis auxiliar: ${mensajeSeguro(error).slice(0, 300)}` };
     } finally {
