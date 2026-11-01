@@ -19,6 +19,7 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 const { db } = await import("../src/db");
 const { guardarClaveProveedor } = await import("../src/claves-proveedor");
 const { ejecutarAgente } = await import("../src/ejecutar");
+const { entornoDelAgente } = await import("../src/runners/opencode");
 const { getModels } = await import("../src/models");
 
 const VALOR_GROQ = "gsk_clave_de_prueba_e2e_987";
@@ -98,6 +99,14 @@ function variables(ruta: string): Map<string, string> {
   return mapa;
 }
 
+test("cada integración recibe solo sus claves y las de sus subagentes declarados", () => {
+  const propias = { GROQ_API_KEY: "groq-ficticia", NVIDIA_API_KEY: "nvidia-ficticia", OPENROUTER_API_KEY: "router-ficticia", OPENAI_API_KEY: "openai-ficticia", PROYECTO_TOKEN: "local-ficticio" };
+  expect(entornoDelAgente(propias, ["groq/modelo"])).toMatchObject({ GROQ_API_KEY: propias.GROQ_API_KEY, PROYECTO_TOKEN: propias.PROYECTO_TOKEN });
+  for (const variable of ["NVIDIA_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"]) expect(entornoDelAgente(propias, ["groq/modelo"])[variable]).toBeUndefined();
+  expect(entornoDelAgente(propias, ["opencode/modelo", "nvidia/auxiliar"]).NVIDIA_API_KEY).toBe(propias.NVIDIA_API_KEY);
+  expect(entornoDelAgente(propias, ["codex/modelo"]).OPENAI_API_KEY).toBeUndefined();
+});
+
 describe.skipIf(!Bun.which("setsid"))("entorno de los proveedores en el agente y en el CLI", () => {
   test("una ejecución sin timeout automático termina y el límite explícito sigue activo", async () => {
     const inicio = Date.now();
@@ -125,7 +134,7 @@ describe.skipIf(!Bun.which("setsid"))("entorno de los proveedores en el agente y
   test("el agente recibe GROQ_API_KEY y nunca una variable TELO_*", async () => {
     const resultado = await ejecutarAgente({
       prompt: "Hola",
-      model: "opencode/big-pickle",
+      model: "groq/llama-prueba",
       cwd: carpeta,
       timeoutMs: 20_000,
     });

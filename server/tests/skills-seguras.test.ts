@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,13 +7,34 @@ const raiz = mkdtempSync(join(tmpdir(), "telo-skills-"));
 
 // config se inicializa al importar: se apunta a un temporal para no tocar la base real.
 process.env.DATA_DIR = join(raiz, "datos");
-const { copiarCarpetaSana, prepararCopia } = await import("../src/workspace");
+const { copiarCarpetaSana, prepararCopia, sincronizarSkillsDeProyecto } = await import("../src/workspace");
 const { db } = await import("../src/db");
 const { gitOk } = await import("../src/git");
 
 function enlazarCarpeta(origen: string, destino: string) {
   symlinkSync(origen, destino, process.platform === "win32" ? "junction" : "dir");
 }
+
+test("retira skills antiguas al reanudar y conserva modificaciones en un respaldo fuera del clon", async () => {
+  const caso = mkdtempSync(join(raiz, "retirada-")), proyecto = join(caso, "proyecto"), clon = join(caso, "clon");
+  mkdirSync(join(proyecto, ".opencode/skills/demo"), { recursive: true });
+  mkdirSync(clon);
+  writeFileSync(join(proyecto, ".opencode/skills/demo/SKILL.md"), "original");
+  mkdirSync(join(proyecto, "skills/demo"), { recursive: true });
+  writeFileSync(join(proyecto, "skills/demo/SKILL.md"), "espejo");
+  writeFileSync(join(proyecto, "skills/demo/recurso.txt"), "conservar recurso");
+  await gitOk(["init", "-b", "main"], { cwd: clon });
+  await sincronizarSkillsDeProyecto(proyecto, clon);
+  writeFileSync(join(clon, ".opencode/skills/demo/SKILL.md"), "edición local que se conserva");
+  rmSync(join(proyecto, ".opencode/skills/demo"), { recursive: true });
+  rmSync(join(proyecto, "skills/demo/SKILL.md"));
+  await sincronizarSkillsDeProyecto(proyecto, clon);
+  expect(existsSync(join(clon, ".opencode/skills/demo"))).toBe(false);
+  expect(existsSync(join(clon, "skills/demo/SKILL.md"))).toBe(false);
+  expect(readFileSync(join(clon, "skills/demo/recurso.txt"), "utf8")).toBe("conservar recurso");
+  const archivo = join(raiz, "datos/skills-retiradas");
+  expect(readdirSync(archivo).some((nombre) => readFileSync(join(archivo, nombre, "demo/SKILL.md"), "utf8") === "edición local que se conserva")).toBe(true);
+});
 
 test("la copia de skills se salta los enlaces simbólicos y copia lo demás", () => {
   const origen = join(raiz, "skills");
@@ -116,7 +137,7 @@ test("al reanudar, .opencode enlazado no recibe escrituras fuera del clon", asyn
     rmSync(opencode, { recursive: true, force: true });
     enlazarCarpeta(fuera, opencode);
 
-    await prepararCopia(id, proyecto, null);
+    await expect(prepararCopia(id, proyecto, null)).rejects.toThrow();
 
     expect(existsSync(join(fuera, ".gitignore"))).toBe(false);
     expect(readFileSync(join(fuera, "skills", "demo", "SKILL.md"), "utf8")).toBe("conservar");

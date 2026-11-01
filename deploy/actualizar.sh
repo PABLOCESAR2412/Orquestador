@@ -100,7 +100,7 @@ trap liberar EXIT
 # No se actualiza desde main hasta que GitHub Actions compruebe el mismo SHA.
 # La EnvironmentFile solo está en la unidad de despliegue; el token no entra en argumentos ni logs.
 if [ -z "${TELO_GITHUB_CI_TOKEN:-}" ] || [[ ! "$TELO_GITHUB_CI_TOKEN" =~ ^[A-Za-z0-9_]{20,}$ ]]; then
-  log "Falta un token de GitHub de solo lectura en TELO_GITHUB_CI_TOKEN; se cancela el despliegue."
+  log "La unidad no recibe TELO_GITHUB_CI_TOKEN. Configura /etc/orquestador/deploy.env y ejecuta: sudo bash deploy/configurar-actualizador.sh (instala EnvironmentFile y recarga systemd)."
   exit 1
 fi
 if ! bun run "$REPO/deploy/verificar-ci.ts" "$NUEVA"; then

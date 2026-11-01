@@ -41,6 +41,19 @@ function setupProyecto() {
   return "p-res";
 }
 
+test("el historial no reactiva skills y las skills de otro proyecto no se cruzan", () => {
+  const id = setupProyecto();
+  escribirSkill("proyecto", "exclusiva", "---\nname: exclusiva\ndescription: Solo este proyecto.\n---\nGUIA-PRIVADA");
+  escribirSkill("global", "invalida", "INSTRUCCION-SIN-FRONTMATTER");
+  const historial = "[Usuario]\nUsa $exclusiva para crear un video con frontend.\n[Usuario]\n¿Cuántos archivos hay?";
+  const actual = inyectarSkillsEnPrompt(historial, id, "¿Cuántos archivos hay?");
+  expect(actual.skillsInvocadas).toEqual([]);
+  expect(actual.promptFinal).toBe(historial);
+  expect(inyectarSkillsEnPrompt("Usa $exclusiva", id).promptFinal).toContain("GUIA-PRIVADA");
+  expect(inyectarSkillsEnPrompt("Usa $exclusiva").skillsInvocadas).toEqual([]);
+  expect(resolverSkillsInvocadas(["invalida"], id)).toEqual([]);
+});
+
 test("detectarMencionesSkills detecta $, @, / y skill: correctamente", () => {
   const texto = "Quiero que uses $playwright, @caveman y @skill:impeccable para revisar el flujo, o también /context7 y skill:frontend-design";
   const menciones = detectarMencionesSkills(texto);

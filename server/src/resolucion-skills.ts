@@ -148,8 +148,10 @@ export function resolverSkillsInvocadas(
     // 1. Intentar en global: las instrucciones compartidas de Telo tienen prioridad.
     try {
       const detalle = leerSkill({ ambito: "global" }, nombre);
-      resueltas.push({ nombre, contenido: detalle.contenido, ambito: "global" });
-      continue;
+      if (detalle.valida) {
+        resueltas.push({ nombre, contenido: detalle.contenido, ambito: "global" });
+        continue;
+      }
     } catch {
       // No está instalada globalmente; se buscará en el proyecto.
     }
@@ -157,7 +159,7 @@ export function resolverSkillsInvocadas(
     if (ambitoProy) {
       try {
         const detalle = leerSkill(ambitoProy, nombre);
-        resueltas.push({ nombre, contenido: detalle.contenido, ambito: "proyecto" });
+        if (detalle.valida) resueltas.push({ nombre, contenido: detalle.contenido, ambito: "proyecto" });
       } catch {
         // No está en el proyecto.
       }
@@ -170,9 +172,11 @@ export function resolverSkillsInvocadas(
 export function inyectarSkillsEnPrompt(
   prompt: string,
   projectId?: string | null,
+  solicitud: string = prompt,
 ): { promptFinal: string; skillsInvocadas: string[] } {
-  const menciones = detectarMencionesSkills(prompt);
-  const nombres = [...new Set([...menciones, ...skillsAutomaticas(prompt)])];
+  // El historial sirve como referencia, no debe reactivar skills de encargos anteriores.
+  const menciones = detectarMencionesSkills(solicitud);
+  const nombres = [...new Set([...menciones, ...skillsAutomaticas(solicitud)])];
   if (nombres.length === 0) return { promptFinal: prompt, skillsInvocadas: [] };
   const esVideo = nombres.some((nombre) => ["motion-design", "hyperframes", "hyperframes-cli", "instagram-agent", "ig-reel"].includes(nombre));
 

@@ -11,6 +11,8 @@ import type { ServidorMcpAgente } from "../conexiones-mcp";
 import { configuracionOpenCodeMcp } from "../conexiones-mcp";
 import { esCompactacionOpenCode } from "../../../shared/compactacion";
 import { pluginSeguimientoOpenCode } from "./seguimiento-opencode";
+import { PROVEEDORES_CON_CLAVE } from "../claves-proveedor";
+import { prepararRedAgente, type RedAgente } from "./red-agente";
 
 // Tope de memoria para la salida del agente: 16 MB en total (arranque de 1 MB con los eventos
 // de sesión, cola de 15 MB con el detalle del fallo; el medio se recorta).
@@ -227,7 +229,7 @@ function variablesExtra(): Set<string> {
 
 // `propias` son variables de esta ejecución (p. ej. secretos del proyecto). Se fusionan encima
 // de las permitidas y, como todo lo demás, nunca pueden llamarse TELO_*.
-export function entornoDelAgente(propias?: Record<string, string>): Record<string, string> {
+export function entornoDelAgente(propias?: Record<string, string>, modelosPermitidos?: readonly string[]): Record<string, string> {
   const extra = variablesExtra();
   const env: Record<string, string> = {};
   for (const [clave, valor] of Object.entries(process.env)) {
@@ -245,6 +247,13 @@ export function entornoDelAgente(propias?: Record<string, string>): Record<strin
     if (esVariableReservada(clave) || SECRETOS_SOLO_SERVIDOR.includes(clave)) continue;
     if (VARIABLES_PERMITIDAS.has(clave) || PREFIJOS_PERMITIDOS.some((p) => clave.startsWith(p))) continue;
     env[clave] = valor;
+  }
+  if (modelosPermitidos) {
+    const proveedores = new Set(modelosPermitidos.map((modelo) => modelo.split("/")[0]));
+    const claves = [...PROVEEDORES_CON_CLAVE, { id: "openai", variables: ["OPENAI_API_KEY"] }];
+    for (const proveedor of claves) {
+      if (!proveedores.has(proveedor.id)) for (const variable of proveedor.variables) delete env[variable];
+    }
   }
   return env;
 }
@@ -348,6 +357,7 @@ function vigilarSubagentes(ruta: string | undefined, alLeer: ((linea: string) =>
 }
 
 export async function runOpenCode(opts: {
+  modelosAuxiliares?: string[];
   servidoresMcp?: ServidorMcpAgente[];
   prompt: string;
   model: string;
@@ -380,20 +390,25 @@ export async function runOpenCode(opts: {
   const archivo = join(temporal, "opencode.json");
   const captura = join(temporal, "actividad.ndjson");
   const plugin = join(temporal, "seguimiento.js");
+  let red: RedAgente | undefined;
   try {
     const aislado = aislamientoActivo();
+    if (aislado) red = await prepararRedAgente({ modelos: [opts.model, ...(opts.modelosAuxiliares ?? [])], extraEnv: opts.extraEnv, brokerOpenCode: true });
     writeFileSync(captura, "", { flag: "wx", mode: 0o600 });
     writeFileSync(plugin, pluginSeguimientoOpenCode(aislado ? "/tmp/telo-mcp-config/actividad.ndjson" : captura, sesionValida(opts.sessionId) ? opts.sessionId : null), { flag: "wx", mode: 0o600 });
-    writeFileSync(archivo, JSON.stringify({ ...configuracionOpenCodeMcp(servidores, opts.model),
+    writeFileSync(archivo, JSON.stringify({ ...configuracionOpenCodeMcp(servidores, opts.model), ...red?.configuracion,
       plugin: [aislado ? "file:///tmp/telo-mcp-config/seguimiento.js" : pathToFileURL(plugin).href],
     }), { encoding: "utf8", flag: "wx", mode: 0o600 });
-    return await ejecutarOpenCode({ ...opts, opencodeMcpConfigPath: archivo, actividadTracePath: captura });
+    return await ejecutarOpenCode({ ...opts, red, opencodeMcpConfigPath: archivo, actividadTracePath: captura });
   } finally {
+    await red?.cerrar();
     rmSync(temporal, { recursive: true, force: true });
   }
 }
 
 async function ejecutarOpenCode(opts: {
+  red?: RedAgente;
+  modelosAuxiliares?: string[];
   servidoresMcp?: ServidorMcpAgente[];
   opencodeMcpConfigPath?: string;
   actividadTracePath?: string;
@@ -435,6 +450,8 @@ async function ejecutarOpenCode(opts: {
     opts.subagentesTracePath,
     opts.opencodeMcpConfigPath,
     opts.actividadTracePath,
+    undefined,
+    opts.red?.directorio,
   );
 
   // Un id de sesión que no cumple el patrón se ignora: ni se pasa a -s ni se reutiliza.
@@ -449,7 +466,9 @@ async function ejecutarOpenCode(opts: {
 
   // `setsid` deja al agente como líder de su propio grupo (pgid == pid),
   // para poder cerrar todo su árbol de procesos de una vez.
-  const env = entornoDelAgente(opts.extraEnv);
+  const env = entornoDelAgente(opts.extraEnv, [opts.model, ...(opts.modelosAuxiliares ?? [])]);
+  if (opts.red) for (const clave of Object.keys(env)) if (clave.startsWith("OPENCODE_")) delete env[clave];
+  Object.assign(env, opts.red?.entorno);
   // La política del turno prevalece sobre el proyecto y sobre sesiones anteriores.
   const autorizados: Record<string, string> = { "*": "deny" };
   if (opts.opencodeConfigDir) {
@@ -463,6 +482,7 @@ async function ejecutarOpenCode(opts: {
   const task = opts.opencodeConfigDir ? autorizados : "deny";
   env.OPENCODE_CONFIG_CONTENT = JSON.stringify({
     ...inline,
+    ...opts.red?.configuracion,
     permission: { ...(typeof inline.permission === "object" ? inline.permission : {}), task },
     agent: {
       ...inline.agent,

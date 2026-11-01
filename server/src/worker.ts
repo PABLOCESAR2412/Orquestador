@@ -9,7 +9,8 @@ import { join, resolve } from "node:path";
 import { config } from "./config";
 import { limiteProveedor, MAX_TAREAS_SIMULTANEAS, proveedorAgente } from "./limites";
 import { db } from "./db";
-import { prepararSubagentes } from "./subagentes";
+import { prepararSubagentes, pideSubagentes } from "./subagentes";
+import { ejecutarAnalisisOrquestado } from "./orquestacion-chat";
 import { cerrarSubagentesDelTurno, registrarEventoSubagente } from "./subagentes-chat";
 import { publicar } from "./bus";
 import { publicarEstado, registrarEvento } from "./eventos";
@@ -272,8 +273,20 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
   let turnoTerminado = false;
   const turnoChat = turnoDeTarea(task);
   try {
+    let informes: string[] = [];
+    let gestionada = false;
+    if (analizarConSubagentes && task.conversation_id && turnoChat && pideSubagentes(task.prompt)) {
+      const conv = db.query<{ id: string; project_id: string | null; parent_conversation_id: string | null; orquestacion_habilitada: number; orquestacion_trabajadores: string }, [string]>(
+        "SELECT id,project_id,parent_conversation_id,orquestacion_habilitada,orquestacion_trabajadores FROM conversations WHERE id=?",
+      ).get(task.conversation_id);
+      if (conv && !conv.parent_conversation_id) {
+        gestionada = true;
+        const origen = db.query<{ delegacion_origen: string | null }, [string]>("SELECT delegacion_origen FROM messages WHERE id=?").get(turnoChat.id)?.delegacion_origen ?? turnoChat.id;
+        informes = await ejecutarAnalisisOrquestado(conv, turnoChat.id, origen, task.prompt, ctx.cwd, controller.signal, task.model, task.id);
+      }
+    }
     // Solo el analizador puede delegar y sus auxiliares son de lectura. El obrero queda único.
-    if (analizarConSubagentes) {
+    if (analizarConSubagentes && !gestionada) {
       perfilesSubagente = await prepararSubagentes({
         // El prompt de la fase obrero ya incluye el plan, pero la autorización para delegar
         // viene de la petición original del usuario.
@@ -288,7 +301,9 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
       ? `${prompt}\n\nComprobaciones previas de Telo (incorpora su resolución al plan antes de ejecutar pruebas):\n${ctx.avisos.join("\n")}`
       : prompt;
     const result = await ejecutarAgente({
-      prompt: perfilesSubagente ? `${perfilesSubagente.instruccion}\n\n${promptAvisos}` : promptAvisos,
+      solicitudSkills: task.prompt,
+      modelosAuxiliares: perfilesSubagente?.modelos,
+      prompt: [...informes, perfilesSubagente ? `${perfilesSubagente.instruccion}\n\n${promptAvisos}` : promptAvisos].join("\n\n"),
       model: task.model,
       variant: task.effort,
       sessionId: task.provider_session_id,
@@ -317,6 +332,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
           configDir: perfilesSubagente!.directorio,
           model: task.model,
           eventLine: linea,
+          taskId: task.id,
         });
         publicar({ tipo: "chat", conversacion_id: task.conversation_id!, estado: "en_curso" });
       } : undefined,

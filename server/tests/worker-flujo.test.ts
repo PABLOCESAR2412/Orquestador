@@ -48,7 +48,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     process.env.TELO_AISLAMIENTO = "activado";
     process.env.TELO_CLAVE_CIFRADO = Buffer.alloc(32, 1).toString("base64");
     // Este escenario comprueba el techo global, con un proveedor sintético de diez puestos.
-    process.env.TELO_CONCURRENCIA_PROVEEDORES = '{"fixture":10}';
+    process.env.TELO_CONCURRENCIA_PROVEEDORES = '{"opencode":10}';
     ({ db } = await import("../src/db"));
     const { config } = await import("../src/config");
     datos = config.dataDir;
@@ -111,7 +111,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
       await Bun.sleep(25);
     }
   }
-  async function nueva(model = "fixture/normal") {
+  async function nueva(model = "opencode/normal") {
     const proyecto = crypto.randomUUID(),
       conversacion = crypto.randomUUID();
     const repo = join(proyectos, "worker-" + proyecto);
@@ -133,12 +133,12 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
       "-m",
       "base",
     ]);
-    if (model === "fixture/git") await git(["remote", "add", "origin", "https://github.com/ejemplo/worker-pruebas"]);
+    if (model === "opencode/git") await git(["remote", "add", "origin", "https://github.com/ejemplo/worker-pruebas"]);
     db.query("INSERT INTO projects(id,name,repo_path) VALUES (?,'Worker de prueba',?)").run(
       proyecto,
       repo,
     );
-    if (model === "fixture/git") {
+    if (model === "opencode/git") {
       const { guardarSecreto } = await import("../src/secretos");
       guardarSecreto(proyecto, "GITHUB_TOKEN", "ghp_credencialficticiaparapruebas123456789");
     }
@@ -153,7 +153,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     creados.push({ id, proyecto, conversacion });
     return { id, conversacion, clon: join(datos, "tasks", id, "repo") };
   }
-  function nuevaSinProyecto(model = "fixture/lento") {
+  function nuevaSinProyecto(model = "opencode/lento") {
     const id = crearTarea({ prompt: "Prueba tareas concurrentes", model, effort: null, projectId: null });
     creados.push({ id });
     return id;
@@ -186,7 +186,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
         "SELECT model, effort, content FROM messages WHERE conversation_id=? AND role='assistant' ORDER BY rowid DESC LIMIT 1",
       )
       .get(conversacion);
-    expect(mensaje).toMatchObject({ model: "fixture/normal", effort: null });
+    expect(mensaje).toMatchObject({ model: "opencode/normal", effort: null });
     expect(JSON.parse(mensaje!.content)).toMatchObject({
       tipo: "telo_reporte_tarea",
       estado: "completado",
@@ -205,7 +205,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
   }, 15000);
 
   test("prepara una sola autorización para commit y push sin ejecutar nada al rechazar", async () => {
-    const {id,clon}=await nueva("fixture/git");
+    const {id,clon}=await nueva("opencode/git");
     await esperar(()=>fila(id).status === "waiting_approval" || fila(id).status === "failed",id);
     expect(fila(id).error).toBeNull();
     const head=(await gitSeguro(["rev-parse","HEAD"],{cwd:clon})).stdout.trim();
@@ -223,7 +223,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
   },15000);
 
   test("la iniciativa del obrero corrige un fallo de verificación en la misma sesión", async () => {
-    const { id } = await nueva("fixture/corrige");
+    const { id } = await nueva("opencode/corrige");
     await esperar(() => fila(id).status === "waiting_approval" || fila(id).status === "failed", id);
     expect(fila(id).error).toBeNull();
     expect((await aprobar(id)).status).toBe(200);
@@ -238,7 +238,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
   }, 20000);
 
   test("agotados los ciclos de corrección, la tarea falla con el último reporte", async () => {
-    const { id } = await nueva("fixture/fallo-reporte");
+    const { id } = await nueva("opencode/fallo-reporte");
     await esperar(() => fila(id).status === "waiting_approval" || fila(id).status === "failed", id);
     expect((await aprobar(id)).status).toBe(200);
     await esperar(() => fila(id).status === "failed", id);
@@ -250,7 +250,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
   }, 20000);
 
   test("registra consumo aunque el proveedor termine con error", async () => {
-    const { id } = await nueva("fixture/fallo");
+    const { id } = await nueva("opencode/fallo");
     await esperar(() => fila(id).status === "failed", id);
     const uso = db
       .query<
@@ -262,7 +262,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
   }, 15000);
 
   test("conserva consumo emitido antes de cancelar", async () => {
-    const { id } = await nueva("fixture/cancelar");
+    const { id } = await nueva("opencode/cancelar");
     await esperar(() => !!db.query("SELECT 1 FROM usage WHERE task_id=?").get(id), id);
     expect(cancelTask(id)).toBe("cancelling");
     await esperar(() => fila(id).status === "cancelled", id);
@@ -274,7 +274,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
   }, 15000);
 
   test("detiene cambios fuera del plan y exige revisión conservando el diff", async () => {
-    const { id, clon } = await nueva("fixture/fuera");
+    const { id, clon } = await nueva("opencode/fuera");
     await esperar(() => fila(id).status === "waiting_approval" || fila(id).status === "failed", id);
     expect(fila(id).error).toBeNull();
     const hash = fila(id).plan_hash;

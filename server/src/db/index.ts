@@ -948,6 +948,11 @@ const migrations: Migration[] = [
       CREATE INDEX chat_orquestacion_etapas_conversation ON chat_orquestacion_etapas(conversation_id, origin_turn_id);
     `,
   },
+  {
+    name: "054_uso_subagentes_idempotente",
+    sql: `ALTER TABLE usage ADD COLUMN provider_event_id TEXT;
+      CREATE UNIQUE INDEX usage_provider_event ON usage(provider_event_id) WHERE provider_event_id IS NOT NULL;`,
+  },
 ];
 
 function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {

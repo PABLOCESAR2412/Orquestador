@@ -414,43 +414,63 @@ export function copiarCarpetaSana(origen: string, destino: string): void {
 
 // Sincroniza las carpetas de skills del proyecto hacia el clon del workspace,
 // asegurando que las skills locales y no commiteadas estén disponibles para el agente.
-function sincronizarSkillsDeProyecto(repoPath: string, clon: string): void {
-  try {
-    const opencodeDir = prepararDirectorioOpenCode(clon);
+export async function sincronizarSkillsDeProyecto(repoPath: string, clon: string): Promise<void> {
+  const opencodeDir = prepararDirectorioOpenCode(clon);
 
-    // Pre-crea .opencode/.gitignore para que OpenCode no intente crearlo sobre un sistema de archivos solo lectura
-    const gitignorePath = join(opencodeDir, ".gitignore");
-    if (!existsSync(gitignorePath)) {
-      writeFileSync(gitignorePath, "*\n!.gitignore\n!skills/\n", { encoding: "utf-8", flag: "wx" });
-    }
-
-    // Asegura que Git en el clon ignore completamente la carpeta .opencode para que las skills
-    // sincronizadas no aparezcan jamás como archivos modificados o pendientes de commit en el repo del proyecto.
-    const gitDir = join(clon, ".git");
-    if (existsSync(gitDir)) {
-      const infoDir = join(gitDir, "info");
-      mkdirSync(infoDir, { recursive: true });
-      const excludeFile = join(infoDir, "exclude");
-      let contenido = existsSync(excludeFile) ? readFileSync(excludeFile, "utf-8") : "";
-      if (!contenido.includes(".opencode")) {
-        contenido = `${contenido.trim()}\n.opencode\n.opencode/\n`;
-        writeFileSync(excludeFile, contenido.trim() + "\n", "utf-8");
-      }
-    }
-
-    const skillsOpencode = join(repoPath, ".opencode", "skills");
-    if (esCarpetaReal(skillsOpencode)) {
-      const destOpencode = join(clon, ".opencode", "skills");
-      copiarCarpetaSana(skillsOpencode, destOpencode);
-    }
-    const skillsRaiz = join(repoPath, "skills");
-    if (esCarpetaReal(skillsRaiz)) {
-      const destRaiz = join(clon, "skills");
-      copiarCarpetaSana(skillsRaiz, destRaiz);
-    }
-  } catch {
-    // Si la sincronización auxiliar de skills no se completa, no bloquea el arranque de la tarea.
+  // Pre-crea .opencode/.gitignore para que OpenCode no intente crearlo sobre un sistema de archivos solo lectura
+  const gitignorePath = join(opencodeDir, ".gitignore");
+  if (!existsSync(gitignorePath)) {
+    writeFileSync(gitignorePath, "*\n!.gitignore\n!skills/\n", { encoding: "utf-8", flag: "wx" });
   }
+
+  // Asegura que Git en el clon ignore completamente la carpeta .opencode para que las skills
+  // sincronizadas no aparezcan jamás como archivos modificados o pendientes de commit en el repo del proyecto.
+  const gitDir = join(clon, ".git");
+  if (existsSync(gitDir)) {
+    const infoDir = join(gitDir, "info");
+    mkdirSync(infoDir, { recursive: true });
+    const excludeFile = join(infoDir, "exclude");
+    let contenido = existsSync(excludeFile) ? readFileSync(excludeFile, "utf-8") : "";
+    if (!contenido.includes(".opencode")) {
+      contenido = `${contenido.trim()}\n.opencode\n.opencode/\n`;
+      writeFileSync(excludeFile, contenido.trim() + "\n", "utf-8");
+    }
+  }
+
+  const manifiesto = join(clon, ".git", "telo-skills.json");
+  let anteriores: string[] = [];
+  if (existsSync(manifiesto)) {
+    const stat = lstatSync(manifiesto);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("El manifiesto de skills no es seguro.");
+    const datos: unknown = JSON.parse(readFileSync(manifiesto, "utf8"));
+    if (!Array.isArray(datos) || !datos.every((p) => typeof p === "string")) throw new Error("El manifiesto de skills no es válido.");
+    anteriores = datos;
+  }
+  const actuales: string[] = [];
+  for (const relativa of [".opencode/skills", "skills"]) {
+    const origen = join(repoPath, relativa), destino = join(clon, relativa);
+    prepararDestinoSkills(destino);
+    const nombres = esCarpetaReal(origen) ? readdirSync(origen, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.isSymbolicLink() && existsSync(join(origen, e.name, "SKILL.md"))).map((e) => e.name) : [];
+    for (const entrada of readdirSync(destino, { withFileTypes: true })) {
+      const ruta = join(destino, entrada.name), clave = `${relativa}/${entrada.name}`;
+      if (nombres.includes(entrada.name) || !existsSync(join(ruta, "SKILL.md"))) continue;
+      if (!entrada.isDirectory() || entrada.isSymbolicLink()) throw new Error("Una skill retirada contiene un enlace no seguro.");
+      if (!anteriores.includes(clave)) {
+        const tracked = await gitSeguro(["ls-files", "--", clave], { cwd: clon });
+        if (tracked.code !== 0 || tracked.stdout.trim()) throw new Error(`Revisa la skill retirada ${clave} del clon antiguo antes de reanudar; sus archivos versionados se conservan.`);
+      }
+      // Preserva también cambios locales: se retira del descubrimiento, nunca se destruye.
+      const archivo = join(config.dataDir, "skills-retiradas", crypto.randomUUID());
+      prepararDestinoSkills(archivo);
+      renameSync(ruta, join(archivo, entrada.name));
+    }
+    if (esCarpetaReal(origen)) copiarCarpetaSana(origen, destino);
+    actuales.push(...nombres.map((nombre) => `${relativa}/${nombre}`));
+  }
+  const temporal = `${manifiesto}.${crypto.randomUUID()}.tmp`;
+  writeFileSync(temporal, JSON.stringify(actuales), { flag: "wx", mode: 0o600 });
+  renameSync(temporal, manifiesto);
 }
 
 // Prepara la carpeta de trabajo de una tarea. Sin repo Git, la tarea usa la carpeta del proyecto.
@@ -559,7 +579,7 @@ export function prepararCopia(
       base = fila.base_commit ?? (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: clon })).trim();
     }
 
-    sincronizarSkillsDeProyecto(repoPath, clon);
+    await sincronizarSkillsDeProyecto(repoPath, clon);
     db.query("UPDATE tasks SET rama = ?, base_commit = ? WHERE id = ?").run(rama, base, taskId);
     return { cwd: clon, rama, base_commit: base, copia: true };
   });

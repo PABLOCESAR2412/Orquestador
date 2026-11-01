@@ -1,5 +1,25 @@
 # Despliegue automático en el VM
 
+## Actualizador y comprobación de agentes (noviembre de 2026)
+
+Si existe `/etc/orquestador/deploy.env` pero `systemctl show orquestador-deploy.service -p EnvironmentFiles` no muestra el archivo, la unidad instalada es anterior a la configuración del PAT. Actualizar el checkout no reinstala unidades de systemd. Tras recibir este cambio:
+
+```bash
+cd /home/orquestador/orquestador
+sudo apt-get install -y bubblewrap python3
+sudo bash deploy/configurar-actualizador.sh
+systemctl show orquestador-deploy.service -p EnvironmentFiles
+sudo systemctl start orquestador-deploy.service
+journalctl -u orquestador-deploy.service -n 20 --no-pager
+bash deploy/verificar-agentes.sh
+```
+
+El instalador conserva el PAT existente, protege el archivo con modo 0600, instala servicio y temporizador y recarga systemd. Si falta la clave, la solicita de forma oculta; necesita acceso al repositorio y Actions: Read-only. No la envíes al chat. La comprobación usa proveedores sintéticos y no reinicia Telo ni consume modelos de pago. Para comparar revisiones ejecuta por separado `git rev-parse --short HEAD` y `git rev-parse --short origin/main`.
+
+El aislamiento de red se activa con Bubblewrap; no necesita una clave nueva ni un puerto público. Las herramientas deben respetar HTTP_PROXY/HTTPS_PROXY. Su loopback sirve previews dentro de la ejecución, sin acceso a Telo, Docker ni servicios del host. Chrome de HyperFrames se monta desde su caché en solo lectura. Se admiten APIs de OpenCode, Gemini, Groq, NVIDIA, OpenRouter, OpenAI y Anthropic; OAuth y endpoints personalizados requieren un broker específico. Codex conserva su sesión y la política administrada indicada más abajo.
+
+Después del despliegue pide una revisión normal (sin auxiliares), otra con «usa varios agentes» (actividad por rol) y una continuación del mismo pedido (reutiliza revisiones terminadas). Comprueba en Uso la atribución por modelo y rol. Las cuotas reales del proveedor no equivalen a un fallo del sandbox. Las skills retiradas se conservan fuera de los clones en `DATA_DIR/skills-retiradas`; una copia antigua versionada sin manifiesto requiere revisión y bloquea la ejecución para no borrarla silenciosamente.
+
 ## Migración 023: precisión del uso
 
 La migración agrega columnas e índice sin modificar tokens, costes ni filas existentes. Los registros anteriores quedan con precisión `desconocida`; los nuevos distinguen datos medidos, estimados y ausentes. El arranque crea una copia previa consistente y registra la migración para no repetirla.

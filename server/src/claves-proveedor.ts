@@ -21,6 +21,10 @@ export const PROVEEDORES_CON_CLAVE: ProveedorConClave[] = [
   { id: "openrouter", etiqueta: "OpenRouter", variables: ["OPENROUTER_API_KEY"] },
 ];
 
+export function esClaveDeInferencia(variable: string): boolean {
+  return variable === "OPENAI_API_KEY" || PROVEEDORES_CON_CLAVE.some((proveedor) => proveedor.variables.includes(variable));
+}
+
 const MIN_CLAVE = 8;
 const MAX_CLAVE = 512;
 

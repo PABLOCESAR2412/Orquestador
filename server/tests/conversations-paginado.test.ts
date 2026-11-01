@@ -94,9 +94,16 @@ describe("paginación del listado de conversaciones", () => {
     const primera = await pedirPagina("/api/conversations?limite=2");
     const idsPrimera = (primera.conversations ?? []).map((c: { id: string }) => c.id);
     expect(idsPrimera.length).toBe(2);
-    const resto = await pedirPagina(`/api/conversations?limite=50&antes=${primera.siguiente}`);
-    const idsResto = (resto.conversations ?? []).map((c: { id: string }) => c.id);
-    expect(resto.siguiente).toBe(null);
+    const completa = await pedirLista();
+    const idsResto: string[] = [];
+    let cursor = primera.siguiente;
+    while (cursor) {
+      const resto = await pedirPagina(`/api/conversations?limite=50&antes=${cursor}`);
+      idsResto.push(...(resto.conversations ?? []).map((c: { id: string }) => c.id));
+      expect(idsResto.length).toBeLessThanOrEqual(completa.length);
+      cursor = resto.siguiente;
+    }
+    expect([...idsPrimera, ...idsResto]).toEqual(completa);
     expect(esIrrepetible([...idsPrimera, ...idsResto])).toBe(true);
     expect(miosDe([...idsPrimera, ...idsResto])).toEqual(MI_ORDEN);
   });

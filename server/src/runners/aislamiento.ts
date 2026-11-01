@@ -31,13 +31,8 @@ export class AislamientoError extends Error {
 const RAIZ_REPO = resolve(import.meta.dir, "../../..");
 
 // Estado compartido de compatibilidad para ejecuciones directas sin perfil persistente.
-const ESTADO_OPENCODE = [
-  ".local/share/opencode",
-  ".local/state/opencode",
-  ".cache/opencode",
-];
 // Herramientas instaladas en el HOME: solo lectura.
-const HERRAMIENTAS = [".local/bin", ".opencode", ".bun", ".gitconfig", ".config/git", ".config/opencode"];
+const HERRAMIENTAS = [".local/bin", ".opencode/bin", ".opencode/lib", ".opencode/node_modules", ".bun", ".cache/hyperframes"];
 
 export function aislamientoActivo(): boolean {
   return process.env.TELO_AISLAMIENTO !== "desactivado";
@@ -95,7 +90,7 @@ function dentro(ruta: string, raiz: string): boolean {
 
 function rutaPerfilOpenCode(id: string): string {
   const sello = createHash("sha256").update(id).digest("hex");
-  return join(config.dataDir, "perfiles-opencode", sello);
+  return join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-opencode", sello);
 }
 
 function rutaPerfilCodex(id: string): string {
@@ -189,28 +184,22 @@ export function prepararDirectorioOpenCode(carpeta: string): string {
 // Una sesión por conversación permite reanudarla sin compartir las sesiones entre chats.
 // Las tareas sin chat usan su propio ID y la limpieza de tareas purga el perfil tras la retención.
 export function prepararPerfilOpenCode(id: string): string {
+  const raiz = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-opencode");
+  mkdirSync(raiz, { recursive: true, mode: 0o700 });
   const perfil = rutaPerfilOpenCode(id);
-  for (const ruta of ["data/opencode", "state/opencode", "cache/opencode"]) {
-    mkdirSync(join(perfil, ruta), { recursive: true, mode: 0o700 });
+  for (const ruta of [raiz, perfil, ...["data", "state", "cache"].flatMap((parte) => [join(perfil, parte), join(perfil, parte, "opencode")])]) {
+    try { mkdirSync(ruta, { mode: 0o700 }); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+    const stat = lstatSync(ruta);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(ruta) !== ruta) {
+      throw new AislamientoError("carpeta_no_permitida", "El perfil de OpenCode contiene una ruta no segura.");
+    }
   }
   return perfil;
 }
 
 export function eliminarPerfilOpenCode(id: string): void {
   rmSync(rutaPerfilOpenCode(id), { recursive: true, force: true });
-}
-
-function authJsonOpenCode(home: string): string | null {
-  const candidatos = [
-    join(home, ".local", "share", "opencode", "auth.json"),
-    process.env.XDG_DATA_HOME ? join(process.env.XDG_DATA_HOME, "opencode", "auth.json") : null,
-    join(home, ".config", "opencode", "auth.json"),
-    join(home, ".opencode", "auth.json"),
-  ].filter((ruta): ruta is string => Boolean(ruta));
-  for (const ruta of candidatos) {
-    if (existsSync(ruta)) return rutaReal(ruta) ?? ruta;
-  }
-  return null;
 }
 
 // Carpetas donde un agente puede trabajar: un proyecto registrado (dentro de TELO_PROYECTOS_DIR)
@@ -277,6 +266,7 @@ export function prefijoAislamiento(
   opencodeMcpConfigPath?: string,
   opencodeActividadTracePath?: string,
   perfilCodexDir?: string,
+  redDir?: string,
 ): string[] {
   if (!aislamientoActivo()) return [];
 
@@ -340,11 +330,12 @@ export function prefijoAislamiento(
     // Sin esto, el agente vería los procesos del servidor y podría leer su entorno (TELO_CLAVE).
     "--unshare-pid",
     "--unshare-ipc",
+    "--unshare-net",
     "--die-with-parent",
   ];
   // /tmp propio y vacío para cada ejecución. Sin esto, /tmp es de solo lectura dentro del sandbox y OpenCode
   // falla al escribir su TMPDIR. Va después de "--ro-bind / /" y antes de lo que se monta encima.
-  args.push("--tmpfs", "/tmp");
+  args.push("--tmpfs", "/tmp", "--tmpfs", "/run", "--cap-drop", "ALL");
   if (perfilCodexReal && configuracionCodexGlobal.length) {
     args.push("--dir", "/tmp/telo-codex-global");
     for (const archivo of configuracionCodexGlobal) {
@@ -377,7 +368,7 @@ export function prefijoAislamiento(
       }
       const destino = "/tmp/telo-opencode-profile";
       args.push("--dir", destino, "--bind", perfilReal, destino);
-      const authJson = authJsonOpenCode(home);
+      const authJson = redDir ? join(redDir, "auth.json") : null;
       if (authJson) {
         const authDestino = join(perfilReal, "data", "opencode", "auth.json");
         if (!existsSync(authDestino)) {
@@ -388,11 +379,6 @@ export function prefijoAislamiento(
           }
         }
         args.push("--ro-bind-try", authJson, join(destino, "data", "opencode", "auth.json"));
-      }
-    } else {
-      for (const rel of ESTADO_OPENCODE) {
-        const ruta = join(home, rel);
-        args.push("--bind-try", ruta, ruta);
       }
     }
     // Las skills globales las edita la app y la persona, no el agente: se montan en solo lectura encima del
@@ -484,6 +470,14 @@ export function prefijoAislamiento(
   const opencodeEnCwd = prepararDirectorioOpenCode(carpeta);
   if (soloLectura && existsSync(opencodeEnCwd)) {
     args.push("--tmpfs", opencodeEnCwd);
+    // El runtime temporal no debe ocultar los datos y scripts de las skills del proyecto.
+    const skills = join(opencodeEnCwd, "skills");
+    if (existsSync(skills)) {
+      if (!lstatSync(skills).isDirectory() || lstatSync(skills).isSymbolicLink() || rutaReal(skills) !== skills) {
+        throw new AislamientoError("carpeta_no_permitida", "La carpeta de skills del workspace no es segura.");
+      }
+      args.push("--dir", skills, "--ro-bind", skills, skills);
+    }
   }
   // El servidor es el único que escribe Git: commit y push pasan por aprobación.
   const git = join(carpeta, ".git");
@@ -495,6 +489,16 @@ export function prefijoAislamiento(
       );
     if (!soloLectura) args.push("--ro-bind", git, git);
   }
+  if (redDir) {
+    const raiz = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-red");
+    const real = rutaReal(redDir);
+    if (!real || !dentro(real, raiz) || lstatSync(redDir).isSymbolicLink() ||
+      !lstatSync(join(real, "broker.sock")).isSocket() || !hallarEjecutable("python3")) {
+      throw new AislamientoError("carpeta_no_permitida", "El puente de red aislado no está disponible; comprueba python3 y el broker.");
+    }
+    args.push("--dir", "/tmp/telo-network", "--ro-bind", real, "/tmp/telo-network");
+  }
   args.push("--chdir", carpeta, "--");
+  if (redDir) args.push("python3", "/tmp/telo-network/bridge.py");
   return args;
 }

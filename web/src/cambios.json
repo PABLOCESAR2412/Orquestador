@@ -5,6 +5,18 @@
   "cambios": [
     {
       "fecha": "2026-11-01",
+      "tipo": "grande",
+      "titulo": "Agentes: aísla red y credenciales con broker, registra uso nativo y retira skills obsoletas al reanudar",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-01",
+      "tipo": "minimo",
+      "titulo": "Chat: corrige orquestación de proyecto, perfiles de ejecución, selección de skills y atribución del uso",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-01",
       "tipo": "mediano",
       "titulo": "Skills: añade UI/UX Pro Max, Code Review y Writing Plans; activa TDD y depuración sistemática por tarea",
       "pr": 163

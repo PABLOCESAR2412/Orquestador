@@ -21,6 +21,8 @@ jobs:
       - run: |
           bash -n deploy/actualizar.sh
           bash -n deploy/instalar-politica-codex.sh
+          bash -n deploy/configurar-actualizador.sh
+          bash -n deploy/verificar-agentes.sh
           bash -c 'dir_mode=755; (( (8#$dir_mode & 022) == 0 )); dir_mode=775; (( (8#$dir_mode & 022) != 0 ))'
       - run: bun install --frozen-lockfile
         working-directory: server

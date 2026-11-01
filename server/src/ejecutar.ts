@@ -1,11 +1,14 @@
+import { canonicalizarModelo, registrarUsoAgente } from "./registro-uso-agente";
+export { canonicalizarModelo, proveedorDeModelo, registrarUsoAgente } from "./registro-uso-agente";
 import { db } from "./db";
 import { registrarEvento } from "./eventos";
 import { getModels, validateSelection } from "./models";
 import { getPreferences } from "./preferences";
 import { entornoDeProyecto } from "./secretos";
-import { entornoProveedores } from "./claves-proveedor";
+import { entornoProveedores, esClaveDeInferencia } from "./claves-proveedor";
 import { redactar } from "./redaccion";
-import { AislamientoError, aislamientoActivo, prepararPerfilCodex, prepararPerfilOpenCode } from "./runners/aislamiento";
+import { AislamientoError, aislamientoActivo, prepararPerfilCodex, prepararPerfilOpenCode, eliminarPerfilCodex, eliminarPerfilOpenCode } from "./runners/aislamiento";
+import { setTimeout as esperar } from "node:timers/promises";
 import { ErrorAgente, runOpenCode, type RunResult, type Usage } from "./runners/opencode";
 import { runCodex } from "./runners/codex";
 import { promptConHistorial, sesionCompatible } from "./conversacion-contexto";
@@ -29,6 +32,8 @@ const MINIMO_OCULTAR = 4;
 
 export type OpcionesAgente = {
   prompt: string;
+  solicitudSkills?: string;
+  modelosAuxiliares?: string[];
   model: string;
   variant?: string | null;
   sessionId?: string | null;
@@ -82,83 +87,6 @@ export const CONTRATO_EJECUCION = [
 export function conContratoEjecucion(prompt: string, workspace?: string): string {
   const destino = workspace ? `\nCarpeta de entregables independientes (fuera del repositorio): ${carpetaEntregables(workspace)}. Enlaza los archivos por su nombre relativo a esta carpeta.` : "";
   return `${CONTRATO_EJECUCION}${destino}\n---\n${prompt}`;
-}
-
-export function canonicalizarModelo(modelo: string): string {
-  if (modelo.startsWith("opencode/gemini-")) {
-    return modelo.replace("opencode/gemini-", "google/gemini-");
-  }
-  if (modelo === "opencode/argon" || modelo === "opencode/gemini-4-argon") {
-    return "google/gemini-4-argon";
-  }
-  if (modelo === "argon" || modelo === "gemini-4-argon") {
-    return "google/gemini-4-argon";
-  }
-  if (modelo.startsWith("gemini-")) {
-    return `google/${modelo}`;
-  }
-  return modelo;
-}
-
-export function proveedorDeModelo(modelo: string): string {
-  const m = canonicalizarModelo(modelo);
-  if (m.startsWith("google/") || m.includes("/google/") || /gemini|argon/i.test(m)) {
-    return "google";
-  }
-  if (m.startsWith("codex/") || m === "codex" || m.includes("/codex/")) {
-    return "codex";
-  }
-  if (m.startsWith("openai/") || m.includes("/openai/")) {
-    return "openai";
-  }
-  if (m.startsWith("groq/") || m.includes("/groq/")) {
-    return "groq";
-  }
-  if (m.startsWith("nvidia/") || m.includes("/nvidia/")) {
-    return "nvidia";
-  }
-  if (m.startsWith("openrouter/")) {
-    return "openrouter";
-  }
-  return m.split("/")[0] || "opencode";
-}
-
-export function estimarCosteGemini(modelo: string, inputTokens: number, outputTokens: number): number {
-  const esPro = /pro/i.test(modelo);
-  const tarifaInput = esPro ? 1.25 / 1_000_000 : 0.075 / 1_000_000;
-  const tarifaOutput = esPro ? 5.00 / 1_000_000 : 0.30 / 1_000_000;
-  return Math.round((inputTokens * tarifaInput + outputTokens * tarifaOutput) * 10_000) / 10_000;
-}
-
-// Cada paso se persiste al llegar: fallos, cancelaciones y respaldos conservan el consumo previo.
-export function registrarUsoAgente(
-  modelo: string,
-  uso: Usage,
-  contexto: Pick<OpcionesAgente, "conversationId" | "projectId" | "taskId" | "turnId" | "usageRole">,
-): void {
-  const modeloCanonico = canonicalizarModelo(modelo);
-  const provider = proveedorDeModelo(modeloCanonico);
-  let costo = uso.cost;
-  let costPrecision = uso.costeDisponible === undefined ? "desconocida" : uso.costeDisponible ? "estimado" : "no_disponible";
-
-  if (costo === 0 && uso.tokensEstimados !== true && (uso.input > 0 || uso.output > 0) && provider === "google") {
-    costo = estimarCosteGemini(modeloCanonico, uso.input, uso.output);
-    costPrecision = "estimado";
-  }
-
-  db.query(
-    `INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens,
-      reasoning_tokens, cache_read_tokens, cost, project_id, task_id, tokens_precision, cost_precision,
-      turn_id, usage_role)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    crypto.randomUUID(), contexto.conversationId ?? null, provider, modeloCanonico,
-    uso.input, uso.output, uso.reasoning, uso.cacheRead, costo,
-    contexto.projectId ?? null, contexto.taskId ?? null,
-    uso.tokensEstimados ? "estimado" : uso.tokensMedidos === undefined ? "desconocida" : uso.tokensMedidos ? "medida" : "no_disponible",
-    costPrecision,
-    contexto.turnId ?? null, contexto.usageRole ?? "unknown",
-  );
 }
 
 // Saturación, error de servidor o límite del proveedor: justifica probar otro modelo.
@@ -421,17 +349,24 @@ export function promptContinuacion(prompt: string, tieneSesion = true): string {
   ].join("\n");
 }
 
+function perfilAuxiliar(opts: OpcionesAgente): string | null {
+  return opts.usageRole?.startsWith("reviewer:") && opts.conversationId && opts.turnId
+    ? `${opts.conversationId}:${opts.turnId}:${opts.usageRole}` : null;
+}
+
 async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoAgente> {
   mkdirSync(carpetaEntregables(opts.cwd), { recursive: true });
-  const mcp = configuracionMcpParaAgente(requiereContext7(opts.prompt));
+  const solicitudSkills = opts.solicitudSkills ?? opts.prompt;
+  const mcp = configuracionMcpParaAgente(requiereContext7(solicitudSkills), opts.soloLectura);
+  const secretosProyecto = opts.projectId ? entornoDeProyecto(opts.projectId) : {};
   // Claves de proveedor (Ajustes) y secretos del proyecto. Si un nombre se repite, gana el del proyecto.
   const propias: Record<string, string> = {
     ...entornoProveedores(),
-    ...(opts.projectId ? entornoDeProyecto(opts.projectId) : {}),
+    ...Object.fromEntries(Object.entries(secretosProyecto).filter(([nombre]) => !opts.soloLectura || esClaveDeInferencia(nombre))),
     ...mcp.variables,
   };
-  const ocultos = valoresAOcultar(propias);
-  const idPerfil = opts.conversationId
+  const ocultos = valoresAOcultar({ ...secretosProyecto, ...propias });
+  const idPerfil = perfilAuxiliar(opts) ?? (opts.conversationId
     ? db.query<{ id: string }, [string]>(`
         WITH RECURSIVE familia(id,parent_conversation_id) AS (
           SELECT id,parent_conversation_id FROM conversations WHERE id=?
@@ -440,14 +375,11 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
         )
         SELECT id FROM familia WHERE parent_conversation_id IS NULL LIMIT 1
       `).get(opts.conversationId)?.id ?? opts.conversationId
-    : opts.taskId;
+    : opts.taskId);
   const sesionCodexInicial = sesionCompatible(opts.sessionId, opts.sessionModel, opts.model) ? opts.sessionId! : null;
   // El modelo de respaldo puede usar OpenCode aunque el primario sea Codex.
   const perfilOpenCodeDir = aislamientoActivo() && idPerfil
     ? prepararPerfilOpenCode(idPerfil)
-    : undefined;
-  const perfilCodexDir = aislamientoActivo() && idPerfil && opts.model.startsWith("codex/")
-    ? await prepararPerfilCodex(idPerfil, sesionCodexInicial)
     : undefined;
 
   // Una sesión solo conserva contexto si pertenece exactamente al modelo que se va a ejecutar.
@@ -468,17 +400,17 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     onLinea: opts.onLinea ? (linea: string) => opts.onLinea?.(ocultarValores(linea, ocultos)) : undefined,
     onSubagente: opts.onSubagente ? (linea: string) => opts.onSubagente?.(ocultarValores(linea, ocultos)) : undefined,
     extraEnv: propias,
+    modelosAuxiliares: opts.modelosAuxiliares,
     servidoresMcp: mcp.servidores,
     opencodeConfigDir: opts.opencodeConfigDir,
     subagentesTracePath: opts.opencodeSubagentesTracePath,
     perfilOpenCodeDir,
-    perfilCodexDir,
     soloLectura: opts.soloLectura,
   };
 
   const baseParaModelo = (modelo: string, variante?: string) => {
     if (sesion && modeloSesion !== modelo) alSesion(null, null);
-    const prompt = sesion
+    const prompt = sesion || perfilAuxiliar(opts)
       ? opts.prompt
       : opts.conversationId
         ? promptConHistorial(opts.conversationId, opts.prompt)
@@ -489,7 +421,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       prompt: conEstilo(
         conContratoEjecucion(
           conMemoria(
-            conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(visuales.prompt, opts.projectId).promptFinal, opts.conversationId, opts.cwd),
+            conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(visuales.prompt, opts.projectId, solicitudSkills).promptFinal, opts.conversationId, opts.cwd),
             memoria,
             opts.aprender === true,
           ), opts.cwd,
@@ -593,7 +525,12 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     })));
     inicio = Date.now();
     try {
-      return await (modelo.startsWith("codex/") ? runCodex(params) : runOpenCode(params));
+      if (modelo.startsWith("codex/")) {
+        const perfilCodexDir = aislamientoActivo() && idPerfil
+          ? await prepararPerfilCodex(idPerfil, params.sessionId) : undefined;
+        return await runCodex({ ...params, perfilCodexDir });
+      }
+      return await runOpenCode(params);
     } finally { liberar(); }
   }
 
@@ -646,7 +583,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
         : esRateLimitTransitorio ? [2_500, 15_000, 45_000] : [1_200, 10_000, 30_000];
       let transitorio = true;
       for (const espera of esperas) {
-        await Bun.sleep(espera);
+        await esperar(espera, undefined, { signal: opts.signal });
         if (opts.signal?.aborted) { transitorio = false; break; }
         try {
           const parametros = baseParaModelo(opts.model, varianteInicial);
@@ -760,5 +697,13 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
 }
 
 export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAgente> {
-  return ejecutarAgenteReservado(opts);
+  try {
+    return await ejecutarAgenteReservado(opts);
+  } finally {
+    const perfil = perfilAuxiliar(opts);
+    if (perfil && aislamientoActivo()) {
+      eliminarPerfilOpenCode(perfil);
+      eliminarPerfilCodex(perfil);
+    }
+  }
 }

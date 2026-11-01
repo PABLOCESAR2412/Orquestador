@@ -34,6 +34,13 @@ afterAll(() => {
 });
 
 describe("registro inmediato del uso del agente", () => {
+  test("atribuye modelos enrutados a su integración y conserva coste cero reportado", () => {
+    for (const modelo of ["openrouter/google/gemini-prueba:free", "openrouter/nvidia/nemotron-prueba:free", "google/gemini-prueba-gratis", "opencode/gemini-prueba", "opencode/argon"]) {
+      registrarUsoAgente(modelo, { input: 1_000_000, output: 100_000, reasoning: 0, cacheRead: 0, cost: 0, tokensMedidos: true, costeDisponible: true }, { projectId, conversationId });
+      const uso = db.query<any, [string, string]>("SELECT provider,cost,cost_precision FROM usage WHERE model=? AND project_id=? ORDER BY rowid DESC LIMIT 1").get(modelo, projectId);
+      expect(uso).toEqual({ provider: modelo.split("/")[0], cost: 0, cost_precision: "estimado" });
+    }
+  });
   test("las respuestas de chat incluyen una guía visual breve para los entregables", () => {
     expect(conEstilo("Crea un gráfico con estos datos", "chat")).toContain("Calidad visual por defecto");
     expect(conEstilo("Investiga y corrige estos defectos", "chat")).toContain("no las encadenes en un párrafo largo");

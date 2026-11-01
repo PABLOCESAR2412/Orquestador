@@ -225,7 +225,7 @@ test("instala UI/UX Pro Max con datos y referencias permitidos sin ejecutar ni d
   expect(respuesta.status).toBe(201);
   const skill = await respuesta.json() as { name: string; content: string };
   expect(skill.name).toBe("ui-ux-pro-max");
-  expect(skill.content).toContain("$HOME/.config/opencode/skills/ui-ux-pro-max/scripts/search.py");
+  expect(skill.content).toContain('Usa ".opencode/skills/ui-ux-pro-max/scripts/search.py".');
   expect(skill.content).toContain("Compatibilidad con Telo");
   expect(readFileSync(join(carpetaProyecto, ".opencode", "skills", "ui-ux-pro-max", "references", "quick-reference.md"), "utf8"))
     .toContain("references/quick-reference.md");

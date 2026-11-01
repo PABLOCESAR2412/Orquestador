@@ -1,4 +1,7 @@
-import { aislamientoActivo, prefijoAislamiento } from "./aislamiento";
+import { aislamientoActivo, prefijoAislamiento, verificarPoliticaCredencialesCodex } from "./aislamiento";
+import { prepararRedAgente } from "./red-agente";
+import { join } from "node:path";
+import { carpetaEntregables } from "../entregables";
 import { hallarEjecutable } from "../ejecutable";
 import { ErrorAgente, entornoDelAgente, estimarUso, type RunResult, type Usage } from "./opencode";
 import { iniciarVigilante, leerConTope, leerLineasAcotadas } from "./proteccion";
@@ -68,6 +71,7 @@ function terminarGrupo(proc: { pid: number; kill: () => void }) {
 }
 
 interface OpcionesCodex {
+  perfilCodexDir?: string;
   servidoresMcp?: ServidorMcpAgente[];
   prompt: string;
   model: string;
@@ -99,18 +103,26 @@ export async function runCodex(opts: OpcionesCodex): Promise<RunResult> {
   // Quitar el prefijo "codex/" para obtener el nombre del modelo que espera Codex (ej: gpt-6-luna)
   const modeloCodex = opts.model.startsWith("codex/") ? opts.model.slice("codex/".length) : opts.model;
 
-  const aislamiento = prefijoAislamiento(opts.cwd, opts.soloLectura, opts.imagenes);
-  const rutasImagenes = (opts.imagenes ?? []).flatMap((imagen) => ["--image", aislamientoActivo() ? imagen.rutaVisible : imagen.ruta]);
+  if (aislamientoActivo()) {
+    if (!opts.perfilCodexDir || !process.env.HOME) throw new Error("Codex requiere un perfil aislado de Telo para esta ejecución.");
+    verificarPoliticaCredencialesCodex(process.env.HOME);
+  }
+  const red = aislamientoActivo() ? await prepararRedAgente({ modelos: [opts.model], brokerOpenCode: false }) : undefined;
+  try {
+    const aislamiento = prefijoAislamiento(opts.cwd, opts.soloLectura, opts.imagenes, undefined, undefined, undefined, undefined, undefined, opts.perfilCodexDir, red?.directorio);
+    const rutasImagenes = (opts.imagenes ?? []).flatMap((imagen) => ["--image", aislamientoActivo() ? imagen.rutaVisible : imagen.ruta]);
 
   // Codex toma `-c` como prioridad de ejecución y lee MCP remoto desde la tabla mcp_servers.
-  const ajustesMcp = argumentosConfigMcpCodex(opts.servidoresMcp ?? []);
+    const ajustesMcp = argumentosConfigMcpCodex(opts.servidoresMcp ?? []);
 
   // Los reintentos ante 429/5xx y el respaldo viven a nivel ejecutar (reintento-transitorio.test.ts):
   // aquí corre una sola vez para no pisar esa política ni consumir su presupuesto de espera.
-  return await intentoCodex({ ...opts, codex, modeloCodex, aislamiento, rutasImagenes, ajustesMcp });
+    return await intentoCodex({ ...opts, entornoRed: red?.entorno, codex, modeloCodex, aislamiento, rutasImagenes, ajustesMcp });
+  } finally { await red?.cerrar(); }
 }
 
 async function intentoCodex(opts: OpcionesCodex & {
+  entornoRed?: Record<string, string>;
   codex: string;
   modeloCodex: string;
   aislamiento: string[];
@@ -119,21 +131,24 @@ async function intentoCodex(opts: OpcionesCodex & {
 }): Promise<RunResult> {
   const sesionPrevia = opts.sessionId && /^[0-9a-fA-F-]{1,128}$/.test(opts.sessionId) ? opts.sessionId : null;
   const cero: TotalesCodex = { input: 0, cached: 0, output: 0, reasoning: 0 };
-  const base = sesionPrevia ? await leerTotalesSesion(sesionPrevia) : cero;
+  const base = sesionPrevia ? await leerTotalesSesion(sesionPrevia, opts.perfilCodexDir) : cero;
   if (opts.signal?.aborted) throw new Error("Ejecución cancelada");
-  const args: string[] = ["codex", ...opts.ajustesMcp];
+  const args: string[] = ["codex", "-c", 'approval_policy="never"', "-c", `sandbox_mode="${opts.soloLectura ? "read-only" : "workspace-write"}"`, ...opts.ajustesMcp];
+  if (!opts.soloLectura) args.push("-c", "sandbox_workspace_write.network_access=true", "-c", `sandbox_workspace_write.writable_roots=${JSON.stringify([carpetaEntregables(opts.cwd)])}`);
   // El nivel de esfuerzo del modelo va como ajuste puntual del CLI, igual que los MCP.
   if (opts.variant) args.push("-c", `model_reasoning_effort="${opts.variant}"`);
   if (sesionPrevia) {
-    args.push("exec", "resume", "--json", ...opts.rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", opts.modeloCodex, sesionPrevia, opts.prompt);
+    args.push("exec", "resume", "--json", ...opts.rutasImagenes, "-m", opts.modeloCodex, sesionPrevia, opts.prompt);
   } else {
-    args.push("exec", "--json", ...opts.rutasImagenes, "--dangerously-bypass-approvals-and-sandbox", "-m", opts.modeloCodex, "-C", opts.cwd, "--", opts.prompt);
+    args.push("exec", "--json", ...opts.rutasImagenes, "-m", opts.modeloCodex, "-C", opts.cwd, "--", opts.prompt);
   }
 
   const comandoCompleto = opts.aislamiento.length > 0 ? ["setsid", ...opts.aislamiento, ...args] : process.platform === "win32" ? ["cmd", "/c", ...args] : ["setsid", ...args];
 
   // Aislar variables sensibles usando entornoDelAgente para nunca filtrar TELO_* ni secretos del servidor
-  const env = entornoDelAgente(opts.extraEnv);
+  const env = entornoDelAgente(opts.extraEnv, [opts.model]);
+  Object.assign(env, opts.entornoRed);
+  if (opts.perfilCodexDir) env.CODEX_HOME = aislamientoActivo() ? join(process.env.HOME!, ".codex") : opts.perfilCodexDir;
 
   const proc = Bun.spawn(comandoCompleto, {
     cwd: opts.cwd,

@@ -33,6 +33,12 @@ describe("subchats de subagentes", () => {
 
     evento("created", { title: "Revisar API", agent: "telo-gpt-1", prompt: "Revisa las rutas y reporta riesgos" });
     evento("created", { title: "Actualización repetida" });
+    const uso = { messageId: "msg_hijo_1", model: "openrouter/nvidia/nemotron", tokens: { input: 120, output: 30, reasoning: 4, cache: { read: 20 } }, cost: 0 };
+    evento("usage", uso);
+    evento("usage", uso);
+    evento("usage", { ...uso, messageId: "otro", tokens: { input: -1, output: 100 } });
+    expect(db.query("SELECT model,input_tokens,output_tokens,cache_read_tokens,turn_id,usage_role FROM usage WHERE conversation_id=?").all(padre))
+      .toEqual([{ model: uso.model, input_tokens: 120, output_tokens: 30, cache_read_tokens: 20, turn_id: turno, usage_role: "subagent:ses_hijo-1" }]);
     const hija = db.query<{ id: string; subagent_turn_id: string; subagent_status: string; subagent_prompt: string }, [string]>(
       "SELECT id,subagent_turn_id,subagent_status,subagent_prompt FROM conversations WHERE parent_conversation_id=?",
     ).get(padre)!;
