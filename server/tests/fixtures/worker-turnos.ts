@@ -22,13 +22,15 @@ mock.module("../../src/ejecutar", () => ({
   promptContinuacion: (prompt: string) => prompt,
   ejecutarAgente: async (opts: OpcionesAgente) => {
     llamadas.push(opts);
+    const reemplazo = opts.usageRole?.startsWith("reviewer:") && opts.prompt.includes("CUOTA-REVISOR") ? "opencode/respaldo" : opts.model;
+    if (reemplazo !== opts.model) opts.onCambioModeloCuota?.(opts.model, reemplazo);
     opts.onLinea?.(JSON.stringify({ type: "text", part: { text: `actividad ${opts.taskId}` } }));
     opts.onSubagente?.(JSON.stringify({ kind: "created", sessionId: `hijo_${opts.taskId}_${opts.soloLectura ? "plan" : "obra"}`, title: `hijo ${opts.taskId}` }));
     const text = JSON.stringify(opts.soloLectura ? {
       objetivo: "Verificar atribución", supuestos: [], pasos: [{ id: 1, descripcion: "Revisar", archivos: [] }],
       criterios_de_aceptacion: ["No mezclar turnos"], requiere_aprobacion: ["commit"], riesgos: [], preguntas: [],
     } : { estado: "completado", resumen: "Terminado", cambios: [], pruebas: [], pendientes: [], diff_disponible: false });
-    return { text, textoFinal: text, sessionId: null, modelo: opts.model, variante: null };
+    return { text, textoFinal: text, sessionId: null, modelo: reemplazo, variante: null };
   },
 }));
 
@@ -112,6 +114,18 @@ try {
   const heredados = llamadas.filter((l) => l.taskId === hereda && l.usageRole?.startsWith("reviewer:"));
   assert.equal(heredados.length,3); assert(heredados.every((l)=>l.model==="google/gemini-test"));
   assert.equal(db.query<{ orquestacion_trabajadores: string }, [string]>("SELECT orquestacion_trabajadores FROM conversations WHERE id=?").get(legado)?.orquestacion_trabajadores,previos);
+  const { ejecutarAnalisisOrquestado } = await import("../../src/orquestacion-chat");
+  const turnoCuota = crypto.randomUUID();
+  db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,'user','CUOTA-REVISOR')").run(turnoCuota,legado);
+  const conv = { id: legado, project_id: null, orquestacion_trabajadores: previos };
+  const args = [conv, turnoCuota, turnoCuota, "Usa varios agentes CUOTA-REVISOR", "fixture", new AbortController().signal, "google/gemini-test"] as const;
+  const informes = await ejecutarAnalisisOrquestado(...args);
+  assert(informes.join("\n").includes("opencode/respaldo"));
+  const etapas = db.query<{model:string;actual_model:string},[string]>("SELECT model,actual_model FROM chat_orquestacion_etapas WHERE origin_turn_id=?").all(turnoCuota);
+  assert.equal(etapas.length,3); assert(etapas.every((e)=>e.model==="google/gemini-test" && e.actual_model==="opencode/respaldo"));
+  const antes = llamadas.length;
+  await ejecutarAnalisisOrquestado(...args);
+  assert.equal(llamadas.length,antes,"reanudar reutiliza revisiones completadas por el modelo sustituto");
   console.log("turnos de tareas verificados");
   db.close();
   process.exit(0);

@@ -120,18 +120,19 @@ export async function ejecutarAnalisisOrquestado(
       registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `${etiquetaAuxiliar}: cancelado junto con el turno.` });
       return { trabajador, texto: "Análisis cancelado junto con el turno." };
     }
-    const etapaGuardada = db.query<{ model: string; status: string; result: string | null }, [string, string, string]>(
-      "SELECT model,status,result FROM chat_orquestacion_etapas WHERE conversation_id=? AND origin_turn_id=? AND role=?",
+    const etapaGuardada = db.query<{ model: string; actual_model: string | null; status: string; result: string | null }, [string, string, string]>(
+      "SELECT model,actual_model,status,result FROM chat_orquestacion_etapas WHERE conversation_id=? AND origin_turn_id=? AND role=?",
     ).get(conv.id, origenTurnoId, trabajador.rol);
     if (etapaGuardada?.model === trabajador.model && etapaGuardada.status === "done" && etapaGuardada.result) {
-      registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `${etiquetaAuxiliar}: reutilicé la revisión ya completada; no repetí esa llamada.` });
-      return { trabajador, texto: etapaGuardada.result };
+      const modeloReal = etapaGuardada.actual_model ?? trabajador.model;
+      registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `Auxiliar ${trabajador.rol} (${modeloReal}): reutilicé la revisión ya completada; no repetí esa llamada.` });
+      return { trabajador: { ...trabajador, model: modeloReal }, texto: etapaGuardada.result };
     }
     db.query(`
       INSERT INTO chat_orquestacion_etapas(conversation_id,origin_turn_id,role,model,status,result,started_at_ms,finished_at_ms)
       VALUES(?,?,?,?,'running',NULL,?,NULL)
       ON CONFLICT(origin_turn_id,role) DO UPDATE SET
-        model=excluded.model,status='running',result=NULL,started_at_ms=excluded.started_at_ms,finished_at_ms=NULL
+        model=excluded.model,actual_model=NULL,status='running',result=NULL,started_at_ms=excluded.started_at_ms,finished_at_ms=NULL
     `).run(conv.id, origenTurnoId, trabajador.rol, trabajador.model, Date.now());
     // La etapa gestionada ya está guardada; una continuación puede reutilizarla sin relanzar perfiles.
     db.query("UPDATE messages SET delegacion_consumida=1 WHERE id=? AND conversation_id=?").run(origenTurnoId, conv.id);
@@ -142,6 +143,7 @@ export async function ejecutarAnalisisOrquestado(
     registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `${etiquetaAuxiliar}: inició la revisión de solo lectura.` });
     const inicioAuxiliar = Date.now();
     const controlador = new AbortController();
+    let modeloActual = trabajador.model;
     const abortar = () => controlador.abort(signal.reason);
     signal.addEventListener("abort", abortar, { once: true });
     try {
@@ -166,6 +168,10 @@ export async function ejecutarAnalisisOrquestado(
         usageRole: `reviewer:${trabajador.rol}`,
         estilo: "chat",
         soloLectura: true,
+        onCambioModeloCuota: (agotado, siguiente) => {
+          modeloActual = siguiente;
+          registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `Auxiliar ${trabajador.rol} (${siguiente}): cuota agotada en ${agotado}; continúo la misma revisión con ${siguiente}.` });
+        },
         // No mostramos texto de análisis privado: solo pasos observables del auxiliar.
         onLinea: (linea) => {
           const item = itemDeLinea(linea);
@@ -178,10 +184,11 @@ export async function ejecutarAnalisisOrquestado(
         },
       });
       const texto = resultado.textoFinal.trim().slice(0, 1800) || "El modelo no devolvió análisis.";
-      db.query("UPDATE chat_orquestacion_etapas SET status='done',result=?,finished_at_ms=? WHERE conversation_id=? AND origin_turn_id=? AND role=?")
-        .run(texto, Date.now(), conv.id, origenTurnoId, trabajador.rol);
-      registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `${etiquetaAuxiliar}: terminó la revisión en ${((Date.now() - inicioAuxiliar) / 1000).toFixed(1)} s.` });
-      return { trabajador, texto };
+      modeloActual = resultado.modelo;
+      db.query("UPDATE chat_orquestacion_etapas SET status='done',actual_model=?,result=?,finished_at_ms=? WHERE conversation_id=? AND origin_turn_id=? AND role=?")
+        .run(modeloActual, texto, Date.now(), conv.id, origenTurnoId, trabajador.rol);
+      registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `Auxiliar ${trabajador.rol} (${modeloActual}): terminó la revisión en ${((Date.now() - inicioAuxiliar) / 1000).toFixed(1)} s.` });
+      return { trabajador: { ...trabajador, model: modeloActual }, texto };
     } catch (error) {
       const cancelado = signal.aborted || controlador.signal.aborted;
       const detalle = cancelado
@@ -189,7 +196,7 @@ export async function ejecutarAnalisisOrquestado(
         : `falló tras ${((Date.now() - inicioAuxiliar) / 1000).toFixed(1)} s: ${mensajeSeguro(error).slice(0, 240)}`;
       db.query("UPDATE chat_orquestacion_etapas SET status=?,result=?,finished_at_ms=? WHERE conversation_id=? AND origin_turn_id=? AND role=?")
         .run(cancelado ? "interrupted" : "failed", cancelado ? null : detalle, Date.now(), conv.id, origenTurnoId, trabajador.rol);
-      registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `${etiquetaAuxiliar}: ${detalle}.` });
+      registrarActividad(conv.id, turnoId, { tipo: "texto", texto: `Auxiliar ${trabajador.rol} (${modeloActual}): ${detalle}.` });
       return { trabajador, texto: cancelado ? "Análisis cancelado junto con el turno." : `No se obtuvo análisis auxiliar: ${mensajeSeguro(error).slice(0, 300)}` };
     } finally {
       signal.removeEventListener("abort", abortar);

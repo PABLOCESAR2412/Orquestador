@@ -25,6 +25,8 @@ if [ "$1" = "models" ]; then
   echo '{"name":"Respaldo","cost":{"input":0,"output":0},"limit":{"context":64000},"variants":{}}'
   echo "opencode/respaldo-pago"
   echo '{"name":"Respaldo de pago","cost":{"input":1,"output":2},"limit":{"context":64000},"variants":{}}'
+  echo "opencode/automatico"
+  echo '{"name":"Automatico","cost":{"input":0,"output":0},"limit":{"context":64000},"variants":{}}'
   exit 0
 fi
 anterior=""
@@ -40,6 +42,24 @@ intentos=0
 if [ -f '${contador}' ]; then intentos=$(cat '${contador}'); fi
 intentos=$((intentos + 1))
 echo "$intentos" > '${contador}'
+case "$prompt" in *CUOTA-CADENA*|*CUOTA-AUTH*|*CUOTA-TEMP*)
+  if [ "$modelo" != "opencode/automatico" ]; then
+    case "$prompt:$modelo" in *CUOTA-AUTH*:opencode/respaldo)
+      echo '{"type":"error","error":{"statusCode":401,"data":{"statusCode":401,"message":"Unauthorized"}}}'
+      exit 1
+    ;; esac
+    case "$prompt:$modelo" in *CUOTA-TEMP*:opencode/respaldo)
+      echo '{"type":"error","error":{"statusCode":503,"data":{"statusCode":503,"message":"Service unavailable"}}}'
+      exit 1
+    ;; esac
+    echo '{"type":"error","error":{"statusCode":429,"data":{"statusCode":429,"message":"Quota exceeded"}}}'
+    exit 1
+  fi
+  printf '%s' "$sesion" > '${sesionRecibida}'
+  printf '%s' "$prompt" > '${promptRecibido}'
+  echo '{"type":"text","sessionID":"automatico-session","part":{"type":"text","text":"Automatico completó lo pendiente."}}'
+  exit 0
+;; esac
 if [ "$modelo" = "opencode/respaldo" ]; then
   printf '%s' "$sesion" > '${sesionRecibida}'
   printf '%s' "$prompt" > '${promptRecibido}'
@@ -167,4 +187,46 @@ test.skipIf(!Bun.which("setsid"))("un modelo gratuito no recurre automáticament
   // Original + 3 reintentos transitorios; sin respaldo de pago tras agotarlos.
   expect(readFileSync(contador, "utf8")).toBe("4\n");
   savePreferences(DEFAULT_PREFERENCES);
+});
+
+test.skipIf(!Bun.which("setsid"))("agota los respaldos elegidos, continúa con uno gratis y no repite cuotas conocidas", async () => {
+  db.query("DELETE FROM app_settings WHERE key='modelos_sin_cuota'").run();
+  rmSync(contador, { force: true });
+  savePreferences({ ...DEFAULT_PREFERENCES, quotaFallbackModels: ["opencode/respaldo"] });
+  invalidarModelos();
+  const cambios: string[] = [];
+  try {
+    const opciones = { prompt: "CUOTA-CADENA: termina la tarea", model: "opencode/prueba", cwd: raiz, onCambioModeloCuota: (_agotado: string, siguiente: string) => cambios.push(siguiente) };
+    const resultado = await ejecutarAgente(opciones);
+    expect(resultado.modelo).toBe("opencode/automatico");
+    expect(resultado.textoFinal).toBe("Automatico completó lo pendiente.");
+    expect(cambios).toEqual(["opencode/respaldo", "opencode/automatico"]);
+    expect(readFileSync(contador, "utf8")).toBe("3\n");
+    expect(readFileSync(sesionRecibida, "utf8")).toBe("");
+    expect(readFileSync(promptRecibido, "utf8")).toContain("revisa los cambios y artefactos actuales");
+    await ejecutarAgente(opciones);
+    expect(readFileSync(contador, "utf8")).toBe("4\n");
+    const controller = new AbortController();
+    controller.abort();
+    await expect(ejecutarAgente({ ...opciones, signal: controller.signal })).rejects.toThrow();
+    expect(readFileSync(contador, "utf8")).toBe("4\n");
+  } finally {
+    savePreferences(DEFAULT_PREFERENCES);
+    db.query("DELETE FROM app_settings WHERE key='modelos_sin_cuota'").run();
+  }
+});
+
+for (const caso of ["CUOTA-AUTH", "CUOTA-TEMP"]) test.skipIf(!Bun.which("setsid"))(`${caso}: un respaldo no disponible no bloquea la alternativa gratuita`, async () => {
+  db.query("DELETE FROM app_settings WHERE key='modelos_sin_cuota'").run();
+  rmSync(contador, { force: true });
+  savePreferences({ ...DEFAULT_PREFERENCES, quotaFallbackModels: ["opencode/respaldo"] });
+  invalidarModelos();
+  try {
+    const resultado = await ejecutarAgente({ prompt: `${caso}: termina la tarea`, model: "opencode/prueba", cwd: raiz });
+    expect(resultado.modelo).toBe("opencode/automatico");
+    expect(readFileSync(contador, "utf8")).toBe("3\n");
+  } finally {
+    savePreferences(DEFAULT_PREFERENCES);
+    db.query("DELETE FROM app_settings WHERE key='modelos_sin_cuota'").run();
+  }
 });

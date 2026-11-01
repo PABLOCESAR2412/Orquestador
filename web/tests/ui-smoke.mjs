@@ -1359,6 +1359,11 @@ try {
     await proveedoresInferencia.getByRole("tab", { name: "OpenRouter" }).click();
     await page.getByRole("tabpanel", { name: "OpenRouter" }).waitFor();
     await page.screenshot({ path: `scratch/capturas-ci/proveedores-${width}.png` });
+    const respaldoCuota = page.locator(".aj-cadena-cuota");
+    await respaldoCuota.getByText(/Si no quedan respaldos utilizables/).waitFor();
+    await respaldoCuota.scrollIntoViewIfNeeded();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/respaldos-cuota-${width}.png` });
     await page.goto(`${base}/ajustes?pestana=personalizacion`);
     const tarjetaApariencia = page.locator('article[aria-labelledby="ajustes-apariencia"]');
     await tarjetaApariencia.waitFor();

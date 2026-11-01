@@ -365,6 +365,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
       },
       onCambioModeloCuota: (agotado, siguiente) => {
         registrarEvento(task.id, "modelo_respaldo", `Cuota agotada en ${agotado}; continúo automáticamente con ${siguiente}.`);
+        if (task.conversation_id && turnoChat) registrarActividad(task.conversation_id, turnoChat.id, { tipo: "texto", texto: `Se agotó la cuota de ${agotado}; continúo automáticamente con ${siguiente}.` });
       },
     });
     if (result.modelo !== modeloSolicitado || result.variante !== esfuerzoSolicitado) {

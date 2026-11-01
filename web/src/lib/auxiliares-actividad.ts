@@ -33,6 +33,7 @@ export function auxiliaresEnVivo(pasos: PasoActividad[]): AuxiliarVivo[] {
       auxiliares.set(rol, auxiliar);
     }
     if (resultadoHito) {
+      auxiliar.modelo = resultadoHito[2];
       const detalle = resultadoHito[3].replace(/[.!]+$/, "");
       if (/^encargo del supervisor:/i.test(detalle)) {
         auxiliar.instruccion = detalle.replace(/^encargo del supervisor:\s*/i, "");

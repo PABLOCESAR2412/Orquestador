@@ -5,7 +5,8 @@ import { registrarEvento } from "./eventos";
 import { getModels, validateSelection } from "./models";
 import { getPreferences } from "./preferences";
 import { entornoDeProyecto } from "./secretos";
-import { entornoProveedores, esClaveDeInferencia } from "./claves-proveedor";
+import { entornoProveedores, esClaveDeInferencia, proveedorConClave, valorClaveApiProveedor } from "./claves-proveedor";
+import { candidatosPorCuota, modeloSinCuota, modelosSinCuota, registrarCuotaModelo } from "./respaldos-cuota";
 import { redactar } from "./redaccion";
 import { AislamientoError, aislamientoActivo, prepararPerfilCodex, prepararPerfilOpenCode, eliminarPerfilCodex, eliminarPerfilOpenCode } from "./runners/aislamiento";
 import { setTimeout as esperar } from "node:timers/promises";
@@ -449,6 +450,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
   // El resultado sale con los secretos ocultos. Si la tarea aprende, el bloque de memoria se guarda
   // (ya limpio de secretos) y no se muestra en el resultado.
   const terminar = (r: RunResult, modelo: string, variante: string | null): ResultadoAgente => {
+    registrarCuotaModelo(modelo, false, opts.projectId);
     const texto = ocultarValores(r.text, ocultos);
     const textoFinal = ocultarValores(r.textoFinal, ocultos);
     if (opts.aprender && opts.projectId) {
@@ -537,6 +539,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
   const varianteInicial = opts.variant ?? undefined;
   const sesionUsada = sesion;
   try {
+    if (modeloSinCuota(opts.model, opts.projectId)) throw new ErrorCuota(opts.model, sesion);
     const r = await ejecutarConRunner(opts.model, baseParaModelo(opts.model, varianteInicial));
     return terminar(r, opts.model, opts.variant ?? null);
   } catch (err) {
@@ -613,16 +616,19 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     }
 
     if (esErrorDeCuota(err)) {
+      if (!(err instanceof ErrorCuota)) registrarCuotaModelo(opts.model, true, opts.projectId);
       let ultimoAgotado = opts.model;
       const modelosProbados = new Set([opts.model]);
-      const alternativas = getPreferences().quotaFallbackModels ?? [];
+      const preferencias = getPreferences();
       const catalogo = await getModels().catch(() => []);
-      for (const alternativa of alternativas) {
+      const proveedores = [...new Set(catalogo.map((m) => m.provider))];
+      const conectados = new Set(proveedores.filter((id) => id === "opencode" || id === "codex" || valorClaveApiProveedor(id) || proveedorConClave(id)?.variables.some((v) => propias[v])));
+      const alternativas = candidatosPorCuota(catalogo, [...(preferencias.quotaFallbackModels ?? []), ...(preferencias.fallbackModel ? [preferencias.fallbackModel] : [])], opts.model, conectados, modelosSinCuota(opts.projectId));
+      for (const info of alternativas) {
+        const alternativa = info.id;
         if (modelosProbados.has(alternativa)) continue;
         modelosProbados.add(alternativa);
-        const info = catalogo.find((modelo) => modelo.id === alternativa);
-        // Defensa adicional si el catálogo cambió después de guardar las preferencias.
-        if (!info || (!info.free && info.provider !== "codex")) continue;
+        if (modeloSinCuota(alternativa, opts.projectId)) continue;
         const variante = opts.variant && info.variants.includes(opts.variant) ? opts.variant : undefined;
         opts.onCambioModeloCuota?.(ultimoAgotado, alternativa);
         try {
@@ -634,7 +640,12 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
         } catch (errorAlternativa) {
           const tiempoAgotado = opts.timeoutMs !== undefined && opts.timeoutMs !== null && Date.now() - inicio >= opts.timeoutMs;
           if (tiempoAgotado || opts.signal?.aborted) throw limpiarError(errorAlternativa);
-          if (!esErrorDeCuota(errorAlternativa)) throw limpiarError(errorAlternativa);
+          if (!esErrorDeCuota(errorAlternativa)) {
+            const codigo = codigoHttpDelProveedor(errorAlternativa);
+            if (codigo === 401 || codigo === 403 || esErrorModeloNoEncontrado(errorAlternativa) || esErrorTransitorioDelProveedor(errorAlternativa, opts.signal)) continue;
+            throw limpiarError(errorAlternativa);
+          }
+          registrarCuotaModelo(alternativa, true, opts.projectId);
           ultimoAgotado = alternativa;
           err = errorAlternativa;
         }

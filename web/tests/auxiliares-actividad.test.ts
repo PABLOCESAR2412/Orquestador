@@ -25,3 +25,9 @@ test("reconoce las dos formas de cancelación que emite el servidor", () => {
     expect(auxiliaresEnVivo([hito(detalle)])[0].estado).toBe("cancelled");
   }
 });
+
+test("el auxiliar muestra el modelo que sustituyó al agotado", () => {
+  const cambio = { ...hito("cuota agotada; continúo", 2), titulo: "Auxiliar arquitectura (opencode/respaldo): cuota agotada; continúo" };
+  const final = { ...hito("terminó la revisión", 3), titulo: "Auxiliar arquitectura (opencode/respaldo): terminó la revisión" };
+  expect(auxiliaresEnVivo([hito("inició la revisión"), cambio, final])[0]).toMatchObject({ modelo: "opencode/respaldo", estado: "done" });
+});

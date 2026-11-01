@@ -957,6 +957,10 @@ const migrations: Migration[] = [
     name: "055_auxiliares_modelo_del_chat",
     sql: `ALTER TABLE conversations ADD COLUMN orquestacion_modelos_personalizados INTEGER NOT NULL DEFAULT 0 CHECK (orquestacion_modelos_personalizados IN (0,1));`,
   },
+  {
+    name: "056_modelo_real_auxiliar",
+    sql: `ALTER TABLE chat_orquestacion_etapas ADD COLUMN actual_model TEXT;`,
+  },
 ];
 
 function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {

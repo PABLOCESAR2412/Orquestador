@@ -4,6 +4,14 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 1 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Continuidad automática por cuota — PR #165, 1 de noviembre de 2026
+
+- [x] El punto común de ejecución prueba primero los respaldos guardados y el respaldo general si es gratuito o de una sesión Codex elegida. Después admite hasta tres modelos gratuitos con precio explícito de proveedores conectados, priorizando proveedores distintos. Los modelos de pago y de precio desconocido no entran automáticamente; no se hacen llamadas de sondeo a modelos.
+- [x] Una cuota confirmada se recuerda en app_settings por modelo y proyecto durante 15 minutos, sobrevive reinicios y evita volver a gastar intentos durante la pausa. No se inventa saldo ni se atribuye la cuota de un modelo a los demás. Una respuesta válida retira su pausa; al caducar se puede comprobar de nuevo.
+- [x] Chats, analizador, obrero y revisores comparten la sustitución. Los cambios se muestran en actividad; uso y sesión siguen ligados al modelo que ejecutó. La migración 056 conserva por separado modelo solicitado y modelo real de cada revisión para reutilizarla tras cambiar de proveedor.
+- [x] Pruebas: suite unificada Linux con 698 aprobadas, 10 omitidas y 0 fallidas; 13 pruebas focalizadas de cuota, continuidad y reanudación aprobadas; integración adicional del worker con Bubblewrap real: 8 aprobadas. Web con 72 aprobadas, typecheck del servidor, build y smoke a 390/1440 px aprobados. Se comprobó la recuperación tras credencial rechazada o saturación temporal de un respaldo, la sesión nueva entre proveedores, el límite de tres alternativas y la cancelación sin llamadas adicionales.
+- [ ] Validación operativa pendiente tras desplegar: agotamiento real de OpenAI/Codex y continuidad con los proveedores conectados de la VM. Las pruebas sustituyen los proveedores; tener credencial y precio gratuito en el catálogo no acredita saldo ni éxito de una llamada real.
+
 ## Modelo y estados de los auxiliares — PR #165, 1 de noviembre de 2026
 
 - [x] La migración 055 deja los chats existentes y nuevos en herencia del modelo seleccionado. Conserva la lista antigua sin utilizarla; activar «Usar modelos diferentes para los auxiliares» y guardar es necesario para usarla. El panel deja de rellenar modelos gratuitos automáticamente.
