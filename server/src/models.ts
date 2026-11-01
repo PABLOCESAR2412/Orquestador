@@ -13,6 +13,7 @@ export type ModelInfo = {
   context: number;
   variants: string[];
   free: boolean;
+  priceKnown?: boolean;
   costTier: CostTier;
   costWarning: string | null;
   group: string;
@@ -96,6 +97,7 @@ export function parseModels(txt: string, conClave: ReadonlyMap<string, string> =
       context: raw.limit?.context ?? 0,
       variants: Object.keys(raw.variants ?? {}),
       free,
+      priceKnown: typeof raw.cost?.input === "number" && typeof raw.cost?.output === "number",
       costTier,
       costWarning: WARNINGS[costTier],
       group: matched?.label ?? etiquetaProveedor ?? (free ? "Gratis" : "Otros"),

@@ -4,6 +4,22 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 1 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Continuidad automática por cuota — PR #165, 1 de noviembre de 2026
+
+- [x] El punto común de ejecución prueba primero los respaldos guardados y el respaldo general si es gratuito o de una sesión Codex elegida. Después admite hasta tres modelos gratuitos con precio explícito de proveedores conectados, priorizando proveedores distintos. Los modelos de pago y de precio desconocido no entran automáticamente; no se hacen llamadas de sondeo a modelos.
+- [x] Una cuota confirmada se recuerda en app_settings por modelo y proyecto durante 15 minutos, sobrevive reinicios y evita volver a gastar intentos durante la pausa. No se inventa saldo ni se atribuye la cuota de un modelo a los demás. Una respuesta válida retira su pausa; al caducar se puede comprobar de nuevo.
+- [x] Chats, analizador, obrero y revisores comparten la sustitución. Los cambios se muestran en actividad; uso y sesión siguen ligados al modelo que ejecutó. La migración 056 conserva por separado modelo solicitado y modelo real de cada revisión para reutilizarla tras cambiar de proveedor.
+- [x] Pruebas: suite unificada Linux con 698 aprobadas, 10 omitidas y 0 fallidas; 13 pruebas focalizadas de cuota, continuidad y reanudación aprobadas; integración adicional del worker con Bubblewrap real: 8 aprobadas. Web con 72 aprobadas, typecheck del servidor, build y smoke a 390/1440 px aprobados. Se comprobó la recuperación tras credencial rechazada o saturación temporal de un respaldo, la sesión nueva entre proveedores, el límite de tres alternativas y la cancelación sin llamadas adicionales.
+- [ ] Validación operativa pendiente tras desplegar: agotamiento real de OpenAI/Codex y continuidad con los proveedores conectados de la VM. Las pruebas sustituyen los proveedores; tener credencial y precio gratuito en el catálogo no acredita saldo ni éxito de una llamada real.
+
+## Modelo y estados de los auxiliares — PR #165, 1 de noviembre de 2026
+
+- [x] La migración 055 deja los chats existentes y nuevos en herencia del modelo seleccionado. Conserva la lista antigua sin utilizarla; activar «Usar modelos diferentes para los auxiliares» y guardar es necesario para usarla. El panel deja de rellenar modelos gratuitos automáticamente.
+- [x] Chats libres y tareas de proyecto comparten esa elección. La integración del worker confirma tres revisores Gemini aun con OpenCode guardado, y conserva la selección personalizada cuando se activa expresamente. Una regresión del chat confirma que cambiar de modelo cambia los tres revisores del turno siguiente; 61 pruebas focalizadas aprobadas. No cambia el requisito de pedir agentes en el mensaje actual.
+- [x] El panel reconoce «falló tras…», revisiones reutilizadas y cancelaciones. Un error de herramienta recuperable no termina el auxiliar; acciones tardías no reactivan uno finalizado. Cuatro regresiones web aprobadas.
+- [x] Verificación local: suite unificada Linux con 690 aprobadas, 10 omitidas y 0 fallidas; integración adicional del worker con Bubblewrap real: 8 aprobadas. Web: 71 aprobadas, typecheck del servidor, build y smoke a 390/1440 px aprobados. Los proveedores se sustituyen por fixtures; no acredita respuesta real de Gemini. El build conserva el aviso de tamaño y el smoke omite decodificación de video sin fixture.
+- [ ] Tras desplegar, probar un turno nuevo con Gemini y una petición explícita de varios agentes; comprobar tres revisiones del modelo elegido y su uso. Los turnos ya iniciados conservan su configuración de ejecución.
+
 ## Revisión del flujo de chat, aislamiento y despliegue — PR #164, 1 de noviembre de 2026
 
 - [x] Linux local (Ubuntu 24.04, Bun 1.4.2): suite unificada con 689 pruebas aprobadas, 10 omitidas y ningún fallo en 89 archivos. Integración adicional del worker: 8 aprobadas con Bubblewrap real. Web: 67 aprobadas; typecheck del servidor y build web aprobados. Smoke UI aprobado a 390 y 1440 px; decodificación de video omitida sin fixture. Además, 11 pruebas de red y aislamiento aprobadas como usuario Linux sin privilegios. El build conserva el aviso de tamaño de paquetes.
@@ -17,7 +33,8 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 - [x] Reanudación rechaza enlaces maliciosos en perfiles. La sincronización de skills deja de fallar silenciosamente: retira copias obsoletas a DATA_DIR/skills-retiradas, conservando cambios locales. Un clon legado con skill versionada sin manifiesto se bloquea para revisión. Prueba: skills-seguras y aislamiento, ejecutadas en Linux.
 - [x] Diagnóstico operativo: deploy.env existe pero systemctl no declara EnvironmentFiles. Se añade configurar-actualizador.sh para instalar las unidades que cargan el PAT existente, sin reiniciar Telo. verificar-agentes.sh permite repetir pruebas sintéticas en VM sin llamadas de pago. Sintaxis de shell y comprobaciones de despliegue incluidas en CI.
 - [x] Se elimina una dependencia circular del registro de uso y se corrige una prueba de paginación que asumía menos de 50 conversaciones. La suite unificada confirma ambas regresiones.
-- [ ] Pendiente en la VM del usuario: instalar/recargar la unidad del actualizador, ejecutar verificar-agentes.sh y probar arranque/resume con sus sesiones reales y cuotas disponibles. No se dispone de acceso SSH a esa VM desde esta sesión.
+- [x] El usuario confirmó despliegue de 22cdb34 en su VM y configuración del actualizador con PAT de Actions de solo lectura. verificar-agentes.sh terminó con 26 pruebas aprobadas y 8 de integración del worker, sin fallos, y typecheck aprobado.
+- [ ] Pendiente en la VM del usuario: probar arranque/resume con sus sesiones reales y cuotas disponibles. Las comprobaciones sintéticas no acreditan respuestas reales de cada proveedor. No se dispone de acceso SSH a esa VM desde esta sesión.
 - [ ] Pendiente de compatibilidad: brokers para OAuth de OpenCode y endpoints personalizados, y validación operativa de cada proveedor con credenciales reales. El egreso web público sigue permitido; el broker no es una política de autorización de todas las acciones externas.
 
 ## Skills de diseño y desarrollo — 1 de noviembre de 2026

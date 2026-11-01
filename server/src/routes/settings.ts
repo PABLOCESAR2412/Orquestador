@@ -5,13 +5,14 @@ import { publicar } from "../bus";
 
 type RolTrabajador = "arquitectura" | "seguridad" | "verificacion";
 type Trabajador = { model: string; rol: RolTrabajador };
-type Row = { id: string; model: string | null; effort: string | null; orquestacion_habilitada: number; orquestacion_seleccion_automatica: number; orquestacion_trabajadores: string };
+type Row = { id: string; model: string | null; effort: string | null; orquestacion_habilitada: number; orquestacion_modelos_personalizados: number; orquestacion_seleccion_automatica: number; orquestacion_trabajadores: string };
 type Body = {
   model?: string | null;
   effort?: string | null;
   title?: string;
   pinned?: boolean;
   orquestacion_habilitada?: boolean;
+  orquestacion_modelos_personalizados?: boolean;
   orquestacion_seleccion_automatica?: boolean;
   orquestacion_trabajadores?: Trabajador[];
 };
@@ -24,7 +25,7 @@ settings.get("/avisos-git", (c) => c.json(db.query(`SELECT a.id,a.conversation_i
 settings.patch("/conversations/:id", async (c) => {
   const id = c.req.param("id");
   const row = db
-    .query<Row, [string]>("SELECT id, model, effort, orquestacion_habilitada, orquestacion_seleccion_automatica, orquestacion_trabajadores FROM conversations WHERE id = ?")
+    .query<Row, [string]>("SELECT id, model, effort, orquestacion_habilitada, orquestacion_modelos_personalizados, orquestacion_seleccion_automatica, orquestacion_trabajadores FROM conversations WHERE id = ?")
     .get(id);
   if (!row) return c.json({ error: "conversation_not_found" }, 404);
 
@@ -32,6 +33,7 @@ settings.patch("/conversations/:id", async (c) => {
   if (!body || typeof body !== "object" || Array.isArray(body)) return c.json({ error: "invalid_request" }, 400);
   if (body.pinned !== undefined && typeof body.pinned !== "boolean") return c.json({ error: "invalid_request" }, 400);
   if (body.orquestacion_habilitada !== undefined && typeof body.orquestacion_habilitada !== "boolean") return c.json({ error: "invalid_request" }, 400);
+  if (body.orquestacion_modelos_personalizados !== undefined && typeof body.orquestacion_modelos_personalizados !== "boolean") return c.json({ error: "invalid_request" }, 400);
   if (body.orquestacion_seleccion_automatica !== undefined && typeof body.orquestacion_seleccion_automatica !== "boolean") return c.json({ error: "invalid_request" }, 400);
 
   if (body.title !== undefined) {
@@ -40,7 +42,7 @@ settings.patch("/conversations/:id", async (c) => {
   }
 
   const cambiaConfiguracion = body.model !== undefined || body.effort !== undefined;
-  const cambiaOrquestacion = body.orquestacion_habilitada !== undefined || body.orquestacion_seleccion_automatica !== undefined || body.orquestacion_trabajadores !== undefined;
+  const cambiaOrquestacion = body.orquestacion_modelos_personalizados !== undefined || body.orquestacion_habilitada !== undefined || body.orquestacion_seleccion_automatica !== undefined || body.orquestacion_trabajadores !== undefined;
   if (body.orquestacion_trabajadores !== undefined) {
     const trabajadores = body.orquestacion_trabajadores;
     const roles = new Set<RolTrabajador>(["arquitectura", "seguridad", "verificacion"]);
@@ -71,10 +73,12 @@ settings.patch("/conversations/:id", async (c) => {
     try { trabajadoresActuales = JSON.parse(row.orquestacion_trabajadores); } catch {}
     const trabajadores = body.orquestacion_trabajadores ?? trabajadoresActuales;
     const habilitada = body.orquestacion_habilitada ?? Boolean(row.orquestacion_habilitada);
+    const personalizados = body.orquestacion_modelos_personalizados ?? Boolean(row.orquestacion_modelos_personalizados);
     const modeloCoordinador = body.model === undefined ? row.model : body.model;
     if (habilitada && !modeloCoordinador) return c.json({ error: "orchestration_requires_coordinator" }, 400);
-    if (habilitada && trabajadores.some((trabajador) => trabajador.model === modeloCoordinador)) return c.json({ error: "orchestration_coordinator_cannot_be_worker" }, 400);
-    for (const trabajador of trabajadores) {
+    if (habilitada && personalizados && trabajadores.some((trabajador) => trabajador.model === modeloCoordinador)) return c.json({ error: "orchestration_coordinator_cannot_be_worker" }, 400);
+    const validarModelos = personalizados || (body.orquestacion_modelos_personalizados === undefined && body.orquestacion_trabajadores !== undefined);
+    for (const trabajador of validarModelos ? trabajadores : []) {
       const check = await validateSelection(trabajador.model, null);
       if (!check.ok) return c.json({ error: "invalid_orchestration_model", model: trabajador.model }, 400);
     }
@@ -87,6 +91,7 @@ settings.patch("/conversations/:id", async (c) => {
     if (cambiaOrquestacion) {
       const campos: string[] = [];
       const valores: (string | number)[] = [];
+      if (body.orquestacion_modelos_personalizados !== undefined) { campos.push("orquestacion_modelos_personalizados=?"); valores.push(body.orquestacion_modelos_personalizados ? 1 : 0); }
       if (body.orquestacion_habilitada !== undefined) { campos.push("orquestacion_habilitada=?"); valores.push(body.orquestacion_habilitada ? 1 : 0); }
       if (body.orquestacion_seleccion_automatica !== undefined) { campos.push("orquestacion_seleccion_automatica=?"); valores.push(body.orquestacion_seleccion_automatica ? 1 : 0); }
       if (body.orquestacion_trabajadores !== undefined) { campos.push("orquestacion_trabajadores=?"); valores.push(JSON.stringify(body.orquestacion_trabajadores)); }
@@ -96,11 +101,11 @@ settings.patch("/conversations/:id", async (c) => {
   if (cambiaConfiguracion || cambiaOrquestacion) publicar({ tipo: "configuracion_chat", conversacion_id: id });
 
   const actual = db
-    .query<{ id: string; title: string; model: string | null; effort: string | null; pinned_at: string | null; orquestacion_habilitada: number; orquestacion_seleccion_automatica: number; orquestacion_trabajadores: string }, [string]>(
-      "SELECT id, title, model, effort, pinned_at, orquestacion_habilitada, orquestacion_seleccion_automatica, orquestacion_trabajadores FROM conversations WHERE id = ?",
+    .query<{ id: string; title: string; model: string | null; effort: string | null; pinned_at: string | null; orquestacion_habilitada: number; orquestacion_modelos_personalizados: number; orquestacion_seleccion_automatica: number; orquestacion_trabajadores: string }, [string]>(
+      "SELECT id, title, model, effort, pinned_at, orquestacion_habilitada, orquestacion_modelos_personalizados, orquestacion_seleccion_automatica, orquestacion_trabajadores FROM conversations WHERE id = ?",
     )
     .get(id);
   let trabajadores: Trabajador[] = [];
   try { trabajadores = JSON.parse(actual?.orquestacion_trabajadores ?? "[]"); } catch {}
-  return c.json({ ...actual, orquestacion_habilitada: Boolean(actual?.orquestacion_habilitada), orquestacion_seleccion_automatica: Boolean(actual?.orquestacion_seleccion_automatica), orquestacion_trabajadores: trabajadores, costTier, costWarning });
+  return c.json({ ...actual, orquestacion_habilitada: Boolean(actual?.orquestacion_habilitada), orquestacion_modelos_personalizados: Boolean(actual?.orquestacion_modelos_personalizados), orquestacion_seleccion_automatica: Boolean(actual?.orquestacion_seleccion_automatica), orquestacion_trabajadores: trabajadores, costTier, costWarning });
 });

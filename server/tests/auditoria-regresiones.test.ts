@@ -46,6 +46,23 @@ test("un PATCH rechazado no cambia título ni anclado", async () => {
  expect(valida.status).toBe(200);
  expect((await valida.json() as { title: string }).title).toBe("Actualizado");
 });
+
+test("heredar el modelo desactiva selecciones antiguas sin perderlas ni validarlas", async () => {
+ const id=conversacion();
+ const anteriores=[{rol:"seguridad",model:"opencode/modelo-retirado"}];
+ db.query("UPDATE conversations SET model=?,orquestacion_habilitada=1,orquestacion_modelos_personalizados=1,orquestacion_trabajadores=? WHERE id=?").run("google/gemini-flash",JSON.stringify(anteriores),id);
+ const respuesta=await settings.request(`/conversations/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({orquestacion_modelos_personalizados:false,orquestacion_trabajadores:anteriores})});
+ expect(respuesta.status).toBe(200);
+ const guardado=await respuesta.json() as {orquestacion_modelos_personalizados:boolean;orquestacion_trabajadores:unknown};
+ expect(guardado.orquestacion_modelos_personalizados).toBe(false);
+ expect(guardado.orquestacion_trabajadores).toEqual(anteriores);
+ const listado=await chat.request("/conversations");
+ const conversaciones=await listado.json() as {id:string;orquestacion_modelos_personalizados:boolean}[];
+ expect(conversaciones.find((item)=>item.id===id)?.orquestacion_modelos_personalizados).toBe(false);
+ const invalida=await settings.request(`/conversations/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:"No guardar",orquestacion_modelos_personalizados:"true"})});
+ expect(invalida.status).toBe(400);
+ expect(db.query("SELECT title,orquestacion_modelos_personalizados FROM conversations WHERE id=?").get(id)).toEqual({title:"Original",orquestacion_modelos_personalizados:0});
+});
 test("preview HTML sirve scripts con sandbox y rechaza rutas ajenas", async () => {
  const id=conversacion();const carpeta=join(config.dataDir,"chat-workspace",id);mkdirSync(carpeta,{recursive:true});
  writeFileSync(join(carpeta,"demo.html"),"<h1>Demo</h1><script>document.body.dataset.activo='si'</script>");

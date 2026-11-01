@@ -97,8 +97,9 @@ try {
     let modeloC1 = "google/prueba";
     let esfuerzoC1 = null;
     let orquestacionC1 = false;
+    let modelosPersonalizadosC1 = false;
     let seleccionAutomaticaC1 = true;
-    let trabajadoresC1 = [];
+    let trabajadoresC1 = [{ rol: "arquitectura", model: "opencode/big-pickle" }];
     let configuracionesOrquestacion = [];
     let codexSesionEnPicker = false;
     let jevConfigurada = false;
@@ -160,7 +161,7 @@ try {
       else if (path === "/api/media/capacidades") data = {};
       else if (path === "/api/conversations") {
         const lista = conversacionesDisponibles ? [
-        { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, orquestacion_habilitada: orquestacionC1, orquestacion_seleccion_automatica: seleccionAutomaticaC1, orquestacion_trabajadores: trabajadoresC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, tiene_sesion: true, created_at: now, subchats: [{ id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true }] },
+        { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, orquestacion_habilitada: orquestacionC1, orquestacion_modelos_personalizados: modelosPersonalizadosC1, orquestacion_seleccion_automatica: seleccionAutomaticaC1, orquestacion_trabajadores: trabajadoresC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, tiene_sesion: true, created_at: now, subchats: [{ id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true }] },
         { id: "c2", title: "Chat paralelo", model: "nvidia/nemotron-test", project_id: null, project_name: null, created_at: now },
         { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, pendiente_aprobacion: true, estado_tarea: "pendiente_aprobacion", estado_tarea_id: "review-c3", estado_tarea_version: "hash-c3", created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
         { id: "c4", title: "Chat anterior", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() },
@@ -281,10 +282,11 @@ try {
         configuracionesOrquestacion.push(body);
         if ("model" in body) modeloC1 = body.model;
         if ("effort" in body) esfuerzoC1 = body.effort;
+        if ("orquestacion_modelos_personalizados" in body) modelosPersonalizadosC1 = body.orquestacion_modelos_personalizados;
         if ("orquestacion_habilitada" in body) orquestacionC1 = body.orquestacion_habilitada;
         if ("orquestacion_seleccion_automatica" in body) seleccionAutomaticaC1 = body.orquestacion_seleccion_automatica;
         if ("orquestacion_trabajadores" in body) trabajadoresC1 = body.orquestacion_trabajadores;
-        data = { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, orquestacion_habilitada: orquestacionC1, orquestacion_seleccion_automatica: seleccionAutomaticaC1, orquestacion_trabajadores: trabajadoresC1, pinned_at: null, costTier: null, costWarning: null };
+        data = { id: "c1", title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, orquestacion_habilitada: orquestacionC1, orquestacion_modelos_personalizados: modelosPersonalizadosC1, orquestacion_seleccion_automatica: seleccionAutomaticaC1, orquestacion_trabajadores: trabajadoresC1, pinned_at: null, costTier: null, costWarning: null };
       }
       else if (path === "/api/conversations/c2/messages") data = [
         { id: "a-c2-pdf", role: "assistant", content: "PDF libre generado: `libre.pdf`. Imagen lista: `infografía final.png`.", model: "nvidia/nemotron-test", created_at: now },
@@ -1169,16 +1171,30 @@ try {
     await dialogoOrquestacion.waitFor();
     await dialogoOrquestacion.getByLabel("Preparar auxiliares para peticiones explícitas").check();
     assert.equal(await dialogoOrquestacion.getByRole("radio").count(), 0);
+    assert.equal(await dialogoOrquestacion.locator(".tl-orquestacion-auxiliar").count(), 0, "no se eligen proveedores diferentes automáticamente");
+    assert.equal(await dialogoOrquestacion.getByLabel("Usar modelos diferentes para los auxiliares").isChecked(), false);
+    await page.screenshot({ path: `scratch/capturas-ci/supervisor-heredado-${width}.png` });
+    const guardarHeredado = page.waitForRequest(request => request.url().endsWith("/api/conversations/c1") && request.method() === "PATCH");
+    await dialogoOrquestacion.getByRole("button", { name: "Guardar configuración", exact: true }).click();
+    const configuracionHeredada = (await guardarHeredado).postDataJSON();
+    assert.equal(configuracionHeredada.orquestacion_modelos_personalizados, false);
+    assert.equal(configuracionHeredada.orquestacion_trabajadores[0].model, "opencode/big-pickle", "se conserva el modelo antiguo sin utilizarlo");
+    await dialogoOrquestacion.waitFor({ state: "hidden" });
+    await page.getByRole("button", { name: "Configurar supervisor y modelos auxiliares", exact: true }).click();
+    await dialogoOrquestacion.getByLabel("Usar modelos diferentes para los auxiliares").check();
+    await dialogoOrquestacion.getByRole("button", { name: "Rellenar con sugerencias gratis", exact: true }).click();
     assert.equal(await dialogoOrquestacion.locator(".tl-orquestacion-auxiliar").count(), 3, "el supervisor propone una lista dinámica de hasta tres modelos candidatos");
     await dialogoOrquestacion.getByLabel("Función auxiliar 2").selectOption("arquitectura");
     await dialogoOrquestacion.getByRole("button", { name: "Quitar auxiliar 3", exact: true }).click();
     assert.equal(await dialogoOrquestacion.getByLabel("Modelo auxiliar 3").count(), 0, "se puede reducir la lista de modelos auxiliares");
     await dialogoOrquestacion.getByRole("button", { name: "Añadir modelo", exact: true }).click();
+    await page.screenshot({ path: `scratch/capturas-ci/supervisor-personalizado-${width}.png` });
     const guardarOrquestacion = page.waitForRequest(request => request.url().endsWith("/api/conversations/c1") && request.method() === "PATCH");
     await dialogoOrquestacion.getByRole("button", { name: "Guardar configuración", exact: true }).click();
     const peticionOrquestacion = await guardarOrquestacion;
     const configuracionGuardada = peticionOrquestacion.postDataJSON();
     assert.equal(configuracionGuardada.orquestacion_habilitada, true);
+    assert.equal(configuracionGuardada.orquestacion_modelos_personalizados, true);
     assert.equal(configuracionGuardada.orquestacion_seleccion_automatica, false);
     assert.equal(configuracionGuardada.orquestacion_trabajadores.length, 3, "se guarda la cantidad dinámica de modelos candidatos");
     assert.equal(configuracionGuardada.orquestacion_trabajadores[0].model === configuracionGuardada.model, false, "el modelo supervisor no se duplica como auxiliar");
@@ -1343,6 +1359,11 @@ try {
     await proveedoresInferencia.getByRole("tab", { name: "OpenRouter" }).click();
     await page.getByRole("tabpanel", { name: "OpenRouter" }).waitFor();
     await page.screenshot({ path: `scratch/capturas-ci/proveedores-${width}.png` });
+    const respaldoCuota = page.locator(".aj-cadena-cuota");
+    await respaldoCuota.getByText(/Si no quedan respaldos utilizables/).waitFor();
+    await respaldoCuota.scrollIntoViewIfNeeded();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.screenshot({ path: `scratch/capturas-ci/respaldos-cuota-${width}.png` });
     await page.goto(`${base}/ajustes?pestana=personalizacion`);
     const tarjetaApariencia = page.locator('article[aria-labelledby="ajustes-apariencia"]');
     await tarjetaApariencia.waitFor();

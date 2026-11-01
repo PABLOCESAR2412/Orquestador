@@ -8,6 +8,7 @@ export type Conversation = {
   model: string | null;
   effort: string | null;
   orquestacion_habilitada?: boolean;
+  orquestacion_modelos_personalizados?: boolean;
   orquestacion_seleccion_automatica?: boolean;
   orquestacion_trabajadores?: TrabajadorOrquestacion[];
   project_id?: string | null;
@@ -983,6 +984,7 @@ export const api = {
       title?: string;
       pinned?: boolean;
       orquestacion_habilitada?: boolean;
+      orquestacion_modelos_personalizados?: boolean;
       orquestacion_seleccion_automatica?: boolean;
       orquestacion_trabajadores?: TrabajadorOrquestacion[];
     },
@@ -996,6 +998,7 @@ export const api = {
       costTier: CostTier | null;
       costWarning: string | null;
       orquestacion_habilitada: boolean;
+      orquestacion_modelos_personalizados: boolean;
       orquestacion_seleccion_automatica: boolean;
       orquestacion_trabajadores: TrabajadorOrquestacion[];
     }>(`/api/conversations/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),

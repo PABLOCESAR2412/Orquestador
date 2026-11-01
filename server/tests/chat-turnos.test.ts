@@ -420,9 +420,25 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     expect(mensajes(id).find((mensaje) => mensaje.role === "assistant")?.content).toBe("Respuesta lista.");
   });
 
+  test("los auxiliares heredan el modelo del turno aunque haya proveedores antiguos guardados", async () => {
+    const id = conversacion("google/gemini-test");
+    const anteriores = JSON.stringify([{ rol: "arquitectura", model: "opencode/big-pickle" }]);
+    db.query("UPDATE conversations SET orquestacion_habilitada=1,orquestacion_trabajadores=? WHERE id=?").run(anteriores, id);
+    for (const [indice, model] of ["google/gemini-test", "google/gemini-test-nuevo"].entries()) {
+      db.query("UPDATE conversations SET model=? WHERE id=?").run(model, id);
+      expect((await enviar(id, "Usa varios agentes para revisar esta tarea")).status).toBe(202);
+      await esperar(() => mensajes(id).filter((mensaje) => mensaje.role === "assistant").length === indice + 1);
+      const inicios = db.query<{ titulo: string }, [string]>("SELECT titulo FROM chat_actividad WHERE conversation_id=? ORDER BY seq").all(id)
+        .map((paso) => paso.titulo).filter((titulo) => titulo.includes(`(${model}): inició la revisión`));
+      expect(inicios).toHaveLength(3);
+    }
+    expect(db.query<{ orquestacion_trabajadores: string }, [string]>("SELECT orquestacion_trabajadores FROM conversations WHERE id=?").get(id)?.orquestacion_trabajadores).toBe(anteriores);
+    expect(db.query<{ total: number }, [string]>("SELECT COUNT(*) AS total FROM chat_orquestacion_etapas WHERE conversation_id=? AND model='opencode/big-pickle'").get(id)?.total).toBe(0);
+  });
+
   test("una petición explícita de seguridad ejecuta solo ese auxiliar configurado", async () => {
     const id = conversacion();
-    db.query("UPDATE conversations SET orquestacion_habilitada=1, orquestacion_trabajadores=? WHERE id=?").run(JSON.stringify([
+    db.query("UPDATE conversations SET orquestacion_habilitada=1, orquestacion_modelos_personalizados=1, orquestacion_trabajadores=? WHERE id=?").run(JSON.stringify([
       { rol: "arquitectura", model: "openai/gpt-4.1-mini" },
       { rol: "seguridad", model: "google/gemini-test" },
     ]), id);
@@ -435,7 +451,7 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
 
   test("una continuación en cola conserva la delegación del turno y no relanza auxiliares ya usados", async () => {
     const id = conversacion();
-    db.query("UPDATE conversations SET orquestacion_habilitada=1, orquestacion_trabajadores=? WHERE id=?").run(JSON.stringify([
+    db.query("UPDATE conversations SET orquestacion_habilitada=1, orquestacion_modelos_personalizados=1, orquestacion_trabajadores=? WHERE id=?").run(JSON.stringify([
       { rol: "arquitectura", model: "openai/gpt-4.1-mini" },
     ]), id);
 

@@ -793,7 +793,8 @@ function SelectorAlternativasCuota({
       <p className="aj-nota">
         Si el proveedor confirma que se agotó la cuota, Telo prueba estos modelos en orden y muestra el cambio en la actividad.
         Se admiten hasta 20 modelos con coste cero o cubiertos por la sesión Codex; los modelos con cobro por API no pueden entrar.
-        Si también se agotan, el chat o tarea queda listo para continuar cuando elijas otro modelo.
+        Si no quedan respaldos utilizables, prueba hasta tres modelos con precio gratuito explícito de proveedores conectados.
+        Una cuota agotada se recuerda durante 15 minutos para evitar repetir llamadas fallidas. La disponibilidad se confirma al ejecutar, sin consultas extra a modelos.
       </p>
       {ids.length > 0 && (
         <ol className="aj-modelos-cuota" aria-label="Orden de modelos alternativos">

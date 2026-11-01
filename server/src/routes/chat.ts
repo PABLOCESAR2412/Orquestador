@@ -83,6 +83,7 @@ type ConversationRow = {
   subagent_workspace: string | null;
   subagent_config_dir: string | null;
   orquestacion_habilitada: number;
+  orquestacion_modelos_personalizados: number;
   orquestacion_seleccion_automatica: number;
   orquestacion_trabajadores: string;
 };
@@ -126,6 +127,7 @@ type Conversation = {
   estado_tarea_version?: string | null;
   tiene_sesion?: boolean | number;
   orquestacion_habilitada: boolean;
+  orquestacion_modelos_personalizados: boolean;
   orquestacion_trabajadores: TrabajadorOrquestacion[];
   subchats?: Subchat[];
 };
@@ -146,7 +148,7 @@ export const chat = new Hono();
 // Anclados primero (el más reciente anclado, arriba); luego los demás por fecha.
 chat.get("/conversations", (c) => {
   const rows = db
-    .query<Omit<Conversation, "orquestacion_habilitada" | "orquestacion_trabajadores"> & {
+    .query<Omit<Conversation, "orquestacion_habilitada" | "orquestacion_modelos_personalizados" | "orquestacion_trabajadores"> & {
       last_msg_at: string | null;
       conv_rowid: number;
       task_id: string | null;
@@ -156,6 +158,7 @@ chat.get("/conversations", (c) => {
       task_reanudable: number | null;
       ultimo_rol: string | null;
       orquestacion_habilitada: number;
+      orquestacion_modelos_personalizados: number;
       orquestacion_seleccion_automatica: number;
       orquestacion_trabajadores: string;
     }, []>(`
@@ -173,7 +176,7 @@ chat.get("/conversations", (c) => {
       )
       SELECT c.id, c.title, c.model, c.effort, c.project_id, p.name AS project_name,
              c.pinned_at, c.cuota_modelo, c.created_at, m.last_msg_at, c.rowid AS conv_rowid,
-             c.orquestacion_habilitada, c.orquestacion_seleccion_automatica, c.orquestacion_trabajadores,
+             c.orquestacion_habilitada, c.orquestacion_modelos_personalizados, c.orquestacion_seleccion_automatica, c.orquestacion_trabajadores,
              c.runner_session_id IS NOT NULL AS tiene_sesion,
              t.id AS task_id, t.status AS task_status, t.finished_at AS task_finished_at,
              t.plan_hash AS task_plan_hash, (t.provider_session_id IS NOT NULL OR t.status = 'interrupted') AS task_reanudable,
@@ -220,6 +223,7 @@ chat.get("/conversations", (c) => {
       return {
         ...resto,
         orquestacion_habilitada: Boolean(orquestacionHabilitada),
+        orquestacion_modelos_personalizados: Boolean(r.orquestacion_modelos_personalizados),
         orquestacion_seleccion_automatica: Boolean(seleccionAutomatica),
         orquestacion_trabajadores: trabajadores,
         requiere_continuar: !enCurso && (Boolean(r.cuota_modelo) || (tarea
@@ -905,7 +909,7 @@ function leerConversacion(id: string): ConversationRow | null {
   return (
     db
       .query<ConversationRow, [string]>(
-        "SELECT c.id,c.model,c.effort,c.runner_session_id,c.runner_session_model,c.project_id,c.cuota_modelo,c.parent_conversation_id,c.subagent_workspace,c.subagent_config_dir,c.orquestacion_habilitada,c.orquestacion_seleccion_automatica,c.orquestacion_trabajadores,p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id=c.project_id WHERE c.id=?",
+        "SELECT c.id,c.model,c.effort,c.runner_session_id,c.runner_session_model,c.project_id,c.cuota_modelo,c.parent_conversation_id,c.subagent_workspace,c.subagent_config_dir,c.orquestacion_habilitada,c.orquestacion_modelos_personalizados,c.orquestacion_seleccion_automatica,c.orquestacion_trabajadores,p.repo_path AS repo_path FROM conversations c LEFT JOIN projects p ON p.id=c.project_id WHERE c.id=?",
       )
       .get(id) ?? null
   );

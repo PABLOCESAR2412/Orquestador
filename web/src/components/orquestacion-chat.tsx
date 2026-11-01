@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { ModelInfo, TrabajadorOrquestacion, RolTrabajadorOrquestacion } from "../api";
 import { useDialogo } from "./controls";
 
@@ -32,6 +32,7 @@ export function OrquestacionChat({
   modelo,
   esfuerzo,
   habilitada,
+  modelosPersonalizados = false,
   preactivarAuxiliares = false,
   trabajadores,
   modelos,
@@ -43,42 +44,30 @@ export function OrquestacionChat({
   modelo: string | null;
   esfuerzo: string | null;
   habilitada: boolean;
+  modelosPersonalizados?: boolean;
   preactivarAuxiliares?: boolean;
   trabajadores: TrabajadorOrquestacion[];
   modelos: ModelInfo[];
   guardando: boolean;
   error?: string | null;
   onCerrar: () => void;
-  onGuardar: (config: { model: string; effort: string | null; orquestacion_habilitada: boolean; orquestacion_seleccion_automatica: boolean; orquestacion_trabajadores: TrabajadorOrquestacion[] }) => void;
+  onGuardar: (config: { model: string; effort: string | null; orquestacion_habilitada: boolean; orquestacion_modelos_personalizados: boolean; orquestacion_seleccion_automatica: boolean; orquestacion_trabajadores: TrabajadorOrquestacion[] }) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const sugerenciasInicialesAplicadas = useRef(Boolean(trabajadores.length || !preactivarAuxiliares));
   const [coordinador, setCoordinador] = useState(modelo ?? "");
   const [esfuerzoActual, setEsfuerzoActual] = useState(esfuerzo);
   const [activa, setActiva] = useState(habilitada || preactivarAuxiliares);
-  const [auxiliares, setAuxiliares] = useState<TrabajadorOrquestacion[]>(() =>
-    trabajadores.length
-      ? trabajadores
-      : preactivarAuxiliares
-        ? recomendar(modelos, new Set([modelo ?? ""]))
-        : trabajadores,
-  );
+  const [usarModelosPropios, setUsarModelosPropios] = useState(modelosPersonalizados);
+  const [auxiliares, setAuxiliares] = useState<TrabajadorOrquestacion[]>(trabajadores);
   const [verModelosConCosto, setVerModelosConCosto] = useState(() =>
     Boolean((modelo && modelos.some((item) => item.id === modelo && !item.free)) || trabajadores.some((trabajador) => modelos.some((item) => item.id === trabajador.model && !item.free))),
   );
   useDialogo(ref, onCerrar);
 
-  useEffect(() => {
-    if (!preactivarAuxiliares || !activa || sugerenciasInicialesAplicadas.current || !modelos.length) return;
-    sugerenciasInicialesAplicadas.current = true;
-    if (!auxiliares.length) setAuxiliares(recomendar(modelos, new Set([coordinador])));
-  }, [activa, auxiliares.length, coordinador, modelos, preactivarAuxiliares]);
-
   const modeloCoordinador = modelos.find((item) => item.id === coordinador);
   const seleccionados = new Set([coordinador, ...auxiliares.map((trabajador) => trabajador.model)]);
   const disponibles = modelos.filter((item) => item.free || verModelosConCosto || seleccionados.has(item.id));
   const grupos = opcionesPorCosto(disponibles);
-  const recomendaciones = recomendar(modelos, new Set([coordinador]));
   const elegirCoordinador = (id: string) => {
     setCoordinador(id);
     setAuxiliares((actuales) => actuales.filter((trabajador) => trabajador.model !== id));
@@ -105,6 +94,7 @@ export function OrquestacionChat({
       model: coordinador,
       effort: esfuerzoActual,
       orquestacion_habilitada: activa,
+      orquestacion_modelos_personalizados: activa && usarModelosPropios,
       orquestacion_seleccion_automatica: false,
       orquestacion_trabajadores: auxiliares,
     });
@@ -139,6 +129,10 @@ export function OrquestacionChat({
             {seleccionarModelo(coordinador, elegirCoordinador, "Modelo supervisor")}
             <span className="tl-campo-ayuda">Este modelo también será el seleccionado para el chat en escritorio y móvil.</span>
           </label>
+          <label className="tl-orquestacion-toggle tl-orquestacion-incluir-costo">
+            <input type="checkbox" checked={verModelosConCosto} onChange={(event) => setVerModelosConCosto(event.target.checked)} />
+            <span>Mostrar modelos que pueden tener costo</span>
+          </label>
 
           {modeloCoordinador && !modeloCoordinador.free && (
             <p className="tl-orquestacion-costo" role="note">El supervisor seleccionado no aparece como gratis en el catálogo de Telo; consulta las condiciones del proveedor antes de usarlo.</p>
@@ -148,55 +142,53 @@ export function OrquestacionChat({
             <input type="checkbox" checked={activa} onChange={(event) => {
               const habilitar = event.target.checked;
               setActiva(habilitar);
-              if (habilitar) {
-                if (!auxiliares.length && recomendaciones.length) setAuxiliares(recomendaciones);
-              }
             }} />
             <span>Preparar auxiliares para peticiones explícitas</span>
           </label>
 
           {activa && (
             <section className="tl-orquestacion-trabajadores" aria-label="Modelos auxiliares">
-              <div className="tl-orquestacion-subtitulo">
-                <h3>Modelos de trabajo</h3>
-                <div className="tl-orquestacion-controles">
-                  <button type="button" className="ghost task-mini-btn" onClick={reponerRecomendaciones} disabled={!recomendar(modelos, new Set([coordinador])).length}>Rellenar con sugerencias gratis</button>
-                  <button type="button" className="ghost task-mini-btn" onClick={agregarAuxiliar} disabled={auxiliares.length >= 3 || modelos.every((item) => (!item.free && !verModelosConCosto) || seleccionados.has(item.id))}>Añadir modelo</button>
-                </div>
-              </div>
-              <p className="tl-orquestacion-nota">Se ejecutan solo cuando los pides en el mensaje actual. Si nombras una función o modelo configurado, se utiliza ese auxiliar; en otro caso se usan los seleccionados. Guardar esta configuración no inicia agentes.</p>
-              {auxiliares.map((trabajador, indice) => (
-                <div className="tl-orquestacion-auxiliar" key={`${indice}-${trabajador.model}`}>
-                  <label className="tl-campo">
-                    <span className="tl-campo-etiqueta">Función auxiliar {indice + 1}</span>
-                    <select className="tl-campo-texto tl-orquestacion-select" aria-label={`Función auxiliar ${indice + 1}`} value={trabajador.rol} onChange={(event) => actualizarAuxiliar(indice, { rol: event.target.value as RolTrabajadorOrquestacion })}>
-                      {ROLES.map(({ id, titulo }) => <option key={id} value={id}>{titulo}</option>)}
-                    </select>
-                  </label>
-                  <label className="tl-campo">
-                    <span className="tl-campo-etiqueta">Modelo auxiliar {indice + 1}</span>
-                    {seleccionarModelo(trabajador.model, (model) => {
-                      if (model) actualizarAuxiliar(indice, { model });
-                      else setAuxiliares((actuales) => actuales.filter((_item, actual) => actual !== indice));
-                    }, `Modelo auxiliar ${indice + 1}`, new Set([coordinador, ...auxiliares.filter((_otro, actual) => actual !== indice).map((otro) => otro.model)]))}
-                  </label>
-                  {(() => {
-                    const seleccionado = modelos.find((item) => item.id === trabajador.model);
-                    return seleccionado && !seleccionado.free
-                      ? <span className="tl-campo-ayuda">Este modelo puede tener costo o consumir una cuota de pago del proveedor.</span>
-                      : null;
-                  })()}
-                  <button type="button" className="tl-boton tl-orquestacion-quitar" aria-label={`Quitar auxiliar ${indice + 1}`} onClick={() => setAuxiliares((actuales) => actuales.filter((_item, actual) => actual !== indice))}>Quitar modelo</button>
-                </div>
-              ))}
-              {!auxiliares.length && <p className="tl-orquestacion-costo" role="note">{recomendaciones.length ? "Todavía no hay modelos auxiliares seleccionados. El supervisor puede responder sin análisis auxiliares." : "El catálogo no tiene modelos marcados como gratis disponibles para auxiliares. Puedes mostrar modelos con posible costo y añadirlos manualmente, o guardar el supervisor sin auxiliares."}</p>}
-              <label className="tl-orquestacion-toggle tl-orquestacion-incluir-costo">
-                <input type="checkbox" checked={verModelosConCosto} onChange={(event) => setVerModelosConCosto(event.target.checked)} />
-                <span>Mostrar modelos que pueden tener costo</span>
+              <label className="tl-orquestacion-toggle">
+                <input type="checkbox" checked={usarModelosPropios} onChange={(event) => setUsarModelosPropios(event.target.checked)} />
+                <span>Usar modelos diferentes para los auxiliares</span>
               </label>
-              <p className="tl-campo-ayuda">Las sugerencias son reglas locales basadas en nombres y etiquetas del catálogo; no son una evaluación de la petición por un modelo.</p>
-
-
+              {!usarModelosPropios && <p className="tl-orquestacion-nota">Los auxiliares de arquitectura, seguridad y verificación usarán {modeloCoordinador?.name ?? coordinador}, el modelo seleccionado en el chat. Cambiar de modelo también cambia sus próximas revisiones. Las selecciones anteriores quedan guardadas sin utilizarse.</p>}
+              {usarModelosPropios && <>
+                <div className="tl-orquestacion-subtitulo">
+                  <h3>Modelos de trabajo</h3>
+                  <div className="tl-orquestacion-controles">
+                    <button type="button" className="ghost task-mini-btn" onClick={reponerRecomendaciones} disabled={!recomendar(modelos, new Set([coordinador])).length}>Rellenar con sugerencias gratis</button>
+                    <button type="button" className="ghost task-mini-btn" onClick={agregarAuxiliar} disabled={auxiliares.length >= 3 || modelos.every((item) => (!item.free && !verModelosConCosto) || seleccionados.has(item.id))}>Añadir modelo</button>
+                  </div>
+                </div>
+                <p className="tl-orquestacion-nota">Se ejecutan solo cuando los pides en el mensaje actual. Si nombras una función o modelo configurado, se utiliza ese auxiliar; en otro caso se usan los seleccionados. Guardar esta configuración no inicia agentes.</p>
+                {auxiliares.map((trabajador, indice) => (
+                  <div className="tl-orquestacion-auxiliar" key={`${indice}-${trabajador.model}`}>
+                    <label className="tl-campo">
+                      <span className="tl-campo-etiqueta">Función auxiliar {indice + 1}</span>
+                      <select className="tl-campo-texto tl-orquestacion-select" aria-label={`Función auxiliar ${indice + 1}`} value={trabajador.rol} onChange={(event) => actualizarAuxiliar(indice, { rol: event.target.value as RolTrabajadorOrquestacion })}>
+                        {ROLES.map(({ id, titulo }) => <option key={id} value={id}>{titulo}</option>)}
+                      </select>
+                    </label>
+                    <label className="tl-campo">
+                      <span className="tl-campo-etiqueta">Modelo auxiliar {indice + 1}</span>
+                      {seleccionarModelo(trabajador.model, (model) => {
+                        if (model) actualizarAuxiliar(indice, { model });
+                        else setAuxiliares((actuales) => actuales.filter((_item, actual) => actual !== indice));
+                      }, `Modelo auxiliar ${indice + 1}`, new Set([coordinador, ...auxiliares.filter((_otro, actual) => actual !== indice).map((otro) => otro.model)]))}
+                    </label>
+                    {(() => {
+                      const seleccionado = modelos.find((item) => item.id === trabajador.model);
+                      return seleccionado && !seleccionado.free
+                        ? <span className="tl-campo-ayuda">Este modelo puede tener costo o consumir una cuota de pago del proveedor.</span>
+                        : null;
+                    })()}
+                    <button type="button" className="tl-boton tl-orquestacion-quitar" aria-label={`Quitar auxiliar ${indice + 1}`} onClick={() => setAuxiliares((actuales) => actuales.filter((_item, actual) => actual !== indice))}>Quitar modelo</button>
+                  </div>
+                ))}
+                {!auxiliares.length && <p className="tl-orquestacion-nota">Añade un modelo o aplica sugerencias. Si no eliges ninguno, los auxiliares heredan el modelo del chat.</p>}
+                <p className="tl-campo-ayuda">Las sugerencias son reglas locales basadas en nombres y etiquetas del catálogo; no son una evaluación de la petición por un modelo.</p>
+              </>}
             </section>
           )}
 

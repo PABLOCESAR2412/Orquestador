@@ -276,8 +276,8 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
     let informes: string[] = [];
     let gestionada = false;
     if (analizarConSubagentes && task.conversation_id && turnoChat && pideSubagentes(task.prompt)) {
-      const conv = db.query<{ id: string; project_id: string | null; parent_conversation_id: string | null; orquestacion_habilitada: number; orquestacion_trabajadores: string }, [string]>(
-        "SELECT id,project_id,parent_conversation_id,orquestacion_habilitada,orquestacion_trabajadores FROM conversations WHERE id=?",
+      const conv = db.query<{ id: string; project_id: string | null; parent_conversation_id: string | null; orquestacion_habilitada: number; orquestacion_modelos_personalizados: number; orquestacion_trabajadores: string }, [string]>(
+        "SELECT id,project_id,parent_conversation_id,orquestacion_habilitada,orquestacion_modelos_personalizados,orquestacion_trabajadores FROM conversations WHERE id=?",
       ).get(task.conversation_id);
       if (conv && !conv.parent_conversation_id) {
         gestionada = true;
@@ -365,6 +365,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
       },
       onCambioModeloCuota: (agotado, siguiente) => {
         registrarEvento(task.id, "modelo_respaldo", `Cuota agotada en ${agotado}; continúo automáticamente con ${siguiente}.`);
+        if (task.conversation_id && turnoChat) registrarActividad(task.conversation_id, turnoChat.id, { tipo: "texto", texto: `Se agotó la cuota de ${agotado}; continúo automáticamente con ${siguiente}.` });
       },
     });
     if (result.modelo !== modeloSolicitado || result.variante !== esfuerzoSolicitado) {
