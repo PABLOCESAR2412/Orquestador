@@ -82,6 +82,12 @@ Si el plan no requiere aprobación (ningún commit, push o PR, y sin preguntas),
 - Registra tokens y costo de cada llamada en la tabla `usage`, como ya lo hace el chat.
 - El plan lo aprueba el usuario. El obrero no cambia el plan en silencio: si el plan no sirve, lo reporta y la tarea vuelve a analizarse.
 
+## Graphify por proyecto
+
+Cada repositorio mantiene su propio `graphify-out/graph.json`. Al preparar una tarea de proyecto, Telo consulta el grafo local con la solicitud, añade hasta 6 KB de contexto al analizador y al obrero, y registra el resultado en «Actividad de Telo: Graphify y skills». El grafo puede estar desactualizado: verifica sus referencias en los archivos del workspace. Si no existe o no hay coincidencias, la tarea continúa y la actividad lo indica. Nunca reutilices el grafo de otro proyecto.
+
+Las skills activadas se registran por fase en la misma actividad, incluso cuando no se activó ninguna. Así el usuario puede ver qué guías influyeron realmente en el plan o la ejecución.
+
 ## Estado del código
 
 Existen la cola, el runner de OpenCode, el registro de costo, el analizador y el obrero (`server/src/worker.ts`, `server/src/plan.ts`), el plan y el reporte por tarea, y la aprobación del plan. El worker corre con OpenCode real en el VM, con trazas y sesiones (ver `SEGUIMIENTO.md` fase 5). Gobernanza en marcha: purga del historial vencido y índices de `repository_actions` (migración 039), vigilante de inactividad y escaneo de secretos sobre los blobs del índice. Web Push está implementado (migración 040); falta validar la entrega real en dispositivos (fase 8). Ver `SEGUIMIENTO.md`.
