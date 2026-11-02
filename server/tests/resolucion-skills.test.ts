@@ -233,10 +233,12 @@ test("activa skills globales por tipo de tarea en el prompt compartido por todos
 
   // La resolución no depende del runner ni del modelo: el mismo prompt enriquecido se usa para Codex y OpenCode.
   const resultado = inyectarSkillsEnPrompt("Arregla el responsive del chat y verifica su aspecto en el navegador.");
-  expect(resultado.skillsInvocadas).toEqual(["frontend-design", "playwright"]);
+  expect(resultado.skillsInvocadas).toEqual(["frontend-design", "playwright", "ponytail"]);
   expect(resultado.promptFinal).toContain("Instrucciones frontend-design.");
   expect(resultado.promptFinal).toContain("Instrucciones playwright.");
-  expect(resultado.promptFinal).not.toContain("Instrucciones ponytail.");
+  expect(resultado.promptFinal).toContain("Instrucciones ponytail.");
+  const solicitudLarga = "Corrige errores del chat. " + "Contexto del proyecto. ".repeat(240);
+  expect(inyectarSkillsEnPrompt(solicitudLarga).skillsInvocadas).toContain("ponytail");
 });
 
 test("activa la guía visual para crear imágenes e infografías, no para analizarlas", () => {
