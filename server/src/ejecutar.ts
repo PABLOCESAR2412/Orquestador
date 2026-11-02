@@ -424,6 +424,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     soloLectura: opts.soloLectura,
   };
 
+  let skillsRegistradas = false;
   const baseParaModelo = (modelo: string, variante?: string) => {
     if (sesion && modeloSesion !== modelo) alSesion(null, null);
     const promptBase = sesion || perfilAuxiliar(opts)
@@ -433,12 +434,19 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
         : opts.prompt;
     const prompt = `${guiaRtk}\n\n${promptBase}`;
     const visuales = imagenesDelPrompt(opts.conversationId, prompt, solicitudSkills);
+    const skills = inyectarSkillsEnPrompt(visuales.prompt, opts.projectId, solicitudSkills, opts.cwd);
+    if (opts.taskId && !skillsRegistradas) {
+      skillsRegistradas = true;
+      const fase = opts.usageRole === "analyzer" ? "Analizador" : "Obrero";
+      const lista = skills.skillsInvocadas.length ? skills.skillsInvocadas.join(", ") : "ninguna para esta solicitud";
+      registrarEvento(opts.taskId, "skills_activadas", `${fase}: ${lista}.`);
+    }
     return {
       ...comunes,
       prompt: conEstilo(
         conContratoEjecucion(
           conMemoria(
-            conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(visuales.prompt, opts.projectId, solicitudSkills, opts.cwd).promptFinal, opts.conversationId, opts.cwd),
+            conInstrucciones(opts.projectId, skills.promptFinal, opts.conversationId, opts.cwd),
             memoria,
             opts.aprender === true,
           ), opts.cwd,
