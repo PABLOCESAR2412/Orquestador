@@ -682,6 +682,12 @@ async function ejecutarOpenCode(opts: {
   const textoFinal = textoTrasHerramientas.trim() || text.trim() || (huboCompactacion
     ? "El contexto se compactó, pero la ejecución terminó sin una respuesta final. Puedes continuar desde la sesión guardada."
     : "");
+  if (!textoFinal) {
+    throw new ErrorAgente(
+      "OpenCode terminó correctamente con " + opts.model + ", pero el proveedor no devolvió texto final. No se guardó una respuesta vacía; puedes reintentar el turno o revisar la actividad del proveedor.",
+      "",
+    );
+  }
   if (!usage || (usage.input === 0 && usage.output === 0)) {
     usage = estimarUso(opts.prompt, textoEstimacion.trim() || textoFinal);
     opts.onUso?.(usage);

@@ -120,18 +120,26 @@ async function medirCarpetas(): Promise<Carpeta[]> {
 }
 
 let cacheCarpetas: { at: number; valor: Carpeta[] } | null = null;
-let medicionCarpetas: Promise<Carpeta[]> | null = null;
-async function carpetasCacheadas(): Promise<Carpeta[]> {
-  if (cacheCarpetas && Date.now() - cacheCarpetas.at < TIEMPO_CACHE_MS) return cacheCarpetas.valor;
-  // El recorrido puede medir cientos de miles de entradas. Comparte la medición si varias
-  // solicitudes de estado llegan a la vez, en vez de multiplicar el I/O del servidor.
+let medicionCarpetas: Promise<void> | null = null;
+let errorMedicionCarpetas = false;
+function actualizarCarpetasEnSegundoPlano(): void {
+  if (medicionCarpetas) return;
   medicionCarpetas ??= medirCarpetas()
     .then((valor) => {
       cacheCarpetas = { at: Date.now(), valor };
-      return valor;
+      errorMedicionCarpetas = false;
     })
+    .catch(() => { errorMedicionCarpetas = true; })
     .finally(() => { medicionCarpetas = null; });
-  return medicionCarpetas;
+}
+
+function carpetasCacheadas(): { carpetas: Carpeta[]; actualizando: boolean; error: boolean } {
+  if (!cacheCarpetas || Date.now() - cacheCarpetas.at >= TIEMPO_CACHE_MS) actualizarCarpetasEnSegundoPlano();
+  return {
+    carpetas: cacheCarpetas?.valor ?? [],
+    actualizando: medicionCarpetas !== null,
+    error: errorMedicionCarpetas,
+  };
 }
 
 // Versión de una herramienta: primera línea, sin rutas. Nunca lanza error.
@@ -251,10 +259,10 @@ servidor.post("/servidor/limpieza", async c => {
 
 // GET /api/servidor
 servidor.get("/servidor", async (c) => {
-  const [disco_datos, disco_proyectos, carpetas, herramientas, commit] = await Promise.all([
+  const estadoCarpetas = carpetasCacheadas();
+  const [disco_datos, disco_proyectos, herramientas, commit] = await Promise.all([
     discoDe(resolve(config.dataDir)),
     discoDe(config.projectsDir ? resolve(config.projectsDir) : null),
-    carpetasCacheadas(),
     herramientasCacheadas(),
     commitDelServidor(),
   ]);
@@ -273,7 +281,9 @@ servidor.get("/servidor", async (c) => {
       { etiqueta: "datos", ...disco_datos },
       { etiqueta: "proyectos", ...disco_proyectos },
     ],
-    carpetas,
+    carpetas: estadoCarpetas.carpetas,
+    carpetas_actualizando: estadoCarpetas.actualizando,
+    carpetas_error: estadoCarpetas.error,
     herramientas,
     ...costosYTareas(),
   });

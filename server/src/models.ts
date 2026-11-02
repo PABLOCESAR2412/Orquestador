@@ -38,6 +38,8 @@ const GROUPS: { label: string; pattern: RegExp }[] = [
 const ALWAYS_EXCLUDE = /~|image|vision/;
 // Versiones preview de pago: duplican a las estables. Las gratuitas sí se listan.
 const PAID_EXCLUDE = /preview|customtools/;
+// Retira endpoints de Google que ya no admiten solicitudes de cuentas nuevas.
+const GOOGLE_NO_DISPONIBLES = /^google\/(?:gemini-2\.0-|gemini-2\.5-|gemini-3\.1-flash-lite-preview$)/;
 
 const WARNINGS: Record<CostTier, string | null> = {
   desconocido: "El catálogo no publica un precio verificable. Este modelo no se considera gratuito ni se usa como respaldo.",
@@ -89,7 +91,7 @@ export function parseModels(txt: string, conClave: ReadonlyMap<string, string> =
     const priceKnown = typeof raw.cost?.input === "number" && Number.isFinite(raw.cost.input) && raw.cost.input >= 0 && typeof raw.cost?.output === "number" && Number.isFinite(raw.cost.output) && raw.cost.output >= 0;
     const free = priceKnown && inputUsd === 0 && outputUsd === 0;
 
-    if (ALWAYS_EXCLUDE.test(id) || (!free && PAID_EXCLUDE.test(id))) continue;
+    if (ALWAYS_EXCLUDE.test(id) || GOOGLE_NO_DISPONIBLES.test(id) || (!free && PAID_EXCLUDE.test(id))) continue;
 
     const matched = GROUPS.find((g) => g.pattern.test(id));
     const costTier = priceKnown ? tierFor(free, outputUsd) : "desconocido";

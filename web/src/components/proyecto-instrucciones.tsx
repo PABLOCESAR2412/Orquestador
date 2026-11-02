@@ -108,6 +108,11 @@ export function ProyectoInstrucciones({ proyecto }: { proyecto: Project }) {
             Añadido desde {fuentes.join(", ")}. Revisa el texto y guarda.
           </p>
         )}
+        {fuentes?.length === 0 && !sugerir.isPending && (
+          <p className="help-note" role="status">
+            El repo todavía no tiene AGENTS.md, CLAUDE.md ni README.md para sugerir.
+          </p>
+        )}
       </form>
     </section>
   );

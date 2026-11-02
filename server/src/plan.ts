@@ -163,13 +163,15 @@ export function requiereAprobacion(plan: Plan): boolean {
   return plan.requiere_aprobacion.length > 0 || plan.preguntas.length > 0;
 }
 
-// Un reporte sin JSON no se pierde: el texto del agente pasa a ser el resumen.
+// Sin el reporte JSON, el texto libre no demuestra que el plan se haya completado.
 export function validarReporte(valor: unknown, textoPlano: string): Reporte {
   if (!esObjeto(valor)) {
-    const resumen = textoPlano.trim().slice(0, 4000);
+    const resumen = textoPlano.trim()
+      ? "El agente no entregó el reporte estructurado obligatorio. No se puede confirmar que el plan se haya completado."
+      : "El agente terminó sin devolver el reporte estructurado obligatorio. No se puede confirmar el resultado.";
     return {
-      estado: resumen ? "completado" : "fallo",
-      resumen: resumen || "El agente terminó sin devolver un resumen ni cambios o pruebas verificables. No se puede confirmar el resultado.",
+      estado: "fallo",
+      resumen,
       cambios: [],
       pruebas: [],
       pendientes: [],
@@ -305,7 +307,7 @@ export function promptReparacion(motivo: string): string {
 // desviaciones se comprueban igual que en la ejecución original.
 export function promptCorreccion(plan: Plan, reporte: Reporte, texto: string): string {
   const lineas = [
-    "Eres el obrero de Telo. CORRECCIÓN DEL OBRERO: tu verificación reportó un fallo. Corrígelo y vuelve a entregar.",
+    "Eres el obrero de Telo. La ejecución anterior no dejó una entrega verificable. Revisa el plan y el estado actual del workspace; completa lo pendiente, corrige los fallos comprobados y vuelve a entregar.",
     "",
     "Reporte del intento anterior:",
     JSON.stringify(reporte, null, 2),
@@ -316,6 +318,7 @@ export function promptCorreccion(plan: Plan, reporte: Reporte, texto: string): s
   }
   lineas.push(
     "",
+    "No inventes fallos ni repitas trabajo ya terminado. Si el trabajo ya cumple el plan, compruébalo y entrega el reporte estructurado; si falta algo, termínalo dentro del plan.",
     "Corrige el fallo dentro del plan aprobado de abajo: mismos archivos y pasos, sin salirte del alcance.",
     'Si el fallo solo se arregla saliéndote del plan, responde con "estado": "desviacion" y el motivo, igual que antes.',
     "",

@@ -91,3 +91,16 @@ test("un paso de uso repetido se suma una vez, también después de reanudar", a
     expect(db.query("SELECT COUNT(*) AS n,SUM(input_tokens) AS tokens FROM usage WHERE provider_event_id LIKE 'opencode:step:ses_uso_unico:%'").get()).toEqual({ n: 2, tokens: 200 });
   } finally { spawn.mockRestore(); }
 });
+
+test("un cierre exitoso de OpenCode sin respuesta visible se informa como error recuperable", async () => {
+  const spawn = spyOn(Bun, "spawn").mockImplementation((() => ({
+    pid: 2147483647,
+    stdout: new Blob([]).stream(),
+    stderr: new Blob([]).stream(),
+    exited: Promise.resolve(0),
+  })) as unknown as typeof Bun.spawn);
+  try {
+    await expect(runOpenCode({ cwd: raiz, model: "google/gemini-3.1-flash-lite", prompt: "Analiza", timeoutMs: null, tiempoSinActividadMs: null }))
+      .rejects.toThrow("el proveedor no devolvió texto final");
+  } finally { spawn.mockRestore(); }
+});

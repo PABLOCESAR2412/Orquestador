@@ -37,3 +37,19 @@ test("un catálogo sin precio o con precio parcial/inválido no demuestra gratui
   const gratis=parseModels('google/gratis\n{"cost":{"input":0,"output":0}}\n')[0]!;
   expect(gratis.free).toBe(true);expect(gratis.priceKnown).toBe(true);
 });
+
+test("oculta modelos Gemini de Google cerrados o restringidos y conserva proveedores alternativos", () => {
+  const ids = [
+    "google/gemini-2.0-flash",
+    "google/gemini-2.5-flash",
+    "google/gemini-2.5-flash-lite",
+    "google/gemini-3.1-flash-lite-preview",
+    "google/gemini-3.1-flash-lite",
+    "openrouter/gemini-2.5-flash",
+  ];
+  const catalogo = parseModels(ids.flatMap((id) => [id, modelo]).join("\n"));
+  expect(catalogo.map((m) => m.id)).toEqual([
+    "google/gemini-3.1-flash-lite",
+    "openrouter/gemini-2.5-flash",
+  ]);
+});

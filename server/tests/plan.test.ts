@@ -93,10 +93,12 @@ describe("requiereAprobacion", () => {
 });
 
 describe("validarReporte", () => {
-  test("sin JSON, el texto del agente es el resumen", () => {
+  test("el texto libre sin reporte estructurado no confirma que la tarea se completó", () => {
     const r = validarReporte(undefined, "Listo, ordené las notas.");
-    expect(r.estado).toBe("completado");
-    expect(r.resumen).toBe("Listo, ordené las notas.");
+    expect(r.estado).toBe("fallo");
+    expect(r.resumen).toContain("reporte estructurado obligatorio");
+    expect(r.resumen).toContain("No se puede confirmar");
+    expect(r.resumen).not.toContain("Listo, ordené las notas.");
     expect(r.desviacion).toBeNull();
   });
 
