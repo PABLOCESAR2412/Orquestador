@@ -29,6 +29,26 @@ test("recupera pruebas, cambios y pendientes del nuevo informe estructurado", ()
   });
 });
 
+test("clasifica reportes antiguos bloqueados por workspace y credenciales", () => {
+  const datos = interpretarRespuestaTarea(JSON.stringify({
+    estado: "fallo",
+    resumen: "El workspace sigue sin package.json, lockfile ni dist/; CLOUDFLARE_API_TOKEN no está disponible.",
+    cambios: [],
+    pruebas: [],
+    pendientes: ["Configurar Cloudflare en el servicio"],
+  }));
+  expect(datos?.bloqueante_externo).toContain("CLOUDFLARE_API_TOKEN");
+});
+
+test("conserva el bloqueante explícito en reportes nuevos", () => {
+  const datos = interpretarRespuestaTarea(JSON.stringify({
+    estado: "fallo",
+    resumen: "El despliegue quedó detenido.",
+    bloqueante_externo: "Falta configurar el token de Cloudflare.",
+  }));
+  expect(datos?.bloqueante_externo).toBe("Falta configurar el token de Cloudflare.");
+});
+
 test("tolera JSON malformado sin ejecutar expresiones del modelo", () => {
   const datos = interpretarRespuestaTarea('{"estado":"desviacion","resumen":"No hay cambios","pendientes":["x".replace("x","y")]}');
   expect(datos?.resumen).toBe("No hay cambios");

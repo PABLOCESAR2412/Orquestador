@@ -4,8 +4,8 @@ import { createHash } from "node:crypto";
 // El usuario lo aprueba si hace falta. El obrero ejecuta solo ese plan y entrega un reporte en JSON.
 // Aquí están los prompts y la validación; no hay estado ni acceso a la base.
 
-// Plan inicial + dos replanificaciones. Pasado el tope, una desviación falla la tarea.
-export const MAX_PLANES = 3;
+// Plan inicial + una replanificación. Pasado el tope, una desviación falla la tarea.
+export const MAX_PLANES = 2;
 const MAX_PASOS = 12;
 const MAX_TEXTO = 500;
 const MAX_LISTA = 20;
@@ -48,6 +48,8 @@ export type Reporte = {
   pruebas: { comando: string; resultado: string }[];
   pendientes: string[];
   diff_disponible: boolean;
+  // Precondición externa que requiere configuración humana (credencial, proyecto o workspace).
+  bloqueante_externo?: string | null;
   // Motivo por el que el obrero no siguió el plan. Null si lo siguió.
   desviacion: string | null;
 };
@@ -60,6 +62,7 @@ export function serializarRespuestaTarea(reporte: Reporte, textoPlano = ""): str
     estado: reporte.estado,
     resumen: reporte.resumen?.trim() || textoPlano.trim() || "La tarea no devolvió un resumen.",
     desviacion: reporte.desviacion,
+    bloqueante_externo: reporte.bloqueante_externo ?? null,
     cambios: reporte.cambios ?? [],
     pruebas: reporte.pruebas ?? [],
     pendientes: reporte.pendientes ?? [],
@@ -94,6 +97,21 @@ function rutaValida(ruta: string): boolean {
     !ruta.includes("\0") &&
     !partes.some((parte) => parte === ".." || parte.toLowerCase() === ".git") &&
     partes.some((parte) => parte && parte !== ".");
+}
+
+
+function detectarBloqueosExternos(textoReporte: string): string | null {
+  const motivos: string[] = [];
+  const faltaToken = /(?:CLOUDFLARE_API_TOKEN[\s\S]{0,100}(?:no\s+(?:está|se encuentra|hay|aparece|está configurado|está disponible)|falta|ausente|missing|not\s+(?:set|available|present))|(?:sin|falta|ausente|missing|not\s+(?:set|available|present))[\s\S]{0,100}CLOUDFLARE_API_TOKEN)/i;
+  if (faltaToken.test(textoReporte)) {
+    motivos.push("Falta configurar CLOUDFLARE_API_TOKEN en el servicio que ejecuta la tarea.");
+  }
+  const faltaWorkspace = /\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b[\s\S]{0,120}(?:\bsin\b|\bno\s+(?:tiene|contiene|incluye|hay)\b|\bfalta(?:n)?\b|\bausente\b|\bmissing\b)[\s\S]{0,120}(?:package\.json|lockfile|fuentes?|dist\/)/i.test(textoReporte)
+    || /(?:package\.json|lockfile|fuentes?|dist\/)[\s\S]{0,120}(?:\bfalta(?:n)?\b|\bausente\b|\bmissing\b|\bno\s+(?:está|se encuentra|existe))[\s\S]{0,120}\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b/i.test(textoReporte);
+  if (faltaWorkspace) {
+    motivos.push("El workspace no contiene los archivos o fuentes necesarios para compilar la app.");
+  }
+  return motivos.length ? motivos.join(" ") : null;
 }
 
 // Saca el primer objeto JSON de una respuesta: el texto entero, un bloque ```json o lo que va de la
@@ -176,6 +194,7 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
       pruebas: [],
       pendientes: [],
       diff_disponible: false,
+      bloqueante_externo: null,
       desviacion: null,
     };
   }
@@ -217,8 +236,10 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
         ? motivo ?? "La tarea necesita un plan actualizado."
         : `El reporte no incluyó un resumen, pero registró ${cambios.length} cambio(s), ${pruebas.length} prueba(s) y ${pendientes.length} pendiente(s).`);
 
+  const bloqueanteExterno = texto(valor.bloqueante_externo, 1000)
+    ?? (estadoFinal === "completado" ? null : detectarBloqueosExternos([resumenFinal, ...pendientes, ...pruebas.map((prueba) => prueba.comando + " " + prueba.resultado)].join("\n")));
   return {
-    estado: estadoFinal,
+    estado: bloqueanteExterno ? "fallo" : estadoFinal,
     resumen: pruebaEnFallo
       ? `${resumenFinal} (Marcado como fallo por el servidor: el propio reporte declaró una prueba en fallo.)`
       : resumenFinal,
@@ -226,7 +247,8 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
     pruebas: pruebas.slice(0, MAX_LISTA),
     pendientes,
     diff_disponible: valor.diff_disponible === true,
-    desviacion: estado === "desviacion" ? (motivo ?? "Sin motivo indicado.") : null,
+    bloqueante_externo: bloqueanteExterno,
+    desviacion: bloqueanteExterno ? null : estado === "desviacion" ? (motivo ?? "Sin motivo indicado.") : null,
   };
 }
 
@@ -319,6 +341,7 @@ export function promptCorreccion(plan: Plan, reporte: Reporte, texto: string): s
   lineas.push(
     "",
     "No inventes fallos ni repitas trabajo ya terminado. Si el trabajo ya cumple el plan, compruébalo y entrega el reporte estructurado; si falta algo, termínalo dentro del plan.",
+    "Si falta una precondición externa que no puedes configurar desde el workspace (por ejemplo, credencial, proyecto de hosting o archivos fuente), no repitas intentos de despliegue. Detente, conserva los cambios y marca el requisito en bloqueante_externo; nunca incluyas valores secretos.",
     "Corrige el fallo dentro del plan aprobado de abajo: mismos archivos y pasos, sin salirte del alcance.",
     'Si el fallo solo se arregla saliéndote del plan, responde con "estado": "desviacion" y el motivo, igual que antes.',
     "",
@@ -346,6 +369,7 @@ export function promptObrero(plan: Plan): string {
     "- El clon puede no tener origin: Telo conserva el remoto fuera del workspace. No declares una desviación solo porque git remote esté vacío.",
     "- Ejecuta las pruebas del proyecto. Si no hay pruebas, dilo en el reporte.",
     '- Si algo falla y no puedes terminar, responde con "estado": "fallo" y explica qué pasó y qué intentaste.',
+    "- Si falta una precondición externa que no puedes configurar desde el workspace (credencial, proyecto de hosting, acceso o archivos fuente), no repitas intentos. Detente, conserva los cambios y marca el requisito en bloqueante_externo; nunca incluyas valores secretos.",
     "- Responde en español.",
     "",
     "Plan aprobado:",
@@ -355,7 +379,7 @@ export function promptObrero(plan: Plan): string {
   lineas.push(
     "",
     "Al terminar, responde solo con un objeto JSON, sin texto antes ni después. El resumen es obligatorio: explica qué hiciste aunque no hayas modificado archivos. No devuelvas una respuesta vacía. Usa esta forma:",
-    '{ "estado": "completado", "resumen": "...", "cambios": [{ "archivo": "ruta", "tipo": "crear | editar | borrar" }], "pruebas": [{ "comando": "...", "resultado": "ok | fallo | no_aplica" }], "pendientes": ["..."], "diff_disponible": true, "desviacion": null }',
+    '{ "estado": "completado", "resumen": "...", "cambios": [{ "archivo": "ruta", "tipo": "crear | editar | borrar" }], "pruebas": [{ "comando": "...", "resultado": "ok | fallo | no_aplica" }], "pendientes": ["..."], "diff_disponible": true, "desviacion": null, "bloqueante_externo": null }',
   );
   return lineas.join("\n");
 }

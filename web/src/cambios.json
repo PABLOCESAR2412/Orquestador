@@ -4,6 +4,24 @@
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
     {
+      "fecha": "2026-11-02",
+      "tipo": "minimo",
+      "titulo": "Chat y tareas: evita 409 al repetir Seguir, filtra embeddings y muestra Graphify y skills por fase",
+      "pr": 174
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "minimo",
+      "titulo": "Chat y tareas: evita 409 al repetir Seguir y filtra modelos de embeddings del selector",
+      "pr": 172
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "minimo",
+      "titulo": "Tareas: consulta el Graphify de cada proyecto y muestra las skills activadas",
+      "pr": 173
+    },
+    {
       "fecha": "2026-11-01",
       "tipo": "grande",
       "titulo": "Chat: integra Antigravity nativo y Cloudflare Workers AI con sesiones, credenciales y uso separados",

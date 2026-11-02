@@ -9,7 +9,7 @@ const raiz = mkdtempSync(join(tmpdir(), "telo-seguimiento-"));
 const previos = { DATA_DIR: process.env.DATA_DIR, TELO_AISLAMIENTO: process.env.TELO_AISLAMIENTO };
 process.env.DATA_DIR = join(raiz, "data");
 process.env.TELO_AISLAMIENTO = "desactivado";
-const { runOpenCode } = await import("../src/runners/opencode");
+const { runOpenCode, ErrorAgente } = await import("../src/runners/opencode");
 const { itemDeLinea } = await import("../src/actividad");
 const { db } = await import("../src/db");
 const { registrarUsoAgente } = await import("../src/registro-uso-agente");
@@ -70,7 +70,12 @@ test("tres fallos internos explícitos cierran con error recuperable sin esperar
     return { pid: 2147483647, stdout: new Blob([]).stream(), stderr: new Blob([]).stream(), exited: new Promise(() => {}) };
   }) as unknown as typeof Bun.spawn);
   try {
-    await expect(runOpenCode({ cwd: raiz, model: "opencode/prueba", prompt: "Analiza", timeoutMs: null, tiempoSinActividadMs: null, onSesion: id => { sesion = id; } })).rejects.toThrow("tres reintentos internos");
+    const error = await runOpenCode({ cwd: raiz, model: "opencode/prueba", prompt: "Analiza", timeoutMs: null, tiempoSinActividadMs: null, onSesion: id => { sesion = id; } }).then(() => null, e => e);
+    expect(error).toBeInstanceOf(ErrorAgente);
+    if (error instanceof ErrorAgente) {
+      expect(error.message).toContain("tres reintentos internos");
+      expect(error.reintentosInternosAgotados).toBe(true);
+    }
     expect(String(sesion)).toBe("ses_guardada");
   } finally { spawn.mockRestore(); }
 });

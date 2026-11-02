@@ -230,9 +230,10 @@ describe("clasificación de cuota agotada", () => {
       },
     };
     const mensaje = explicarErrorProveedor(evento);
-    expect(mensaje).toContain("error temporal en sus servidores");
+    expect(mensaje).toContain("Telo clasifica como HTTP 500");
+    expect(mensaje).toContain("no identifica si falló el proveedor, su gateway o la conexión");
     expect(mensaje).toContain("Unexpected server error");
-    expect(mensaje).toContain("selecciona otro modelo");
+    expect(mensaje).toContain("prueba otro modelo o proveedor");
   });
 
   test("ErrorCuota nombra el modelo y ya es cuota", () => {

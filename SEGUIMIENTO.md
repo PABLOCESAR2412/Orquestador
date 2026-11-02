@@ -1,8 +1,15 @@
 # Seguimiento de Telo
 
-Registro central de fases, revisiones y hallazgos. Actualizado: 1 de noviembre de 2026.
+Registro central de fases, revisiones y hallazgos. Actualizado: 2 de noviembre de 2026.
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
+
+## Bloqueos de publicación y reintentos — PR #174
+
+- [x] Diagnóstico del intento Cloudflare Pages: ese workspace no tenía `package.json`, lockfile, fuentes ni `dist/`, y el proceso no tenía `CLOUDFLARE_API_TOKEN`. El inicio de sesión en un navegador no se comparte con el servicio aislado; un token tampoco crea el proyecto o los archivos fuente.
+- [x] Los informes reconocen los faltantes de workspace/credenciales, marcan `Requiere configuración` y no ofrecen una corrección repetible. La acción de corrección solo aparece en el informe fallido más reciente y desaparece al enviar otro mensaje.
+- [x] Una sola reanudación para 5xx/429 transitorios, sin duplicarla si OpenCode ya agotó sus reintentos internos. El obrero se autocorrige una vez como máximo y admite una sola replanificación.
+- [~] La publicación directa desde el agente sigue bloqueada por aislamiento. Falta configurar y validar un flujo explícito de publicación en la VM; no se desplegó esta tarea.
 
 ## Publicación, modelos visibles y Antigravity — PR #171
 

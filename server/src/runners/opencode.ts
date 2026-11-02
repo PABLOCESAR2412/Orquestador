@@ -161,8 +161,12 @@ export function explicarErrorProveedor(evento: unknown): string {
   if (status === 429) {
     return "El proveedor limitó las solicitudes temporalmente. Por dónde empezar: espera un momento o elige otro modelo/proveedor.";
   }
-  if ((status !== null && status >= 500) || /server error|internal error|service unavailable|bad gateway|gateway timeout|temporarily unavailable/i.test(mensaje)) {
+  const error500Generico = /^Unexpected server error(?:\. Check server logs for details\.)?$/i.test(mensaje.trim());
+  if ((status !== null && status >= 500) || error500Generico || /server error|internal error|service unavailable|bad gateway|gateway timeout|temporarily unavailable/i.test(mensaje)) {
     const detalleMsg = mensaje ? `: «${mensaje.slice(0, 160)}»` : "";
+    if (error500Generico) {
+      return `OpenCode devolvió «Unexpected server error», que Telo clasifica como HTTP 500${detalleMsg}. El evento no identifica si falló el proveedor, su gateway o la conexión, así que no permite precisar el origen. Por dónde empezar: revisa la actividad técnica y prueba otro modelo o proveedor.`;
+    }
     return `El proveedor del modelo tuvo un error temporal en sus servidores${status ? ` (HTTP ${status})` : ""}${detalleMsg}. Por dónde empezar: espera unos momentos y vuelve a intentarlo; si el problema persiste, selecciona otro modelo en el selector (por ejemplo, Claude, GPT o Groq).`;
   }
   if (mensaje) return `El proveedor devolvió un error${status === null ? "" : ` (HTTP ${status})`}: ${mensaje.slice(0, 500)}`;
@@ -183,6 +187,7 @@ export class ErrorAgente extends Error {
   constructor(
     mensaje: string,
     readonly detalleProveedor: string,
+    readonly reintentosInternosAgotados = false,
   ) {
     super(mensaje);
   }
@@ -601,6 +606,7 @@ async function ejecutarOpenCode(opts: {
       errorReintentos = new ErrorAgente(
         "El proveedor falló en tres reintentos internos consecutivos. Se conservan la sesión y los archivos; puedes continuar desde el chat o elegir otro modelo.",
         JSON.stringify({ message: String(ev.message || "Error temporal del proveedor").slice(0, 1000) }),
+        true,
       );
       terminarGrupo(proc.pid);
       rechazarReintentos(errorReintentos);

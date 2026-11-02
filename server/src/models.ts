@@ -35,7 +35,7 @@ const GROUPS: { label: string; pattern: RegExp }[] = [
 ];
 
 // Alias que cambian solos y modelos de imagen o visión: nunca se listan.
-const ALWAYS_EXCLUDE = /~|image|vision/;
+const ALWAYS_EXCLUDE = /~|image|vision|embedding|\bembed\b/;
 // Versiones preview de pago: duplican a las estables. Las gratuitas sí se listan.
 const PAID_EXCLUDE = /preview|customtools/;
 // Retira endpoints de Google que ya no admiten solicitudes de cuentas nuevas.

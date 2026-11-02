@@ -248,7 +248,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     expect(fila(id).status).toBe("done");
     // El fallo se devolvió al obrero una vez y el segundo intento entregó un reporte limpio.
     const ciclo = db.query<{ detail: string }, [string]>("SELECT detail FROM task_events WHERE task_id=? AND kind='correccion_iniciada' ORDER BY id DESC LIMIT 1").get(id);
-    expect(ciclo?.detail).toContain("Ciclo 1 de 2");
+    expect(ciclo?.detail).toContain("Ciclo 1 de 1");
     const reporte = JSON.parse(fila(id).reporte);
     expect(reporte.pruebas[0].resultado).toBe("ok");
     expect(reporte.resumen).toBe("Obrero aislado completado");
@@ -259,9 +259,9 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     await esperar(() => fila(id).status === "waiting_approval" || fila(id).status === "failed", id);
     expect((await aprobar(id)).status).toBe(200);
     await esperar(() => fila(id).status === "failed", id);
-    // Dos correcciones con el tope por defecto; el fallo final conserva el reporte y el error.
+    // Una autocorrección con el tope por defecto; el fallo final conserva el reporte y el error.
     const ciclos = db.query<{ kind: string }, [string]>("SELECT COUNT(*) n FROM task_events WHERE task_id=? AND kind='correccion_iniciada'").get(id) as any;
-    expect(ciclos.n).toBe(2);
+    expect(ciclos.n).toBe(1);
     expect(JSON.parse(fila(id).reporte).estado).toBe("fallo");
     expect(fila(id).error).toBe("La verificación sigue fallando");
   }, 20000);
