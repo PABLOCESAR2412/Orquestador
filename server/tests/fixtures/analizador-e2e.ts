@@ -152,14 +152,14 @@ async function main() {
   comprobar(tf.status === "failed" && tf.error?.includes("se desvió del plan 2 veces"), "el tope de desviaciones falla la tarea");
   comprobar(eventos(f).filter((k) => k === "plan_creado").length === 2, "el tope permite dos versiones del plan");
 
-  // G. El obrero reporta un fallo: dos ciclos de corrección y, agotados, la tarea queda fallida con su reporte.
+  // G. El obrero reporta un fallo: una autocorrección y, agotada, la tarea queda fallida con su reporte.
   const g = crearTarea({ ...base, prompt: "Ordena la carpeta FALLO" });
   await esperar(g, ["done", "failed"]);
   const tg = await leer(g);
   comprobar(tg.status === "failed" && tg.reporte?.estado === "fallo", "un reporte de fallo deja la tarea fallida con su reporte");
   comprobar(
-    eventos(g).filter((k) => k === "correccion_iniciada").length === 2,
-    "el fallo del obrero se devuelve como corrección dos veces antes de fallar",
+    eventos(g).filter((k) => k === "correccion_iniciada").length === 1,
+    "el fallo del obrero se devuelve como corrección una vez antes de fallar",
   );
 
   // H. El analizador no devuelve JSON ni al repararlo: la tarea falla con un motivo legible.
