@@ -53,3 +53,12 @@ test("oculta modelos Gemini de Google cerrados o restringidos y conserva proveed
     "openrouter/gemini-2.5-flash",
   ]);
 });
+
+test("no ofrece modelos de embeddings como modelos de chat", () => {
+  const catalogo = parseModels([
+    `google/gemini-embedding-001\n${JSON.stringify({ name: "Gemini Embedding 001", cost: { input: 0, output: 0 } })}`,
+    `google/gemini-3.5-flash-lite\n${modelo}`,
+    `openrouter/text-embedding-3-small\n${JSON.stringify({ name: "Text Embedding 3 Small", cost: { input: 0, output: 0 } })}`,
+  ].join("\n"));
+  expect(catalogo.map((m) => m.id)).toEqual(["google/gemini-3.5-flash-lite"]);
+});
