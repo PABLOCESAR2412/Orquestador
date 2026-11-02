@@ -187,6 +187,7 @@ export class ErrorAgente extends Error {
   constructor(
     mensaje: string,
     readonly detalleProveedor: string,
+    readonly reintentosInternosAgotados = false,
   ) {
     super(mensaje);
   }
@@ -605,6 +606,7 @@ async function ejecutarOpenCode(opts: {
       errorReintentos = new ErrorAgente(
         "El proveedor falló en tres reintentos internos consecutivos. Se conservan la sesión y los archivos; puedes continuar desde el chat o elegir otro modelo.",
         JSON.stringify({ message: String(ev.message || "Error temporal del proveedor").slice(0, 1000) }),
+        true,
       );
       terminarGrupo(proc.pid);
       rechazarReintentos(errorReintentos);

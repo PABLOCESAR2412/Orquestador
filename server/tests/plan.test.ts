@@ -171,6 +171,20 @@ describe("validarReporte", () => {
     expect(r.resumen).toContain("Marcado como fallo por el servidor");
   });
 
+  test("marca faltantes de workspace y credenciales como bloqueantes externos", () => {
+    const r = validarReporte({
+      estado: "fallo",
+      resumen: "El workspace sigue sin package.json, lockfile, fuentes ni dist/; CLOUDFLARE_API_TOKEN no está disponible.",
+      cambios: [],
+      pruebas: [],
+      pendientes: ["Configurar Cloudflare y preparar el proyecto"],
+    }, "");
+    expect(r.estado).toBe("fallo");
+    expect(r.bloqueante_externo).toContain("CLOUDFLARE_API_TOKEN");
+    expect(r.bloqueante_externo).toContain("workspace");
+    expect(r.desviacion).toBeNull();
+  });
+
   test("una prueba en fallo no toca una desviación ya declarada", () => {
     const r = validarReporte(
       { estado: "completado", resumen: "Me faltó permiso.", desviacion: "Falta la API key", pruebas: [{ comando: "bun test", resultado: "fallo" }] },
@@ -191,6 +205,7 @@ describe("serializarRespuestaTarea", () => {
       pendientes: ["Corregir la expectativa"],
       diff_disponible: true,
       desviacion: "La prueba esperaba otro estado.",
+      bloqueante_externo: "Falta una credencial.",
     }));
     expect(respuesta).toMatchObject({
       tipo: "telo_reporte_tarea",
@@ -201,6 +216,7 @@ describe("serializarRespuestaTarea", () => {
       cambios: [{ archivo: "tests/auditoria.test.ts", tipo: "editar" }],
       pruebas: [{ comando: "bun test tests/auditoria.test.ts", resultado: "fallo" }],
       pendientes: ["Corregir la expectativa"],
+      bloqueante_externo: "Falta una credencial.",
     });
   });
 });
@@ -231,6 +247,7 @@ describe("prompts", () => {
     const texto = promptObrero(plan);
     expect(texto).toContain("Ordenar las notas");
     expect(texto).toContain("Usa la rama principal");
+    expect(texto).toContain("bloqueante_externo");
     expect(texto).toContain("No hagas commit, push ni PR");
     expect(texto).toContain("Telo ejecutará esas operaciones");
     expect(texto).toContain("Telo conserva el remoto fuera del workspace");
@@ -251,8 +268,8 @@ describe("prompts", () => {
     expect(texto).toContain("Ordenar las notas");
   });
 
-  test("el tope de planes es el plan inicial más dos replanificaciones", () => {
-    expect(MAX_PLANES).toBe(3);
+  test("el tope de planes es el plan inicial más una replanificación", () => {
+    expect(MAX_PLANES).toBe(2);
   });
 });
 

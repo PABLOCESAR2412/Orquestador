@@ -15,7 +15,7 @@ Estados (la migración 019 los introdujo; el esquema va por la 040, ver `SEGUIMI
 ```
 queued → analyzing → waiting_approval → running → done | failed | cancelled
                   ↘ running (si el plan no pide aprobación)
-running → analyzing (desviación: replanificación, con tope de 3 versiones del plan)
+running → analyzing (desviación: una replanificación; después requiere intervención del usuario)
 ```
 
 Si el plan no requiere aprobación (ningún commit, push o PR, y sin preguntas), pasa directo a `running`. Tras una desviación, siempre espera al usuario.

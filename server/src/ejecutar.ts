@@ -609,14 +609,15 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     const esErrorServidor = codigoHttp !== null && codigoHttp >= 500 && codigoHttp <= 599;
     const esRateLimitTransitorio = codigoHttp === 429 && !esErrorDeCuota(err);
 
-    if (esErrorServidor || esRateLimitTransitorio) {
-      // Las esperas suben con cada intento: un corte de segundos se resuelve con la primera;
-      // una saturación más larga con las siguientes. En total el proveedor tiene ~1,5 min de
-      // margen antes de que el fallo llegue al usuario. TELO_REINTENTO_ESPERAS_MS (lista separada
-      // por comas, en ms) permite a las pruebas acortarlas sin tocar el comportamiento real.
-      const esperas = process.env.TELO_REINTENTO_ESPERAS_MS
+    if ((esErrorServidor || esRateLimitTransitorio) && !(err instanceof ErrorAgente && err.reintentosInternosAgotados)) {
+      // Una sola reanudación corta: evita multiplicar los reintentos que OpenCode/proveedor ya realizó.
+      // TELO_REINTENTO_ESPERAS_MS permite ajustar la espera (en ms) para entornos y pruebas.
+      const esperasConfiguradas = process.env.TELO_REINTENTO_ESPERAS_MS
         ? process.env.TELO_REINTENTO_ESPERAS_MS.split(",").map(Number).filter((n) => Number.isFinite(n) && n >= 0)
-        : esRateLimitTransitorio ? [2_500, 15_000, 45_000] : [1_200, 10_000, 30_000];
+        : null;
+      const esperas = esperasConfiguradas?.length
+        ? esperasConfiguradas
+        : [esRateLimitTransitorio ? 5_000 : 3_000];
       let transitorio = true;
       for (const espera of esperas) {
         await esperar(espera, undefined, { signal: opts.signal });
@@ -642,7 +643,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       if (transitorio) {
         const detalle = err instanceof ErrorAgente ? err.detalleProveedor : "";
         err = new ErrorAgente(
-          `${err instanceof Error ? err.message : String(err)} Telo lo reintentó automáticamente ${esperas.length} veces con esperas de hasta ${Math.round(esperas[esperas.length - 1] / 1000)} s y siguió fallando. Puedes usar «Seguir» (o responder «siga») para retomar la misma sesión, o elegir otro modelo.`,
+          `${err instanceof Error ? err.message : String(err)} Telo lo reintentó automáticamente ${esperas.length} ${esperas.length === 1 ? "vez" : "veces"} (hasta ${Math.round(esperas[esperas.length - 1] / 1000)} s) y siguió fallando. Puedes usar «Seguir» (o responder «siga») para retomar la misma sesión, o elegir otro modelo.`,
           detalle,
         );
       }

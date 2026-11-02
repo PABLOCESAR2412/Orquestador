@@ -59,10 +59,8 @@ import { enMantenimiento, registrarPausaActiva, registrarTrabajo } from "./despl
 
 const MENSAJE_INTERRUMPIDA = "El servidor se reinició mientras la tarea corría. Puedes reanudarla o reintentarla.";
 const MENSAJE_PAUSA_DESPLIEGUE = "Tarea pausada para aplicar una actualización. Se conservó el espacio de trabajo y la sesión del proveedor, si ya existía; puedes continuarla cuando el servidor vuelva.";
-// Iniciativa del obrero: tras un reporte con fallo, el mismo agente corrige en su sesión hasta
-// este tope de ciclos antes de fallar la tarea. TELO_CICLOS_OBRERO lo ajusta; 0 desactiva
-// la iniciativa y falla con el primer reporte, como antes.
-const MAX_CICLOS_OBRERO = Math.max(0, Math.floor(Number(process.env.TELO_CICLOS_OBRERO ?? 2)) || 0);
+// Como máximo una autocorrección; un bloqueo de credenciales/workspace se reporta sin repetir trabajo.
+const MAX_CICLOS_OBRERO = Math.min(1, Math.max(0, Math.floor(Number(process.env.TELO_CICLOS_OBRERO ?? 1)) || 0));
 // Tamaño máximo de cada línea de salida que viaja por el canal en vivo.
 const MAX_LINEA_EN_VIVO = 4096;
 export const MAX_NOTAS = 2000;
@@ -639,7 +637,7 @@ async function ejecutarTarea(task: QueuedTask) {
     let resultado = await faseObrero(ctx);
     for (
       let ciclo = 1;
-      !("desviacion" in resultado) && resultado.reporte.estado === "fallo" && ciclo <= MAX_CICLOS_OBRERO;
+      !("desviacion" in resultado) && resultado.reporte.estado === "fallo" && !resultado.reporte.bloqueante_externo && ciclo <= MAX_CICLOS_OBRERO;
       ciclo++
     ) {
       resultado = await faseObrero(ctx, { numero: ciclo, reporte: resultado.reporte, texto: resultado.texto });

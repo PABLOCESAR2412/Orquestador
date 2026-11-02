@@ -1834,6 +1834,7 @@ export function ChatPage() {
                           cambiarBorrador(texto);
                           window.setTimeout(() => inputRef.current?.focus(), 0);
                         } : undefined}
+                        mostrarCorreccion={i === lista.length - 1 && m.role === "assistant" && !enviandoActual}
                       />
                     </>
                   )}

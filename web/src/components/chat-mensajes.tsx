@@ -220,6 +220,7 @@ export function MensajeAgente({
   sesionCompactada = false,
   duracion,
   onCitar,
+  mostrarCorreccion = true,
 }: {
   texto: string;
   cuando: string;
@@ -231,6 +232,8 @@ export function MensajeAgente({
   onReintentar?: () => void;
   // Carga el texto en el compositor para editarlo o iterar.
   onCitar?: (texto: string) => void;
+  // La corrección solo está vigente para el último informe fallido del chat.
+  mostrarCorreccion?: boolean;
   // Guarda el texto de esta respuesta como documento en el formato elegido.
   onGuardar?: (formato: FormatoDocumento) => void;
   onDerivarSkill?: () => void;
@@ -446,7 +449,7 @@ export function MensajeAgente({
                 reporte={reporte}
                 onAbrirArchivo={onAbrirArchivo}
                 permitirAbrirArchivo={permitirAbrirArchivo}
-                onPrepararCorreccion={onCitar}
+                onPrepararCorreccion={mostrarCorreccion ? onCitar : undefined}
               />
             ) : (
               <Contenido texto={texto} onAbrirArchivo={onAbrirArchivo} permitirAbrirArchivo={permitirAbrirArchivo} />
@@ -552,13 +555,16 @@ function InformeTarea({
   onPrepararCorreccion?: (texto: string) => void;
 }) {
   const pruebas = reporte.pruebas.map((prueba) => ({ ...prueba, resultadoUI: resultadoPrueba(prueba.resultado) }));
+  const bloqueanteExterno = reporte.bloqueante_externo;
   const hayFallo = reporte.estado === "fallo" || pruebas.some((prueba) => prueba.resultadoUI.fallo);
   const requiereRevision = reporte.estado === "desviacion" || reporte.pendientes.length > 0;
-  const estado = hayFallo
-    ? { etiqueta: "Requiere corrección", clase: "is-fallo" }
-    : requiereRevision
-      ? { etiqueta: "Requiere revisión", clase: "is-neutro" }
-      : { etiqueta: "Completada", clase: "is-ok" };
+  const estado = bloqueanteExterno
+    ? { etiqueta: "Requiere configuración", clase: "is-neutro" }
+    : hayFallo
+      ? { etiqueta: "Requiere corrección", clase: "is-fallo" }
+      : requiereRevision
+        ? { etiqueta: "Requiere revisión", clase: "is-neutro" }
+        : { etiqueta: "Completada", clase: "is-ok" };
   const cambiosVisibles = reporte.cambios.slice(0, 4);
   const cambiosRestantes = reporte.cambios.slice(4);
   const listaCambios = (cambios: typeof reporte.cambios) => (
@@ -573,7 +579,7 @@ function InformeTarea({
   );
 
   return (
-    <section className={`tl-reporte-tarea ${hayFallo ? "is-fallo" : ""}`} aria-label="Resultado de la tarea">
+    <section className={`tl-reporte-tarea ${hayFallo && !bloqueanteExterno ? "is-fallo" : ""}`} aria-label="Resultado de la tarea">
       <header className="tl-reporte-cabecera">
         <h3>Resultado de la tarea</h3>
         <span className={`tl-reporte-estado ${estado.clase}`} role="status">{estado.etiqueta}</span>
@@ -581,6 +587,7 @@ function InformeTarea({
       <div className="tl-reporte-resumen">
         <Contenido texto={reporte.resumen} onAbrirArchivo={onAbrirArchivo} permitirAbrirArchivo={permitirAbrirArchivo} />
       </div>
+      {bloqueanteExterno && <p className="tl-reporte-motivo"><strong>Configuración necesaria:</strong> {bloqueanteExterno}</p>}
       {reporte.causa && <p className="tl-reporte-motivo"><strong>Motivo:</strong> {reporte.causa}</p>}
       {pruebas.length > 0 && (
         <section className="tl-reporte-seccion" aria-label="Pruebas">
@@ -613,7 +620,7 @@ function InformeTarea({
           <ul className="tl-reporte-pendientes">{reporte.pendientes.map((pendiente, i) => <li key={`${pendiente}-${i}`}>{pendiente}</li>)}</ul>
         </section>
       )}
-      {hayFallo && onPrepararCorreccion && (
+      {hayFallo && !bloqueanteExterno && onPrepararCorreccion && (
         <div className="tl-reporte-acciones">
           <button type="button" className="tl-boton tl-boton-principal" onClick={() => onPrepararCorreccion(promptCorreccion(reporte))}>
             Preparar corrección
