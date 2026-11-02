@@ -259,6 +259,7 @@ export function entornoDelAgente(propias?: Record<string, string>, modelosPermit
     for (const proveedor of claves) {
       if (!proveedores.has(proveedor.id)) for (const variable of proveedor.variables) delete env[variable];
     }
+    if (!proveedores.has("cloudflare-workers-ai")) delete env.CLOUDFLARE_ACCOUNT_ID;
   }
   return env;
 }

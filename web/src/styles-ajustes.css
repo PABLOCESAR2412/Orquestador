@@ -671,6 +671,7 @@
 .aj-herramientas-locales { display: grid; gap: 8px; max-width: 760px; }
 .aj-herramienta-local {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -682,6 +683,13 @@
 }
 .aj-herramienta-local > div { display: grid; gap: 4px; min-width: 0; }
 .aj-herramienta-local small { color: var(--ink-2); overflow-wrap: anywhere; }
+.aj-modelos-detalle { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+.aj-modelos-detalle summary { cursor: pointer; color: var(--ink); }
+.aj-modelos-visibles { display: grid; gap: 12px; min-width: 0; margin-top: 12px; }
+.aj-lista-modelos { display: grid; gap: 4px; max-height: 360px; overflow-y: auto; }
+.aj-modelo-opcion { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px; border-bottom: 1px solid var(--line); }
+.aj-modelo-opcion span { min-width: 0; overflow-wrap: anywhere; }
+.aj-modelo-opcion small { display: block; color: var(--ink-2); font-size: 11px; }
 @media (max-width: 760px) {
   .aj-herramienta-local { align-items: flex-start; flex-direction: column; gap: 8px; }
 }

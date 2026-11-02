@@ -29,6 +29,8 @@ const PROVEEDOR_LABEL: Record<string, string> = {
   openrouter: "OpenRouter",
   groq: "Groq API",
   nvidia: "NVIDIA API",
+  "cloudflare-workers-ai": "Cloudflare Workers AI",
+  antigravity: "Antigravity CLI",
 };
 
 export const nombreProveedor = (id: string) =>

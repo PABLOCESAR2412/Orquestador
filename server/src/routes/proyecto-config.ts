@@ -14,8 +14,8 @@ import { gitOk, prepararRepoSeguro, tieneGitReal } from "../git";
 import { urlGithubPermitida, mensajeSeguro } from "../workspace";
 import { valorSecreto } from "../secretos";
 import { clavePublicaDe } from "../clave-ssh";
-import { cuentaGithubGlobal, tokenGithubGlobal } from "../github-auth";
-import { instalacionSeleccionadaGithubApp, tokenGithubAppParaRepo } from "../github-app";
+import { cuentaGithubGlobal, tokenGithubGlobal, autorGit } from "../github-auth";
+import { instalacionSeleccionadaGithubApp, tokenGithubAppParaRepo, type PermisosGithubApp } from "../github-app";
 
 export const proyectoConfig = new Hono();
 proyectoConfig.use("/projects/:id/*", async (c, next) => {
@@ -87,12 +87,10 @@ export function configGit(id: string) {
         [string]
       >("SELECT remote,author_name,author_email,base_branch FROM project_git WHERE project_id=?")
       .get(id);
-  if (guardada) return guardada;
-  const cuenta = cuentaGithubGlobal();
+  if (guardada) return { ...guardada, ...autorGit(guardada) };
   return {
       remote: null,
-      author_name: cuenta.name || cuenta.login || "Telo",
-      author_email: cuenta.login ? `${cuenta.login}@users.noreply.github.com` : "telo@localhost",
+      ...autorGit(),
       base_branch: "main",
   };
 }
@@ -151,10 +149,7 @@ proyectoConfig.put("/projects/:id/git", async (c) => {
   const remotoFijado = configGit(c.req.param("id")).remote ?? repo.remote;
   if (remotoFijado && remoto !== remotoFijado) return c.json({ error: "repositorio_inmutable" }, 409);
   const actual = configGit(c.req.param("id"));
-  const cuenta = cuentaGithubGlobal();
-  const email = actual.author_email === "telo@localhost" && cuenta.login
-    ? `${cuenta.login}@users.noreply.github.com`
-    : actual.author_email;
+  const email = actual.author_email;
   db.query(
     "INSERT INTO project_git(project_id,remote,author_name,author_email,base_branch) VALUES (?,?,?,?,?) ON CONFLICT(project_id) DO UPDATE SET remote=excluded.remote,author_name=excluded.author_name,author_email=excluded.author_email,base_branch=excluded.base_branch",
   ).run(c.req.param("id"), remoto, b.author_name.trim(), email, b.base_branch);
@@ -281,11 +276,19 @@ export async function githubApiPr(
   return githubLlamar(token, path, body, autenticacion.tipo === "github_app" ? "github_app" : "credencial_anterior", permiso, metodo);
 }
 
+export async function githubApiRevision(projectId: string, path: string, autenticacion: FuenteAutenticacionGithub) {
+  const remoto = remotoDeRutaGithub(path);
+  if (!remoto) throw new Error("Repositorio de revisión inválido.");
+  const token = await tokenParaFuenteGithub(projectId, remoto, "pr", autenticacion, { contents: "read", pull_requests: "read", actions: "read" });
+  return githubLlamar(token, path, undefined, autenticacion.tipo === "github_app" ? "github_app" : "credencial_anterior", "Actions de lectura");
+}
+
 async function tokenParaFuenteGithub(
   projectId: string,
   remoto: string,
   accion: AccionGithub,
   autenticacion: FuenteAutenticacionGithub,
+  permisos?: PermisosGithubApp,
 ): Promise<string> {
   const actual = fuenteAutenticacionGithub(projectId, accion);
   if (
@@ -301,12 +304,12 @@ async function tokenParaFuenteGithub(
   if (autenticacion.tipo === "github_app") {
     token = await tokenGithubAppParaRepo(
       remoto,
-      accion === "pr"
+      permisos ?? (accion === "pr"
         // GitHub must be able to resolve both refs as well as create the PR.
         ? { contents: "read", pull_requests: "write" }
         : accion === "merge"
-          ? { contents: "write" }
-          : { contents: "write" },
+          ? { contents: "write", pull_requests: "read" }
+          : { contents: "write" }),
     );
   } else if (autenticacion.origen === "sesion_anterior") {
     token = tokenGithubGlobal();

@@ -3,3 +3,4 @@
 @import "./styles/chat-03.css";
 @import "./styles/chat-04.css";
 @import "./styles/chat-05.css";
+.tl-composer-barra kbd { margin-left: 8px; color: var(--ink-2); font-size: 10px; font-weight: normal; }

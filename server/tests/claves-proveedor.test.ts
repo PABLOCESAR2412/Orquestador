@@ -22,6 +22,7 @@ const {
   entornoProveedores,
   estadoClaves,
   guardarClaveProveedor,
+  cuentaCloudflare,
   valorClaveJev,
 } = await import("../src/claves-proveedor");
 const { clasificarTareaJev, conservarMemoriaSegunJev, ordenarSugerenciasJev, puntuarMemoriaJev, probarClaveJev } = await import("../src/jev");
@@ -38,8 +39,9 @@ beforeEach(() => {
   process.env.TELO_CLAVE_CIFRADO = CLAVE_VALIDA;
   db.query("DELETE FROM provider_keys").run();
   db.query("DELETE FROM uso_jev").run();
+  db.query("DELETE FROM app_settings WHERE key='cloudflare_account_id'").run();
   // Las variables del entorno del servidor también cuentan como "configurada": se quitan para aislar cada prueba.
-  for (const variable of ["GROQ_API_KEY", "NVIDIA_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY", "DEEPSEEK_API_KEY", "XAI_API_KEY"]) {
+  for (const variable of ["GROQ_API_KEY", "NVIDIA_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY", "DEEPSEEK_API_KEY", "XAI_API_KEY", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_KEY", "CLOUDFLARE_API_TOKEN"]) {
     delete process.env[variable];
   }
 });
@@ -276,7 +278,7 @@ describe("rutas de claves de proveedor", () => {
     expect(texto).not.toContain(VALOR);
     const datos = JSON.parse(texto) as { disponible: boolean; proveedores: { id: string; configurada: boolean }[] };
     expect(datos.disponible).toBe(true);
-    expect(datos.proveedores.map((p) => p.id)).toEqual(["groq", "nvidia", "google", "openrouter", "deepseek", "xai"]);
+    expect(datos.proveedores.map((p) => p.id)).toEqual(["groq", "nvidia", "google", "openrouter", "deepseek", "xai", "cloudflare-workers-ai"]);
     expect(datos.proveedores.find((p) => p.id === "groq")?.configurada).toBe(true);
   });
 
@@ -287,6 +289,40 @@ describe("rutas de claves de proveedor", () => {
     expect(texto).not.toContain(VALOR);
     expect(JSON.parse(texto)).toMatchObject({ id: "groq", configurada: true });
     expect(entornoProveedores()).toEqual({ GROQ_API_KEY: VALOR });
+  });
+
+  test("Cloudflare guarda cuenta y token cifrado juntos; rechaza cuentas con rutas", async () => {
+    const accountId = "a".repeat(32);
+    const rechazado = await put("cloudflare-workers-ai", { valor: VALOR, accountId: "../otra-cuenta" });
+    expect(rechazado.status).toBe(400);
+    expect(cuentaCloudflare()).toBeNull();
+    expect(entornoProveedores().CLOUDFLARE_API_KEY).toBeUndefined();
+    const res = await put("cloudflare-workers-ai", { valor: VALOR, accountId });
+    expect(res.status).toBe(200);
+    expect(await res.text()).not.toContain(VALOR);
+    expect(cuentaCloudflare()).toBe(accountId);
+    expect(entornoProveedores()).toMatchObject({ CLOUDFLARE_ACCOUNT_ID: accountId, CLOUDFLARE_API_KEY: VALOR });
+    expect(JSON.stringify(db.query("SELECT * FROM provider_keys WHERE proveedor='cloudflare-workers-ai'").get())).not.toContain(VALOR);
+    const estado = await (await providers.request("/providers")).json() as { id: string; accountId?: string; configured: boolean }[];
+    expect(estado.find(p => p.id === "cloudflare-workers-ai")).toMatchObject({ accountId, configured: true });
+  });
+
+  test("Cloudflare consulta el catálogo oficial sin ejecutar inferencia", async () => {
+    const accountId = "b".repeat(32);
+    await put("cloudflare-workers-ai", { valor: VALOR, accountId });
+    const original = globalThis.fetch;
+    let llamada = "";
+    globalThis.fetch = (async (url: any, init?: RequestInit) => {
+      llamada = String(url);
+      expect(new Headers(init?.headers).get("Authorization")).toBe(`Bearer ${VALOR}`);
+      expect(init?.method ?? "GET").toBe("GET");
+      return Response.json({ success: true, result: [{ name: "@cf/prueba/modelo" }] });
+    }) as typeof fetch;
+    try {
+      const res = await providers.request("/providers/cloudflare-workers-ai/probar", { method: "POST" });
+      expect(await res.json()).toEqual({ ok: true, modelos: 1 });
+      expect(llamada).toBe(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search?per_page=100`);
+    } finally { globalThis.fetch = original; }
   });
 
   test("PUT con proveedor desconocido da 404", async () => {

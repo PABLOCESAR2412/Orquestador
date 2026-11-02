@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as TeclaReact, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { api, reintentarConsultaTransitoria, type ModelInfo, type Preferences, type ProviderStatus } from "../api";
+import { api, ApiError, reintentarConsultaTransitoria, type ModelInfo, type Preferences, type ProviderStatus } from "../api";
 import { EffortControl } from "../components/controls";
 import { ModelPicker } from "../components/model-picker";
 import { useEventosVivos } from "../lib/eventos-vivos";
@@ -19,6 +19,7 @@ import { NotificacionesPanel } from "../components/settings/panel-notificaciones
 import { LoadingSkeleton } from "../components/loading-skeleton";
 import { SesionPanel } from "../components/settings/panel-sesion";
 import { PanelConexiones } from "../components/settings/panel-conexiones";
+import { ModelosVisibles } from "../components/settings/modelos-visibles";
 
 const ALERT_OPTIONS = [50, 60, 70, 80, 90, 100];
 
@@ -35,11 +36,12 @@ const PESTANAS: { id: Pestana; texto: string }[] = [
 // El prefijo de un modelo ("openai/...") no siempre es el id del proveedor en el servidor ("codex").
 const PROVEEDOR_DE_PREFIJO: Record<string, string> = { openai: "codex" };
 const PESTANAS_PROVEEDOR = [
-  { id: "google", texto: "Google Gemini" },
+  { id: "google", texto: "API de Google" },
   { id: "groq", texto: "Groq Cloud" },
   { id: "deepseek", texto: "DeepSeek" },
   { id: "nvidia", texto: "NVIDIA NIM" },
   { id: "openrouter", texto: "OpenRouter" },
+  { id: "cloudflare-workers-ai", texto: "Cloudflare Workers AI" },
 ] as const;
 const PESTANAS_LOCALES: { id: IntegracionLocal; texto: string }[] = [
   { id: "cli", texto: "CLIs instalados" },
@@ -70,6 +72,8 @@ export function SettingsPage() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [proveedorSeleccionado, setProveedorSeleccionado] = useState<string>(PESTANAS_PROVEEDOR[0].id);
   const [integracionLocal, setIntegracionLocal] = useState<IntegracionLocal>("cli");
+  const [modelosCli, setModelosCli] = useState<string | null>(null);
+  const [sesionCli, setSesionCli] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const conexionesTts = useQuery({
@@ -406,14 +410,22 @@ export function SettingsPage() {
                               <span className={`aj-estado-proveedor${herramienta?.disponible ? " is-conectado" : herramienta ? " is-error" : ""}`} role="status">
                                 <span className="aj-proveedor-punto" aria-hidden="true" />{herramienta?.disponible ? "Instalado" : herramienta ? "No instalado" : "Sin datos"}
                               </span>
+                              {herramienta?.disponible && ["opencode", "codex", "agy"].includes(nombre) && <div className="instalar-acciones">
+                                <button type="button" className="aj-btn" aria-expanded={modelosCli === nombre} onClick={() => { setModelosCli(modelosCli === nombre ? null : nombre); setSesionCli(null); }}>Ver modelos</button>
+                                <button type="button" className="aj-texto-btn" aria-expanded={sesionCli === nombre} onClick={() => { setSesionCli(sesionCli === nombre ? null : nombre); setModelosCli(null); }}>Sesión</button>
+                              </div>}
                             </div>
                           );
                         })}
                       </div>
+                      {modelosCli && <ModelosVisibles key={modelosCli} proveedor={modelosCli === "agy" ? "antigravity" : modelosCli} />}
+                      {sesionCli === "codex" && <LoginCodexPanel />}
+                      {sesionCli === "opencode" && <SesionOpenCode />}
+                      {sesionCli === "agy" && <p className="aj-nota">{proveedores.data?.find(p => p.id === "antigravity")?.hint ?? "Consulta el estado de Antigravity en el servidor."} Después de iniciar sesión con <code>~/.local/bin/agy</code> por SSH, abre «Ver modelos» y pulsa «Actualizar modelos».</p>}
                       <div className="aj-proveedores-adicionales" aria-label="Acceso a CLIs y sesiones">
-                        {proveedorCodex && <TarjetaProveedor p={proveedorCodex} etiqueta={etiquetaDe(proveedorCodex)} modelos={modelosDe(proveedorCodex.id)} />}
-                        {proveedorOpenCode && <TarjetaProveedor p={proveedorOpenCode} etiqueta={null} modelos={modelosDe(proveedorOpenCode.id)} />}
-                        <AntigravityCard />
+                        {!herramientaMedia("codex")?.disponible && proveedorCodex && <TarjetaProveedor p={proveedorCodex} etiqueta={etiquetaDe(proveedorCodex)} modelos={modelosDe(proveedorCodex.id)} />}
+                        {!herramientaMedia("opencode")?.disponible && proveedorOpenCode && <TarjetaProveedor p={proveedorOpenCode} etiqueta={null} modelos={modelosDe(proveedorOpenCode.id)} />}
+                        {!herramientaMedia("agy")?.disponible && <AntigravityCard />}
                         {!herramientaMedia("wrangler")?.disponible && (
                           <article className="aj-tarjeta" aria-labelledby="aj-wrangler-titulo">
                             <div className="aj-tarjeta-cabecera">
@@ -972,7 +984,9 @@ function TarjetaProveedor({
   const estadoPrueba = prueba.data?.ok
     ? p.enAgente ? "Conexión comprobada" : "API responde · clave no llega al agente"
     : prueba.data ? "No se pudo conectar" : listo ? "Credenciales listas" : p.configured ? "Clave no disponible para agentes" : "Sin clave configurada";
-  const errorPrueba = prueba.data?.error === "provider_key_rejected"
+  const errorPrueba = prueba.data?.error === "cloudflare_account_invalid"
+    ? "Escribe el identificador de cuenta de Cloudflare de 32 caracteres hexadecimales."
+    : prueba.data?.error === "provider_key_rejected"
     ? "El proveedor rechazó la clave. Edítala y vuelve a probar."
     : prueba.data?.error === "provider_rate_limited"
       ? "El proveedor limitó la consulta. Espera un momento y vuelve a probar."
@@ -991,6 +1005,7 @@ function TarjetaProveedor({
     deepseek: "api.deepseek.com/v1",
     nvidia: "integrate.api.nvidia.com/v1",
     openrouter: "openrouter.ai/api/v1",
+    "cloudflare-workers-ai": `api.cloudflare.com/client/v4/accounts/${p.accountId ?? "{account_id}"}/ai/v1`,
   };
 
   return (
@@ -1115,6 +1130,7 @@ function TarjetaProveedor({
         </div>
       )}
       {nota && <p className="aj-nota aj-nota-aviso">{nota}</p>}
+      {esMotorDirecto && <details className="aj-modelos-detalle"><summary>Modelos del selector</summary><ModelosVisibles key={p.id} proveedor={p.id} /></details>}
       {p.id === "opencode" && (
         <InstalarHerramienta id="opencode" nombre="OpenCode">
           <SesionOpenCode />
@@ -1159,6 +1175,9 @@ function SesionOpenCode() {
 // el valor no vuelve a mostrarse. Los botones son `type="button"` porque toda la página es un formulario.
 function CampoClave({ p }: { p: ProviderStatus }) {
   const qc = useQueryClient();
+  const esCloudflare = p.id === "cloudflare-workers-ai";
+  const [accountId, setAccountId] = useState(p.accountId ?? "");
+  useEffect(() => { setAccountId(p.accountId ?? ""); }, [p.accountId]);
   const [valor, setValor] = useState("");
   const [verValor, setVerValor] = useState(false);
   const [editando, setEditando] = useState(!p.guardada && !p.configured);
@@ -1173,7 +1192,7 @@ function CampoClave({ p }: { p: ProviderStatus }) {
   };
 
   const guardar = useMutation({
-    mutationFn: (texto: string) => api.setProviderKey(p.id, texto),
+    mutationFn: (texto: string) => api.setProviderKey(p.id, texto, esCloudflare ? accountId.trim() : undefined),
     onSuccess: () => {
       setValor("");
       setEditando(false);
@@ -1183,7 +1202,9 @@ function CampoClave({ p }: { p: ProviderStatus }) {
     },
     onError: (e) => {
       setAviso(null);
-      setError(errorText(e));
+      setError(e instanceof ApiError && e.code === "cloudflare_account_invalid"
+        ? "Escribe el identificador de cuenta de Cloudflare de 32 caracteres hexadecimales."
+        : errorText(e));
     },
   });
 
@@ -1203,11 +1224,16 @@ function CampoClave({ p }: { p: ProviderStatus }) {
   });
 
   const ocupado = guardar.isPending || quitar.isPending;
+  const cuentaValida = !esCloudflare || /^[a-f0-9]{32}$/i.test(accountId.trim());
   const enviar = () => {
     const texto = valor.trim();
     if (!texto || ocupado) return;
     setAviso(null);
     setError(null);
+    if (!cuentaValida) {
+      setError("Escribe el identificador de cuenta de Cloudflare de 32 caracteres hexadecimales.");
+      return;
+    }
     guardar.mutate(texto);
   };
 
@@ -1219,8 +1245,16 @@ function CampoClave({ p }: { p: ProviderStatus }) {
 
   return (
     <div className="aj-campo aj-campo-clave">
+      {esCloudflare && <div className="aj-campo">
+        <label className="aj-campo-etiqueta" htmlFor="aj-cloudflare-cuenta">Identificador de cuenta de Cloudflare</label>
+        <input id="aj-cloudflare-cuenta" className="aj-input aj-mono" value={accountId}
+          onChange={(e) => setAccountId(e.target.value)} disabled={!editando || ocupado}
+          autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={32}
+          placeholder="32 caracteres hexadecimales" aria-describedby="aj-cloudflare-nota" />
+        <p id="aj-cloudflare-nota" className="aj-nota">Usa el identificador de la cuenta y un token con permiso Workers AI: Write. Cloudflare incluye 10.000 neuronas al día; el exceso se factura en planes de pago y algunos modelos requieren pago. <a href="https://developers.cloudflare.com/workers-ai/platform/pricing/" target="_blank" rel="noreferrer">Consultar tarifas</a>.</p>
+      </div>}
       <div className="aj-campo-etiqueta">
-        <label htmlFor={editando ? idCampo : undefined}>Clave API · <span className="aj-mono">{p.variable}</span></label>
+        <label htmlFor={editando ? idCampo : undefined}>{esCloudflare ? "Token API" : "Clave API"} · <span className="aj-mono">{p.variable}</span></label>
         {!editando && <button type="button" className="aj-texto-btn" onClick={() => setEditando(true)}>Editar</button>}
         {editando && <button type="button" className="aj-texto-btn" onClick={() => { setEditando(false); setValor(""); setVerValor(false); }}>Cancelar</button>}
       </div>
@@ -1254,7 +1288,7 @@ function CampoClave({ p }: { p: ProviderStatus }) {
           >
             <IconoVisibilidad visible={verValor} />
           </button>
-          <button type="button" className="aj-btn aj-btn-primario" onClick={enviar} disabled={!valor.trim() || ocupado}>
+          <button type="button" className="aj-btn aj-btn-primario" onClick={enviar} disabled={!valor.trim() || !cuentaValida || ocupado}>
             {guardar.isPending ? "Guardando…" : "Guardar clave"}
           </button>
           {p.guardada && <button type="button" className="aj-btn" onClick={() => quitar.mutate()} disabled={ocupado}>{quitar.isPending ? "Quitando…" : "Quitar"}</button>}

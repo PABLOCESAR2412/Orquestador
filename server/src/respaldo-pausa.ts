@@ -48,7 +48,7 @@ export async function pausarParaRespaldo(): Promise<() => void> {
       await Bun.sleep(2_000);
     }
     if (!listo) throw new Error("El respaldo se pospone: hay trabajos activos o el servicio no admite drenado seguro");
-    const agentes = Bun.spawnSync(["pgrep", "-f", "(^|/)opencode run( |$)|(^|/)codex( .*)? exec( |$)"], { stdout: "ignore", stderr: "ignore" });
+    const agentes = Bun.spawnSync(["pgrep", "-f", "(^|/)opencode run( |$)|(^|/)codex( .*)? exec( |$)|(^|/)agy( |$)"], { stdout: "ignore", stderr: "ignore" });
     if (agentes.exitCode !== 1) throw new Error("El respaldo se pospone: hay agentes externos o no se pudo comprobar su cierre");
     return liberar;
   } catch (error) { liberar(); throw error; }

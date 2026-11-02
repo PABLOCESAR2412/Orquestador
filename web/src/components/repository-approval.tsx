@@ -4,6 +4,7 @@ import { api, ApiError, type FuenteAutenticacionGithub, type PasoActividad, type
 import { errorText } from "../lib/model";
 import { pullRequestLink } from "../lib/pull-request-link";
 import { ProcesoAgente } from "./chat-proceso";
+import { SeguimientoPr } from "./seguimiento-pr";
 
 // merge y push_main ya no se crean; quedan aquí solo para mostrar el historial de acciones antiguas.
 const labels: Record<string, string> = {
@@ -462,6 +463,7 @@ export function RepositoryApproval({
         </p>
       )}
       {avisoAcceso && <p className="approval-auth approval-auth-warning" role="alert">{avisoAcceso}</p>}
+      {accion.state === "approved" && (accion.action === "pr" || accion.action === "push") && <SeguimientoPr accionId={accion.id} />}
     </>
   );
   return compacta ? (

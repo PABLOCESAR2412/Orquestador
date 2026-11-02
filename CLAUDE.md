@@ -79,6 +79,8 @@ El servicio diario de respaldos puede leer credenciales separadas desde `/etc/or
 
 ## Reglas de trabajo
 
+Integraciones nuevas: `antigravity/*` ejecuta `agy` con su sesión SSH de archivos y sandbox nativo obligatorio dentro del aislamiento de Telo. No reutiliza Gemini API ni exporta keyrings; una credencial que necesita renovación se renueva por SSH. `cloudflare-workers-ai/*` usa Workers AI con Account ID y token cifrado, separados del login Wrangler. `seguimiento-pr.ts` revisa publicaciones aprobadas y prepara correcciones locales; toda nueva publicación conserva su autorización de diff/SHA.
+
 1. **Extender, no duplicar.** Antes de crear un componente, función o endpoint, busca uno existente: `AppNav`, `DailyBars`, `ModelBars`, `errorText`, `api.*`, `getPreferences`. Los cambios son aditivos. No reescribas lo que ya funciona si no te lo pidieron.
 2. **Idioma.** Textos de interfaz, mensajes de error y comentarios de negocio en español. Los identificadores siguen el estilo del archivo que editas.
 3. **Tokens, no colores sueltos.** Colores y medidas salen de las variables de `web/src/styles.css`. El ámbar (`--signal`) solo marca estado activo o alerta.

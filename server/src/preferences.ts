@@ -2,6 +2,7 @@ import { db } from "./db";
 
 // Preferencias de la app, guardadas como un solo documento JSON en app_settings.
 export type Preferences = {
+  modelVisibility: Record<string, boolean>;
   defaultModel: string | null;
   defaultEffort: string | null;
   // Modelo de respaldo si el principal responde 429 o 5xx. Null: sin respaldo.
@@ -15,6 +16,7 @@ export type Preferences = {
 };
 
 export const DEFAULT_PREFERENCES: Preferences = {
+  modelVisibility: {},
   defaultModel: null,
   defaultEffort: null,
   fallbackModel: null,

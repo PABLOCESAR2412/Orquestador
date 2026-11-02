@@ -54,7 +54,7 @@ export async function prepararSubagentes(opts: {
   listarModelos?: typeof getModels;
   directorioBase?: string;
 }): Promise<PreparacionSubagentes | null> {
-  if (!pideSubagentes(opts.prompt) || opts.modelo.startsWith("codex/")) return null;
+  if (!pideSubagentes(opts.prompt) || /^(codex|antigravity)\//.test(opts.modelo)) return null;
 
   let catalogo: Awaited<ReturnType<typeof getModels>> = [];
   try {

@@ -108,6 +108,10 @@ test("cada integración recibe solo sus claves y las de sus subagentes declarado
   expect(entornoDelAgente(propias, ["xai/modelo"])).toMatchObject({ XAI_API_KEY: propias.XAI_API_KEY });
   expect(entornoDelAgente(propias, ["opencode/modelo", "nvidia/auxiliar"]).NVIDIA_API_KEY).toBe(propias.NVIDIA_API_KEY);
   expect(entornoDelAgente(propias, ["codex/modelo"]).OPENAI_API_KEY).toBeUndefined();
+  const cloudflare = { CLOUDFLARE_API_KEY: "clave-cloudflare-ficticia", CLOUDFLARE_ACCOUNT_ID: "a".repeat(32) };
+  expect(entornoDelAgente(cloudflare, ["cloudflare-workers-ai/@cf/prueba"])).toMatchObject(cloudflare);
+  expect(entornoDelAgente(cloudflare, ["groq/modelo"]).CLOUDFLARE_API_KEY).toBeUndefined();
+  expect(entornoDelAgente(cloudflare, ["groq/modelo"]).CLOUDFLARE_ACCOUNT_ID).toBeUndefined();
 });
 
 describe.skipIf(!Bun.which("setsid"))("entorno de los proveedores en el agente y en el CLI", () => {

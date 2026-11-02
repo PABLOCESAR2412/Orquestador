@@ -21,6 +21,7 @@ import {
   githubApiPr,
 } from "./proyecto-config";
 import { redactar } from "../redaccion";
+import { leerSeguimientoPublicacion, registrarSeguimientoPublicacion } from "../seguimiento-pr";
 
 function mensajeCommitConvencional(titulo: string, prompt: string): string {
   const generico = /^(cambios revisados en telo|cambios de la tarea|commit)$/i;
@@ -61,6 +62,10 @@ type DiagnosticoConflictos = {
 };
 
 export const repositoryActions = new Hono();
+repositoryActions.get("/acciones/:id/seguimiento", (c) => {
+  if (!db.query("SELECT 1 FROM repository_actions WHERE id=?").get(c.req.param("id"))) return c.json({ error: "action_not_found" }, 404);
+  return c.json({ seguimiento: leerSeguimientoPublicacion(c.req.param("id")) });
+});
 repositoryActions.get("/conversations/:id/acciones", (c) =>
   c.json(
     db
@@ -486,6 +491,8 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         "merge",
       ) as {
         html_url?: string;
+        state?: string;
+        draft?: boolean;
         mergeable?: boolean | null;
         mergeable_state?: string;
         head?: { ref?: string; sha?: string; repo?: { full_name?: string | null } | null };
@@ -553,6 +560,20 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
         };
         throw new ErrorTarea("merge_conflicts", 409, JSON.stringify(diagnostico));
       }
+      if (pull.draft || pull.mergeable_state === "draft")
+        throw new ErrorTarea("pr_no_listo", 409, "El Pull Request es un borrador. Márcalo como listo para revisión y espera a que terminen sus comprobaciones antes de preparar otra autorización de fusión.");
+      if (pull.state && pull.state !== "open")
+        throw new ErrorTarea("pr_no_listo", 409, "El Pull Request ya no está abierto. Actualiza su estado antes de preparar otra autorización.");
+      if (pull.mergeable == null || !pull.mergeable_state || pull.mergeable_state === "unknown")
+        throw new ErrorTarea("pr_verificacion_pendiente", 409, "GitHub todavía está calculando si el Pull Request puede fusionarse. Espera a que el seguimiento confirme su estado y prepara otra autorización de fusión.");
+      if (pull.mergeable !== true || pull.mergeable_state !== "clean") {
+        const detalle = pull.mergeable_state === "behind"
+          ? "La rama del Pull Request está desactualizada respecto a la base. Integra la base y vuelve a comprobar los cambios."
+          : pull.mergeable_state === "unstable"
+            ? "Hay comprobaciones del Pull Request fallidas o pendientes. Revisa su resultado y corrígelas antes de fusionar."
+            : "GitHub mantiene requisitos de fusión pendientes: comprobaciones, revisiones o reglas de la rama. Revisa esos requisitos en el seguimiento del PR.";
+        throw new ErrorTarea("pr_no_listo", 409, detalle);
+      }
       result = await githubApiPr(
         row.project_id,
         "/repos/" + remoto.replace("https://github.com/", "") + `/pulls/${numeroPull}/merge`,
@@ -580,6 +601,7 @@ repositoryActions.post("/acciones/:id/decidir", async (c) => {
       seguro,
       row.id,
     );
+    registrarSeguimientoPublicacion(row.id, Date.now(), { esperarPr: row.action === "push" && destinoEmpuje === "rama" });
     // Cada acción conserva su propia autorización; completar una solo prepara la siguiente.
     if (row.task_id && (row.action === "commit" || row.action === "push" || row.action === "pr")) {
       const t = db

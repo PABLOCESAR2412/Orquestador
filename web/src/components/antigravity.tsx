@@ -2,8 +2,7 @@ import { useState } from "react";
 import { InstalarHerramienta } from "./instalar-herramienta";
 import { copiarTexto } from "./chat-contenido";
 
-// Antigravity requiere una TTY interactiva para el OAuth remoto. Telo instala el CLI,
-// pero el login se completa en la terminal SSH del mismo usuario del servicio.
+// El login se completa por SSH; el runner usa el almacén de archivos de esa VM.
 export function AntigravityCard() {
   const [copiado, setCopiado] = useState<string | null>(null);
   return (
@@ -33,7 +32,7 @@ export function AntigravityCard() {
         </p>
         <p className="aj-nota">
           La CLI necesita esa terminal interactiva para autorizar. Después escribe <code>/usage</code> para ver el uso restante y los reinicios por modelo; escribe <code>/exit</code> al terminar.
-          Esa cuota es de Antigravity, aparte de Gemini API. Telo no importa esta sesión ni la usa para chats o tareas.
+          Esa cuota es de Antigravity, aparte de la API de Google. Después del login, pulsa «Actualizar modelos» en la fila de Antigravity para mostrar su catálogo nativo. El aislamiento requiere el almacén de archivos del login SSH; las sesiones que solo están en el keyring no se comparten.
         </p>
         <p className="aj-nota">
           <a href="https://antigravity.google/docs/install?tab=cli" target="_blank" rel="noopener noreferrer">

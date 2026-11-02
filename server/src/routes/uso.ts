@@ -22,6 +22,7 @@ type Agregado = {
 const NOMBRES_PROVEEDOR: Record<string, string> = {
   opencode: "OpenCode",
   codex: "Codex",
+  antigravity: "Antigravity CLI",
   google: "Google (Gemini)",
   openrouter: "OpenRouter",
   groq: "Groq",

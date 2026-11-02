@@ -3,6 +3,7 @@ import { getPreferences, savePreferences, type Preferences } from "../preference
 import { getModels, validateSelection } from "../models";
 
 const ALLOWED_FIELDS = new Set([
+  "modelVisibility",
   "defaultModel",
   "defaultEffort",
   "fallbackModel",
@@ -29,6 +30,9 @@ preferences.put("/preferences", async (c) => {
   if (unknown) return c.json({ error: "unknown_field", field: unknown }, 400);
 
   const next: Preferences = { ...getPreferences(), ...(body as Partial<Preferences>) };
+  if (body.modelVisibility !== undefined && (!body.modelVisibility || Array.isArray(body.modelVisibility) || typeof body.modelVisibility !== "object" || Object.keys(body.modelVisibility).length > 3000 || Object.entries(body.modelVisibility).some(([id, visible]) => id.length > 200 || !id.includes("/") || typeof visible !== "boolean"))) {
+    return c.json({ error: "invalid_body" }, 400);
+  }
   if (!["selected", "configured", "automatic"].includes(next.fallbackMode)) return c.json({ error: "invalid_body" }, 400);
 
   if (next.defaultModel !== null) {
@@ -81,8 +85,8 @@ preferences.put("/preferences", async (c) => {
     for (const id of ids as string[]) {
       const modelo = catalogo.find((item) => item.id === id);
       if (!modelo) return c.json({ error: "invalid_model" }, 400);
-      // Evita usar saldo API de forma inesperada. Codex consume el cupo de la sesión de ChatGPT.
-      if (!modelo.free && modelo.provider !== "codex") return c.json({ error: "quota_fallback_requires_free_model" }, 400);
+      // Los CLIs de sesión consumen su cupo propio y solo entran mediante esta elección explícita.
+      if (!modelo.free && !["codex", "antigravity"].includes(modelo.provider)) return c.json({ error: "quota_fallback_requires_free_model" }, 400);
     }
     next.quotaFallbackModels = ids as string[];
   }

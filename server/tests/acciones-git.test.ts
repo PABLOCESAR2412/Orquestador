@@ -478,7 +478,7 @@ test("push_main ya no se acepta, y merge se puede preparar y autorizar directame
     if (String(url) === "https://api.github.com/repos/dueno/prueba") {
       return Response.json({ full_name: "dueno/prueba", permissions: { push: true } });
     }
-    if (String(url).endsWith("/pulls/1")) return Response.json({ head: { sha: p.diff.commit }, mergeable: true });
+    if (String(url).endsWith("/pulls/1")) return Response.json({ head: { sha: p.diff.commit }, state: "open", draft: false, mergeable: true, mergeable_state: "clean" });
     return Response.json({ merged: true, message: "Pull Request successfully merged" });
   }) as typeof fetch;
 
@@ -518,6 +518,7 @@ test("un merge queda ligado al commit aprobado: otra punta del PR exige revisió
       return Response.json({
         html_url: "https://github.com/dueno/prueba/pull/2",
         mergeable: true,
+        mergeable_state: "clean",
         head: { ref: "telo/prueba", sha: "2".repeat(64), repo: { full_name: "dueno/prueba" } },
         base: { ref: "main", repo: { full_name: "dueno/prueba" } },
       });
@@ -565,6 +566,7 @@ test("la punta del PR coincide: el PUT de merge declara el SHA revisado", { time
       return Response.json({
         html_url: "https://github.com/dueno/prueba/pull/3",
         mergeable: true,
+        mergeable_state: "clean",
         head: { ref: "telo/prueba", sha: shaAprobado, repo: { full_name: "dueno/prueba" } },
         base: { ref: "main", repo: { full_name: "dueno/prueba" } },
       });
@@ -1109,7 +1111,7 @@ test("merge sin tarea captura el SHA, rechaza punta cambiada y bloquea tarjetas 
     if (String(url) === "https://api.github.com/repos/dueno/prueba")
       return Response.json({ permissions: { push: true } });
     if (init?.method === "PUT") { puts++; expect(JSON.parse(init.body).sha).toBe(sha); return Response.json({ merged: true }); }
-    return Response.json({ head: { sha: punta }, mergeable: true });
+    return Response.json({ head: { sha: punta }, state: "open", draft: false, mergeable: true, mergeable_state: "clean" });
   }) as typeof fetch;
   try {
     const preparar = () => pedir(`/projects/${p.id}/acciones`, { action: "merge", conversationId, pr_number: 55 });
@@ -1128,6 +1130,42 @@ test("merge sin tarea captura el SHA, rechaza punta cambiada y bloquea tarjetas 
     const tercera = await (await preparar()).json() as { id: string };
     expect((await pedir(`/acciones/${tercera.id}/decidir`, { approve: true })).status).toBe(200);
     expect(puts).toBe(1);
+  } finally { db.query("DELETE FROM conversations WHERE id=?").run(conversationId); }
+});
+
+test("el merge espera el cálculo de GitHub y respeta checks, reglas, base y borradores sin intentar el PUT", async () => {
+  const p = proyecto();
+  db.query("INSERT INTO project_git(project_id,remote) VALUES (?,?)").run(p.id, REMOTO);
+  guardarSecreto(p.id, "GITHUB_PR_TOKEN", TOKEN_PR);
+  const conversationId = randomUUID();
+  db.query("INSERT INTO conversations(id,title,project_id) VALUES (?,'Requisitos de merge',?)").run(conversationId, p.id);
+  const sha = "c".repeat(40);
+  const escenarios = [
+    { datos: { mergeable: null, mergeable_state: "unknown" }, error: "pr_verificacion_pendiente", detalle: "calculando" },
+    { datos: { mergeable: true, mergeable_state: "unknown" }, error: "pr_verificacion_pendiente", detalle: "calculando" },
+    { datos: { mergeable: true, mergeable_state: "blocked" }, error: "pr_no_listo", detalle: "requisitos de fusión" },
+    { datos: { mergeable: true, mergeable_state: "unstable" }, error: "pr_no_listo", detalle: "comprobaciones" },
+    { datos: { mergeable: true, mergeable_state: "behind" }, error: "pr_no_listo", detalle: "desactualizada" },
+    { datos: { mergeable: true, mergeable_state: "clean", draft: true }, error: "pr_no_listo", detalle: "borrador" },
+  ];
+  let puts = 0;
+  try {
+    for (const [indice, escenario] of escenarios.entries()) {
+      globalThis.fetch = (async (url: any, init: any) => {
+        if (String(url) === "https://api.github.com/repos/dueno/prueba") return Response.json({ permissions: { push: true } });
+        if (init?.method === "PUT") { puts++; return Response.json({ merged: true }); }
+        return Response.json({ head: { sha }, state: "open", draft: false, ...escenario.datos });
+      }) as typeof fetch;
+      const preparacion = await pedir(`/projects/${p.id}/acciones`, { action: "merge", conversationId, pr_number: 60 + indice });
+      expect(preparacion.status).toBe(201);
+      const accion = await preparacion.json() as { id: string };
+      const respuesta = await pedir(`/acciones/${accion.id}/decidir`, { approve: true });
+      expect(respuesta.status).toBe(409);
+      const resultado = await respuesta.json() as { error: string; detail: string };
+      expect(resultado.error).toBe(escenario.error);
+      expect(resultado.detail).toContain(escenario.detalle);
+      expect(puts).toBe(0);
+    }
   } finally { db.query("DELETE FROM conversations WHERE id=?").run(conversationId); }
 });
 

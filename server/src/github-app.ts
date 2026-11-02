@@ -8,7 +8,7 @@ const API = "https://api.github.com";
 const VERSION_API = "2026-03-10";
 const AGENTE = "Telo-Orquestador";
 
-export type PermisosGithubApp = { contents?: "read" | "write"; pull_requests?: "read" | "write" };
+export type PermisosGithubApp = { contents?: "read" | "write"; pull_requests?: "read" | "write"; actions?: "read" };
 
 export type InstalacionGithubApp = {
   id: number;
@@ -18,11 +18,13 @@ export type InstalacionGithubApp = {
   repository_selection: "all" | "selected";
   permissions: Record<string, "read" | "write">;
   configuration_url: string | null;
+  account_id?: number | null;
+  account_type?: "User" | "Organization" | null;
 };
 
 type InstalacionApi = {
   id: number;
-  account?: { login?: string; name?: string | null; avatar_url?: string } | null;
+  account?: { id?: number; type?: string; login?: string; name?: string | null; avatar_url?: string } | null;
   repository_selection?: "all" | "selected";
   permissions?: Record<string, "read" | "write">;
   html_url?: string;
@@ -104,10 +106,10 @@ async function llamarGithub<T>(ruta: string, token: string, body?: unknown): Pro
       const permiso = cuerpo?.permissions && typeof cuerpo.permissions === "object"
         ? Object.keys(cuerpo.permissions as Record<string, unknown>)[0]
         : null;
-      const nombrePermiso = permiso === "pull_requests" ? "Pull requests" : "Contents";
+      const nombrePermiso = permiso === "pull_requests" ? "Pull requests" : permiso === "actions" ? "Actions" : "Contents";
       throw new ErrorGithubApp(
         "github_app_sin_acceso",
-        `La GitHub App no puede usar ${nombrePermiso} en este repositorio. Comprueba que el repo esté incluido en la instalación y que la App tenga ese permiso de escritura en GitHub.`,
+        `La GitHub App no puede usar ${nombrePermiso} en este repositorio. Comprueba que el repo esté incluido en la instalación y que la App tenga el acceso solicitado en GitHub.`,
         403,
       );
     }
@@ -131,9 +133,12 @@ async function jwtGet<T>(ruta: string): Promise<T> {
 
 export async function listarInstalacionesGithubApp(): Promise<InstalacionGithubApp[]> {
   const data = await jwtGet<InstalacionApi[]>("/app/installations?per_page=100");
-  return data
-    .filter((i) => Number.isSafeInteger(i.id) && i.id > 0 && !!i.account?.login)
-    .map((i) => ({
+  return data.map(normalizarInstalacion).filter((i): i is InstalacionGithubApp => i !== null);
+}
+
+function normalizarInstalacion(i: InstalacionApi): InstalacionGithubApp | null {
+  if (!Number.isSafeInteger(i.id) || i.id <= 0 || !i.account?.login) return null;
+  return {
       id: i.id,
       login: i.account!.login!,
       name: i.account!.name?.trim() || i.account!.login!,
@@ -143,7 +148,9 @@ export async function listarInstalacionesGithubApp(): Promise<InstalacionGithubA
         Object.entries(i.permissions ?? {}).filter(([, permiso]) => permiso === "read" || permiso === "write"),
       ) as Record<string, "read" | "write">,
       configuration_url: urlConfiguracionGithub(i.html_url),
-    }));
+      account_id: Number.isSafeInteger(i.account.id) && i.account.id! > 0 ? i.account.id! : null,
+      account_type: i.account.type === "User" || i.account.type === "Organization" ? i.account.type : null,
+  };
 }
 
 function bodyComoRegistro(body: unknown): Record<string, unknown> | null {
@@ -226,6 +233,16 @@ export async function tokenGithubAppParaRepo(
   if (owner.toLowerCase() !== instalacion.login.toLowerCase()) {
     throw new ErrorGithubApp("github_app_sin_acceso", "La GitHub App seleccionada está instalada en otra cuenta. Vincula la instalación que contiene este repositorio.", 403);
   }
+  // Una instalación guardada por versiones anteriores no conservaba el ID de la cuenta.
+  // Enriquecer estos metadatos no cambia sus permisos ni reescribe commits existentes.
+  if (instalacion.account_id === undefined || instalacion.account_type === undefined) {
+    try {
+      const actual = normalizarInstalacion(await jwtGet<InstalacionApi>(`/app/installations/${instalacion.id}`));
+      if (actual && actual.id === instalacion.id && actual.login.toLowerCase() === instalacion.login.toLowerCase() && instalacionGithubApp()?.id === instalacion.id) {
+        db.query("UPDATE app_settings SET value=?,updated_at=datetime('now') WHERE key='github_app_installation'").run(JSON.stringify(actual));
+      }
+    } catch { /* La emisión del token mantiene su diagnóstico propio si no se puede refrescar el perfil. */ }
+  }
   const body = {
     repositories: [repo],
     permissions: permisos,
@@ -240,12 +257,11 @@ export async function tokenGithubAppParaRepo(
   } catch (error) {
     if (!(error instanceof ErrorGithubApp) || error.code !== "github_app_sin_acceso") throw error;
     const destino = instalacion.configuration_url ?? "https://github.com/settings/installations";
-    const permisosNecesarios = permisos.pull_requests
-      ? "Pull requests"
-      : "Contents";
+    const nombres: Record<string, string> = { contents: "Contents", pull_requests: "Pull requests", actions: "Actions" };
+    const permisosNecesarios = Object.entries(permisos).map(([nombre, acceso]) => `${nombres[nombre] ?? nombre}: ${acceso === "write" ? "Read and write" : "Read-only"}`).join(", ");
     throw new ErrorGithubApp(
       "github_app_sin_acceso",
-      `GitHub denegó la instalación de Telo para ${owner}/${repo}. Abre ${destino} y en Configure incluye este repo o todos los repos. En Developer settings → GitHub Apps → Telo-Orquestador → Permissions & events, confirma ${permisosNecesarios}: Read and write y acepta la actualización de permisos. Después reintenta.`,
+      `GitHub denegó la instalación de Telo para ${owner}/${repo}. Abre ${destino} y en Configure incluye este repo o todos los repos. En Developer settings → GitHub Apps → Telo-Orquestador → Permissions & events, confirma ${permisosNecesarios} y acepta la actualización de permisos. Después reintenta.`,
       403,
     );
   }

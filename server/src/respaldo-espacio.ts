@@ -47,7 +47,7 @@ async function copiarArbol(origen: string, destino: string, omitirCache: boolean
 export async function prepararEspacioRespaldo(datos: string, proyectos: string | null, temporal: string, copiaDb: string): Promise<string[]> {
   const carpetas: string[] = [];
   const inventario: { version: number; fecha: string; perfiles: string[]; proyectos: { id: string; origen: string; archivo: string }[] } = { version: 1, fecha: new Date().toISOString(), perfiles: [], proyectos: [] };
-  for (const nombre of ["perfiles-opencode", "perfiles-codex", "perfiles-subagente"]) {
+  for (const nombre of ["perfiles-opencode", "perfiles-codex", "perfiles-antigravity", "perfiles-subagente"]) {
     const origen = join(datos, nombre);
     if (!existsSync(origen)) continue;
     if (!lstatSync(origen).isDirectory() || lstatSync(origen).isSymbolicLink() || realpathSync(origen) !== resolve(origen)) throw new Error("Raíz de perfiles no válida");
