@@ -37,7 +37,9 @@ export type TipoEvento =
   | "clasificacion_jev"
   | "memoria_evaluada"
   | "memoria_propuesta"
-  | "seguida";
+  | "seguida"
+  | "graphify_consulta"
+  | "skills_activadas";
 
 export type EventoTarea = {
   id: number;
