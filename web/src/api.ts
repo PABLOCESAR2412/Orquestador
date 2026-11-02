@@ -593,6 +593,8 @@ export type TaskEventKind =
   | "clasificacion_jev"
   | "memoria_evaluada"
   | "memoria_propuesta"
+  | "graphify_consulta"
+  | "skills_activadas"
   | "conflictos_pr_preparados"
   | "seguida";
 
