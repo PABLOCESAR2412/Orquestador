@@ -11,10 +11,18 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 - [x] Un `422` con `not all refs are readable` se distingue del caso real `No commits between`. Prueba focalizada: `bun test tests/github-app.test.ts`, 10 aprobadas.
 - [ ] VM: desplegar esta corrección y volver a preparar/autorizar la creación del PR pendiente. Verificar que GitHub lo cree usando la App ya instalada.
 
+## Codex CLI y estado de publicación — continuación PR #170
+
+- [x] Codex: `--skip-git-repo-check` ahora va después de `exec`, tanto en ejecuciones nuevas como al reanudar. La causa de la captura era el flag en la posición global, que el CLI rechaza. El sandbox no cambia. Prueba focalizada: `bun test tests/codex-tokens-registro.test.ts`, 6 aprobadas.
+- [x] Ajustes: Wrangler y Vercel muestran su versión y estado en «CLIs y herramientas locales». Cuando están instalados, sus guías de instalación/publicación desaparecen; si no están instalados, la guía sigue disponible. El smoke de interfaz cubre ambos estados.
+- [x] Gemini/OpenCode: el error «Unexpected server error» de la captura corresponde al HTTP 500 del proveedor. Telo ya hizo tres intentos con el mismo modelo y preservó el modelo seleccionado; no es una falta de permisos local ni se cambia el enrutamiento automáticamente. Requiere una respuesta sana del proveedor o que el usuario seleccione un respaldo.
+- [x] Validación local: `bun run build`, 73 pruebas web y 6 pruebas focalizadas de Codex aprobadas. El smoke Playwright no pudo arrancar porque falta Chromium y la red de esta sesión no permite descargarlo; el chequeo visual queda para CI del PR.
+- [ ] VM: después del despliegue, probar Codex CLI con una tarea y confirmar la respuesta real de Gemini/OpenCode cuando el proveedor deje de devolver 500.
+
 ## GitHub, cuotas de cuenta y acceso a CLIs — rama fix/settings-auth-usage-20261101
 
 - [x] GitHub App: un fallo al emitir el token identifica repositorio, permiso y enlace de configuración; la prueba reproduce 403. En ese momento faltaba instalar la App en el repositorio destino; el usuario actualizó después la instalación a todos los repositorios y concedió lectura/escritura. El 422 de creación de PR se corrige en la sección superior.
-- [x] Codex CLI: `exec` y `resume` incluyen `--skip-git-repo-check` para workspaces de tarea que no contienen `.git`. El sandbox y sus permisos permanecen sin cambios. Regresión de argv aprobada.
+- [x] Codex CLI: `exec` y `resume` incluyen `--skip-git-repo-check` dentro del subcomando `exec`, donde el CLI lo acepta. El sandbox y sus permisos permanecen sin cambios. (La corrección de posición del argumento está registrada en la continuación de PR #170.)
 - [x] Uso: el panel dejó de duplicar Analytics y no presenta costes o cuotas sin respaldo oficial. Conserva la cuota de sesión de Codex, consulta el balance oficial de DeepSeek y enlaza las consolas verificadas para otros proveedores. Prueba sintética del endpoint DeepSeek y smoke de interfaz aprobados; no se consultaron cuentas reales.
 - [x] Ajustes: DeepSeek aparece como motor de inferencia; OpenCode, Codex y Antigravity se presentan una sola vez en herramientas locales; Hermes y xAI quedan ocultos. Antigravity mantiene el login interactivo en su propio CLI por SSH; Telo no recibe el código ni reutiliza esa sesión.
 - [x] Validación local: 46 pruebas focalizadas del servidor, typecheck, build web y smoke Playwright a 390/1440 px aprobados. El smoke no hace llamadas a proveedores reales; la captura de video se omitió por no configurar un fixture.

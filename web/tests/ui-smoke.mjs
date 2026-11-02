@@ -124,6 +124,7 @@ try {
     let probarColaProveedor = false;
     let lecturasColaProveedor = 0;
     let taskListRequests = 0;
+    let herramientasPublicacionInstaladas = true;
     const esperasPollUsadas = [];
     let resolverEsperaPollLarga;
     const pollLargoObservado = new Promise(resolve => { resolverEsperaPollLarga = resolve; });
@@ -393,7 +394,21 @@ try {
         skillSaveRequests++;
         data = { creada: true };
       }
-      else if (path === "/api/servidor") data = null;
+      else if (path === "/api/servidor") data = {
+        generado: now,
+        proceso: { arrancado: now, segundosActivo: 100, bun: "1.4.0", commit: "test", rssMb: 100, plataforma: "linux x64" },
+        disco: [], carpetas: [],
+        herramientas: [
+          { nombre: "opencode", version: "1.2.0", disponible: true },
+          { nombre: "codex", version: "0.162.1", disponible: true },
+          { nombre: "agy", version: "1.4.12", disponible: true },
+          { nombre: "wrangler", version: herramientasPublicacionInstaladas ? "4.156.0" : null, disponible: herramientasPublicacionInstaladas },
+          { nombre: "vercel", version: herramientasPublicacionInstaladas ? "65.5.0" : null, disponible: herramientasPublicacionInstaladas },
+          { nombre: "script", version: "2.37.2", disponible: true },
+        ],
+        costos: { mesUsd: 0, ultimos30dUsd: 0, llamadas30d: 0, tokens30d: 0 },
+        tareas: { ultimos30d: 0, en_cola: 0, en_curso: 0, max_simultaneas: 10 },
+      };
       else if (path === "/api/skills") data = { skills: [] };
       else if (path.includes("/herramientas/")) data = { instalada: true, estado: "inactivo" };
       else if (path.includes("github/app")) data = { configurado: true, faltantes: [], seleccionada: 1, instalaciones: [
@@ -1453,6 +1468,14 @@ try {
     await escalaRestablecer.press("ArrowLeft");
     await escalaRestablecer.press("ArrowLeft");
     await page.goto(`${base}/ajustes`);
+    const listaClis = page.locator('[aria-label="Estado de CLI del servidor"]');
+    await listaClis.getByText("4.156.0", { exact: true }).waitFor();
+    await listaClis.getByText("65.5.0", { exact: true }).waitFor();
+    assert.equal(await listaClis.getByText("Instalado", { exact: true }).count(), 6);
+    assert.equal(await page.locator('article[aria-labelledby="aj-wrangler-titulo"]').count(), 0, "Wrangler instalado aparece en la lista y oculta su tarjeta de instalación");
+    assert.equal(await page.locator('article[aria-labelledby="aj-vercel-titulo"]').count(), 0, "Vercel instalado aparece en la lista y oculta su tarjeta de instalación");
+    herramientasPublicacionInstaladas = false;
+    await page.reload();
     const tarjetaWrangler = page.locator('article[aria-labelledby="aj-wrangler-titulo"]');
     await tarjetaWrangler.waitFor();
     assert.equal(await tarjetaWrangler.getByText("Crear Pages una vez", { exact: true }).count(), 1);
@@ -1461,7 +1484,6 @@ try {
     await page.getByRole("status").filter({ hasText: "Comando copiado: Iniciar sesión." }).waitFor();
     const tarjetaVercel = page.locator('article[aria-labelledby="aj-vercel-titulo"]');
     await tarjetaVercel.getByText(/vercel deploy \/ruta\/al\/proyecto/).waitFor();
-    const listaClis = page.locator('[aria-label="Estado de CLI del servidor"]');
     assert.equal(await listaClis.getByText("Wrangler CLI", { exact: true }).count(), 1);
     assert.equal(await listaClis.getByText("Vercel CLI", { exact: true }).count(), 1);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);

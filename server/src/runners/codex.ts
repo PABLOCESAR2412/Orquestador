@@ -134,16 +134,16 @@ async function intentoCodex(opts: OpcionesCodex & {
   const cero: TotalesCodex = { input: 0, cached: 0, output: 0, reasoning: 0 };
   const base = sesionPrevia ? await leerTotalesSesion(sesionPrevia, opts.perfilCodexDir) : cero;
   if (opts.signal?.aborted) throw new Error("Ejecución cancelada");
-  // Los workspaces de tarea de Telo no siempre son clones Git. El CLI reciente
-  // exige este opt-out para exec/resume; el aislamiento y el sandbox siguen activos.
-  const args: string[] = ["codex", "--skip-git-repo-check", "-c", 'approval_policy="never"', "-c", `sandbox_mode="${opts.soloLectura ? "read-only" : "workspace-write"}"`, ...opts.ajustesMcp];
+  // Los workspaces de tarea de Telo no siempre son clones Git. Esta opción pertenece
+  // a `codex exec`, no a la raíz del CLI; el aislamiento y el sandbox siguen activos.
+  const args: string[] = ["codex", "-c", 'approval_policy="never"', "-c", `sandbox_mode="${opts.soloLectura ? "read-only" : "workspace-write"}"`, ...opts.ajustesMcp];
   if (!opts.soloLectura) args.push("-c", "sandbox_workspace_write.network_access=true", "-c", `sandbox_workspace_write.writable_roots=${JSON.stringify([carpetaEntregables(opts.cwd)])}`);
   // El nivel de esfuerzo del modelo va como ajuste puntual del CLI, igual que los MCP.
   if (opts.variant) args.push("-c", `model_reasoning_effort="${opts.variant}"`);
   if (sesionPrevia) {
-    args.push("exec", "resume", "--json", ...opts.rutasImagenes, "-m", opts.modeloCodex, sesionPrevia, opts.prompt);
+    args.push("exec", "--skip-git-repo-check", "resume", "--json", ...opts.rutasImagenes, "-m", opts.modeloCodex, sesionPrevia, opts.prompt);
   } else {
-    args.push("exec", "--json", ...opts.rutasImagenes, "-m", opts.modeloCodex, "-C", opts.cwd, "--", opts.prompt);
+    args.push("exec", "--skip-git-repo-check", "--json", ...opts.rutasImagenes, "-m", opts.modeloCodex, "-C", opts.cwd, "--", opts.prompt);
   }
 
   const comandoCompleto = opts.aislamiento.length > 0 ? ["setsid", ...opts.aislamiento, ...args] : process.platform === "win32" ? ["cmd", "/c", ...args] : ["setsid", ...args];
