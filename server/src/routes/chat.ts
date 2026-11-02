@@ -1553,7 +1553,14 @@ chat.post("/conversations/:id/seguir", async (c) => {
   const modeloAgotado = conv.cuota_modelo ?? (tarea?.status === "sin_cuota"
     ? tarea.modelo_agotado ?? tarea.model
     : null);
-  if (!modeloAgotado) return c.json({ error: "chat_sin_cuota" }, 409);
+  if (!modeloAgotado) {
+    // El primer clic ya pudo reencolar la tarea y limpiar la cuota antes de que otro dispositivo
+    // recibiera la actualización. Un segundo POST es una repetición inocua, no un conflicto.
+    if (chatOcupado(conversationId)) {
+      return c.json({ messages: [], ...(tarea ? { taskId: tarea.id } : {}), alreadyContinued: true }, 202);
+    }
+    return c.json({ error: "chat_sin_cuota" }, 409);
+  }
 
   const model = conv.model ?? getPreferences().defaultModel ?? DEFAULT_MODEL;
   if (model === modeloAgotado) return c.json({ error: "modelo_sin_cambio" }, 409);
