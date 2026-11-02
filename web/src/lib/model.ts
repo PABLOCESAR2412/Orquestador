@@ -120,6 +120,8 @@ export const EVENT_LABEL: Record<TaskEventKind, string> = {
   clasificacion_jev: "Clasificación sugerida por Jev",
   memoria_evaluada: "Propuesta de memoria evaluada por Jev",
   memoria_propuesta: "Propuesta de memoria guardada para revisión",
+  graphify_consulta: "Graphify del proyecto",
+  skills_activadas: "Skills de esta fase",
   conflictos_pr_preparados: "PR preparado: conflictos por resolver",
 };
 
