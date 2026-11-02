@@ -612,7 +612,6 @@ projects.get("/projects/:id/instrucciones/sugeridas", (c) => {
   }
 
   const { texto, fuentes } = componerInstrucciones(docs, MAX_INSTRUCCIONES);
-  if (!texto) return c.json({ error: "sin_guias" }, 404);
   return c.json({ texto, fuentes });
 });
 

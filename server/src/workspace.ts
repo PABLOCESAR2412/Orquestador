@@ -309,6 +309,24 @@ async function prepararRepo(clon: string): Promise<void> {
   if (!(await esRaizGit(clon))) throw new ErrorTarea("task_without_repo", 409);
 }
 
+// Los repositorios remotos vacíos no tienen un HEAD resoluble; el clon de tarea necesita una base.
+async function asegurarHeadBaseTarea(clon: string): Promise<void> {
+  const head = await gitSeguro(["rev-parse", "--verify", "HEAD^{commit}"], { cwd: clon });
+  if (head.code === 0) return;
+  const referencia = await gitSeguro(["symbolic-ref", "--quiet", "HEAD"], { cwd: clon });
+  if (referencia.code !== 0 || !referencia.stdout.trim()) throw new ErrorTarea("task_head_invalid", 409);
+  const rama = referencia.stdout.trim();
+  const ramaExistente = await gitSeguro(["show-ref", "--verify", "--quiet", rama], { cwd: clon });
+  if (ramaExistente.code === 0) throw new ErrorTarea("task_head_invalid", 409);
+
+  await gitOkSeguro([
+    "-c", "user.name=Telo",
+    "-c", "user.email=telo@localhost",
+    "-c", "commit.gpgsign=false",
+    "commit", "--allow-empty", "-m", "Base inicial de la tarea",
+  ], { cwd: clon });
+}
+
 function rutaRemoto(taskId: string): string {
   return join(carpetaTarea(taskId), NOMBRE_REMOTO);
 }
@@ -512,6 +530,7 @@ export function prepararCopia(
 
     // Antes de cualquier otra operación: en un reanudado, el .git lo pudo tocar el agente.
     await prepararRepo(clon);
+    if (nuevo && !fila.source_branch) await asegurarHeadBaseTarea(clon);
     // El clon no conserva remoto: la subida usa solo remoto.txt, nunca el origen del clon.
     await gitSeguro(["remote", "remove", "origin"], { cwd: clon });
     // La URL se fija al crear el clon. En un reanudado solo se escribe si el archivo falta.
