@@ -130,6 +130,11 @@ function skillsAutomaticas(texto: string): string[] {
     resultado.push("prospecting");
   }
 
+  const cambioAcotado =
+    /\b(corrige|corregir|corrigiendo|arregla|arreglar|arregles|fix|bug|error(?:es)?|implementa|implementar|añade|agrega|actualiza|actualizar|cambia|cambiar|refactoriza)\b/i.test(texto) &&
+    !/\b(análisis completo|migración|rediseña todo|reescribe|desde cero|varios proyectos)\b/i.test(texto);
+  if (cambioAcotado) resultado.push("ponytail");
+
   // Ponytail/Caveman lite se resumen en el contrato común; no duplicar su documento por turno.
   return resultado;
 }
