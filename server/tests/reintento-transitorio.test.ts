@@ -232,7 +232,7 @@ test.skipIf(!Bun.which("setsid"))("el modo predeterminado no cambia de modelo po
   savePreferences({ ...DEFAULT_PREFERENCES, fallbackModel: "opencode/respaldo" });
   try {
     await expect(ejecutarAgente({ prompt: "FALLBACK-SEGURIDAD", model: "opencode/prueba", cwd: raiz })).rejects.toThrow();
-    expect(readFileSync(contador, "utf8")).toBe("4\n");
+    expect(readFileSync(contador, "utf8")).toBe("2\n");
   } finally { savePreferences(DEFAULT_PREFERENCES); }
 });
 

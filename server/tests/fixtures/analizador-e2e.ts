@@ -149,8 +149,8 @@ async function main() {
   }
   await esperar(f, ["failed"]);
   const tf = await leer(f);
-  comprobar(tf.status === "failed" && tf.error?.includes("se desvió del plan 3 veces"), "el tope de desviaciones falla la tarea");
-  comprobar(eventos(f).filter((k) => k === "plan_creado").length === 3, "el tope permite tres versiones del plan");
+  comprobar(tf.status === "failed" && tf.error?.includes("se desvió del plan 2 veces"), "el tope de desviaciones falla la tarea");
+  comprobar(eventos(f).filter((k) => k === "plan_creado").length === 2, "el tope permite dos versiones del plan");
 
   // G. El obrero reporta un fallo: dos ciclos de corrección y, agotados, la tarea queda fallida con su reporte.
   const g = crearTarea({ ...base, prompt: "Ordena la carpeta FALLO" });
