@@ -114,6 +114,7 @@ try {
     let ultimoDisco = null;
     let escriturasPreferencias = 0;
     let fallbackModeActual = "selected";
+    let modelVisibility = {};
     let skillsGuardadas = [];
     let secuenciaEnvios = 0;
     let adjuntosChatSubidos = 0;
@@ -316,6 +317,7 @@ try {
       ];
       else if (path === "/api/conversations/c6/messages") data = historialExtenso;
       else if (path === "/api/conversations/c1/acciones") data = actions;
+      else if (path === "/api/acciones/git1/seguimiento") data = { seguimiento: { estado: "listo", mensaje: "GitHub Actions terminó correctamente.", repo: "ejemplo/pruebas", numero: 9, sha: "a".repeat(40), comprobado_en: Date.now(), repair_task_id: null, conversation_id: "c1", message_id: "u-retry", activity_from_seq: 0, checks: [{ nombre: "Quality", estado: "success", url: "https://github.com/ejemplo/pruebas/actions/runs/1" }] } };
       else if (path === "/api/conversations/c1/tasks" || path === "/api/tasks") data = [task];
       else if (path === "/api/tasks/t1/plan" && route.request().method() === "POST") {
         if (esperarPlan) await esperarPlan;
@@ -342,6 +344,7 @@ try {
         { id: "google/precio-pendiente", provider:"google", name:"Precio pendiente", inputUsd:0, outputUsd:0, priceKnown:false, context:1000, variants:[], free:false, costTier:"desconocido", costWarning:"Precio no disponible", group:"Gemini", recommended:true },
         { id: "opencode/claude-fable-5", provider: "opencode", name: "Claude Fable 5", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Claude", recommended: true },
         { id: "codex/gpt-5-codex", provider: "codex", name: "GPT-5 Codex", inputUsd: 0, outputUsd: 0, context: 100000, variants: ["high"], free: false, costTier: "medio", costWarning: null, group: "Codex", recommended: true },
+        { id: "antigravity/gemini-prueba", provider: "antigravity", name: "Gemini de Antigravity", inputUsd: 0, outputUsd: 0, priceKnown: false, context: 0, variants: [], free: false, costTier: "medio", costWarning: null, group: "Antigravity", recommended: true },
         { id: "google/prueba", provider: "google", name: "Google Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Gemini", recommended: true },
         { id: "nvidia/nemotron-test", provider: "nvidia", name: "Nemotron Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Nemotron", recommended: true },
         { id: "nvidia/llama-test", provider: "nvidia", name: "NVIDIA Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Llama", recommended: true },
@@ -350,11 +353,14 @@ try {
       ] };
       else if (path === "/api/preferences") {
         if (route.request().method() === "PUT") fallbackModeActual = route.request().postDataJSON().fallbackMode ?? fallbackModeActual;
-        data = { defaultModel: null, defaultEffort: null, monthlyBudgetUsd: null, budgetAlertPercent: 80, fallbackMode: fallbackModeActual };
+        if (route.request().method() === "PUT") modelVisibility = route.request().postDataJSON().modelVisibility ?? modelVisibility;
+        data = { modelVisibility, defaultModel: null, defaultEffort: null, monthlyBudgetUsd: null, budgetAlertPercent: 80, fallbackMode: fallbackModeActual };
       }
       else if (path === "/api/providers") data = [
         { id: "opencode", name: "OpenCode", configured: true, implemented: true, hint: "CLI instalado.", variable: null, enAgente: true, guardable: false, guardada: false, sesion: false },
         { id: "codex", name: "Codex", configured: codexSesionEnPicker, implemented: true, hint: "Sesión de Codex.", variable: null, enAgente: codexSesionEnPicker, guardable: false, guardada: false, sesion: codexSesionEnPicker },
+        { id: "antigravity", name: "Antigravity CLI", configured: true, implemented: true, hint: "Sesión SSH detectada.", variable: null, enAgente: true, guardable: false, guardada: false, sesion: true },
+        { id: "cloudflare-workers-ai", name: "Cloudflare Workers AI", configured: false, implemented: true, hint: "Account ID y token API.", accountId: null, variable: "CLOUDFLARE_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
         { id: "hermes", name: "Hermes Agent", configured: true, implemented: false, hint: "Piloto.", variable: null, enAgente: false, guardable: false, guardada: false, sesion: false },
         { id: "google", name: "Google (Gemini)", configured: true, implemented: true, hint: "Clave de prueba.", variable: "GOOGLE_GENERATIVE_AI_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
         { id: "groq", name: "Groq", configured: false, implemented: true, hint: "Clave de prueba.", variable: "GROQ_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
@@ -498,6 +504,7 @@ try {
         data = { messages: pagina, anterior: todas.some(m => m.cursor < (pagina[0]?.cursor ?? 0)) ? pagina[0].cursor : null, ultimo, mas: todas.some(m => m.cursor > ultimo), reiniciar: false,
           vigentes: todas.filter(m => m.cursor >= Number(params.get("desde") ?? Number.MAX_SAFE_INTEGER) && m.cursor <= ultimo).map(m => ({ id: m.id, sesion_compactada: m.sesion_compactada ?? 0 })) };
       }
+      if (path === "/api/models" && data.models) data.models = data.models.map(m => ({ ...m, recommended: modelVisibility[m.id] ?? m.recommended }));
       return route.fulfill({ json: data });
     });
     await page.goto(`${base}/entrar`);
@@ -700,7 +707,8 @@ try {
     const selectorModelo = page.getByRole("dialog", { name: "Elegir modelo" });
     assert.match(await selectorModelo.locator(".picker-tus-modelos").innerText(), /Llama Test/);
     assert.match(await selectorModelo.locator(".picker-tus-modelos").innerText(), /Google Test/);
-    assert.equal(await selectorModelo.locator(".picker-intelligence").filter({ hasText: "AA 42,5" }).count(), 1);
+    assert.equal(await selectorModelo.locator(".picker-intelligence").count(), 0, "el índice de Artificial Analysis ya no ocupa el selector");
+    await selectorModelo.getByRole("heading", { name: "Antigravity CLI", exact: true }).waitFor();
     // El buscador filtra el catálogo y muestra el proveedor en la cabecera del grupo.
     const campoBusca = selectorModelo.locator(".picker-search");
     await campoBusca.fill("Precio pendiente");
@@ -760,7 +768,11 @@ try {
     assert.equal(await page.locator(".tl-composer-sugerencia").count(), 0);
     await inputChat.focus();
     await inputChat.press("Tab");
-    assert.equal(await inputChat.inputValue(), recomendacion, "Tab inserta la recomendación del placeholder");
+    await page.waitForFunction(() => document.querySelector('[aria-label="Modo de trabajo"]')?.getAttribute("aria-pressed") === "true");
+    assert.equal(await inputChat.inputValue(), "", "Tab cambia el modo sin insertar ni perder texto");
+    assert.equal(await inputChat.evaluate(el => el === document.activeElement), true);
+    await inputChat.press("Tab");
+    await page.waitForFunction(() => document.querySelector('[aria-label="Modo de trabajo"]')?.getAttribute("aria-pressed") === "false");
     await inputChat.fill("");
     console.log(`${width}px: recomendaciones del compositor comprobadas`);
     if (width === 390) {
@@ -1071,6 +1083,7 @@ try {
     assert.equal((await page.locator("body").textContent()).includes("MEMORIA_INTERNA"), false);
     await page.getByRole("button", { name: "Subir a telo/prueba y abrir PR", exact: true }).click();
     await page.getByText("Completada", { exact: true }).waitFor();
+    await page.getByRole("region", { name: "Seguimiento de la publicación" }).getByText("GitHub Actions terminó correctamente.", { exact: true }).waitFor();
     assert.equal(await page.locator('section.tl-accion-git-actual').count(), 1, "la decisión actualiza la misma tarjeta dentro de su turno");
     assert.equal(approvals, 1);
     assert.equal(await page.locator('section.tl-accion-git-actual [role="alert"]').count(), 0);
@@ -1190,12 +1203,12 @@ try {
     // solo necesita ver que existe la primera; sin first(), el modo estricto revienta al segundo.
     await page.getByText("Mensaje recibido", { exact: true }).first().waitFor();
     assert.equal(await page.locator('section.tl-accion-git-actual').count(), 0, "las acciones de turnos previos quedan en el historial plegado");
-    const modo = page.getByRole("combobox", { name: "Modo de trabajo", exact: true });
-    await modo.selectOption("plan");
+    const modo = page.getByRole("button", { name: "Modo de trabajo", exact: true });
+    await modo.click();
     await page.waitForTimeout(200);
     assert.equal(modoC1, "plan");
     await page.screenshot({path: `scratch/capturas-ci/chat-plan-${width}.png`, fullPage:false});
-    await modo.selectOption("build");
+    await modo.click();
     await page.waitForTimeout(200);
     assert.equal(modoC1, "build");
     if (videoPathPrueba) {
@@ -1408,18 +1421,18 @@ try {
     await page.getByRole("heading", { name: "Ajustes y Servidor", exact: true }).waitFor();
     assert.equal(await page.getByRole("heading", { name: "Cuenta de Google", exact: true }).count(), 0);
     const proveedoresInferencia = page.getByRole("tablist", { name: "Proveedores de inferencia" });
-    const tabGemini = proveedoresInferencia.getByRole("tab", { name: "Google Gemini" });
+    const tabGemini = proveedoresInferencia.getByRole("tab", { name: "API de Google" });
     await tabGemini.evaluate((tab) => tab.scrollIntoView({ block: "nearest", inline: "center" }));
     await tabGemini.waitFor();
-    assert.equal(await proveedoresInferencia.getByRole("tab").count(), 5);
+    assert.equal(await proveedoresInferencia.getByRole("tab").count(), 6);
     await page.getByText("3 configurados", { exact: true }).waitFor();
     assert.equal(await proveedoresInferencia.getByRole("tab", { name: "OpenCode", exact: true }).count(), 0, "OpenCode se configura en la sección CLI");
     await proveedoresInferencia.getByRole("tab", { name: "DeepSeek", exact: true }).click();
     await page.getByRole("tabpanel", { name: "DeepSeek" }).waitFor();
     assert.equal(await page.getByRole("heading", { name: "Hermes Agent", exact: true }).count(), 0, "Hermes queda oculto en Ajustes");
     assert.equal(await page.getByRole("heading", { name: "xAI", exact: true }).count(), 0, "xAI no se ofrece en Ajustes");
-    await proveedoresInferencia.getByRole("tab", { name: "Google Gemini", exact: true }).click();
-    const panelGemini = page.getByRole("tabpanel", { name: "Google Gemini" });
+    await proveedoresInferencia.getByRole("tab", { name: "API de Google", exact: true }).click();
+    const panelGemini = page.getByRole("tabpanel", { name: "API de Google" });
     await panelGemini.getByRole("button", { name: "Mostrar ajustes", exact: true }).click();
     await panelGemini.getByRole("button", { name: "Editar", exact: true }).click();
     assert.equal(await panelGemini.locator("input[type=password]").count(), 1, "la clave solo aparece al editarla");
@@ -1472,6 +1485,16 @@ try {
     await listaClis.getByText("4.156.0", { exact: true }).waitFor();
     await listaClis.getByText("65.5.0", { exact: true }).waitFor();
     assert.equal(await listaClis.getByText("Instalado", { exact: true }).count(), 6);
+    assert.equal(await page.locator('article[aria-labelledby="aj-prov-codex"]').count(), 0);
+    assert.equal(await page.locator('article[aria-labelledby="aj-prov-opencode"]').count(), 0);
+    assert.equal(await page.locator('article[aria-labelledby="aj-antigravity-titulo"]').count(), 0);
+    await listaClis.locator(".aj-herramienta-local").filter({ hasText: "Opencode CLI" }).getByRole("button", { name: "Ver modelos", exact: true }).click();
+    const modeloZen = page.getByRole("checkbox", { name: /Claude Fable 5/ });
+    await modeloZen.click();
+    await page.waitForFunction(() => document.querySelector('[aria-label="Modelos visibles de opencode"] input')?.checked === false);
+    await page.waitForFunction(() => document.querySelector('[aria-label="Modelos visibles de opencode"] input')?.disabled === false);
+    assert.equal(modelVisibility["opencode/claude-fable-5"], false, "la selección por CLI se guarda en el servidor");
+    await page.screenshot({ path: `scratch/capturas-ci/cli-instalados-${width}.png` });
     assert.equal(await page.locator('article[aria-labelledby="aj-wrangler-titulo"]').count(), 0, "Wrangler instalado aparece en la lista y oculta su tarjeta de instalación");
     assert.equal(await page.locator('article[aria-labelledby="aj-vercel-titulo"]').count(), 0, "Vercel instalado aparece en la lista y oculta su tarjeta de instalación");
     herramientasPublicacionInstaladas = false;
@@ -1528,10 +1551,11 @@ try {
     assert.equal((await tarjetaJev.textContent()).includes("Telo decide qué guardar"), true);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/jev-ajustes-${width}.png` });
-    const accesoCodex = page.locator(".aj-proveedores-adicionales");
-    assert.equal(await page.getByRole("heading", { name: "Codex", exact: true }).count(), 1, "Codex tiene una sola tarjeta en CLIs locales");
-    assert.equal(await page.getByRole("heading", { name: "OpenCode", exact: true }).count(), 1, "OpenCode tiene una sola tarjeta en CLIs locales");
-    assert.equal(await page.getByRole("heading", { name: "Antigravity CLI", exact: true }).count(), 1, "Antigravity tiene una sola guía de acceso SSH");
+    assert.equal(await page.getByRole("heading", { name: "Codex", exact: true }).count(), 0, "Codex instalado conserva solo su fila compacta");
+    assert.equal(await page.getByRole("heading", { name: "OpenCode", exact: true }).count(), 0, "OpenCode instalado conserva solo su fila compacta");
+    assert.equal(await page.getByRole("heading", { name: "Antigravity CLI", exact: true }).count(), 0, "Antigravity instalado conserva solo su fila compacta");
+    await listaClis.locator(".aj-herramienta-local").filter({ hasText: "Codex CLI" }).getByRole("button", { name: "Sesión", exact: true }).click();
+    const accesoCodex = page.locator(".login-codex");
     assert.equal(await page.getByRole("heading", { name: "Hermes Agent", exact: true }).count(), 0);
     assert.equal(await page.getByRole("heading", { name: "xAI", exact: true }).count(), 0);
     await accesoCodex.getByRole("button", { name: "Copiar código", exact: true }).first().click();
@@ -1566,7 +1590,7 @@ try {
     await page.reload();
     await page.locator(".model-chip").click();
     const selectorModelos = page.getByRole("dialog", { name: "Elegir modelo" });
-    await selectorModelos.getByRole("heading", { name: "OpenCode", exact: true }).waitFor();
+    assert.equal(await selectorModelos.getByRole("heading", { name: "OpenCode", exact: true }).count(), 0, "el modelo ocultado desde su CLI sigue fuera del selector tras recargar");
     await selectorModelos.getByRole("heading", { name: "NVIDIA API", exact: true }).waitFor();
     await selectorModelos.getByRole("heading", { name: "Groq API", exact: true }).waitFor();
     await selectorModelos.getByRole("heading", { name: "Codex CLI · sesión de ChatGPT", exact: true }).waitFor();
@@ -1583,7 +1607,7 @@ try {
     await selectorModelos.getByRole("button", { name: "Mostrar modelos de Codex CLI · sesión de ChatGPT", exact: true }).click();
     assert.equal(await gruposCodex.isVisible(), true);
     await selectorModelos.getByRole("button", { name: "Solo gratis", exact: true }).click();
-    assert.equal(await selectorModelos.locator(".picker-conteo").textContent(), conteoConCodex?.replace(/\d+/, String(Number(conteoConCodex.match(/\d+/)?.[0]) - 2)), "Codex y los modelos sin precio no aparecen como gratis ni inflan el conteo");
+    assert.equal(await selectorModelos.locator(".picker-conteo").textContent(), conteoConCodex?.replace(/\d+/, String(Number(conteoConCodex.match(/\d+/)?.[0]) - 3)), "las sesiones Codex/Antigravity y los modelos sin precio no aparecen como gratis");
     await selectorModelos.getByRole("button", { name: "Solo gratis", exact: true }).click();
     assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).isDisabled(), false);
     assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).count(), 1, "el catálogo de sesión evita duplicar el modelo de Codex incluido en /api/models");

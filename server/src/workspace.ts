@@ -30,7 +30,7 @@ import {
 } from "./git";
 import { archivosConSecretos, archivosConSecretosEnBlobs, redactar } from "./redaccion";
 import { valorSecreto, valoresDeProyecto } from "./secretos";
-import { tokenGithubGlobal } from "./github-auth";
+import { tokenGithubGlobal, autorGit } from "./github-auth";
 import { tokenGithubAppParaRepo } from "./github-app";
 import { opcionesDeCredenciales } from "./git-credenciales";
 import { eliminarPerfilCodex, eliminarPerfilOpenCode, prepararDirectorioOpenCode } from "./runners/aislamiento";
@@ -122,6 +122,7 @@ type FilaTarea = {
   source_branch: string | null;
   source_base_branch: string | null;
   source_pr_number: number | null;
+  source_commit: string | null;
 };
 
 type FilaAprobacion = {
@@ -333,7 +334,7 @@ function filaTarea(taskId: string): FilaTarea {
     .query<
       FilaTarea,
       [string]
-    >("SELECT id, status, rama, base_commit, project_id, source_branch, source_base_branch, source_pr_number FROM tasks WHERE id = ?")
+    >("SELECT id, status, rama, base_commit, project_id, source_branch, source_base_branch, source_pr_number, source_commit FROM tasks WHERE id = ?")
     .get(taskId);
   if (!fila) throw new ErrorTarea("task_not_found", 404);
   return fila;
@@ -487,8 +488,9 @@ export function prepararCopia(
     const carpeta = carpetaTarea(taskId);
     const clon = join(carpeta, "repo");
     const fila = filaTarea(taskId);
-    const rama = fila.source_branch ?? ramaDeTarea(taskId);
-    if (fila.source_branch && (await gitSeguro(["check-ref-format", "--branch", rama], { cwd: repoPath })).code !== 0)
+    // Una corrección de PR mantiene su rama; una publicación directa se corrige en una rama nueva.
+    const rama = fila.source_branch && fila.source_pr_number ? fila.source_branch : ramaDeTarea(taskId);
+    if (fila.source_branch && (await gitSeguro(["check-ref-format", "--branch", fila.source_branch], { cwd: repoPath })).code !== 0)
       throw new ErrorTarea("rama_fuente_invalida", 409);
     mkdirSync(carpeta, { recursive: true });
 
@@ -526,26 +528,27 @@ export function prepararCopia(
     }
 
     let base: string;
-    if (nuevo && fila.source_branch) {
+    if ((nuevo || !fila.base_commit) && fila.source_branch) {
         const remoto = leerRemoto(taskId);
-        const baseBranch = fila.source_base_branch ?? (fila.project_id
-          ? db.query<{ base_branch: string }, [string]>("SELECT base_branch FROM project_git WHERE project_id=?").get(fila.project_id)?.base_branch ?? "main"
-          : "main");
+        const baseBranch = fila.source_base_branch;
         if (!remoto || !urlGithubPermitida(remoto)) throw new ErrorTarea("sin_remoto", 409);
-        if ((await gitSeguro(["check-ref-format", "--branch", baseBranch], { cwd: clon })).code !== 0)
+        if (baseBranch && (await gitSeguro(["check-ref-format", "--branch", baseBranch], { cwd: clon })).code !== 0)
           throw new ErrorTarea("rama_base_invalida", 409);
         const credenciales = await tokenDeLectura({ projectId: fila.project_id, remoto });
         await gitOkSeguro([
           ...credenciales.args, "fetch", "--no-tags", remoto,
-          `+refs/heads/${rama}:refs/telo/source`,
-          `+refs/heads/${baseBranch}:refs/telo/base`,
+          `+refs/heads/${fila.source_branch}:refs/telo/source`,
+          ...(baseBranch ? [`+refs/heads/${baseBranch}:refs/telo/base`] : []),
         ], { cwd: clon, timeoutMs: TIEMPO_CLON_MS, env: credenciales.env });
         const head = (await gitOkSeguro(["rev-parse", "refs/telo/source"], { cwd: clon })).trim();
-        base = (await gitOkSeguro(["rev-parse", "refs/telo/base"], { cwd: clon })).trim();
+        if (fila.source_commit && (!/^[a-f0-9]{40,64}$/i.test(fila.source_commit) || head !== fila.source_commit))
+          throw new ErrorTarea("publicacion_cambiada", 409, "La rama recibió otro commit desde la revisión de la publicación. Prepara una revisión nueva antes de corregirla.");
+        base = baseBranch ? (await gitOkSeguro(["rev-parse", "refs/telo/base"], { cwd: clon })).trim() : head;
         await gitOkSeguro(["checkout", "-B", rama, head], { cwd: clon });
-        const autor = fila.project_id
+        if (baseBranch) {
+        const autor = autorGit(fila.project_id
           ? db.query<{ author_name: string; author_email: string }, [string]>("SELECT author_name,author_email FROM project_git WHERE project_id=?").get(fila.project_id)
-          : null;
+          : null);
         const merge = await gitSeguro([
           "-c", `user.name=${autor?.author_name ?? "Telo"}`,
           "-c", `user.email=${autor?.author_email ?? "telo@localhost"}`,
@@ -555,6 +558,7 @@ export function prepararCopia(
           const sinResolver = (await gitOkSeguro(["diff", "--name-only", "--diff-filter=U"], { cwd: clon })).trim();
           if (!sinResolver) throw new ErrorTarea("rama_fuente_no_preparable", 409, mensajeSeguro(new Error(merge.stderr || merge.stdout)));
           registrarEvento(taskId, "conflictos_pr_preparados", sinResolver.split("\n").slice(0, 20).join(", "));
+        }
         }
     } else if (nuevo) {
       const head = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: clon })).trim();
@@ -904,14 +908,14 @@ async function commitInterno(
     return { accion: "commit", sha: shaActual, rama: ctx.rama };
   }
 
-  const autor = ctx.projectId
+  const autor = autorGit(ctx.projectId
     ? db
         .query<
           { author_name: string; author_email: string },
           [string]
         >("SELECT author_name,author_email FROM project_git WHERE project_id=?")
         .get(ctx.projectId)
-    : null;
+    : null);
   await gitOkSeguro(
     [
       "-c",
@@ -1090,14 +1094,14 @@ export async function reintegrarSobrePunta(
       env: credenciales.env,
       timeoutMs: TIEMPO_CLON_MS,
     });
-    const autor = ctx.projectId
+    const autor = autorGit(ctx.projectId
       ? db
           .query<
             { author_name: string | null; author_email: string | null },
             [string]
           >("SELECT author_name,author_email FROM project_git WHERE project_id=?")
           .get(ctx.projectId)
-      : null;
+      : null);
     await gitOkSeguro(
       [
         "-c",

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type ModeloCodex, type ModelInfo } from "../api";
 import { effortLabel, formatPrice, nombreProveedor } from "../lib/model";
 import { coincideModelo, agruparPorProveedor, normalizaBusca } from "../lib/busca-modelos";
-import { guardarPreferenciasSelector, leerPreferenciasSelector, normalizarIdAnalisis, type PreferenciasSelectorModelos } from "../lib/model-picker-preferencias";
+import { guardarPreferenciasSelector, leerPreferenciasSelector, type PreferenciasSelectorModelos } from "../lib/model-picker-preferencias";
 import { useDialogo } from "./controls";
 import "../styles-picker.css";
 
@@ -53,12 +53,7 @@ export function ModelPicker({
   const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders, staleTime: 5 * 60_000 });
   const codexConectado = proveedores.data?.some((proveedor) => proveedor.id === "codex" && proveedor.sesion) ?? false;
   const codexEnAgente = proveedores.data?.some((proveedor) => proveedor.id === "codex" && proveedor.enAgente) ?? false;
-  const inteligencia = useQuery({
-    queryKey: ["model-intelligence"],
-    queryFn: api.modelIntelligence,
-    staleTime: 12 * 60 * 60_000,
-    retry: false,
-  });
+  const preferenciasApp = useQuery({ queryKey: ["preferences"], queryFn: api.getPreferences });
   const usosModelos = useQuery({
     queryKey: ["model-usage"],
     queryFn: api.modelUsage,
@@ -169,17 +164,6 @@ export function ModelPicker({
       .slice(0, 3);
     return [...fijados, ...masUsados];
   }, [candidatos, preferencias, usosModelos.data]);
-  const puntajes = useMemo(() => {
-    const mapa = new Map<string, (NonNullable<typeof inteligencia.data>["modelos"])[number] | null>();
-    for (const modelo of inteligencia.data?.modelos ?? []) {
-      for (const clave of new Set([normalizarIdAnalisis(modelo.slug), normalizarIdAnalisis(modelo.name)])) {
-        const anterior = mapa.get(clave);
-        mapa.set(clave, anterior === undefined || anterior?.slug === modelo.slug ? modelo : null);
-      }
-    }
-    return mapa;
-  }, [inteligencia.data]);
-  const puntajeDe = (id: string, nombre?: string) => puntajes.get(normalizarIdAnalisis(id)) ?? (nombre ? puntajes.get(normalizarIdAnalisis(nombre)) : null) ?? null;
 
   const seleccionar = (m: ModelInfo | null) => {
     if (!m) return elegir(null, null);
@@ -213,8 +197,8 @@ export function ModelPicker({
 
   // Modelos listados tras filtrar: es el contador "N modelos disponibles".
   const listados = useMemo(
-    () => destacados.length + groups.reduce((total, [, familias]) => total + familias.reduce((n, [, items]) => n + items.length, 0), 0) + (!onlyFree && codexConectado ? catalogoCodex.data?.models.length ?? 0 : 0),
-    [groups, destacados, onlyFree, codexConectado, catalogoCodex.data],
+    () => destacados.length + groups.reduce((total, [, familias]) => total + familias.reduce((n, [, items]) => n + items.length, 0), 0) + (!onlyFree && codexConectado ? catalogoCodex.data?.models.filter(m => preferenciasApp.data?.modelVisibility?.[`codex/${m.id}`] !== false).length ?? 0 : 0),
+    [groups, destacados, onlyFree, codexConectado, catalogoCodex.data, preferenciasApp.data],
   );
 
   // Resultados del buscador: coinciden por nombre, id, familia o proveedor visible;
@@ -233,17 +217,15 @@ export function ModelPicker({
   // La sección Codex también responde al buscador: sus filas se filtran mientras escribes.
   const codexVisibles = useMemo(() => {
     if (onlyFree) return [];
-    if (!buscando || !catalogoCodex.data) return catalogoCodex.data?.models ?? [];
-    return catalogoCodex.data.models.filter((modelo) =>
-      coincideModelo({ name: modelo.name, id: `codex/${modelo.id}`, group: "Codex CLI · sesión de ChatGPT", provider: "codex" }, textoBusca),
+    return (catalogoCodex.data?.models ?? []).filter((modelo) =>
+      preferenciasApp.data?.modelVisibility?.[`codex/${modelo.id}`] !== false && (!buscando || coincideModelo({ name: modelo.name, id: `codex/${modelo.id}`, group: "Codex CLI · sesión de ChatGPT", provider: "codex" }, textoBusca)),
     );
-  }, [onlyFree, buscando, catalogoCodex.data, textoBusca]);
+  }, [onlyFree, buscando, catalogoCodex.data, textoBusca, preferenciasApp.data]);
   const listadosVisibles = hallazgos ? hallazgos.visibles.length + codexVisibles.length : listados;
 
   // Fila de un modelo: nombre con "✓ Activo" si es el actual; precio arriba y costo abajo.
   const fila = (m: ModelInfo, mostrarIntegracion = false) => {
     const fijado = preferencias.fijados.includes(m.id);
-    const indice = puntajeDe(m.id, m.name);
     return (
       <div className="picker-modelo-fila">
         <button type="button" className="picker-item" aria-current={esActual(m) || undefined} aria-pressed={conEsfuerzo ? m.id === draftId : undefined} onClick={() => seleccionar(m)}>
@@ -256,11 +238,8 @@ export function ModelPicker({
           </span>
           <span className="picker-meta">
             <span className="picker-price" title="Precio de entrada / salida por millón de tokens">
-              {formatPrice(m)}
+              {m.provider === "antigravity" ? "Sesión Antigravity" : formatPrice(m)}
             </span>
-            {indice && <span className="picker-intelligence" title={`Artificial Analysis Intelligence Index v${inteligencia.data?.version ?? "?"}`}>
-              AA {indice.score.toLocaleString("es", { maximumFractionDigits: 1 })}
-            </span>}
           </span>
         </button>
         <button
@@ -329,20 +308,6 @@ export function ModelPicker({
         </div>
 
         <div className="picker-list">
-          {!cargando && !error && inteligencia.data?.disponible && (
-            <p className="picker-proveedor-nota picker-aa-nota">
-              Índice de inteligencia v{inteligencia.data.version ?? "?"} de{" "}
-              <a href="https://artificialanalysis.ai/" target="_blank" rel="noreferrer">Artificial Analysis</a>.
-            </p>
-          )}
-          {!cargando && inteligencia.data?.configurado === false && (
-            <p className="picker-proveedor-nota picker-aa-nota">
-              Puntuación no configurada. Añade <code>TELO_ARTIFICIAL_ANALYSIS_API_KEY</code> al entorno del servidor.
-            </p>
-          )}
-          {!cargando && inteligencia.data?.configurado && !inteligencia.data.disponible && (
-            <p className="picker-proveedor-nota picker-aa-nota">Artificial Analysis no respondió. Puedes seguir eligiendo modelos sin esa puntuación.</p>
-          )}
           {destacados.length > 0 && !buscando && (
             <section className="picker-proveedor picker-tus-modelos" aria-labelledby="picker-tus-modelos">
               <h3 className="group-title" id="picker-tus-modelos">Tus modelos</h3>

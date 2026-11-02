@@ -967,6 +967,10 @@ const migrations: Migration[] = [
       ALTER TABLE messages ADD COLUMN work_mode TEXT NOT NULL DEFAULT 'build' CHECK (work_mode IN ('plan','build'));
       ALTER TABLE tasks ADD COLUMN work_mode TEXT NOT NULL DEFAULT 'build' CHECK (work_mode IN ('plan','build'));`,
   },
+  {
+    name: "058_commit_fuente_revision",
+    sql: `ALTER TABLE tasks ADD COLUMN source_commit TEXT;`,
+  },
 ];
 
 function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {

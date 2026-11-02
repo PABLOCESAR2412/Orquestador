@@ -4,6 +4,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { config } from "../config";
 import { carpetaEntregables } from "../entregables";
 import { hallarEjecutable } from "../ejecutable";
+import { archivosSesionAntigravity } from "../antigravity";
 
 
 // Aislamiento de los agentes con bubblewrap (bwrap). Cada ejecución ve:
@@ -156,6 +157,50 @@ export function eliminarPerfilCodex(id: string): void {
   rmSync(rutaPerfilCodex(id), { recursive: true, force: true });
 }
 
+function rutaPerfilAntigravity(id: string): string {
+  return join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-antigravity", createHash("sha256").update(id).digest("hex"));
+}
+
+export function configuracionAntigravityAislada(home: string, cwd: string, soloLectura: boolean, adjuntos: { rutaVisible: string }[] = []) {
+  return {
+    enableTerminalSandbox: true,
+    toolPermission: "proceed-in-sandbox",
+    allowNonWorkspaceAccess: false,
+    artifactReviewPolicy: "always-proceed",
+    permissions: {
+      allow: [`read_file(${cwd})`, `read_file(${join(home, ".agents", "skills")})`, ...HERRAMIENTAS.map(ruta => `read_file(${join(home, ruta)})`), ...adjuntos.map(a => `read_file(${a.rutaVisible})`), "read_url(*)"],
+      // Las reglas read_file también gobiernan los montajes del sandbox nativo de comandos.
+      // No permitir command(*): también autorizaría ejecuciones fuera de ese sandbox.
+      deny: [`read_file(${join(home, ".gemini")})`, `write_file(${join(home, ".gemini")})`,
+        `write_file(${join(cwd, ".agents")})`, `write_file(${join(cwd, ".gemini")})`,
+        ...(soloLectura ? ["write_file(*)"] : [])],
+    },
+  };
+}
+
+export function prepararPerfilAntigravity(id: string, cwd: string, soloLectura = false, adjuntos: { rutaVisible: string }[] = []): string {
+  const raiz = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-antigravity");
+  const perfil = rutaPerfilAntigravity(id);
+  for (const carpeta of [raiz, perfil, join(perfil, "antigravity-cli")]) {
+    mkdirSync(carpeta, { recursive: true, mode: 0o700 });
+    const stat = lstatSync(carpeta);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(carpeta) !== carpeta) throw new AislamientoError("carpeta_no_permitida", "El perfil de Antigravity no es seguro.");
+  }
+  const ajustes = join(perfil, "antigravity-cli", "settings.json");
+  if (existsSync(ajustes)) {
+    const stat = lstatSync(ajustes);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || realpathSync(ajustes) !== ajustes) throw new AislamientoError("carpeta_no_permitida", "La configuración de Antigravity no es segura.");
+  }
+  const home = process.env.HOME;
+  if (!home || home === "/") throw new AislamientoError("carpeta_no_permitida", "Antigravity requiere el HOME del usuario del servicio.");
+  writeFileSync(ajustes, JSON.stringify(configuracionAntigravityAislada(home, cwd, soloLectura, adjuntos)), { mode: 0o600 });
+  return perfil;
+}
+
+export function eliminarPerfilAntigravity(id: string): void {
+  rmSync(rutaPerfilAntigravity(id), { recursive: true, force: true });
+}
+
 function archivoConfiguracionCodex(home: string, nombre: string): string | null {
   const carpetaCodex = process.env.CODEX_HOME?.trim() ? resolve(process.env.CODEX_HOME) : join(home, ".codex");
   const ruta = join(carpetaCodex, nombre);
@@ -267,6 +312,7 @@ export function prefijoAislamiento(
   opencodeActividadTracePath?: string,
   perfilCodexDir?: string,
   redDir?: string,
+  perfilAntigravityDir?: string,
 ): string[] {
   if (!aislamientoActivo()) return [];
 
@@ -351,6 +397,23 @@ export function prefijoAislamiento(
   }
 
   if (home) {
+    if (perfilAntigravityDir) {
+      const raiz = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-antigravity");
+      const perfil = rutaReal(perfilAntigravityDir);
+      if (!perfil || !dentro(perfil, raiz) || !lstatSync(perfilAntigravityDir).isDirectory() || lstatSync(perfilAntigravityDir).isSymbolicLink()) throw new AislamientoError("carpeta_no_permitida", "El perfil de Antigravity no está dentro del almacenamiento de Telo.");
+      const archivos = archivosSesionAntigravity(home);
+      if (!archivos.length) throw new Error("Antigravity necesita su sesión de archivos del login SSH. Una sesión que solo vive en el keyring no puede usarse dentro del aislamiento. Inicia agy por SSH como usuario orquestador y comprueba que guarda la sesión en ese servidor.");
+      const destino = join(home, ".gemini");
+      args.push("--dir", destino, "--bind", perfil, destino);
+      for (const archivo of archivos) {
+        const placeholder = join(perfil, archivo.relativa);
+        try { writeFileSync(placeholder, "", { flag: "wx", mode: 0o600 }); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+        const stat = lstatSync(placeholder);
+        if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || realpathSync(placeholder) !== placeholder) throw new AislamientoError("carpeta_no_permitida", "El montaje de sesión de Antigravity no es seguro.");
+        args.push("--ro-bind", archivo.ruta, join(destino, archivo.relativa));
+      }
+    }
     if (perfilCodexReal) {
       const destino = join(home, ".codex");
       args.push("--dir", destino, "--bind", perfilCodexReal, destino);
@@ -459,6 +522,15 @@ export function prefijoAislamiento(
 
   // La carpeta de trabajo es lo único con escritura fuera del estado de OpenCode.
   args.push(soloLectura ? "--ro-bind" : "--bind", carpeta, carpeta);
+  if (perfilAntigravityDir) {
+    // Los hooks/plugins del clon no pueden ejecutar código con la sesión del runtime.
+    for (const nombre of [".agents", ".gemini"]) {
+      const ruta = join(carpeta, nombre);
+      if (!existsSync(ruta)) continue;
+      if (!lstatSync(ruta).isDirectory() || lstatSync(ruta).isSymbolicLink() || rutaReal(ruta) !== ruta) throw new AislamientoError("carpeta_no_permitida", "La configuración local de Antigravity no es segura.");
+      args.push("--tmpfs", ruta);
+    }
+  }
   const entregables = carpetaEntregables(carpeta);
   mkdirSync(entregables, { recursive: true });
   args.push("--dir", entregables, soloLectura ? "--ro-bind" : "--bind", entregables, entregables);

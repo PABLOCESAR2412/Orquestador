@@ -9,10 +9,11 @@ import { entornoDeProyecto } from "./secretos";
 import { entornoProveedores, esClaveDeInferencia, proveedorConClave, valorClaveApiProveedor } from "./claves-proveedor";
 import { candidatosPorCuota, modeloSinCuota, modelosSinCuota, registrarCuotaModelo } from "./respaldos-cuota";
 import { redactar } from "./redaccion";
-import { AislamientoError, aislamientoActivo, prepararPerfilCodex, prepararPerfilOpenCode, eliminarPerfilCodex, eliminarPerfilOpenCode } from "./runners/aislamiento";
+import { AislamientoError, aislamientoActivo, prepararPerfilCodex, prepararPerfilOpenCode, eliminarPerfilCodex, eliminarPerfilOpenCode, prepararPerfilAntigravity, eliminarPerfilAntigravity } from "./runners/aislamiento";
 import { setTimeout as esperar } from "node:timers/promises";
 import { ErrorAgente, runOpenCode, type RunResult, type Usage } from "./runners/opencode";
 import { runCodex } from "./runners/codex";
+import { runAntigravity } from "./runners/antigravity";
 import { promptConHistorial, sesionCompatible } from "./conversacion-contexto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -551,6 +552,11 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
           ? await prepararPerfilCodex(idPerfil, params.sessionId) : undefined;
         return await runCodex({ ...params, perfilCodexDir });
       }
+      if (modelo.startsWith("antigravity/")) {
+        const perfilAntigravityDir = aislamientoActivo() && idPerfil
+          ? prepararPerfilAntigravity(idPerfil, params.cwd, params.soloLectura, params.imagenes) : undefined;
+        return await runAntigravity({ ...params, perfilAntigravityDir });
+      }
       return await runOpenCode(params);
     } finally { liberar(); }
   }
@@ -641,7 +647,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       const modelosProbados = new Set([opts.model]);
       const catalogo = await getModels().catch(() => []);
       const proveedores = [...new Set(catalogo.map((m) => m.provider))];
-      const conectados = new Set(proveedores.filter((id) => id === "opencode" || id === "codex" || valorClaveApiProveedor(id) || proveedorConClave(id)?.variables.some((v) => propias[v])));
+      const conectados = new Set(proveedores.filter((id) => id === "opencode" || id === "codex" || id === "antigravity" || valorClaveApiProveedor(id) || proveedorConClave(id)?.variables.some((v) => propias[v])));
       const alternativas = candidatosPorCuota(catalogo, [...(preferencias.quotaFallbackModels ?? []), ...(preferencias.fallbackModel ? [preferencias.fallbackModel] : [])], opts.model, conectados, modelosSinCuota(opts.projectId), preferencias.fallbackMode === "automatic");
       for (const info of alternativas) {
         const alternativa = info.id;
@@ -698,7 +704,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
         `El modelo ${opts.model} falló y el respaldo ${respaldo} ya no está disponible en OpenCode. Elige un modelo que aparezca en el selector de Ajustes y vuelve a intentarlo.`,
       ));
     }
-    if (validacionRespaldo.info.provider !== "codex" && validacionRespaldo.info.priceKnown !== true) {
+    if (!["codex", "antigravity"].includes(validacionRespaldo.info.provider) && validacionRespaldo.info.priceKnown !== true) {
       throw limpiarError(new Error(`No se usó el respaldo ${respaldo}: su precio no está verificado. Elige otro respaldo con precio conocido en Ajustes.`));
     }
     const principalGratis = (await getModels().catch(() => [])).find((modelo) => modelo.id === opts.model)?.free === true;
@@ -738,6 +744,7 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
     if (perfil && aislamientoActivo()) {
       eliminarPerfilOpenCode(perfil);
       eliminarPerfilCodex(perfil);
+      eliminarPerfilAntigravity(perfil);
     }
   }
 }

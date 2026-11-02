@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { getModels } from "../models";
 import { obtenerIndiceArtificial } from "../artificial-analysis";
 import { db } from "../db";
+import { getPreferences } from "../preferences";
 
 export const modelsRoute = new Hono();
 
@@ -21,7 +22,8 @@ modelsRoute.get("/models/usage", (c) => {
 // GET /api/models?refresh=1  -> fuerza la actualización desde OpenCode
 modelsRoute.get("/models", async (c) => {
   try {
-    const all = await getModels(c.req.query("refresh") === "1");
+    const visibility = getPreferences().modelVisibility;
+    const all = (await getModels(c.req.query("refresh") === "1")).map(model => ({ ...model, recommended: visibility[model.id] ?? model.recommended }));
     const models = c.req.query("all") === "1" ? all : all.filter((m) => m.recommended);
     return c.json({ models, total: all.length });
   } catch (err) {

@@ -39,15 +39,22 @@ try {
     {id:"google/gemini-prueba",variable:"GEMINI_API_KEY",path:"/v1beta/models/gemini-prueba:generateContent",google:true},
     {id:"deepseek/chat",variable:"DEEPSEEK_API_KEY",path:"/v1/chat/completions",google:false},
     {id:"xai/grok",variable:"XAI_API_KEY",path:"/v1/responses",google:false},
+    {id:"cloudflare-workers-ai/@cf/meta/prueba",variable:"CLOUDFLARE_API_KEY",path:"/ai/v1/chat/completions",google:false},
   ];
   for(const caso of casos){
     const [proveedor,...partes]=caso.id.split("/");const nombre=partes.join("/");const clave="clave-inferencia-sintetica";
-    const red=await prepararRedAgente({modelos:[caso.id],brokerOpenCode:true,extraEnv:{[caso.variable]:clave}},transporte as any);
+    const cuenta="a".repeat(32);
+    const red=await prepararRedAgente({modelos:[caso.id],brokerOpenCode:true,extraEnv:{[caso.variable]:clave,CLOUDFLARE_ACCOUNT_ID:cuenta}},transporte as any);
     try {
       assert(!await Bun.file(join(red.directorio,"auth.json")).text().then(t=>t.includes(clave)));
       const path=`/telo-inference/${proveedor}${caso.path}`;
       assert.equal(await llamada(red,path,caso.google?{contents:[]}:{model:nombre,messages:[]}),200);
       const ultima=vistas.at(-1)!;assert.equal(ultima.timeout,0);assert(!ultima.path.includes("key=cliente"));
+      if(proveedor==="cloudflare-workers-ai") {
+        assert.equal(ultima.path,`/client/v4/accounts/${cuenta}/ai/v1/chat/completions`);
+        assert(!JSON.stringify(red.configuracion).includes(cuenta));
+        assert(!JSON.stringify(red.entorno).includes(cuenta));
+      }
       assert.equal(ultima.headers[caso.google?"x-goog-api-key":"authorization"],caso.google?clave:`Bearer ${clave}`);
       const n=vistas.length;
       assert.equal(await llamada(red,caso.google?path.replace("gemini-prueba","modelo-ajeno"):path,caso.google?{contents:[]}:{model:"modelo-ajeno"}),403);

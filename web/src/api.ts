@@ -367,6 +367,7 @@ export type ServidorEstado = {
 };
 
 export type ProviderStatus = {
+  accountId?: string | null;
   id: string;
   name: string;
   configured: boolean;
@@ -892,6 +893,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ approve, ...(destino ? { destino } : {}) }),
     }),
+  getSeguimientoPr: (id: string) => request<import("./components/seguimiento-pr").SeguimientoPrRespuesta>(`/api/acciones/${id}/seguimiento`),
   resolveRepositoryConflicts: (id: string) =>
     request<{ task_id: string; reutilizada: boolean }>(`/api/acciones/${id}/resolver-conflictos`, {
       method: "POST",
@@ -975,6 +977,7 @@ export const api = {
       method: "DELETE",
     }),
   listModels: () => request<{ models: ModelInfo[]; total: number }>("/api/models?all=1"),
+  refreshModels: () => request<{ models: ModelInfo[]; total: number }>("/api/models?all=1&refresh=1"),
   modelIntelligence: () => request<ArtificialAnalysisIndex>("/api/models/intelligence"),
   modelUsage: () => request<{ counts: Record<string, number> }>("/api/models/usage"),
   updateConversation: (
@@ -1194,10 +1197,10 @@ export const api = {
     `/api/providers/${encodeURIComponent(id)}/probar`, { method: "POST", body: "{}" },
   ),
   // La clave se escribe una vez y nunca vuelve por la API. Guardar otra vez la reemplaza.
-  setProviderKey: (id: string, valor: string) =>
+  setProviderKey: (id: string, valor: string, accountId?: string) =>
     request<{ id: string; configurada: boolean; actualizada_en: string }>(
       `/api/claves-proveedor/${encodeURIComponent(id)}`,
-      { method: "PUT", body: JSON.stringify({ valor }) },
+      { method: "PUT", body: JSON.stringify({ valor, accountId }) },
     ),
   deleteProviderKey: (id: string) =>
     request<{ ok: boolean }>(`/api/claves-proveedor/${encodeURIComponent(id)}`, { method: "DELETE" }),
@@ -1281,6 +1284,7 @@ export type FuenteAutenticacionGithub = {
 };
 
 export type Preferences = {
+  modelVisibility?: Record<string, boolean>;
   defaultModel: string | null;
   defaultEffort: string | null;
   monthlyBudgetUsd: number | null;

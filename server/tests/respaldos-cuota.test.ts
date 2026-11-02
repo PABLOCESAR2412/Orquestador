@@ -7,10 +7,11 @@ afterEach(() => db.query("DELETE FROM app_settings WHERE key='modelos_sin_cuota'
 const modelo = (id: string, extra: Partial<ModelInfo> = {}): ModelInfo => ({ id, provider: id.split("/")[0], name: id, free: true, priceKnown: true, inputUsd: 0, outputUsd: 0, context: 100_000, variants: [], costTier: "gratis", costWarning: null, group: "Gratis", recommended: true, ...extra });
 
 test("los respaldos elegidos van primero; los automáticos son gratis, conocidos y conectados", () => {
-  const catalogo = [modelo("google/elegido"), modelo("opencode/automatico"), modelo("google/sin-precio", { priceKnown: false }), modelo("nvidia/desconectado"), modelo("google/pago", { free: false, inputUsd: 1 }), modelo("codex/plan", { free: false })];
-  const conectados = new Set(["google", "opencode", "codex"]);
+  const catalogo = [modelo("google/elegido"), modelo("opencode/automatico"), modelo("google/sin-precio", { priceKnown: false }), modelo("nvidia/desconectado"), modelo("google/pago", { free: false, inputUsd: 1 }), modelo("codex/plan", { free: false }), modelo("antigravity/sesion", { free: false, priceKnown: false })];
+  const conectados = new Set(["google", "opencode", "codex", "antigravity"]);
   expect(candidatosPorCuota(catalogo, ["google/elegido", "google/elegido", "google/pago"], "openai/agotado", conectados, new Set(), true).map((m) => m.id)).toEqual(["google/elegido", "opencode/automatico"]);
   expect(candidatosPorCuota(catalogo, ["codex/plan"], "openai/agotado", conectados, new Set(), true)[0].id).toBe("codex/plan");
+  expect(candidatosPorCuota(catalogo, ["antigravity/sesion"], "openai/agotado", conectados, new Set(), false)[0].id).toBe("antigravity/sesion");
 });
 
 test("se prueban hasta tres automáticos y se priorizan proveedores distintos", () => {

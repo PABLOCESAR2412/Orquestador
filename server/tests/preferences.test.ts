@@ -18,6 +18,16 @@ const app = new Hono().route("/", preferences);
 
 afterEach(() => db.query("DELETE FROM app_settings WHERE key='preferences'").run());
 
+test("la visibilidad por modelo persiste sin cambiar la selección del chat ni el presupuesto", async () => {
+  savePreferences({ ...DEFAULT_PREFERENCES, defaultModel: "google/actual", monthlyBudgetUsd: 15 });
+  const response = await app.request("/preferences", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ modelVisibility: { "google/actual": false, "codex/gpt-test": true } }) });
+  expect(response.status).toBe(200);
+  expect(await (await app.request("/preferences")).json()).toMatchObject({ defaultModel: "google/actual", monthlyBudgetUsd: 15, modelVisibility: { "google/actual": false, "codex/gpt-test": true } });
+  for (const modelVisibility of [[], null, { "google/no": "false" }, { invalid: true }]) {
+    expect((await app.request("/preferences", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ modelVisibility }) })).status).toBe(400);
+  }
+});
+
 test("guardar otros ajustes no exige que el modelo predeterminado antiguo siga en el catálogo", async () => {
   savePreferences({ ...DEFAULT_PREFERENCES, defaultModel: "retirado/modelo" });
   const respuesta = await app.request("/preferences", {

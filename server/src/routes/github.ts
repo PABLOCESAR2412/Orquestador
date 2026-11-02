@@ -69,7 +69,7 @@ github.post("/github/cuenta", async (c) => {
       return c.json({ error: "github_error", mensaje: `GitHub respondió con error ${res.status}` }, 502);
     }
 
-    const data = (await res.json()) as { login: string; name?: string; avatar_url?: string };
+    const data = (await res.json()) as { id?: number; type?: string; login: string; name?: string; avatar_url?: string };
     const scopesHeader = res.headers.get("x-oauth-scopes") || "";
     const scopes = scopesHeader.split(",").map((s) => s.trim()).filter(Boolean);
 
@@ -80,6 +80,8 @@ github.post("/github/cuenta", async (c) => {
       avatar_url: data.avatar_url || "",
       scopes,
       actualizado_en: new Date().toISOString(),
+      id: Number.isSafeInteger(data.id) && data.id! > 0 ? data.id : undefined,
+      account_type: data.type === "User" || data.type === "Organization" ? data.type : null,
     });
 
     return c.json(cuentaGithubGlobal());

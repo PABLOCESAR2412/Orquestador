@@ -8,6 +8,8 @@ type InstalacionGithubAppGuardada = {
   avatar_url: string;
   repository_selection: "all" | "selected";
   configuration_url?: string | null;
+  account_id?: number | null;
+  account_type?: "User" | "Organization" | null;
 };
 
 export function instalacionGithubApp(): InstalacionGithubAppGuardada | null {
@@ -32,6 +34,8 @@ export type GithubCuenta = {
   actualizado_en?: string;
   metodo?: "app" | "token";
   sesion_anterior?: boolean;
+  id?: number;
+  account_type?: "User" | "Organization" | null;
 };
 
 export type GithubAuthStorage = {
@@ -41,6 +45,8 @@ export type GithubAuthStorage = {
   avatar_url: string;
   scopes: string[];
   actualizado_en: string;
+  id?: number;
+  account_type?: "User" | "Organization" | null;
 };
 
 const KEY = "github_global_auth";
@@ -92,6 +98,8 @@ export function cuentaGithubGlobal(): GithubCuenta {
       avatar_url: instalacion.avatar_url,
       metodo: "app",
       sesion_anterior: !!tokenGithubGlobal(),
+      id: instalacion.account_id ?? undefined,
+      account_type: instalacion.account_type,
     };
   }
   const data = cuentaGlobalGuardada();
@@ -104,6 +112,22 @@ export function cuentaGithubGlobal(): GithubCuenta {
     scopes: data.scopes ?? [],
     actualizado_en: data.actualizado_en,
     metodo: "token",
+    id: data.id,
+    account_type: data.account_type,
+  };
+}
+
+// Solo una cuenta personal identificada por GitHub puede proporcionar la identidad noreply.
+// Los correos elegidos expresamente para un proyecto se conservan.
+export function autorGit(guardado?: { author_name?: string | null; author_email?: string | null } | null): { author_name: string; author_email: string } {
+  const cuenta = cuentaGithubGlobal();
+  const personal = cuenta.account_type === "User" && Number.isSafeInteger(cuenta.id) && cuenta.id! > 0 && /^[A-Za-z0-9-]+$/.test(cuenta.login ?? "");
+  const email = guardado?.author_email;
+  const heredado = cuenta.login ? `${cuenta.login}@users.noreply.github.com`.toLowerCase() : null;
+  const predeterminado = !email || email === "telo@localhost" || email.toLowerCase() === heredado;
+  return {
+    author_name: guardado?.author_name && guardado.author_name !== "Telo" ? guardado.author_name : personal ? cuenta.name || cuenta.login! : "Telo",
+    author_email: predeterminado ? personal ? `${cuenta.id}+${cuenta.login}@users.noreply.github.com` : "telo@localhost" : email,
   };
 }
 

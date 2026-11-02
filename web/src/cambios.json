@@ -5,6 +5,16 @@
   "cambios": [
     {
       "fecha": "2026-11-01",
+      "tipo": "grande",
+      "titulo": "Chat: integra Antigravity nativo y Cloudflare Workers AI con sesiones, credenciales y uso separados"
+    },
+    {
+      "fecha": "2026-11-01",
+      "tipo": "mediano",
+      "titulo": "Publicación: revisa checks, prepara reparaciones y protege el merge; permite elegir modelos y alternar Planear con Tab"
+    },
+    {
+      "fecha": "2026-11-01",
       "tipo": "minimo",
       "titulo": "GitHub: permite resolver las ramas al crear PR con la App y distingue refs ilegibles de ramas sin commits",
       "pr": 170

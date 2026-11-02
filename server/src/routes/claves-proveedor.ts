@@ -5,7 +5,11 @@ import {
   estadoClaves,
   guardarClaveProveedor,
   proveedorConClave,
+  cuentaCloudflare,
+  guardarCuentaCloudflare,
 } from "../claves-proveedor";
+import { cuentaCloudflareValida } from "../cloudflare";
+import { db } from "../db";
 import { invalidarModelos } from "../models";
 import { secretosDisponibles } from "../secretos";
 import { leerCuerpoJson } from "./projects";
@@ -24,11 +28,16 @@ clavesProveedor.put("/claves-proveedor/:id", async (c) => {
   const id = c.req.param("id");
   if (!proveedorConClave(id)) return c.json({ error: "proveedor_desconocido" }, 404);
 
-  const body = await leerCuerpoJson<{ valor?: unknown }>(c);
+  const body = await leerCuerpoJson<{ valor?: unknown; accountId?: unknown }>(c);
   if (!body) return c.json({ error: "invalid_body" }, 400);
   if (!claveProveedorValida(body.valor)) return c.json({ error: "clave_proveedor_invalida" }, 400);
-
-  const actualizada = guardarClaveProveedor(id, body.valor);
+  const cuenta = id === "cloudflare-workers-ai" ? body.accountId ?? cuentaCloudflare() : null;
+  if (id === "cloudflare-workers-ai" && !cuentaCloudflareValida(cuenta)) return c.json({ error: "cloudflare_account_invalid" }, 400);
+  const actualizada = db.transaction(() => {
+    const fecha = guardarClaveProveedor(id, body.valor as string);
+    if (fecha && typeof cuenta === "string") guardarCuentaCloudflare(cuenta);
+    return fecha;
+  })();
   if (!actualizada) return c.json({ error: "secretos_no_configurados" }, 503);
   // La lista de modelos cambia con la clave: se vuelve a pedir en la siguiente consulta.
   invalidarModelos();

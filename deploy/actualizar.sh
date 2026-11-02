@@ -164,7 +164,7 @@ for intento in $(seq 1 15); do
   sleep 2
 done
 if [ "$DRENADO" != 1 ]; then log "Quedan trabajos activos o falta el protocolo de pausa; se pospone sin detener el servicio."; exit 0; fi
-if pgrep -f '(^|/)opencode run( |$)|(^|/)codex( .*)? exec( |$)' >/dev/null 2>&1; then
+if pgrep -f '(^|/)opencode run( |$)|(^|/)codex( .*)? exec( |$)|(^|/)agy( |$)' >/dev/null 2>&1; then
   log "Hay agentes externos activos; se pospone."; exit 0
 else
   [ "$?" = 1 ] || { log "No se pudo comprobar el cierre de agentes; se pospone."; exit 1; }

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { db } from "./db";
+import { cuentaCloudflareValida } from "./cloudflare";
 import { claveMaestra, cifrar, descifrar } from "./secretos";
 
 // Claves de proveedor guardadas desde Ajustes (Groq, NVIDIA, Gemini, OpenRouter). Se cifran con la misma clave maestra
@@ -21,7 +22,19 @@ export const PROVEEDORES_CON_CLAVE: ProveedorConClave[] = [
   { id: "openrouter", etiqueta: "OpenRouter", variables: ["OPENROUTER_API_KEY"] },
   { id: "deepseek", etiqueta: "DeepSeek", variables: ["DEEPSEEK_API_KEY"] },
   { id: "xai", etiqueta: "xAI", variables: ["XAI_API_KEY"] },
+  { id: "cloudflare-workers-ai", etiqueta: "Cloudflare Workers AI", variables: ["CLOUDFLARE_API_KEY", "CLOUDFLARE_API_TOKEN"] },
 ];
+
+export function cuentaCloudflare(): string | null {
+  const guardada = db.query<{ value: string }, [string]>("SELECT value FROM app_settings WHERE key=?").get("cloudflare_account_id")?.value;
+  const cuenta = guardada ?? process.env.CLOUDFLARE_ACCOUNT_ID;
+  return cuentaCloudflareValida(cuenta) ? cuenta.toLowerCase() : null;
+}
+
+export function guardarCuentaCloudflare(cuenta: string): void {
+  if (!cuentaCloudflareValida(cuenta)) throw new Error("Cuenta Cloudflare inválida");
+  db.query("INSERT INTO app_settings (key,value,updated_at) VALUES ('cloudflare_account_id',?,datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at").run(cuenta.toLowerCase());
+}
 
 export function esClaveDeInferencia(variable: string): boolean {
   return variable === "OPENAI_API_KEY" || PROVEEDORES_CON_CLAVE.some((proveedor) => proveedor.variables.includes(variable));
@@ -227,6 +240,8 @@ export function entornoProveedores(): Record<string, string> {
         // Una clave que no descifra se omite: no se registra su contenido ni su nombre.
       }
     }
+    const cuenta = cuentaCloudflare();
+    if (cuenta) entorno.CLOUDFLARE_ACCOUNT_ID = cuenta;
     return entorno;
   } catch {
     return {};

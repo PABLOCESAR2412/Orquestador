@@ -1,6 +1,7 @@
-import { entornoProveedores, proveedoresConClave } from "./claves-proveedor";
+import { entornoProveedores, proveedoresConClave, cuentaCloudflare } from "./claves-proveedor";
 import { sesionCodexConectada } from "./login-cli";
 import { listarModelosCodex } from "./modelos-codex";
+import { listarModelosAntigravity, sesionAntigravityConectada } from "./antigravity";
 import { proveedorCompatibleConBroker } from "./runners/red-agente";
 import { aislamientoActivo } from "./runners/aislamiento";
 
@@ -141,6 +142,12 @@ function entornoDelCli(): Record<string, string> {
       base[clave] = valor;
     }
   }
+  const cuenta = cuentaCloudflare();
+  if (cuenta) base.CLOUDFLARE_ACCOUNT_ID = cuenta;
+  for (const variable of ["CLOUDFLARE_API_KEY", "CLOUDFLARE_API_TOKEN"]) {
+    if (process.env[variable]) base[variable] = process.env[variable]!;
+  }
+  if (!base.CLOUDFLARE_API_KEY && base.CLOUDFLARE_API_TOKEN) base.CLOUDFLARE_API_KEY = base.CLOUDFLARE_API_TOKEN;
   return { ...base, ...entornoProveedores() };
 }
 
@@ -208,6 +215,20 @@ export async function getModels(force = false): Promise<ModelInfo[]> {
   } catch {
     // Si Codex no responde, no interrumpimos la lista principal
   }
+
+  try {
+    if (await sesionAntigravityConectada()) {
+      for (const m of (await listarModelosAntigravity(force)).models) {
+        const id = `antigravity/${m.id}`;
+        if (!models.some(existente => existente.id === id)) models.push({
+          id, provider: "antigravity", name: m.name, context: m.context, variants: m.variants,
+          inputUsd: 0, outputUsd: 0, priceKnown: false, free: false, costTier: "medio",
+          costWarning: "Cuota de la sesión de Antigravity; no es la API de Google.",
+          group: "Antigravity", recommended: true,
+        });
+      }
+    }
+  } catch { /* Un fallo del catálogo de la sesión no elimina las otras integraciones. */ }
 
   cache = { at: Date.now(), models };
   return models;

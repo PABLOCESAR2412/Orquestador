@@ -1,12 +1,13 @@
 import { Hono } from "hono";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { proveedorConClave, tieneClaveProveedor, valorClaveApiProveedor } from "../claves-proveedor";
+import { proveedorConClave, tieneClaveProveedor, valorClaveApiProveedor, cuentaCloudflare } from "../claves-proveedor";
 import { cancelarLoginCodex, confirmarLoginCodex, estadoLoginCodex, iniciarLoginCodex, LoginError, sesionCodexConectada } from "../login-cli";
 import { hallarEjecutable } from "../ejecutable";
 import { carpetaHome } from "../hogar";
 import { listarModelosCodex } from "../modelos-codex";
 import { obtenerCuotaCodex } from "../cuota-codex";
+import { listarModelosAntigravity, sesionAntigravityConectada } from "../antigravity";
 
 
 type ProviderStatus = {
@@ -24,6 +25,7 @@ type ProviderStatus = {
   // La clave está guardada en Telo (no solo en el archivo de entorno del servidor).
   guardada: boolean;
   sesion: boolean;
+  accountId?: string | null;
 };
 
 // Variables que el agente recibe del servidor. Sin variable, el proveedor usa su propia
@@ -78,6 +80,7 @@ function proveedorGuardable(id: string, name: string, hint: string, enAgente: Se
 async function estadoProveedores(): Promise<ProviderStatus[]> {
   const enAgente = variablesDeAgente();
   const sesionCodex = await sesionCodexConectada();
+  const sesionAntigravity = await sesionAntigravityConectada();
   const hermesInstalado = hallarEjecutable("hermes") !== null;
   const hermesConectado = hermesInstalado && hermesCodexAuthConfigurada();
   return [
@@ -109,6 +112,15 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
       sesion: sesionCodex,
     },
     {
+      id: "antigravity", name: "Antigravity CLI", configured: sesionAntigravity, implemented: true,
+      hint: sesionAntigravity
+        ? "Sesión de archivos de Antigravity detectada. Sus modelos usan agy, con su cuota y sesión propias. La validez se confirma al ejecutar."
+        : hallarEjecutable("agy")
+          ? "Inicia agy por SSH como usuario orquestador. El aislamiento necesita el almacén de sesión de archivos de esa VM; una sesión que solo vive en el keyring no se puede reutilizar aquí."
+          : "Instala Antigravity CLI e inicia su sesión por SSH como usuario orquestador.",
+      variable: null, enAgente: sesionAntigravity, guardable: false, guardada: false, sesion: sesionAntigravity,
+    },
+    {
       id: "hermes",
       name: "Hermes Agent",
       configured: hermesInstalado,
@@ -127,7 +139,7 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
     },
     proveedorGuardable(
       "google",
-      "Google (Gemini)",
+      "API de Google",
       "Clave de Gemini. Se guarda aquí, cifrada, o viene del archivo de entorno del servidor.",
       enAgente,
     ),
@@ -145,6 +157,11 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
     ),
     proveedorGuardable("deepseek", "DeepSeek", "Clave de DeepSeek para su API directa; se guarda cifrada.", enAgente),
     proveedorGuardable("xai", "xAI", "Clave de xAI para su API directa; se guarda cifrada.", enAgente),
+    (() => {
+      const cuenta = cuentaCloudflare();
+      const proveedor = proveedorGuardable("cloudflare-workers-ai", "Cloudflare Workers AI", "API de inferencia con asignación diaria incluida; las tarifas y límites dependen del modelo y del plan de Cloudflare.", enAgente);
+      return { ...proveedor, configured: proveedor.configured && Boolean(cuenta), enAgente: proveedor.enAgente && Boolean(cuenta), accountId: cuenta };
+    })(),
     proveedorGuardable(
       "openrouter",
       "OpenRouter",
@@ -164,6 +181,8 @@ providers.post("/providers/:id/probar", async (c) => {
   const id = c.req.param("id");
   const clave = valorClaveApiProveedor(id);
   if (!clave) return c.json({ ok: false, error: "provider_key_missing" });
+  const cuenta = cuentaCloudflare();
+  if (id === "cloudflare-workers-ai" && !cuenta) return c.json({ ok: false, error: "cloudflare_account_invalid" });
 
   const destinos: Record<string, { url: string; headers: Record<string, string> }> = {
     deepseek: { url: "https://api.deepseek.com/models", headers: { Authorization: `Bearer ${clave}` } },
@@ -172,6 +191,7 @@ providers.post("/providers/:id/probar", async (c) => {
     groq: { url: "https://api.groq.com/openai/v1/models", headers: { Authorization: `Bearer ${clave}` } },
     nvidia: { url: "https://integrate.api.nvidia.com/v1/models", headers: { Authorization: `Bearer ${clave}` } },
     openrouter: { url: "https://openrouter.ai/api/v1/models", headers: { Authorization: `Bearer ${clave}` } },
+    "cloudflare-workers-ai": { url: `https://api.cloudflare.com/client/v4/accounts/${cuenta}/ai/models/search?per_page=100`, headers: { Authorization: `Bearer ${clave}` } },
   };
   const destino = destinos[id];
   if (!destino) return c.json({ ok: false, error: "provider_test_unsupported" });
@@ -191,8 +211,9 @@ providers.post("/providers/:id/probar", async (c) => {
             : "provider_connection_failed",
       });
     }
-    const cuerpo = await respuesta.json().catch(() => null) as { data?: unknown[]; models?: unknown[] } | null;
-    const modelos = Array.isArray(cuerpo?.data) ? cuerpo.data.length : Array.isArray(cuerpo?.models) ? cuerpo.models.length : null;
+    const cuerpo = await respuesta.json().catch(() => null) as { data?: unknown[]; models?: unknown[]; result?: unknown[]; success?: boolean } | null;
+    if (cuerpo?.success === false) return c.json({ ok: false, error: "provider_key_rejected" });
+    const modelos = Array.isArray(cuerpo?.data) ? cuerpo.data.length : Array.isArray(cuerpo?.models) ? cuerpo.models.length : Array.isArray(cuerpo?.result) ? cuerpo.result.length : null;
     return c.json({ ok: true, modelos });
   } catch {
     return c.json({ ok: false, error: "provider_connection_failed" });
@@ -257,6 +278,11 @@ providers.get("/providers/codex/models", async (c) => {
   }
 });
 providers.get("/providers/codex/usage", async (c) => c.json(await obtenerCuotaCodex(c.req.query("refresh") === "1")));
+providers.get("/providers/antigravity/models", async (c) => {
+  if (!await sesionAntigravityConectada()) return c.json({ error: "antigravity_no_conectado", mensaje: "Inicia agy por SSH como usuario orquestador; una sesión que solo vive en el keyring no puede usarse dentro del aislamiento." }, 409);
+  try { return c.json(await listarModelosAntigravity(c.req.query("refresh") === "1")); }
+  catch { return c.json({ error: "antigravity_models_unavailable", mensaje: "Antigravity no pudo consultar sus modelos. Comprueba su sesión en la VM." }, 503); }
+});
 providers.post("/providers/codex/login", async (c) => {
   try {
     return c.json(await iniciarLoginCodex(), 202);

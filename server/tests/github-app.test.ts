@@ -23,8 +23,8 @@ process.env.TELO_GITHUB_APP_PRIVATE_KEY_PATH = rutaClave;
 const { db } = await import("../src/db");
 const { borrarInstalacionGithubApp, listarInstalacionesGithubApp, seleccionarInstalacionGithubApp, tokenGithubAppParaRepo } =
   await import("../src/github-app");
-const { borrarCuentaGithubGlobal, guardarCuentaGithubGlobal } = await import("../src/github-auth");
-const { githubApiPr } = await import("../src/routes/proyecto-config");
+const { borrarCuentaGithubGlobal, guardarCuentaGithubGlobal, autorGit } = await import("../src/github-auth");
+const { githubApiPr, configGit } = await import("../src/routes/proyecto-config");
 const originalFetch = globalThis.fetch;
 
 afterEach(() => {
@@ -61,20 +61,59 @@ test("la App enumera solo instalaciones verificadas y guarda metadatos sin crede
     expect(String(url)).toBe("https://api.github.com/app/installations?per_page=100");
     revisarJwt(new Headers(init.headers).get("Authorization"));
     return Response.json([
-      { id: 456, account: { login: "Pablo", name: "Pablo C", avatar_url: "https://avatars.githubusercontent.com/u/1" }, repository_selection: "selected", permissions: { contents: "write", pull_requests: "write" }, html_url: "https://github.com/settings/installations/456" },
+      { id: 456, account: { id: 106, type: "User", login: "Pablo", name: "Pablo C", avatar_url: "https://avatars.githubusercontent.com/u/1" }, repository_selection: "selected", permissions: { contents: "write", pull_requests: "write" }, html_url: "https://github.com/settings/installations/456" },
       { id: 0, account: { login: "omitido" }, repository_selection: "all" },
     ]);
   }) as unknown as typeof fetch;
 
   const instalaciones = await listarInstalacionesGithubApp();
   expect(instalaciones).toEqual([
-    { id: 456, login: "Pablo", name: "Pablo C", avatar_url: "https://avatars.githubusercontent.com/u/1", repository_selection: "selected", permissions: { contents: "write", pull_requests: "write" }, configuration_url: "https://github.com/settings/installations/456" },
+    { id: 456, login: "Pablo", name: "Pablo C", avatar_url: "https://avatars.githubusercontent.com/u/1", repository_selection: "selected", permissions: { contents: "write", pull_requests: "write" }, configuration_url: "https://github.com/settings/installations/456", account_id: 106, account_type: "User" },
   ]);
   const guardada = await seleccionarInstalacionGithubApp(456);
   expect(guardada.id).toBe(456);
   const fila = db.query<{ value: string }, []>("SELECT value FROM app_settings WHERE key='github_app_installation'").get();
   expect(fila?.value).not.toContain("token");
   expect(fila?.value).toContain("Pablo");
+});
+
+test("la identidad futura usa el noreply identificado de la cuenta personal y conserva correos explícitos", async () => {
+  let tipo = "User";
+  globalThis.fetch = (async () => Response.json([{ id: 456, account: { id: 106, type: tipo, login: "Pablo", name: "Pablo C" } }])) as unknown as typeof fetch;
+  await seleccionarInstalacionGithubApp(456);
+  expect(autorGit()).toEqual({ author_name: "Pablo C", author_email: "106+Pablo@users.noreply.github.com" });
+  expect(configGit("sin-proyecto").author_email).toBe("106+Pablo@users.noreply.github.com");
+  expect(autorGit({ author_name: "Telo", author_email: "Pablo@users.noreply.github.com" }).author_email).toBe("106+Pablo@users.noreply.github.com");
+  expect(autorGit({ author_name: "Autora elegida", author_email: "autora@example.test" })).toEqual({ author_name: "Autora elegida", author_email: "autora@example.test" });
+  tipo = "Organization";
+  await seleccionarInstalacionGithubApp(456);
+  expect(autorGit()).toEqual({ author_name: "Telo", author_email: "telo@localhost" });
+  expect(autorGit({ author_email: "Pablo@users.noreply.github.com" }).author_email).toBe("telo@localhost");
+  expect(autorGit({ author_email: "autora@example.test" }).author_email).toBe("autora@example.test");
+});
+
+test("la emisión de token enriquece una instalación antigua sin exponer la credencial ni tocar historia", async () => {
+  db.query("INSERT INTO app_settings(key,value) VALUES ('github_app_installation',?)").run(JSON.stringify({ id: 456, login: "Pablo", name: "Pablo C", avatar_url: "", repository_selection: "all" }));
+  const llamadas: string[] = [];
+  globalThis.fetch = (async (url: any) => {
+    llamadas.push(String(url));
+    if (String(url).endsWith("/app/installations/456")) return Response.json({ id: 456, account: { id: 106, type: "User", login: "Pablo", name: "Pablo C" }, repository_selection: "all" });
+    return Response.json({ token: "ghs-temporal-no-persistir" });
+  }) as typeof fetch;
+  expect(await tokenGithubAppParaRepo("https://github.com/Pablo/Orquestador", { contents: "write" })).toBe("ghs-temporal-no-persistir");
+  expect(llamadas).toEqual(["https://api.github.com/app/installations/456", "https://api.github.com/app/installations/456/access_tokens"]);
+  expect(autorGit().author_email).toBe("106+Pablo@users.noreply.github.com");
+  const guardada = db.query<{ value: string }, []>("SELECT value FROM app_settings WHERE key='github_app_installation'").get()!;
+  expect(guardada.value).not.toContain("ghs-temporal-no-persistir");
+  await tokenGithubAppParaRepo("https://github.com/Pablo/Orquestador", { contents: "read" });
+  expect(llamadas).toHaveLength(3);
+});
+
+test("si no se puede confirmar la identidad no se inventa un correo y la emisión conserva su funcionamiento", async () => {
+  db.query("INSERT INTO app_settings(key,value) VALUES ('github_app_installation',?)").run(JSON.stringify({ id: 456, login: "Pablo", name: "Pablo C", avatar_url: "", repository_selection: "all" }));
+  globalThis.fetch = (async (url: any) => String(url).endsWith("/access_tokens") ? Response.json({ token: "ghs-prueba" }) : Response.json({}, { status: 503 })) as typeof fetch;
+  expect(await tokenGithubAppParaRepo("https://github.com/Pablo/Orquestador", { contents: "write" })).toBe("ghs-prueba");
+  expect(autorGit().author_email).toBe("telo@localhost");
 });
 
 test("emite un token limitado al repo y al permiso solicitado, sin guardar el token", async () => {
@@ -185,7 +224,7 @@ test("crear un PR prioriza el token temporal aunque exista una sesión anterior"
   expect(llamada).toBe(3);
 });
 
-test("hacer merge solicita a la GitHub App el permiso Contents de escritura", async () => {
+test("hacer merge permite consultar el PR y escribir la fusión con el mismo token", async () => {
   let llamada = 0;
   globalThis.fetch = (async (url: any, init: any) => {
     llamada++;
@@ -197,7 +236,7 @@ test("hacer merge solicita a la GitHub App el permiso Contents de escritura", as
       expect(String(url)).toBe("https://api.github.com/app/installations/456/access_tokens");
       expect(JSON.parse(String(init.body))).toEqual({
         repositories: ["Orquestador"],
-        permissions: { contents: "write" },
+        permissions: { contents: "write", pull_requests: "read" },
       });
       return Response.json({ token: "ghs-merge-temporal" });
     }

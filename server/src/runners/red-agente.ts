@@ -5,6 +5,7 @@ import { lookup } from "node:dns/promises";
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, copyFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { config } from "../config";
+import { endpointCloudflare } from "../cloudflare";
 
 const PUENTE = "http://127.0.0.1:18081";
 const MAX_BODY = 32 * 1024 * 1024;
@@ -37,7 +38,14 @@ const PROVEEDORES: Record<string, { base: string; variables: string[]; auth?: "g
   deepseek: { base: "https://api.deepseek.com/v1", variables: ["DEEPSEEK_API_KEY"] },
   xai: { base: "https://api.x.ai/v1", variables: ["XAI_API_KEY"] },
   anthropic: { base: "https://api.anthropic.com/v1", variables: ["ANTHROPIC_API_KEY"], auth: "anthropic" },
+  "cloudflare-workers-ai": { base: "", variables: ["CLOUDFLARE_API_KEY", "CLOUDFLARE_API_TOKEN"] },
 };
+
+function baseProveedor(proveedor: string, entorno: Record<string, string>): string | null {
+  return proveedor === "cloudflare-workers-ai"
+    ? endpointCloudflare(entorno.CLOUDFLARE_ACCOUNT_ID ?? process.env.CLOUDFLARE_ACCOUNT_ID)
+    : PROVEEDORES[proveedor]?.base ?? null;
+}
 
 function credencialOpenCode(proveedor: string): string | null {
   const home = process.env.HOME;
@@ -61,13 +69,13 @@ function credencialOpenCode(proveedor: string): string | null {
 // específico queda fuera; la integración nativa Codex mantiene su propio flujo de sesión.
 export function proveedorCompatibleConBroker(proveedor: string, extraEnv: Record<string, string> = {}): boolean {
   const especificacion = PROVEEDORES[proveedor];
-  if (!especificacion) return false;
+  if (!especificacion || !baseProveedor(proveedor, extraEnv)) return false;
   if (especificacion.variables.some(v => extraEnv[v] || process.env[v])) return true;
   try { credencialOpenCode(proveedor); return true; }
   catch { return false; }
 }
 
-type RutaInferencia = { proveedor: string; base: URL; modelos: Set<string>; credencial: string; auth?: "google" | "anthropic" };
+type RutaInferencia = { proveedor: string; base: URL; baseVisible: string; modelos: Set<string>; credencial: string; auth?: "google" | "anthropic" };
 export type RedAgente = { directorio: string; configuracion: Record<string, unknown>; entorno: Record<string, string>; cerrar: () => Promise<void> };
 
 function cabeceras(req: IncomingMessage): Record<string, string> {
@@ -103,9 +111,12 @@ export async function prepararRedAgente(
         const credencial = especificacion.variables.map((v) => opts.extraEnv?.[v] ?? process.env[v]).find(Boolean)
           ?? credencialOpenCode(proveedor) ?? (proveedor === "opencode" ? "public" : null);
         if (!credencial) throw new Error(`Configura la clave de ${proveedor} en Ajustes para usar su broker.`);
-        ruta = { proveedor, base: new URL(especificacion.base), modelos: new Set(), credencial, auth: especificacion.auth };
+        const base = baseProveedor(proveedor, opts.extraEnv ?? {});
+        if (!base) throw new Error("Configura un identificador de cuenta Cloudflare válido en Ajustes.");
+        const urlBase = new URL(base);
+        ruta = { proveedor, base: urlBase, baseVisible: proveedor === "cloudflare-workers-ai" ? "/ai/v1" : urlBase.pathname, modelos: new Set(), credencial, auth: especificacion.auth };
         rutas.set(proveedor, ruta);
-        proveedorConfig[proveedor] = { options: { baseURL: `${PUENTE}/telo-inference/${proveedor}${ruta.base.pathname}`, apiKey: "telo-broker-scoped" } };
+        proveedorConfig[proveedor] = { options: { baseURL: `${PUENTE}/telo-inference/${proveedor}${ruta.baseVisible}`, apiKey: "telo-broker-scoped" } };
         authPublica[proveedor] = { type: "api", key: "telo-broker-scoped" };
       }
       ruta.modelos.add(nombre);
@@ -127,7 +138,7 @@ export async function prepararRedAgente(
           for await (const chunk of req) { length += chunk.length; if (length > MAX_BODY) { fallo(res, 413); return; } chunks.push(Buffer.from(chunk)); }
           body = Buffer.concat(chunks);
           const path = inferencia[2]!;
-          const base = ruta.base.pathname;
+          const base = ruta.baseVisible;
           const formatoGoogle = ruta.auth === "google" || (ruta.proveedor === "opencode" && path.startsWith(`${base}/models/`));
           if (formatoGoogle) {
             const model = path.startsWith(`${base}/models/`) ? path.slice(`${base}/models/`.length).split(":")[0]! : "";
@@ -137,7 +148,7 @@ export async function prepararRedAgente(
             let model: unknown; try { model = JSON.parse(body.toString("utf8")).model; } catch { fallo(res, 400); return; }
             if (typeof model !== "string" || !ruta.modelos.has(model)) { fallo(res); return; }
           }
-          destino = new URL(ruta.base.origin + path + url.search);
+          destino = new URL(ruta.base.origin + ruta.base.pathname + path.slice(base.length) + url.search);
           destino.searchParams.delete("key");
           for (const name of ["authorization", "x-api-key", "x-goog-api-key", "cookie"]) delete headers[name];
           headers[formatoGoogle ? "x-goog-api-key" : ruta.auth === "anthropic" ? "x-api-key" : "authorization"] = formatoGoogle || ruta.auth === "anthropic" ? ruta.credencial : `Bearer ${ruta.credencial}`;
@@ -191,6 +202,7 @@ export async function prepararRedAgente(
     server.unref();
     const entorno: Record<string, string> = { HTTP_PROXY: PUENTE, HTTPS_PROXY: PUENTE, ALL_PROXY: PUENTE, http_proxy: PUENTE, https_proxy: PUENTE, all_proxy: PUENTE, NO_PROXY: "localhost,127.0.0.1,::1", no_proxy: "localhost,127.0.0.1,::1" };
     if (opts.brokerOpenCode) for (const variable of Object.values(PROVEEDORES).flatMap((p) => p.variables)) entorno[variable] = "";
+    if (opts.brokerOpenCode) entorno.CLOUDFLARE_ACCOUNT_ID = rutas.has("cloudflare-workers-ai") ? "0".repeat(32) : "";
     return {
       directorio, entorno,
       configuracion: opts.brokerOpenCode ? { enabled_providers: [...rutas.keys()], provider: proveedorConfig } : {},

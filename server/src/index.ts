@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { estadoDespliegue, puertaDespliegue } from "./despliegue";
 import { iniciarMantenimientoDisco } from "./mantenimiento-disco";
+import { iniciarSeguimientoPublicaciones } from "./seguimiento-pr";
 import { join, resolve, sep, extname } from "node:path";
 import { config } from "./config";
 import { db } from "./db";
@@ -200,6 +201,7 @@ let arranqueColgado: ReturnType<typeof setTimeout> | null = setTimeout(() => {
 }, TOPE_ARRANQUE_MS);
 startWorker();
 startScheduler();
+iniciarSeguimientoPublicaciones();
 iniciarMantenimientoDisco();
 iniciarColaPush();
 iniciarGoogleDriveArchives();

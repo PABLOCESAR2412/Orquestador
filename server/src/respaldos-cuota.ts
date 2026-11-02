@@ -34,12 +34,12 @@ export function candidatosPorCuota(catalogo: ModelInfo[], preferidos: string[], 
   const elegidos = new Set([actual]);
   const guardados = preferidos.flatMap((id) => {
     const info = catalogo.find((m) => m.id === id);
-    if (!info || elegidos.has(id) || agotados.has(id) || (info.provider !== "codex" && (!info.free || info.priceKnown !== true)) || !conectados.has(info.provider)) return [];
+    if (!info || elegidos.has(id) || agotados.has(id) || (!["codex", "antigravity"].includes(info.provider) && (!info.free || info.priceKnown !== true)) || !conectados.has(info.provider)) return [];
     elegidos.add(id);
     return [info];
   });
   if (!automaticos) return guardados;
-  // Sin precio explícito, cero en el catálogo no demuestra gratuidad. Codex solo entra por elección guardada.
+  // Sin precio explícito, cero no demuestra gratuidad. Los CLIs de sesión solo entran por elección guardada.
   const gratis = catalogo.filter((m) => !elegidos.has(m.id) && !agotados.has(m.id) && m.free && m.priceKnown === true && m.provider !== "codex" && conectados.has(m.provider))
     .sort((a, b) => Number(b.provider !== actual.split("/")[0]) - Number(a.provider !== actual.split("/")[0]) || Number(b.recommended) - Number(a.recommended) || b.context - a.context || a.id.localeCompare(b.id));
   const proveedores = new Set<string>();

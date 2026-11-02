@@ -2262,7 +2262,7 @@ export function ChatPage() {
                     : "Escribe un mensaje"
                 )}
                 aria-label={planPendiente ? "Aclaraciones o cambios al plan" : "Mensaje"}
-                aria-description={sugerencia ? "Pulsa Tab para insertar la recomendación." : undefined}
+                aria-description="Pulsa Tab para alternar Construir y Planear. Mayúsculas y Tab mueve el foco."
                 aria-autocomplete={menuSkillsAbierto || menuAbierto ? "list" : undefined}
                 aria-activedescendant={
                   menuSkillsAbierto
@@ -2317,9 +2317,9 @@ export function ChatPage() {
                     setSugerenciaOculta(true);
                     return;
                   }
-                  if (e.key === "Tab" && !e.shiftKey && !menuAbierto && !menuSkillsAbierto && sugerencia) {
+                  if (e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !menuAbierto && !menuSkillsAbierto && current && !pensando) {
                     e.preventDefault();
-                    cambiarBorrador(sugerencia);
+                    if (!configure.isPending) configure.mutate({ work_mode: current.work_mode === "plan" ? "build" : "plan" });
                     return;
                   }
                   if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -2349,10 +2349,9 @@ export function ChatPage() {
               {/* Selector conjunto de modelo y esfuerzo, uso y envío. */}
               <div className="tl-composer-barra">
                 <div className="tl-composer-izq">
-                  <select className="tl-boton tl-boton-compacto" aria-label="Modo de trabajo" value={current?.work_mode ?? "build"} disabled={!current || configure.isPending || pensando} onChange={e => configure.mutate({ work_mode: e.target.value as "plan" | "build" })} title="Planear solo lee y propone. Construir ejecuta con las aprobaciones actuales.">
-                    <option value="build">Construir</option>
-                    <option value="plan">Planear · solo lectura</option>
-                  </select>
+                  <button type="button" className="tl-boton tl-boton-compacto" aria-label="Modo de trabajo" aria-pressed={current?.work_mode === "plan"} disabled={!current || configure.isPending || pensando} onClick={() => configure.mutate({ work_mode: current?.work_mode === "plan" ? "build" : "plan" })} title="Tab dentro del mensaje alterna Construir y Planear; Mayúsculas+Tab mueve el foco.">
+                    {current?.work_mode === "plan" ? "Planear · solo lectura" : "Construir"}<kbd>Tab</kbd>
+                  </button>
                   <button
                     type="button"
                     className="tl-accion-icono"
