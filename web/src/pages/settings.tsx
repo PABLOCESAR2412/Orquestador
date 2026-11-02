@@ -414,41 +414,45 @@ export function SettingsPage() {
                         {proveedorCodex && <TarjetaProveedor p={proveedorCodex} etiqueta={etiquetaDe(proveedorCodex)} modelos={modelosDe(proveedorCodex.id)} />}
                         {proveedorOpenCode && <TarjetaProveedor p={proveedorOpenCode} etiqueta={null} modelos={modelosDe(proveedorOpenCode.id)} />}
                         <AntigravityCard />
-                        <article className="aj-tarjeta" aria-labelledby="aj-wrangler-titulo">
-                          <div className="aj-tarjeta-cabecera">
-                            <div className="aj-tarjeta-texto"><h3 id="aj-wrangler-titulo">Cloudflare Pages · Wrangler</h3><p className="aj-descripcion-tarjeta">Publica demos estáticas desde una carpeta, sin vincular un repositorio Git.</p></div>
-                          </div>
-                          <InstalarHerramienta id="wrangler" nombre="Wrangler">
-                            <GuiaPublicacionCli
-                              proveedor="Cloudflare"
-                              texto="Entra por SSH a la VM como usuario orquestador. Autoriza con tu cuenta personal de Cloudflare; el código de dispositivo se abre en el navegador que tú elijas."
-                              comandos={[
-                                ["Iniciar sesión", "~/.opencode/bin/wrangler login --device --browser=false"],
-                                ["Comprobar cuenta", "~/.opencode/bin/wrangler whoami"],
-                                ["Crear Pages una vez", "~/.opencode/bin/wrangler pages project create nombre-demo"],
-                                ["Subir vista previa", "~/.opencode/bin/wrangler pages deploy ./dist --project-name nombre-demo --branch preview"],
-                              ]}
-                              nota="Direct Upload no se puede convertir después en un proyecto conectado a Git. La credencial OAuth queda en el servidor; no se monta dentro del sandbox de agentes."
-                            />
-                          </InstalarHerramienta>
-                        </article>
-                        <article className="aj-tarjeta" aria-labelledby="aj-vercel-titulo">
-                          <div className="aj-tarjeta-cabecera">
-                            <div className="aj-tarjeta-texto"><h3 id="aj-vercel-titulo">Vercel CLI</h3><p className="aj-descripcion-tarjeta">Sube una demo desde su carpeta sin conectar GitHub ni otro repositorio.</p></div>
-                          </div>
-                          <InstalarHerramienta id="vercel" nombre="Vercel CLI">
-                            <GuiaPublicacionCli
-                              proveedor="Vercel"
-                              texto="Entra por SSH a la VM como usuario orquestador. Autoriza tu cuenta desde cualquier navegador con el flujo de dispositivo; revisa que la solicitud sea de la VM antes de aprobar."
-                              comandos={[
-                                ["Iniciar sesión", "~/.opencode/bin/vercel login"],
-                                ["Comprobar cuenta", "~/.opencode/bin/vercel whoami"],
-                                ["Subir vista previa desde una carpeta", "~/.opencode/bin/vercel deploy /ruta/al/proyecto"],
-                              ]}
-                              nota="El comando deploy crea una vista previa por defecto; producción requiere una acción separada. La credencial OAuth queda en el servidor y no se monta dentro del sandbox de agentes."
-                            />
-                          </InstalarHerramienta>
-                        </article>
+                        {!herramientaMedia("wrangler")?.disponible && (
+                          <article className="aj-tarjeta" aria-labelledby="aj-wrangler-titulo">
+                            <div className="aj-tarjeta-cabecera">
+                              <div className="aj-tarjeta-texto"><h3 id="aj-wrangler-titulo">Cloudflare Pages · Wrangler</h3><p className="aj-descripcion-tarjeta">Publica demos estáticas desde una carpeta, sin vincular un repositorio Git.</p></div>
+                            </div>
+                            <InstalarHerramienta id="wrangler" nombre="Wrangler">
+                              <GuiaPublicacionCli
+                                proveedor="Cloudflare"
+                                texto="Entra por SSH a la VM como usuario orquestador. Autoriza con tu cuenta personal de Cloudflare; el código de dispositivo se abre en el navegador que tú elijas."
+                                comandos={[
+                                  ["Iniciar sesión", "~/.opencode/bin/wrangler login --device --browser=false"],
+                                  ["Comprobar cuenta", "~/.opencode/bin/wrangler whoami"],
+                                  ["Crear Pages una vez", "~/.opencode/bin/wrangler pages project create nombre-demo"],
+                                  ["Subir vista previa", "~/.opencode/bin/wrangler pages deploy ./dist --project-name nombre-demo --branch preview"],
+                                ]}
+                                nota="Direct Upload no se puede convertir después en un proyecto conectado a Git. La credencial OAuth queda en el servidor; no se monta dentro del sandbox de agentes."
+                              />
+                            </InstalarHerramienta>
+                          </article>
+                        )}
+                        {!herramientaMedia("vercel")?.disponible && (
+                          <article className="aj-tarjeta" aria-labelledby="aj-vercel-titulo">
+                            <div className="aj-tarjeta-cabecera">
+                              <div className="aj-tarjeta-texto"><h3 id="aj-vercel-titulo">Vercel CLI</h3><p className="aj-descripcion-tarjeta">Sube una demo desde su carpeta sin conectar GitHub ni otro repositorio.</p></div>
+                            </div>
+                            <InstalarHerramienta id="vercel" nombre="Vercel CLI">
+                              <GuiaPublicacionCli
+                                proveedor="Vercel"
+                                texto="Entra por SSH a la VM como usuario orquestador. Autoriza tu cuenta desde cualquier navegador con el flujo de dispositivo; revisa que la solicitud sea de la VM antes de aprobar."
+                                comandos={[
+                                  ["Iniciar sesión", "~/.opencode/bin/vercel login"],
+                                  ["Comprobar cuenta", "~/.opencode/bin/vercel whoami"],
+                                  ["Subir vista previa desde una carpeta", "~/.opencode/bin/vercel deploy /ruta/al/proyecto"],
+                                ]}
+                                nota="El comando deploy crea una vista previa por defecto; producción requiere una acción separada. La credencial OAuth queda en el servidor y no se monta dentro del sandbox de agentes."
+                              />
+                            </InstalarHerramienta>
+                          </article>
+                        )}
                       </div>
                     </div>
                   )}

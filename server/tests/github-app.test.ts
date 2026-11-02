@@ -156,7 +156,7 @@ test("crear un PR prioriza el token temporal aunque exista una sesión anterior"
       expect(String(url)).toBe("https://api.github.com/app/installations/456/access_tokens");
       expect(JSON.parse(String(init.body))).toEqual({
         repositories: ["Orquestador"],
-        permissions: { pull_requests: "write" },
+        permissions: { contents: "read", pull_requests: "write" },
       });
       return Response.json({ token: "ghs-pr-temporal" });
     }
@@ -262,7 +262,33 @@ test("al crear un PR, GitHub expone el detalle de una respuesta 422", async () =
   );
 });
 
-test("un 422 sin commits explica que hay que subir cambios a la rama origen", async () => {
+test("un 422 con refs ilegibles explica el acceso de lectura que necesita el PR", async () => {
+  globalThis.fetch = (async (url: any) => {
+    if (String(url).endsWith("/app/installations?per_page=100")) {
+      return Response.json([{ id: 456, account: { login: "Pablo" }, repository_selection: "selected" }]);
+    }
+    if (String(url).endsWith("/app/installations/456/access_tokens")) {
+      return Response.json({ token: "ghs-pr-temporal" });
+    }
+    return new Response(JSON.stringify({
+      message: "Validation Failed",
+      errors: [{ resource: "PullRequest", field: "head", code: "invalid", message: "not all refs are readable" }],
+    }), { status: 422, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  await seleccionarInstalacionGithubApp(456);
+  await expect(githubApiPr("sin-proyecto", "/repos/Pablo/Orquestador/pulls", {
+    tipo: "github_app", origen: "app", etiqueta: "GitHub App", cuenta: "Pablo", instalacion_id: 456,
+  }, {
+    title: "Cambios",
+    head: "telo/0e680496",
+    base: "main",
+  })).rejects.toThrow(
+    "GitHub no puede leer la rama origen o la rama base para crear el PR. Comprueba que ambas ramas existan y que la GitHub App tenga acceso de lectura al contenido; después prepara una autorización nueva.",
+  );
+});
+
+test("un 422 combinado conserva primero el diagnóstico de rama sin commits", async () => {
   globalThis.fetch = (async (url: any) => {
     if (String(url).endsWith("/app/installations?per_page=100")) {
       return Response.json([{ id: 456, account: { login: "Pablo" }, repository_selection: "selected" }]);
