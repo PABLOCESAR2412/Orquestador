@@ -4,7 +4,7 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 1 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
-## Publicación, modelos visibles y Antigravity — feat/chat-modelos-publicacion-20261102
+## Publicación, modelos visibles y Antigravity — PR #171
 
 - [x] Merge: el token temporal incluye `Contents: write` y `Pull requests: read`; la consulta previa del PR ya no falla por faltar lectura. Las autorizaciones siguen ligadas al SHA. Regresión GitHub App aprobada.
 - [x] Seguimiento persistente tras subir o crear PR: consulta GitHub Actions e integración, inicia hasta dos correcciones locales y prepara su aprobación de subida. No ejecuta nuevos commits, pushes o merges sin revisión. Conserva modelo actual y proyecto; la migración 058 guarda el SHA fuente y el workspace lo comprueba antes de editar. Deduplica push→PR, guarda creación y estado en una transacción y recupera las publicaciones de las últimas 24 horas al reiniciar. Doce pruebas focalizadas aprobadas; la prueba Git real de Linux queda para CI. Los bloqueos externos de cuenta/permisos requieren intervención en el servicio correspondiente.
