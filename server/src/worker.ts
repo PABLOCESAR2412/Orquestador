@@ -19,6 +19,7 @@ import { ejecutarAgente, ErrorCuota, promptContinuacion, type ResultadoAgente } 
 import { sesionCompatible } from "./conversacion-contexto";
 import { redactar } from "./redaccion";
 import { clasificarTareaJev } from "./jev";
+import { consultarGraphify } from "./graphify-context";
 import {
   extraerJson,
   hashPlan,
@@ -299,9 +300,15 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
         soloLectura: true,
       });
     }
+    let promptConGraphify = prompt;
+    if (task.project_id) {
+      const graphify = consultarGraphify(ctx.cwd, task.prompt);
+      registrarEvento(task.id, "graphify_consulta", graphify.detalle);
+      if (graphify.contexto) promptConGraphify = `${graphify.contexto}\n\n${promptConGraphify}`;
+    }
     const promptAvisos = ctx.avisos?.length
-      ? `${prompt}\n\nComprobaciones previas de Telo (incorpora su resolución al plan antes de ejecutar pruebas):\n${ctx.avisos.join("\n")}`
-      : prompt;
+      ? `${promptConGraphify}\n\nComprobaciones previas de Telo (incorpora su resolución al plan antes de ejecutar pruebas):\n${ctx.avisos.join("\n")}`
+      : promptConGraphify;
     const result = await ejecutarAgente({
       workMode: task.work_mode,
       solicitudSkills: task.prompt,
