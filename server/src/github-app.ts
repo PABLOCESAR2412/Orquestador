@@ -8,7 +8,15 @@ const API = "https://api.github.com";
 const VERSION_API = "2026-03-10";
 const AGENTE = "Telo-Orquestador";
 
-export type PermisosGithubApp = { contents?: "read" | "write"; pull_requests?: "read" | "write"; actions?: "read" };
+export type PermisosGithubApp = { contents?: "read" | "write"; pull_requests?: "read" | "write"; actions?: "read"; workflows?: "read" | "write" };
+
+export function permisosPushGithubApp(rutas: readonly string[]): PermisosGithubApp {
+  const tocaWorkflows = rutas.some((ruta) => {
+    const normalizada = ruta.toLowerCase();
+    return normalizada === ".github/workflows" || normalizada.startsWith(".github/workflows/");
+  });
+  return { contents: "write", ...(tocaWorkflows ? { workflows: "write" } : {}) };
+}
 
 export type InstalacionGithubApp = {
   id: number;
@@ -103,13 +111,17 @@ async function llamarGithub<T>(ruta: string, token: string, body?: unknown): Pro
   if (!respuesta.ok) {
     if ([403, 404, 422].includes(respuesta.status) && ruta.includes("/access_tokens")) {
       const cuerpo = bodyComoRegistro(body);
-      const permiso = cuerpo?.permissions && typeof cuerpo.permissions === "object"
-        ? Object.keys(cuerpo.permissions as Record<string, unknown>)[0]
-        : null;
-      const nombrePermiso = permiso === "pull_requests" ? "Pull requests" : permiso === "actions" ? "Actions" : "Contents";
+      const permisos = cuerpo?.permissions && typeof cuerpo.permissions === "object"
+        ? cuerpo.permissions as Record<string, unknown>
+        : {};
+      const permiso = ["workflows", "pull_requests", "actions", "contents"].find((nombre) => Object.hasOwn(permisos, nombre));
+      const nombrePermiso = permiso === "workflows" ? "Workflows" : permiso === "pull_requests" ? "Pull requests" : permiso === "actions" ? "Actions" : "Contents";
+      const detalle = permiso === "workflows"
+        ? "La GitHub App necesita Workflows: Read and write. Actualiza ese permiso en la configuración de la App y aprueba el cambio para su instalación antes de volver a subir el workflow."
+        : `La GitHub App no puede usar ${nombrePermiso} en este repositorio. Comprueba que el repo esté incluido en la instalación y que la App tenga el acceso solicitado en GitHub.`;
       throw new ErrorGithubApp(
         "github_app_sin_acceso",
-        `La GitHub App no puede usar ${nombrePermiso} en este repositorio. Comprueba que el repo esté incluido en la instalación y que la App tenga el acceso solicitado en GitHub.`,
+        detalle,
         403,
       );
     }
@@ -257,7 +269,7 @@ export async function tokenGithubAppParaRepo(
   } catch (error) {
     if (!(error instanceof ErrorGithubApp) || error.code !== "github_app_sin_acceso") throw error;
     const destino = instalacion.configuration_url ?? "https://github.com/settings/installations";
-    const nombres: Record<string, string> = { contents: "Contents", pull_requests: "Pull requests", actions: "Actions" };
+    const nombres: Record<string, string> = { contents: "Contents", pull_requests: "Pull requests", actions: "Actions", workflows: "Workflows" };
     const permisosNecesarios = Object.entries(permisos).map(([nombre, acceso]) => `${nombres[nombre] ?? nombre}: ${acceso === "write" ? "Read and write" : "Read-only"}`).join(", ");
     throw new ErrorGithubApp(
       "github_app_sin_acceso",

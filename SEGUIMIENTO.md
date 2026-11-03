@@ -1480,3 +1480,10 @@ Implementación: PR #107 https://github.com/PABLOCESAR2412/Orquestador/pull/107.
 - [ ] Instalar en la VM, autorizar la cuenta personal de Cloudflare y Vercel desde sus flujos de dispositivo, comprobar `whoami` y hacer una publicación de vista previa real. Esta rama no instala ni inicia sesión en la VM antes del merge.
 
 Referencias oficiales: [Cloudflare Wrangler login por dispositivo](https://developers.cloudflare.com/workers/wrangler/commands/general/), [Cloudflare Pages Direct Upload](https://developers.cloudflare.com/pages/get-started/direct-upload/), [Vercel login](https://vercel.com/docs/cli/login), [Vercel deploy desde CLI sin Git](https://vercel.com/docs/deployments).
+
+### Push de workflows desde Telo — 3 de noviembre de 2026
+
+- [x] El rechazo al subir `Cubo/.github/workflows/cubo-deploy.yml` confirma que la credencial de GitHub App no incluía `Workflows`. El flujo pedía solo `Contents: write`; GitHub exige también `Workflows: write` para que una App actualice archivos de Actions por Git. [Documentación de contenidos](https://docs.github.com/en/rest/repos/contents) y [permisos de GitHub Apps](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app).
+- [x] Telo ahora solicita `Workflows: write` únicamente si el diff toca `.github/workflows` (incluida la ruta anterior de un renombrado); conserva `Contents: write` y el acceso limitado al repo. Si GitHub deniega el permiso, la acción indica cómo activarlo en la App y aprobarlo para la instalación.
+- [x] Verificación local: pruebas de GitHub App (16 aprobadas), TypeScript del servidor y `git diff --check` aprobados. Las pruebas de acciones Git no completaron en este entorno Windows porque el sandbox impide a Git escribir configuración en los repositorios temporales que crean.
+- [ ] En GitHub, habilitar `Repository permissions → Workflows → Read and write` en la GitHub App y aprobar la actualización en su instalación. Luego desplegar esta versión y repetir push de rama y creación de PR; el código no puede conceder ese permiso a la cuenta por sí mismo.

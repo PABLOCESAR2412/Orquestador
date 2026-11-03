@@ -31,7 +31,7 @@ import {
 import { archivosConSecretos, archivosConSecretosEnBlobs, redactar } from "./redaccion";
 import { valorSecreto, valoresDeProyecto } from "./secretos";
 import { tokenGithubGlobal, autorGit } from "./github-auth";
-import { tokenGithubAppParaRepo } from "./github-app";
+import { permisosPushGithubApp, tokenGithubAppParaRepo } from "./github-app";
 import { opcionesDeCredenciales } from "./git-credenciales";
 import { eliminarPerfilCodex, eliminarPerfilOpenCode, prepararDirectorioOpenCode } from "./runners/aislamiento";
 import { enMantenimiento, registrarTrabajo } from "./despliegue";
@@ -99,6 +99,7 @@ export class ErrorTarea extends Error {
 
 export type ArchivoDiff = {
   ruta: string;
+  rutaAnterior?: string;
   estado: "nuevo" | "modificado" | "borrado" | "renombrado";
   adiciones: number;
   eliminaciones: number;
@@ -779,6 +780,7 @@ function combinar(nombres: string, numeros: string): ArchivoDiff[] {
     const cuenta = cuentas.get(ruta) ?? { adiciones: 0, eliminaciones: 0, binario: false };
     archivos.push({
       ruta,
+      ...(anterior ? { rutaAnterior: anterior } : {}),
       estado: estadoDe(codigo[0]),
       adiciones: cuenta.adiciones,
       eliminaciones: cuenta.eliminaciones,
@@ -1001,8 +1003,11 @@ async function subirAprobado(
   const fuente = opts?.autenticacion;
   let token: string | null = null;
   let destinoSsh: string | null = null;
+  let estado = await estadoDelClon(ctx);
+  if (estado.hash !== hash) throw new ErrorTarea("cambios_cambiaron", 409);
   if (fuente?.tipo === "github_app") {
-    token = await tokenGithubAppParaRepo(remoto, { contents: "write" });
+    const rutas = estado.archivos.flatMap((archivo) => archivo.rutaAnterior ? [archivo.rutaAnterior, archivo.ruta] : [archivo.ruta]);
+    token = await tokenGithubAppParaRepo(remoto, permisosPushGithubApp(rutas));
   } else if (fuente?.origen === "sesion_anterior") {
     token = tokenGithubGlobal();
   } else if (fuente?.origen === "token_proyecto" && ctx.projectId) {
@@ -1020,7 +1025,6 @@ async function subirAprobado(
   // Si no se ha aprobado el commit explícitamente o hay cambios pendientes, se crea el commit automáticamente
   // para no bloquear al usuario con "commit_requerido".
   if (!aprobacion || aprobacion.commit_sha !== head || aprobacion.diff_hash !== hash) {
-    const estado = await estadoDelClon(ctx);
     if (estado.archivos.length > 0) {
       const commitRes = await commitInterno(taskId, ctx, hash, opts?.mensaje);
       head = commitRes.sha;
@@ -1030,7 +1034,7 @@ async function subirAprobado(
     }
   }
 
-  const estado = await estadoDelClon(ctx);
+  estado = await estadoDelClon(ctx);
   if (estado.hash !== hash) throw new ErrorTarea("cambios_cambiaron", 409);
   if (!aprobacion || aprobacion.diff_hash !== estado.hash) throw new ErrorTarea("commit_requerido", 409);
 
