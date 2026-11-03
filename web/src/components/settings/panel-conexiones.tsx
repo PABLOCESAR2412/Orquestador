@@ -27,8 +27,6 @@ export function PanelConexiones() {
   const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders, staleTime: 60_000 });
   const github = useQuery({ queryKey: ["github-cuenta"], queryFn: api.githubCuenta, staleTime: 60_000 });
   const githubApp = useQuery({ queryKey: ["github-app-installations"], queryFn: api.githubAppInstalaciones, staleTime: 60_000 });
-  const skills = useQuery({ queryKey: ["connection-skills"], queryFn: () => api.listSkills(), staleTime: 60_000 });
-  const servidor = useQuery({ queryKey: ["integration-prerequisite-tools"], queryFn: api.serverStatus, staleTime: 30_000 });
 
   const invalidar = () => void qc.invalidateQueries({ queryKey: ["mcp-connections"] });
   const crear = useMutation({
@@ -63,18 +61,7 @@ export function PanelConexiones() {
     },
     onError: (e) => { setAviso(null); setError(errorText(e)); },
   });
-  const instalarSkills = useMutation({
-    mutationFn: async ({ repositorio, nombres }: { grupo: string; repositorio: string; nombres: string[] }) => {
-      for (const nombre of nombres) {
-        await api.installSkill(`npx skills add ${repositorio} --skill ${nombre}`);
-      }
-    },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["connection-skills"] }),
-  });
-
   const lista = conexiones.data?.conexiones ?? [];
-  const skillsPorNombre = new Map((skills.data?.skills ?? []).map((skill) => [skill.nombre, skill]));
-  const herramientasPorNombre = new Map((servidor.data?.herramientas ?? []).map((herramienta) => [herramienta.nombre, herramienta]));
   const google = proveedores.data?.find((proveedor) => proveedor.id === "google");
   const githubConectado = Boolean(github.data?.conectado || githubApp.data?.seleccionada);
 
@@ -124,48 +111,7 @@ export function PanelConexiones() {
 
   const gestionarMcp = () => document.getElementById("aj-mcp-titulo")?.scrollIntoView({ behavior: "smooth", block: "start" });
 
-  const estadoSkill = (nombre: string) => {
-    if (skills.isPending) return "Consultando skill…";
-    if (skills.isError) return "No se pudo consultar";
-    const skill = skillsPorNombre.get(nombre);
-    if (!skill) return "No instalada";
-    return skill.valida ? "Instalada y válida" : "Inválida · revisar antes de reemplazar";
-  };
-  const skillDisponible = (...nombres: string[]) => nombres.some((nombre) => skillsPorNombre.get(nombre)?.valida);
-  const skillsDisponibles = (...nombres: string[]) => nombres.every((nombre) => skillsPorNombre.get(nombre)?.valida);
-  const abrirSkills = () => {
-    void navigate({ to: "/ajustes", search: { pestana: "proveedores" } });
-    window.setTimeout(() => document.getElementById("aj-skills-titulo")?.scrollIntoView({ behavior: "smooth", block: "start" }), 180);
-  };
-  const accionSkills = (grupo: string, repositorio: string, nombres: string[]) => {
-    if (!skills.isSuccess) return null;
-    const faltantes = nombres.filter((nombre) => !skillsPorNombre.has(nombre));
-    const invalidas = nombres.some((nombre) => skillsPorNombre.has(nombre) && !skillsPorNombre.get(nombre)?.valida);
-    const instalando = instalarSkills.isPending && instalarSkills.variables?.grupo === grupo;
-    const errorInstalacion = instalarSkills.isError && instalarSkills.variables?.grupo === grupo;
-    if (!faltantes.length && !invalidas && !errorInstalacion) return null;
-    return (
-      <div className="aj-integracion-acciones">
-        {faltantes.length > 0 && (
-          <button
-            type="button"
-            className="aj-btn"
-            disabled={instalarSkills.isPending}
-            onClick={() => instalarSkills.mutate({ grupo, repositorio, nombres: faltantes })}
-          >
-            {instalando ? "Instalando…" : `Instalar${faltantes.length > 1 ? ` ${faltantes.length} skills` : ""}`}
-          </button>
-        )}
-        {invalidas && <button type="button" className="aj-btn" onClick={abrirSkills}>Revisar en Skills</button>}
-        {errorInstalacion && <p className="aj-error" role="alert">No se pudo importar desde el repositorio: {errorText(instalarSkills.error)}</p>}
-      </div>
-    );
-  };
-
-  const nodeMajor = Number(herramientasPorNombre.get("node")?.version?.match(/v?(\d+)/)?.[1] ?? 0);
-  const libreServidor = servidor.data?.disco.find((disco) => disco.etiqueta === "datos")?.libreBytes ?? null;
-
-  const estadoConsultaError = [conexiones, proveedores, github, githubApp, skills, servidor].find((consulta) => consulta.isError);
+  const estadoConsultaError = [conexiones, proveedores, github, githubApp].find((consulta) => consulta.isError);
 
   return (
     <div className="aj-stack aj-conexiones">
@@ -214,86 +160,27 @@ export function PanelConexiones() {
         <p className="aj-nota">También puedes integrar Google Workspace u otros servicios mediante un servidor MCP compatible.</p>
       </section>
 
-      <section className="aj-seccion" aria-labelledby="aj-habilidades-integraciones-titulo">
+      <section className="aj-seccion" aria-labelledby="aj-integraciones-externas-titulo">
         <div className="aj-seccion-cabecera">
           <div>
-            <h2 id="aj-habilidades-integraciones-titulo" className="aj-titulo-seccion">Habilidades e integraciones</h2>
-            <p className="aj-nota aj-conexiones-intro">Estado real de las skills locales, herramientas del servidor y accesos externos que faltan. «Disponible» indica que Telo tiene los requisitos locales; no confirma una cuenta o servicio remoto.</p>
+            <h2 id="aj-integraciones-externas-titulo" className="aj-titulo-seccion">Integraciones externas</h2>
+            <p className="aj-nota aj-conexiones-intro">Conecta servicios remotos que Telo ofrece a sus agentes. El estado confirma el registro del MCP, no que el servicio responda.</p>
           </div>
         </div>
 
         <div className="aj-integraciones-catalogo">
-          <h3>Funciones locales</h3>
           <div className="aj-integracion-fila">
-            <div><strong>Context7 · documentación técnica</strong><p>Skill de Upstash; Telo activa su MCP remoto al necesitar documentación. <a href="https://github.com/upstash/context7/tree/master/plugins/agent-plugins/context7/skills/context7-mcp" target="_blank" rel="noreferrer">Repositorio fuente</a>.</p></div>
-            <span className={`aj-conexion-estado${skillDisponible("context7-mcp") ? " is-ok" : ""}`}><i aria-hidden="true" />{estadoSkill("context7-mcp")}</span>
-            <span className="aj-integracion-requisito">Funciona sin clave con cuota básica. Una clave opcional aumenta la cuota y permite repositorios privados: <a href="https://context7.com/dashboard" target="_blank" rel="noreferrer">crear clave en Context7</a>.</span>
-            {accionSkills("context7", "upstash/context7", ["context7-mcp"])}
-          </div>
-          <div className="aj-integracion-fila">
-            <div><strong>HyperFrames · animaciones y video HTML</strong><p>Skills del repositorio de HeyGen. Telo conserva el <code>SKILL.md</code> principal, no los archivos de referencia del plugin. <a href="https://github.com/heygen-com/hyperframes/tree/main/skills" target="_blank" rel="noreferrer">Ver skills fuente</a>. Se ejecuta bajo demanda con npx.</p></div>
-            <span className={`aj-conexion-estado${skillsDisponibles("hyperframes", "hyperframes-cli", "hyperframes-registry", "media-use") && nodeMajor >= 22 && herramientasPorNombre.get("ffmpeg")?.disponible && herramientasPorNombre.get("ffprobe")?.disponible ? " is-ok" : ""}`}><i aria-hidden="true" />{skills.isPending || servidor.isPending ? "Consultando…" : skillsDisponibles("hyperframes", "hyperframes-cli", "hyperframes-registry", "media-use") && nodeMajor >= 22 && herramientasPorNombre.get("ffmpeg")?.disponible && herramientasPorNombre.get("ffprobe")?.disponible ? "Requisitos base presentes" : "Revisar requisitos locales"}</span>
-            <span className="aj-integracion-requisito">{servidor.isPending ? "Consultando Node…" : nodeMajor >= 22 ? `Node ${nodeMajor} · cumple versión 22+` : nodeMajor ? `Node ${nodeMajor} · requiere versión 22+` : "Node no disponible"} · FFmpeg {herramientasPorNombre.get("ffmpeg")?.disponible ? "listo" : "faltante"} · FFprobe {herramientasPorNombre.get("ffprobe")?.disponible ? "listo" : "faltante"}{libreServidor === null ? "" : ` · ${ (libreServidor / 1024 ** 3).toFixed(1)} GiB libres ahora (espacio disponible, no requisito fijo)`}</span>
-            {accionSkills("hyperframes", "heygen-com/hyperframes", ["hyperframes", "hyperframes-cli", "hyperframes-registry", "media-use"])}
-          </div>
-          <div className="aj-integracion-fila">
-            <div><strong>UI/UX Pro Max · diseño de interfaces</strong><p>Guías de diseño y búsqueda local de estilos, tipografía, accesibilidad y patrones. Telo descarga los datos y referencias necesarios, más cuatro scripts permitidos; no ejecuta nada durante la instalación. <a href="https://github.com/nextlevelbuilder/ui-ux-pro-max-skill" target="_blank" rel="noreferrer">Repositorio oficial</a>.</p></div>
-            <span className={`aj-conexion-estado${skillDisponible("ui-ux-pro-max") ? " is-ok" : ""}`}><i aria-hidden="true" />{estadoSkill("ui-ux-pro-max")}</span>
-            <span className="aj-integracion-requisito">No requiere clave. La consulta del catálogo corre bajo demanda con Python 3.</span>
-            {accionSkills("ui-ux-pro-max", "nextlevelbuilder/ui-ux-pro-max-skill", ["ui-ux-pro-max"])}
-          </div>
-          {([ ["code-review", "Code Review", "vercel-labs/open-agents", "Revisión de diffs en solo lectura; Telo no instala agentes ni herramientas auxiliares."], ["writing-plans", "Writing Plans", "obra/superpowers", "Planes de implementación compatibles con el flujo de aprobación propio de Telo."], ["using-superpowers", "Superpowers", "obra/superpowers", "Skill de flujo de trabajo. Telo importa el SKILL.md; no instala hooks ni el plugin completo."], ["strategic-compact", "ECC · Everything Claude Code", "affaan-m/everything-claude-code", "Skill strategic-compact. Telo no instala el paquete entero, sus hooks o agentes." ] ] as const).map(([id, nombre, repositorio, descripcion]) => (
-            <div className="aj-integracion-fila" key={id}>
-              <div><strong>{nombre}</strong><p>{descripcion} <a href={`https://github.com/${repositorio}`} target="_blank" rel="noreferrer">Repositorio fuente</a>.</p></div>
-              <span className={`aj-conexion-estado${skillsPorNombre.get(id)?.valida ? " is-ok" : ""}`}><i aria-hidden="true" />{estadoSkill(id)}</span>
-              <span className="aj-integracion-requisito">No requiere credenciales externas.</span>
-              {accionSkills(nombre, repositorio, [id])}
-            </div>
-          ))}
-          <div className="aj-integracion-fila">
-            <div><strong>Superpowers · pruebas y depuración</strong><p>Incluye Test-Driven Development y Systematic Debugging. Se activan para esas tareas o al invocarlas por nombre; no instala hooks ni plugins. <a href="https://github.com/obra/superpowers/tree/main/skills" target="_blank" rel="noreferrer">Repositorio fuente</a>.</p></div>
-            <span className={`aj-conexion-estado${skillsDisponibles("test-driven-development", "systematic-debugging") ? " is-ok" : ""}`}><i aria-hidden="true" />{skills.isPending ? "Consultando…" : skillsDisponibles("test-driven-development", "systematic-debugging") ? "Skills instaladas" : "Skills incompletas"}</span>
-            <span className="aj-integracion-requisito">No requiere credenciales externas.</span>
-            {accionSkills("superpowers-calidad", "obra/superpowers", ["test-driven-development", "systematic-debugging"])}
-          </div>
-        </div>
-
-        <div className="aj-integraciones-catalogo">
-          <h3>Servicios externos</h3>
-          <div className="aj-integracion-fila">
-            <div><strong>Instagram · Meta</strong><p>Instrucciones de contenido de <a href="https://github.com/Jakeschincariol/instagram-agent-skill" target="_blank" rel="noreferrer">Jakeschincariol</a>; Telo importa solo cada <code>SKILL.md</code>. Preparan guiones, no publican ni conectan la API de Meta.</p></div>
-            <span className={`aj-conexion-estado${skillsDisponibles("ig-plan", "ig-reel", "ig-story", "ig-caption", "ig-carousel", "ig-human") ? " is-ok" : ""}`}><i aria-hidden="true" />{skills.isPending ? "Consultando…" : skillsDisponibles("ig-plan", "ig-reel", "ig-story", "ig-caption", "ig-carousel", "ig-human") ? "Skills de contenido instaladas" : "Skills de contenido incompletas"}</span>
-            <span className="aj-integracion-requisito">Para publicar: cuenta Creator o Business, app Meta y OAuth con permisos de contenido. Puedes usar el flujo Instagram Login sin vincular una Página; el flujo Facebook Login sí la exige. Telo aún no implementa OAuth/publicación. La verificación empresarial no se necesita para redactar.</span>
-            {accionSkills("instagram", "Jakeschincariol/instagram-agent-skill", ["ig-plan", "ig-reel", "ig-story", "ig-caption", "ig-carousel", "ig-human"])}
-          </div>
-          <div className="aj-integracion-fila">
-            <div><strong>Obsidian · vault</strong><p>Skills de <a href="https://github.com/kepano/obsidian-skills" target="_blank" rel="noreferrer">kepano/obsidian-skills</a> (proyecto comunitario). Telo importa solo los <code>SKILL.md</code>; no es el conector del vault.</p></div>
-            <span className={`aj-conexion-estado${skillsDisponibles("obsidian-markdown", "obsidian-cli") ? " is-ok" : ""}`}><i aria-hidden="true" />{skillsDisponibles("obsidian-markdown", "obsidian-cli") ? "Skills de Obsidian instaladas" : "Skills de Obsidian incompletas"}</span>
-            <span className="aj-integracion-requisito">{estadoMcp("Obsidian")} · Necesitas un puente MCP HTTPS accesible desde la VM y el Bearer de ese puente; el token del plugin REST por sí solo no sirve aquí.</span>
-            {accionSkills("obsidian", "kepano/obsidian-skills", ["obsidian-markdown", "obsidian-cli"])}
-            {conexionMcpPorAlias("Obsidian")
+            <div><strong>Instagram · Meta</strong><p>Telo no ofrece OAuth directo ni publicación desde Meta. Puedes registrar un MCP compatible que integre este servicio.</p></div>
+            <span className={`aj-conexion-estado${conexionMcpPorAlias("Instagram", "Meta")?.habilitada ? " is-ok" : ""}`}><i aria-hidden="true" />{estadoMcp("Instagram", "Meta")}</span>
+            <span className="aj-integracion-requisito">El MCP debe gestionar la autenticación con Meta. Telo guarda un Bearer estático para acceder al MCP; no inicia OAuth ni verifica publicaciones.</span>
+            {conexionMcpPorAlias("Instagram", "Meta")
               ? <button type="button" className="aj-btn" onClick={gestionarMcp}>Gestionar MCP</button>
-              : <button type="button" className="aj-btn" onClick={() => prepararMcp("Obsidian · puente MCP", "Necesitas un puente MCP remoto con HTTPS, accesible desde la VM. El formulario guarda la URL MCP y el token Bearer del puente. El REST API de Obsidian por sí solo no es MCP.")}>Configurar puente MCP</button>}
+              : <button type="button" className="aj-btn" onClick={() => prepararMcp("Instagram · Meta MCP", "Necesitas un MCP HTTPS que integre la API de Meta y gestione OAuth fuera de Telo. Este formulario guarda la URL y un Bearer estático para el MCP; no inicia OAuth de Meta ni comprueba publicaciones.")}>Configurar MCP</button>}
           </div>
           <div className="aj-integracion-fila">
-            <div><strong>Harvey · servicio legal</strong><p>Telo no trae un conector a Harvey. El BYOMCP documentado por Harvey permite que Harvey consuma un MCP de tu organización; no es un endpoint de Harvey para que Telo lo llame. <a href="https://help.harvey.ai/articles/joining-harvey-mcp-connector-library" target="_blank" rel="noreferrer">Documentación de Harvey</a>.</p></div>
-            <span className={`aj-conexion-estado${conexionMcpPorAlias("Harvey")?.habilitada ? " is-ok" : ""}`}><i aria-hidden="true" />{estadoMcp("Harvey")}</span>
-            <span className="aj-integracion-requisito">Para que Telo use Harvey, pide a Harvey o al administrador de tu tenant una API/MCP oficial y su autenticación. Este formulario admite HTTPS y Bearer estático; si Harvey exige OAuth, habría que añadir ese flujo. Para que Harvey use Telo, tendríamos que construir un servidor MCP de Telo y registrarlo con tu administrador de Harvey.</span>
-            {conexionMcpPorAlias("Harvey")
-              ? <button type="button" className="aj-btn" onClick={gestionarMcp}>Gestionar MCP</button>
-              : <button type="button" className="aj-btn" onClick={() => prepararMcp("Harvey · API/MCP oficial", "Antes de configurar, solicita a Harvey o al administrador del tenant una API/MCP oficialmente admitida, su URL HTTPS y el método de autenticación. Este formulario solo admite Bearer estático; no inicia OAuth. Para que Harvey llame a Telo hace falta desarrollar un servidor MCP en Telo y registrarlo en Harvey.")}>Configurar API/MCP oficial</button>}
-          </div>
-          <div className="aj-integracion-fila">
-            <div><strong>Orca · herramientas locales</strong><p>La skill CLI enseña a usar ese ejecutable; no crea agentes en un servicio llamado Orca.</p></div>
-            <span className={`aj-conexion-estado${skillDisponible("orca-cli") ? " is-ok" : ""}`}><i aria-hidden="true" />{estadoSkill("orca-cli")}</span>
-            <span className="aj-integracion-requisito">Para conectar un servicio Orca, primero confirma cuál producto es y solicita a su equipo una API/MCP compatible. Telo no tiene una integración de ese servicio.</span>
-          </div>
-          <div className="aj-integracion-fila">
-            <div><strong>Búsqueda web · empleo y clientes</strong><p>La skill de empleo viene de <a href="https://github.com/MadsLorentzen/ai-job-search" target="_blank" rel="noreferrer">MadsLorentzen</a>; prospección, de <a href="https://github.com/coreyhaines31/marketingskills" target="_blank" rel="noreferrer">Corey Haines</a>. Telo solo importa sus <code>SKILL.md</code>; para búsqueda actual hace falta un MCP.</p></div>
-            <span className={`aj-conexion-estado${skillDisponible("job-application-assistant") && skillDisponible("prospecting") ? " is-ok" : ""}`}><i aria-hidden="true" />{skills.isPending ? "Consultando…" : `Empleo: ${estadoSkill("job-application-assistant")} · Clientes: ${estadoSkill("prospecting")}`}</span>
-            <span className="aj-integracion-requisito">{estadoMcp("Búsqueda web", "Web search", "Search MCP")}; el servidor debe exponer búsqueda web y aceptar Bearer si requiere autenticación.</span>
-            {accionSkills("empleo", "MadsLorentzen/ai-job-search", ["job-application-assistant"])}
-            {accionSkills("prospeccion", "coreyhaines31/marketingskills", ["prospecting"])}
+            <div><strong>Búsqueda de empleo y clientes</strong><p>Conecta un servidor MCP que exponga una herramienta de búsqueda web.</p></div>
+            <span className={`aj-conexion-estado${conexionMcpPorAlias("Búsqueda web", "Web search", "Search MCP")?.habilitada ? " is-ok" : ""}`}><i aria-hidden="true" />{estadoMcp("Búsqueda web", "Web search", "Search MCP")}</span>
+            <span className="aj-integracion-requisito">El servidor debe ofrecer búsqueda web. Telo admite HTTPS y Bearer estático; añadirlo no comprueba los resultados.</span>
             {conexionMcpPorAlias("Búsqueda web", "Web search", "Search MCP")
               ? <button type="button" className="aj-btn" onClick={gestionarMcp}>Gestionar MCP</button>
               : <button type="button" className="aj-btn" onClick={() => prepararMcp("Búsqueda web · MCP", "Necesitas un endpoint MCP HTTPS que ofrezca una herramienta de búsqueda web. El token Bearer es opcional si el proveedor lo exige. Añadirlo no prueba que las búsquedas respondan.")}>Configurar MCP</button>}

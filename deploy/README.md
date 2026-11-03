@@ -21,6 +21,25 @@ El broker admite [Gemini de Zen mediante su ruta Google](https://dev.opencode.ai
 
 La inferencia ya no tiene el timeout HTTP de 120 segundos sin bytes del broker. Sigue vigilada por el runner: tres minutos hasta la primera actividad útil y cancelación explícita. Ese límite no garantiza una duración máxima después de comenzar el trabajo. No se añaden migraciones en esta corrección.
 
+## Instalar el bus de sesión de Antigravity en el VM
+
+El archivo `deploy/orquestador-antigravity.conf` forma parte del checkout en `/home/orquestador/orquestador`. El error `install: cannot stat` indica que no se encontró el archivo de origen desde el directorio actual o que el checkout del VM todavía no contiene ese cambio. Usa una ruta absoluta y comprueba primero que el archivo exista:
+
+```bash
+TELO_REPO_DIR=/home/orquestador/orquestador
+if [ ! -f "$TELO_REPO_DIR/deploy/orquestador-antigravity.conf" ]; then
+  echo "Falta deploy/orquestador-antigravity.conf en el checkout; actualiza el repo del VM y repite." >&2
+  exit 1
+fi
+sudo loginctl enable-linger orquestador
+sudo install -d -m 0755 /etc/systemd/system/orquestador.service.d
+sudo install -m 0644 "$TELO_REPO_DIR/deploy/orquestador-antigravity.conf" /etc/systemd/system/orquestador.service.d/antigravity.conf
+sudo systemctl daemon-reload
+sudo systemctl restart orquestador
+```
+
+Este paso instala el drop-in para que el CLI mantenga su sesión OAuth mediante Secret Service. No copies el archivo desde otra carpeta ni crees uno vacío si falta en el checkout; primero despliega la revisión del repo que lo contiene.
+
 ## Referencias visuales, Planear y RTK
 
 El selector del chat distingue Construir (flujo habitual) y Planear (workspace y entregables en solo lectura). Planear termina después de entregar el plan; no aprueba operaciones ni ejecuta el obrero. Para aplicarlo, selecciona Construir y envía una nueva petición. Cada mensaje y tarea conservan el modo que tenían al entrar en la cola. La migración 057 conserva el comportamiento previo como `build`. Antes de volver a código anterior a esta migración, termina o cancela los turnos/tareas pendientes en modo Planear: ese código no conoce la restricción. Conserva las columnas nuevas al revertir código.
