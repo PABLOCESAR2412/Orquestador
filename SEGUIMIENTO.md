@@ -1,8 +1,17 @@
 # Seguimiento de Telo
 
-Registro central de fases, revisiones y hallazgos. Actualizado: 2 de noviembre de 2026.
+Registro central de fases, revisiones y hallazgos. Actualizado: 3 de noviembre de 2026.
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
+
+## Antigravity CLI, Command Code Go y Ollama Cloud — PR #176
+
+- [~] Antigravity: Ajustes inicia `agy` en una terminal remota, muestra únicamente el enlace HTTPS de `accounts.google.com`, recibe el código en la pantalla y comprueba `/usage` más el archivo de sesión que usa el aislamiento. Pruebas sintéticas de host permitido/rechazado y flujo UI a 390/1440 px aprobadas; falta autorizar una cuenta real en la VM. El servicio necesita lingering y el bus de Secret Service configurados con `deploy/orquestador-antigravity.conf`.
+- [~] Command Code Go: Ajustes acepta una API key headless cifrada, consulta modelos con `COMMAND_CODE_API_KEY` y la entrega solo al CLI seleccionado. Es autenticación del CLI Go, no de su Provider API. Pruebas de parser, clave headless y UI aprobadas; falta validar la clave de la cuenta real. El saldo oficial sigue consultándose desde `/usage`.
+- [~] Ollama Cloud: guarda `OLLAMA_API_KEY` cifrada, consulta `https://ollama.com/v1/models`, llama a `https://ollama.com/v1` mediante el broker con catálogo/modelo permitido y registra el uso de Telo. Pruebas del catálogo, compilación y UI aprobadas; falta probar una clave real. Precio y saldo quedan como desconocidos porque no se encontró una API oficial de saldo/cuota; la cuenta de Ollama sigue siendo la fuente de facturación.
+- [x] Interfaz: filas CLI de ancho completo, estado visible «Instalado · falta sesión» y formularios de conexión. Playwright pasó a 390 y 1440 px sin desbordamiento horizontal.
+- [x] Verificación final: suite del servidor 706 aprobadas, 100 omitidas y 0 fallidas; `bun run typecheck`, compilación web y `git diff --check` pasan. La prueba Playwright omitió solo el fixture opcional de video.
+- [x] CI de GitHub: suite principal 795 aprobadas, 11 omitidas y 0 fallidas; flujo aislado de worker 9 aprobadas y 0 fallidas; checks de servidor e interfaz verdes. El timeout explícito de 15 s evita que Bun corte antes de la espera interna de 10 s.
 
 ## Bloqueos de publicación y reintentos — PR #174
 

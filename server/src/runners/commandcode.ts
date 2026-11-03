@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { autenticacionCommandCode, aislamientoActivo, prefijoAislamiento } from "./aislamiento";
+import { commandCodeConectado, aislamientoActivo, prefijoAislamiento } from "./aislamiento";
 import { prepararRedAgente } from "./red-agente";
 import { hallarEjecutable, lanzarEnGrupo, matarGrupo } from "../ejecutable";
 import { ErrorAgente, entornoDelAgente, estimarUso, type RunResult, type Usage } from "./opencode";
@@ -57,8 +57,8 @@ export async function runCommandCode(opts: {
   if (!aislamientoActivo() || !opts.perfilCommandCodeDir || !process.env.HOME) {
     throw new Error("Command Code requiere el aislamiento de Telo activo y un perfil independiente por conversación.");
   }
-  if (!autenticacionCommandCode()) {
-    throw new Error("No hay una sesión válida de Command Code en el servidor. Entra por SSH y ejecuta `cmd login`.");
+  if (!commandCodeConectado()) {
+    throw new Error("Command Code Go no tiene credenciales utilizables. Guarda su API key headless en Ajustes o inicia sesión con `cmd login` por SSH.");
   }
 
   const modelo = opts.model.startsWith("commandcode/") ? opts.model.slice("commandcode/".length) : opts.model;
@@ -88,8 +88,7 @@ export async function runCommandCode(opts: {
   if (opts.variant && ESFUERZOS.has(opts.variant)) args.push("--effort", opts.variant);
 
   const env = entornoDelAgente(opts.extraEnv, [opts.model]);
-  delete env.COMMAND_CODE_API_KEY;
-  delete env.COMMANDCODE_API_KEY;
+
   env.HOME = "/tmp/telo-commandcode-home";
   Object.assign(env, red?.entorno);
   // Node 22.21+ hace que el CLI respete el proxy acotado del broker de Telo.

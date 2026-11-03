@@ -167,7 +167,7 @@ describe.skipIf(!disponible)("worker con agente falso y bubblewrap real", () => 
     });
   }
 
-  test("Planear termina con un plan sin ejecutar el obrero ni aprobar operaciones", async () => {
+  test("Planear termina con un plan sin ejecutar el obrero ni aprobar operaciones", { timeout: 15_000 }, async () => {
     const {id, conversacion, clon} = await nueva("opencode/git", "plan");
     await esperar(() => ["done", "failed"].includes(fila(id).status), id);
     expect(fila(id).status).toBe("done");

@@ -4,6 +4,12 @@
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
     {
+      "fecha": "2026-11-03",
+      "tipo": "grande",
+      "titulo": "Proveedores: inicia sesión con Antigravity, conecta Command Code Go y añade Ollama Cloud",
+      "pr": 176
+    },
+    {
       "fecha": "2026-11-02",
       "tipo": "minimo",
       "titulo": "Chat y tareas: evita 409 al repetir Seguir, filtra embeddings y muestra Graphify y skills por fase",

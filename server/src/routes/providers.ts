@@ -9,7 +9,8 @@ import { listarModelosCodex } from "../modelos-codex";
 import { obtenerCuotaCodex } from "../cuota-codex";
 import { listarModelosAntigravity, sesionAntigravityConectada } from "../antigravity";
 import { obtenerCuotaAntigravity } from "../cuota-antigravity";
-import { autenticacionCommandCode } from "../runners/aislamiento";
+import { commandCodeConectado } from "../runners/aislamiento";
+import { cancelarLoginAntigravity, enviarCodigoAntigravity, estadoLoginAntigravityEnVivo, iniciarLoginAntigravity, LoginAntigravityError } from "../login-antigravity";
 
 
 type ProviderStatus = {
@@ -87,7 +88,8 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
   const hermesInstalado = hallarEjecutable("hermes") !== null;
   const hermesConectado = hermesInstalado && hermesCodexAuthConfigurada();
   const commandCodeInstalado = Boolean(hallarEjecutable("command-code") ?? hallarEjecutable("cmdc") ?? hallarEjecutable("cmd"));
-  const commandCodeSesion = commandCodeInstalado && autenticacionCommandCode() !== null;
+  const commandCodeSesion = commandCodeInstalado && commandCodeConectado();
+  const commandCodeClave = proveedorGuardable("commandcode", "Command Code Go", "API key de CLI para autenticar Command Code Go en servidores sin navegador; no habilita su Provider API.", enAgente);
   return [
     {
       id: "opencode",
@@ -123,18 +125,18 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
       hint: sesionAntigravity
         ? "Sesión de archivos de Antigravity detectada. Sus modelos usan agy, con su cuota y sesión propias. La validez se confirma al ejecutar."
         : hallarEjecutable("agy")
-          ? "Inicia agy por SSH como usuario orquestador. El aislamiento necesita el almacén de sesión de archivos de esa VM; una sesión que solo vive en el keyring no se puede reutilizar aquí."
+          ? "Inicia sesión aquí con agy. El servidor necesita Secret Service activo para conservar la sesión y usar los modelos desde el entorno aislado."
           : "Instala Antigravity CLI e inicia su sesión por SSH como usuario orquestador.",
       variable: null, enAgente: sesionAntigravity, guardable: false, guardada: false, sesion: sesionAntigravity,
     },
     {
       id: "commandcode", name: "Command Code Go", configured: commandCodeInstalado, implemented: true,
       hint: commandCodeSesion
-        ? "CLI y sesión de Command Code Go detectados en el servidor. El proveedor informa su saldo con /usage en la CLI."
+        ? "CLI conectado a Command Code Go. En servidores sin navegador usa una API key de CLI; conserva los límites compartidos de tu plan Go."
         : commandCodeInstalado
-          ? "CLI instalado. Inicia sesión por SSH con cmd login para consultar sus modelos."
-          : "Instala Command Code CLI e inicia sesión por SSH como usuario orquestador.",
-      variable: null, enAgente: commandCodeSesion, guardable: false, guardada: false, sesion: commandCodeSesion,
+          ? "CLI instalado. Añade la API key de Command Code Go para consultar modelos y usar el plan en esta VM."
+          : "Instala Command Code CLI y añade una API key de CLI para usar el plan Go desde la VM.",
+      variable: "COMMAND_CODE_API_KEY", enAgente: commandCodeSesion, guardable: true, guardada: commandCodeClave.guardada, sesion: commandCodeSesion,
     },
     {
       id: "hermes",
@@ -184,6 +186,7 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
       "Clave de OpenRouter. Se guarda aquí, cifrada, o viene del archivo de entorno del servidor.",
       enAgente,
     ),
+    proveedorGuardable("ollama", "Ollama Cloud", "API key de Ollama Cloud. Telo consulta el catálogo y mide el uso local; revisa el saldo y las tarifas en tu cuenta.", enAgente),
   ];
 }
 
@@ -209,6 +212,7 @@ providers.post("/providers/:id/probar", async (c) => {
     nvidia: { url: "https://integrate.api.nvidia.com/v1/models", headers: { Authorization: `Bearer ${clave}` } },
     openrouter: { url: "https://openrouter.ai/api/v1/models", headers: { Authorization: `Bearer ${clave}` } },
     "cloudflare-workers-ai": { url: `https://api.cloudflare.com/client/v4/accounts/${cuenta}/ai/models/search?per_page=100`, headers: { Authorization: `Bearer ${clave}` } },
+    ollama: { url: "https://ollama.com/v1/models", headers: { Authorization: `Bearer ${clave}` } },
   };
   const destino = destinos[id];
   if (!destino) return c.json({ ok: false, error: "provider_test_unsupported" });
@@ -301,6 +305,23 @@ providers.get("/providers/antigravity/models", async (c) => {
   try { return c.json(await listarModelosAntigravity(c.req.query("refresh") === "1")); }
   catch { return c.json({ error: "antigravity_models_unavailable", mensaje: "Antigravity no pudo consultar sus modelos. Comprueba su sesión en la VM." }, 503); }
 });
+providers.get("/providers/antigravity/login", async (c) => c.json(await estadoLoginAntigravityEnVivo()));
+providers.post("/providers/antigravity/login", async (c) => {
+  try { return c.json(iniciarLoginAntigravity(), 202); }
+  catch (err) {
+    if (err instanceof LoginAntigravityError) return c.json({ error: err.code }, err.status);
+    throw err;
+  }
+});
+providers.post("/providers/antigravity/confirmar", async (c) => {
+  const body = await c.req.json().catch(() => ({})) as { codigo?: unknown };
+  try { return c.json(await enviarCodigoAntigravity(body.codigo)); }
+  catch (err) {
+    if (err instanceof LoginAntigravityError) return c.json({ error: err.code }, err.status);
+    throw err;
+  }
+});
+providers.delete("/providers/antigravity/login", async (c) => c.json(cancelarLoginAntigravity()));
 providers.post("/providers/codex/login", async (c) => {
   try {
     return c.json(await iniciarLoginCodex(), 202);

@@ -32,6 +32,7 @@ const PROVEEDOR_LABEL: Record<string, string> = {
   "cloudflare-workers-ai": "Cloudflare Workers AI",
   antigravity: "Antigravity CLI",
   commandcode: "Command Code Go",
+  ollama: "Ollama Cloud",
 };
 
 export const nombreProveedor = (id: string) =>
@@ -211,6 +212,10 @@ export function motivoTexto(motivo: string | null): string | null {
       return "El inicio de sesión no se completó. Vuelve a intentarlo.";
     case "antigravity_login_no_confirmado":
       return "Google no confirmó el acceso. Revisa el código y vuelve a iniciar sesión.";
+    case "antigravity_sesion_no_persistida":
+      return "Google autorizó la cuenta, pero Antigravity no dejó el archivo de sesión que necesita el aislamiento. Comprueba el bus de Secret Service e inicia sesión otra vez.";
+    case "antigravity_bus_no_disponible":
+      return "Falta el bus de Secret Service del usuario del servicio. Habilita lingering y aplica el drop-in de Antigravity indicado en deploy/README.md.";
     case "antigravity_login_sin_enlace":
       return "Antigravity no mostró el enlace de Google. Completa su configuración inicial por SSH y vuelve a intentar.";
     case "cancelado":
@@ -498,6 +503,8 @@ export function errorText(err: unknown): string {
         return "Codex no está instalado en el servidor, así que no se puede iniciar sesión desde aquí.";
       case "antigravity_no_instalado":
         return "Antigravity CLI no está instalado. Instálalo desde esta pantalla y vuelve a intentarlo.";
+      case "antigravity_bus_no_disponible":
+        return "El servicio necesita el bus de Secret Service para iniciar sesión en Antigravity. Habilita lingering y aplica el drop-in indicado en deploy/README.md.";
       case "antigravity_terminal_no_disponible":
         return "La VM no tiene el comando `script` para abrir la terminal segura. Instala `util-linux` y vuelve a intentar.";
       case "antigravity_inicio_fallido":

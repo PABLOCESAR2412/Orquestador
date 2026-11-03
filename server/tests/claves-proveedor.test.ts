@@ -278,7 +278,7 @@ describe("rutas de claves de proveedor", () => {
     expect(texto).not.toContain(VALOR);
     const datos = JSON.parse(texto) as { disponible: boolean; proveedores: { id: string; configurada: boolean }[] };
     expect(datos.disponible).toBe(true);
-    expect(datos.proveedores.map((p) => p.id)).toEqual(["openai", "groq", "nvidia", "google", "openrouter", "deepseek", "xai", "cloudflare-workers-ai"]);
+    expect(datos.proveedores.map((p) => p.id)).toEqual(["openai", "commandcode", "groq", "nvidia", "google", "openrouter", "deepseek", "xai", "cloudflare-workers-ai", "ollama"]);
     expect(datos.proveedores.find((p) => p.id === "groq")?.configurada).toBe(true);
   });
 

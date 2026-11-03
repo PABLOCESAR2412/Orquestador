@@ -1,4 +1,5 @@
 import { hallarEjecutable, matarGrupo } from "./ejecutable";
+import { valorClaveApiProveedor } from "./claves-proveedor";
 
 export type ModeloCommandCode = { id: string; nombre: string };
 
@@ -35,7 +36,7 @@ export async function listarModelosCommandCode(forzar = false): Promise<ModeloCo
   const home = process.env.HOME?.trim() || process.env.USERPROFILE?.trim() || "/tmp";
   const proc = Bun.spawn(["setsid", cli, "--list-models", "--no-auto-update"], {
     stdin: "ignore", stdout: "pipe", stderr: "ignore",
-    env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home, NO_COLOR: "1", COMMANDCODE_SKIP_UPDATES: "true" },
+    env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home, NO_COLOR: "1", COMMANDCODE_SKIP_UPDATES: "true", ...(valorClaveApiProveedor("commandcode") ? { COMMAND_CODE_API_KEY: valorClaveApiProveedor("commandcode")! } : {}) },
   });
   let texto = "";
   const lector = proc.stdout.getReader();

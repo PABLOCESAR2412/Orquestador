@@ -39,6 +39,7 @@ const PROVEEDORES: Record<string, { base: string; variables: string[]; auth?: "g
   xai: { base: "https://api.x.ai/v1", variables: ["XAI_API_KEY"] },
   anthropic: { base: "https://api.anthropic.com/v1", variables: ["ANTHROPIC_API_KEY"], auth: "anthropic" },
   "cloudflare-workers-ai": { base: "", variables: ["CLOUDFLARE_API_KEY", "CLOUDFLARE_API_TOKEN"] },
+  ollama: { base: "https://ollama.com/v1", variables: ["OLLAMA_API_KEY"] },
 };
 
 function baseProveedor(proveedor: string, entorno: Record<string, string>): string | null {
@@ -116,10 +117,16 @@ export async function prepararRedAgente(
         const urlBase = new URL(base);
         ruta = { proveedor, base: urlBase, baseVisible: proveedor === "cloudflare-workers-ai" ? "/ai/v1" : urlBase.pathname, modelos: new Set(), credencial, auth: especificacion.auth };
         rutas.set(proveedor, ruta);
-        proveedorConfig[proveedor] = { options: { baseURL: `${PUENTE}/telo-inference/${proveedor}${ruta.baseVisible}`, apiKey: "telo-broker-scoped" } };
+        proveedorConfig[proveedor] = proveedor === "ollama"
+          ? { npm: "@ai-sdk/openai-compatible", name: "Ollama Cloud", options: { baseURL: `${PUENTE}/telo-inference/${proveedor}${ruta.baseVisible}`, apiKey: "telo-broker-scoped" }, models: {} }
+          : { options: { baseURL: `${PUENTE}/telo-inference/${proveedor}${ruta.baseVisible}`, apiKey: "telo-broker-scoped" } };
         authPublica[proveedor] = { type: "api", key: "telo-broker-scoped" };
       }
       ruta.modelos.add(nombre);
+      if (proveedor === "ollama") {
+        const definicion = proveedorConfig.ollama as { models: Record<string, { name: string }> };
+        definicion.models[nombre] = { name: nombre };
+      }
     }
     copyFileSync(join(import.meta.dir, "puente-red.py"), join(directorio, "bridge.py"));
     writeFileSync(join(directorio, "auth.json"), JSON.stringify(authPublica), { mode: 0o600, flag: "wx" });

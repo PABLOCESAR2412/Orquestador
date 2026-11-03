@@ -55,6 +55,7 @@ const NOMBRES_PROVEEDOR: Record<string, string> = {
   openai: "OpenAI",
   xai: "xAI (Grok)",
   deepseek: "DeepSeek",
+  ollama: "Ollama Cloud",
 };
 
 function nombreProveedor(id: string): string {
@@ -478,7 +479,7 @@ function proveedoresActivos(): string[] {
     .query<{ provider: string; model: string }, []>("SELECT DISTINCT provider, model FROM provider_limit_events WHERE created_at >= datetime('now', '-30 days')")
     .all()
     .flatMap((r) => r.provider === "opencode" && /gemini|argon/i.test(r.model) ? ["google"] : [r.provider]);
-  return [...new Set([...usados, ...rechazados, "opencode", "google", "openai", "xai", "nvidia", "groq", "openrouter", "deepseek", "commandcode"])].sort();
+  return [...new Set([...usados, ...rechazados, "opencode", "google", "openai", "xai", "nvidia", "groq", "openrouter", "deepseek", "commandcode", "ollama"])].sort();
 }
 
 export const uso = new Hono();

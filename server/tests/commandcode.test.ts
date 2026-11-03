@@ -9,7 +9,7 @@ process.env.HOME = join(raiz, "home");
 mkdirSync(process.env.DATA_DIR, { recursive: true });
 const { parsearModelosCommandCode } = await import("../src/modelos-commandcode");
 const { usoCommandCode } = await import("../src/runners/commandcode");
-const { autenticacionCommandCode, prepararPerfilCommandCode } = await import("../src/runners/aislamiento");
+const { autenticacionCommandCode, commandCodeConectado, prepararPerfilCommandCode } = await import("../src/runners/aislamiento");
 
 afterAll(() => rmSync(raiz, { recursive: true, force: true }));
 
@@ -38,6 +38,19 @@ test("registra el uso de tokens entregado por Command Code sin inventar costo", 
     costeDisponible: false,
   });
   expect(usoCommandCode({})).toBeNull();
+});
+
+test("reconoce la clave headless de Go sin leerla ni incluirla en el estado", () => {
+  const anterior = process.env.COMMAND_CODE_API_KEY;
+  try {
+    delete process.env.COMMAND_CODE_API_KEY;
+    expect(commandCodeConectado()).toBe(false);
+    process.env.COMMAND_CODE_API_KEY = "cc_test_key_12345678";
+    expect(commandCodeConectado()).toBe(true);
+  } finally {
+    if (anterior === undefined) delete process.env.COMMAND_CODE_API_KEY;
+    else process.env.COMMAND_CODE_API_KEY = anterior;
+  }
 });
 
 test("crea un perfil persistente con política inmutable y exige auth JSON regular", () => {

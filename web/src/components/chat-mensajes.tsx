@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { haceTexto, tiempoTranscurrido } from "../lib/tiempo";
 import { interpretarRespuestaTarea } from "../lib/respuesta-tarea";
 import { partirMensaje } from "../lib/adjuntos";
-import { effortLabel } from "../lib/model";
 import { urlAdjuntoImagenChat, type FormatoDocumento, type SubagentChat } from "../api";
 import { Contenido, copiarTexto, type ReferenciaArchivo } from "./chat-contenido";
 import { CompactacionContexto, MarcaActor, ProcesoAgente, ProcesoGuardado, SubagentesTurno } from "./chat-proceso";
@@ -205,8 +204,6 @@ export function MensajeUsuario({
 export function MensajeAgente({
   texto,
   cuando,
-  modelo,
-  esfuerzo,
   onAbrirArchivo,
   permitirAbrirArchivo,
   onReintentar,
@@ -224,8 +221,6 @@ export function MensajeAgente({
 }: {
   texto: string;
   cuando: string;
-  modelo: string | null;
-  esfuerzo?: string | null;
   onAbrirArchivo?: (referencia: ReferenciaArchivo, triggerId: string) => void;
   permitirAbrirArchivo?: (referencia: ReferenciaArchivo) => boolean;
   // Vuelve a enviar el mensaje del usuario que originó esta respuesta.
@@ -316,9 +311,7 @@ export function MensajeAgente({
           {ICONO_AGENTE}
         </span>
         <span className="tl-msg-meta">
-          <span className="tl-msg-modelo">{modelo ?? "Modelo no guardado"}</span>
-          {esfuerzo && <span className="tl-msg-esfuerzo">{effortLabel(esfuerzo)}</span>}
-          <span> · {haceTexto(cuando)}</span>{duracion ? <span className="tl-msg-duracion"> · Respondió en {duracion}</span> : null}
+          <span>{haceTexto(cuando)}</span>{duracion ? <span className="tl-msg-duracion"> · Respondió en {duracion}</span> : null}
         </span>
         <div className="tl-msg-acciones">
           {!mediaId && <BotonCopiar texto={reporte ? `${reporte.resumen}\n${reporte.causa ?? ""}`.trim() : texto} etiqueta="Copiar respuesta" />}
@@ -634,7 +627,6 @@ function InformeTarea({
 
 // Mientras el agente trabaja: estado observable arriba y acciones/marcas de fase debajo.
 export function IndicadorPensando({
-  modelo,
   vivo = [],
   desde = null,
   fase,
@@ -644,7 +636,6 @@ export function IndicadorPensando({
   orquestacionActiva = false,
   onAbrirSubchat,
 }: {
-  modelo: string;
   vivo?: PasoActividad[];
   desde?: string | null;
   fase?: "queued" | "analyzing" | "running" | "connecting";
@@ -753,7 +744,6 @@ export function IndicadorPensando({
           {ICONO_AGENTE}
         </span>
         <span className="tl-msg-meta tl-msg-procesando">
-          <span className="tl-msg-modelo">{modelo}</span>
           {transcurrido ? <span className="tl-msg-duracion">Procesando desde hace {transcurrido}</span> : null}
         </span>
       </div>

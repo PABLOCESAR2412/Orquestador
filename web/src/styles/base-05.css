@@ -294,7 +294,7 @@
   background: var(--primary);
   box-shadow: 0 0 0 1px var(--line-strong);
 }
-.picker-esfuerzo-marcas { position: absolute; z-index: 2; inset: 50% 9px auto; height: 0; pointer-events: none; }
+.picker-esfuerzo-marcas { position: absolute; z-index: 2; inset: 50% 20px auto; height: 0; pointer-events: none; }
 .picker-esfuerzo-marcas i { position: absolute; top: 0; width: 4px; height: 4px; border-radius: 50%; background: var(--ink-3); transform: translate(-50%, -50%); }
 .picker-esfuerzo-auto { grid-column: 1 / -1; justify-self: end; min-height: 36px; padding-inline: 14px; border-radius: 9px; }
 .picker-volver {

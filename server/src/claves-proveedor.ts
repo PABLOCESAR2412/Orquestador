@@ -17,6 +17,8 @@ export type ProveedorConClave = { id: string; etiqueta: string; variables: strin
 // NVIDIA_API_KEY viene de un artículo de terceros y debe confirmarse con `opencode models` en el VM.
 export const PROVEEDORES_CON_CLAVE: ProveedorConClave[] = [
   { id: "openai", etiqueta: "OpenAI API", variables: ["OPENAI_API_KEY"] },
+  // Command Code Go usa esta clave para autenticar su CLI headless, no su Provider API.
+  { id: "commandcode", etiqueta: "Command Code Go", variables: ["COMMAND_CODE_API_KEY"] },
   { id: "groq", etiqueta: "Groq", variables: ["GROQ_API_KEY"] },
   { id: "nvidia", etiqueta: "NVIDIA", variables: ["NVIDIA_API_KEY"] },
   { id: "google", etiqueta: "Google (Gemini)", variables: ["GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"] },
@@ -24,6 +26,7 @@ export const PROVEEDORES_CON_CLAVE: ProveedorConClave[] = [
   { id: "deepseek", etiqueta: "DeepSeek", variables: ["DEEPSEEK_API_KEY"] },
   { id: "xai", etiqueta: "xAI", variables: ["XAI_API_KEY"] },
   { id: "cloudflare-workers-ai", etiqueta: "Cloudflare Workers AI", variables: ["CLOUDFLARE_API_KEY", "CLOUDFLARE_API_TOKEN"] },
+  { id: "ollama", etiqueta: "Ollama Cloud", variables: ["OLLAMA_API_KEY"] },
 ];
 
 export function cuentaCloudflare(): string | null {
@@ -217,7 +220,7 @@ export function estadoClaves(): {
 export function proveedoresConClave(): Map<string, string> {
   const entorno = entornoProveedores();
   return new Map(
-    PROVEEDORES_CON_CLAVE.filter((p) => p.variables.some((v) => Object.hasOwn(entorno, v))).map((p) => [p.id, p.etiqueta]),
+    PROVEEDORES_CON_CLAVE.filter((p) => p.id !== "commandcode" && p.variables.some((v) => Object.hasOwn(entorno, v))).map((p) => [p.id, p.etiqueta]),
   );
 }
 

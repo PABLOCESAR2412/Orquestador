@@ -12,6 +12,8 @@ import "../styles-ajustes.css";
 import { InstalarHerramienta } from "../components/instalar-herramienta";
 import { AntigravityCard } from "../components/antigravity";
 import { LoginCodexPanel } from "../components/login-codex";
+import { LoginAntigravityPanel } from "../components/login-antigravity";
+import { LoginCommandCodePanel } from "../components/login-commandcode";
 import { copiarTexto } from "../components/chat-contenido";
 import { SkillsEditor } from "../components/skills-editor";
 import { TemaPanel } from "../components/settings/panel-tema";
@@ -44,6 +46,7 @@ const PESTANAS_PROVEEDOR = [
   { id: "nvidia", texto: "NVIDIA NIM" },
   { id: "openrouter", texto: "OpenRouter" },
   { id: "cloudflare-workers-ai", texto: "Cloudflare Workers AI" },
+  { id: "ollama", texto: "Ollama Cloud" },
 ] as const;
 const PESTANAS_LOCALES: { id: IntegracionLocal; texto: string }[] = [
   { id: "cli", texto: "CLIs instalados" },
@@ -66,6 +69,8 @@ export function SettingsPage() {
   const models = useQuery({ queryKey: ["models"], queryFn: api.listModels, staleTime: 5 * 60_000 });
   const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000, retry: reintentarConsultaTransitoria });
   const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders });
+  const antigravityConectado = Boolean(proveedores.data?.find((p) => p.id === "antigravity")?.sesion);
+  const commandCodeConectado = Boolean(proveedores.data?.find((p) => p.id === "commandcode")?.sesion);
   const latencia = useMuestrasLatencia();
   const install = useInstallPrompt();
 
@@ -410,21 +415,25 @@ export function SettingsPage() {
                             <div className="aj-herramienta-local" key={nombre}>
                               <div><strong>{etiqueta}</strong><small>{herramienta?.version ?? (servidor.isPending ? "Consultando estado del servidor…" : "Versión no disponible")}</small></div>
                               <span className={`aj-estado-proveedor${herramienta?.disponible ? " is-conectado" : herramienta ? " is-error" : ""}`} role="status">
-                                <span className="aj-proveedor-punto" aria-hidden="true" />{herramienta?.disponible ? "Instalado" : herramienta ? "No instalado" : "Sin datos"}
+                                <span className="aj-proveedor-punto" aria-hidden="true" />{herramienta?.disponible ? (["agy", "cmd"].includes(nombre) && !(nombre === "agy" ? antigravityConectado : commandCodeConectado) ? "Instalado · falta sesión" : "Instalado") : herramienta ? "No instalado" : "Sin datos"}
                               </span>
                               {herramienta?.disponible && ["opencode", "codex", "agy", "cmd"].includes(nombre) && <div className="instalar-acciones">
                                 <button type="button" className="aj-btn" aria-expanded={modelosCli === nombre} onClick={() => { setModelosCli(modelosCli === nombre ? null : nombre); setSesionCli(null); }}>Ver modelos</button>
-                                <button type="button" className="aj-texto-btn" aria-expanded={sesionCli === nombre} onClick={() => { setSesionCli(sesionCli === nombre ? null : nombre); setModelosCli(null); }}>Sesión</button>
+                                <button type="button" className="aj-texto-btn" aria-expanded={sesionCli === nombre} onClick={() => { setSesionCli(sesionCli === nombre ? null : nombre); setModelosCli(null); }}>{["agy", "cmd"].includes(nombre) && !(nombre === "agy" ? antigravityConectado : commandCodeConectado) ? "Iniciar sesión" : "Sesión"}</button>
                               </div>}
                             </div>
                           );
                         })}
                       </div>
-                      {modelosCli && <ModelosVisibles key={modelosCli} proveedor={modelosCli === "agy" ? "antigravity" : modelosCli === "cmd" ? "commandcode" : modelosCli} />}
+                      {modelosCli && <>
+                        <ModelosVisibles key={modelosCli} proveedor={modelosCli === "agy" ? "antigravity" : modelosCli === "cmd" ? "commandcode" : modelosCli} authPendiente={(modelosCli === "agy" && !antigravityConectado) || (modelosCli === "cmd" && !commandCodeConectado)} />
+                        {modelosCli === "agy" && !antigravityConectado && <LoginAntigravityPanel />}
+                        {modelosCli === "cmd" && !commandCodeConectado && <LoginCommandCodePanel />}
+                      </>}
                       {sesionCli === "codex" && <LoginCodexPanel />}
                       {sesionCli === "opencode" && <SesionOpenCode />}
-                      {sesionCli === "agy" && <p className="aj-nota">{proveedores.data?.find(p => p.id === "antigravity")?.hint ?? "Consulta el estado de Antigravity en el servidor."} Después de iniciar sesión con <code>~/.local/bin/agy</code> por SSH, abre «Ver modelos» y pulsa «Actualizar modelos».</p>}
-                      {sesionCli === "cmd" && <p className="aj-nota">Entra por SSH como usuario <code>orquestador</code> y ejecuta <code>cmd login</code>. La sesión se conserva en el servidor; el saldo exacto se consulta desde <code>cmd</code> con el comando <code>/usage</code>.</p>}
+                      {sesionCli === "agy" && <LoginAntigravityPanel />}
+                      {sesionCli === "cmd" && <LoginCommandCodePanel />}
                       <div className="aj-proveedores-adicionales" aria-label="Acceso a CLIs y sesiones">
                         {!herramientaMedia("codex")?.disponible && proveedorCodex && <TarjetaProveedor p={proveedorCodex} etiqueta={etiquetaDe(proveedorCodex)} modelos={modelosDe(proveedorCodex.id)} />}
                         {!herramientaMedia("opencode")?.disponible && proveedorOpenCode && <TarjetaProveedor p={proveedorOpenCode} etiqueta={null} modelos={modelosDe(proveedorOpenCode.id)} />}
@@ -1012,6 +1021,7 @@ function TarjetaProveedor({
     nvidia: "integrate.api.nvidia.com/v1",
     openrouter: "openrouter.ai/api/v1",
     "cloudflare-workers-ai": `api.cloudflare.com/client/v4/accounts/${p.accountId ?? "{account_id}"}/ai/v1`,
+    ollama: "ollama.com/v1",
   };
 
   return (
@@ -1080,14 +1090,7 @@ function TarjetaProveedor({
 
       {(credencialesAbiertas || !p.guardable) && <div className="aj-campos" id={`aj-prov-campos-${p.id}`}>
         {p.id === "commandcode" ? (
-          <div className="aj-campo">
-            <div className="aj-campo-etiqueta"><span>Sesión de Command Code Go</span></div>
-            {p.sesion
-              ? <p className="aj-nota">Sesión detectada en el servidor. Telo monta la credencial en solo lectura y bloquea acciones de Git y publicación automática. El saldo se consulta con <code>/usage</code>.</p>
-              : p.configured
-                ? <p className="aj-nota">Entra por SSH como usuario <code>orquestador</code> y ejecuta <code>cmd login</code>. Después vuelve a consultar el estado.</p>
-                : <p className="aj-nota">Instala el CLI con el botón de abajo y luego inicia sesión por SSH con <code>cmd login</code>.</p>}
-          </div>
+          <LoginCommandCodePanel />
         ) : p.id === "hermes" ? (
           <div className="aj-campo">
             <div className="aj-campo-etiqueta"><span>Preparar sesión del piloto</span></div>
@@ -1150,6 +1153,7 @@ function TarjetaProveedor({
         </div>
       )}
       {nota && <p className="aj-nota aj-nota-aviso">{nota}</p>}
+      {p.id === "ollama" && <p className="aj-nota">Telo registra las llamadas y tokens que pasan por esta app. El saldo/cuota real de Ollama no tiene consulta disponible aquí; revisa tu cuenta de <a href="https://ollama.com/settings" target="_blank" rel="noreferrer">Ollama</a>.</p>}
       {esMotorDirecto && <details className="aj-modelos-detalle"><summary>Modelos del selector</summary><ModelosVisibles key={p.id} proveedor={p.id} /></details>}
       {p.id === "opencode" && (
         <InstalarHerramienta id="opencode" nombre="OpenCode">
