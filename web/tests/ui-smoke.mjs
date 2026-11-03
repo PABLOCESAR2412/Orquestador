@@ -1342,7 +1342,7 @@ try {
     let liberarPlan;
     esperarPlan = new Promise(resolve => { liberarPlan = resolve; });
     const solicitudPlan = page.waitForRequest(request => request.url().endsWith("/api/tasks/t1/plan") && request.method() === "POST");
-    await page.getByRole("button", { name: "Re-analizar plan", exact: true }).click();
+    await page.getByRole("button", { name: "Reanalizar plan", exact: true }).click();
     await solicitudPlan;
     if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
     await page.getByRole("button", { name: "Chat paralelo", exact: true }).click();
