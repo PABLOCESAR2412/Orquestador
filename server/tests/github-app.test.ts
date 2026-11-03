@@ -21,7 +21,7 @@ writeFileSync(rutaClave, privadaPem, { mode: 0o600 });
 process.env.TELO_GITHUB_APP_PRIVATE_KEY_PATH = rutaClave;
 
 const { db } = await import("../src/db");
-const { borrarInstalacionGithubApp, listarInstalacionesGithubApp, seleccionarInstalacionGithubApp, tokenGithubAppParaRepo } =
+const { borrarInstalacionGithubApp, listarInstalacionesGithubApp, permisosPushGithubApp, seleccionarInstalacionGithubApp, tokenGithubAppParaRepo } =
   await import("../src/github-app");
 const { borrarCuentaGithubGlobal, guardarCuentaGithubGlobal, autorGit } = await import("../src/github-auth");
 const { githubApiPr, configGit } = await import("../src/routes/proyecto-config");
@@ -139,6 +139,43 @@ test("emite un token limitado al repo y al permiso solicitado, sin guardar el to
   expect(llamada).toBe(2);
   const fila = db.query<{ value: string }, []>("SELECT value FROM app_settings WHERE key='github_app_installation'").get();
   expect(fila?.value).not.toContain("ghs-token-temporal");
+});
+
+test("solo solicita Workflows cuando la subida toca .github/workflows", () => {
+  expect(permisosPushGithubApp(["src/app.ts"])).toEqual({ contents: "write" });
+  expect(permisosPushGithubApp([".github/workflows/cubo-deploy.yml"])).toEqual({ contents: "write", workflows: "write" });
+  expect(permisosPushGithubApp(["src/deploy.yml", ".github/workflows/cubo-deploy.yml", "src/renamed.yml"]))
+    .toEqual({ contents: "write", workflows: "write" });
+});
+
+test("el token de una subida de workflow incluye el permiso Workflows solicitado", async () => {
+  let llamada = 0;
+  globalThis.fetch = (async (url: any, init: any) => {
+    llamada++;
+    revisarJwt(new Headers(init.headers).get("Authorization"));
+    if (llamada === 1) return Response.json([{ id: 456, account: { login: "Pablo" }, repository_selection: "selected" }]);
+    expect(String(url)).toBe("https://api.github.com/app/installations/456/access_tokens");
+    expect(JSON.parse(String(init.body))).toEqual({
+      repositories: ["Cubo"],
+      permissions: { contents: "write", workflows: "write" },
+    });
+    return Response.json({ token: "ghs-workflow-temporal" });
+  }) as unknown as typeof fetch;
+  await seleccionarInstalacionGithubApp(456);
+  await expect(tokenGithubAppParaRepo("https://github.com/Pablo/Cubo", permisosPushGithubApp([".github/workflows/cubo-deploy.yml"])))
+    .resolves.toBe("ghs-workflow-temporal");
+});
+
+test("explica que la instalación debe aprobar Workflows cuando GitHub no lo concede", async () => {
+  let llamada = 0;
+  globalThis.fetch = (async () => {
+    llamada++;
+    if (llamada === 1) return Response.json([{ id: 456, account: { login: "Pablo" }, repository_selection: "selected" }]);
+    return Response.json({ message: "Resource not accessible by integration" }, { status: 422 });
+  }) as unknown as typeof fetch;
+  await seleccionarInstalacionGithubApp(456);
+  await expect(tokenGithubAppParaRepo("https://github.com/Pablo/Cubo", { contents: "write", workflows: "write" }))
+    .rejects.toThrow("Workflows: Read and write");
 });
 
 test("rechaza repositorios de otra cuenta sin solicitar un token más amplio", async () => {
