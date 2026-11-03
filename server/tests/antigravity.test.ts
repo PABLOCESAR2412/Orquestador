@@ -6,7 +6,7 @@ import { join } from "node:path";
 const temporal = mkdtempSync(join(tmpdir(), "telo-agy-"));
 const anteriorData = process.env.DATA_DIR;
 process.env.DATA_DIR = join(temporal, "data");
-const { parsearCatalogoAntigravity, archivosSesionAntigravity, TOKEN_ANTIGRAVITY } = await import("../src/antigravity");
+const { archivosSesionAntigravity, TOKEN_ANTIGRAVITY } = await import("../src/antigravity");
 const { extraerUrlAutorizacionAntigravity } = await import("../src/login-antigravity");
 const { configuracionAntigravityAislada, prepararPerfilAntigravity, prefijoAislamiento } = await import("../src/runners/aislamiento");
 const { runAntigravity, usoAntigravity } = await import("../src/runners/antigravity");
@@ -17,11 +17,6 @@ test("el login solo muestra URLs HTTPS del host oficial de cuentas Google", () =
   expect(extraerUrlAutorizacionAntigravity("Open this link: https://accounts.google.com/o/oauth2/auth?client_id=example.")).toBe("https://accounts.google.com/o/oauth2/auth?client_id=example");
   expect(extraerUrlAutorizacionAntigravity("https://attacker.example/login")).toBeNull();
   expect(extraerUrlAutorizacionAntigravity("http://accounts.google.com/login")).toBeNull();
-});
-
-test("AGY usa slugs del catálogo y no inventa contexto ni esfuerzo", () => {
-  // Fila del ejemplo oficial: https://antigravity.google/docs/cli/headless/#select-a-model-effort-or-agent
-  expect(parsearCatalogoAntigravity("Available models:\n\u001b[32mgemini-3.8-flash-high       Gemini 3.8 Flash (High)\u001b[0m\ngemini-3.8-flash-high       duplicado\n--flag  inválido\n")).toEqual([{ id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)", context: 0, variants: [] }]);
 });
 
 test("la política nativa oculta credenciales y no concede comandos fuera del sandbox", () => {

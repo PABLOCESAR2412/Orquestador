@@ -503,6 +503,20 @@ export function errorText(err: unknown): string {
         return "Codex no está instalado en el servidor, así que no se puede iniciar sesión desde aquí.";
       case "antigravity_no_instalado":
         return "Antigravity CLI no está instalado. Instálalo desde esta pantalla y vuelve a intentarlo.";
+      case "antigravity_no_conectado":
+        return "No hay una sesión de Antigravity guardada para el usuario del servicio. Inicia sesión con agy en la VM y vuelve a consultar los modelos.";
+      case "antigravity_auth_required":
+        return "agy no reconoce una sesión válida. Inicia sesión con Antigravity como usuario orquestador y vuelve a consultar.";
+      case "antigravity_secret_service_unavailable":
+        return "agy no puede abrir Secret Service. Revisa el bus del usuario orquestador y vuelve a consultar.";
+      case "antigravity_network_error":
+        return "agy no pudo conectar con Antigravity. Comprueba la red de la VM y vuelve a intentarlo.";
+      case "antigravity_models_empty":
+        return "agy respondió sin modelos que Telo pueda reconocer. La respuesta del catálogo puede haber cambiado.";
+      case "antigravity_models_timeout":
+        return "agy tardó más de 20 segundos en responder. Comprueba la conexión de la VM y vuelve a intentarlo.";
+      case "antigravity_models_unavailable":
+        return textoErrorConAyuda("agy no pudo consultar el catálogo de modelos.", err.detail, "comprueba la sesión del usuario orquestador y vuelve a consultar desde Ajustes.");
       case "antigravity_bus_no_disponible":
         return "El servicio necesita el bus de Secret Service para iniciar sesión en Antigravity. Habilita lingering y aplica el drop-in indicado en deploy/README.md.";
       case "antigravity_terminal_no_disponible":

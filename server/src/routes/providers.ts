@@ -303,7 +303,23 @@ providers.get("/providers/antigravity/usage", async (c) => c.json(await obtenerC
 providers.get("/providers/antigravity/models", async (c) => {
   if (!await sesionAntigravityConectada()) return c.json({ error: "antigravity_no_conectado", mensaje: "Inicia agy por SSH como usuario orquestador; una sesión que solo vive en el keyring no puede usarse dentro del aislamiento." }, 409);
   try { return c.json(await listarModelosAntigravity(c.req.query("refresh") === "1")); }
-  catch { return c.json({ error: "antigravity_models_unavailable", mensaje: "Antigravity no pudo consultar sus modelos. Comprueba su sesión en la VM." }, 503); }
+  catch (error) {
+    const codigo = error instanceof Error ? error.message : "";
+    const validos = new Set([
+      "antigravity_auth_required", "antigravity_secret_service_unavailable", "antigravity_network_error",
+      "antigravity_models_empty", "antigravity_models_unavailable", "antigravity_models_timeout",
+    ]);
+    const errorSeguro = validos.has(codigo) ? codigo : "antigravity_models_unavailable";
+    const mensajes: Record<string, string> = {
+      antigravity_auth_required: "El CLI está instalado, pero Antigravity no reconoce una sesión válida. Inicia sesión con agy como usuario orquestador y vuelve a consultar.",
+      antigravity_secret_service_unavailable: "agy no puede abrir Secret Service. Comprueba que el bus de sesión del usuario orquestador esté activo y que el servicio lo reciba.",
+      antigravity_network_error: "agy no pudo llegar al servicio de Antigravity. Comprueba la red de la VM y vuelve a consultar.",
+      antigravity_models_empty: "agy respondió, pero devolvió un catálogo vacío o en un formato que Telo no reconoce.",
+      antigravity_models_timeout: "agy tardó más de 20 segundos en responder. Revisa su conexión o vuelve a intentarlo.",
+      antigravity_models_unavailable: "agy no pudo consultar el catálogo. Comprueba la sesión del usuario orquestador y la salida de agy models por SSH.",
+    };
+    return c.json({ error: errorSeguro, mensaje: mensajes[errorSeguro] }, 503);
+  }
 });
 providers.get("/providers/antigravity/login", async (c) => c.json(await estadoLoginAntigravityEnVivo()));
 providers.post("/providers/antigravity/login", async (c) => {

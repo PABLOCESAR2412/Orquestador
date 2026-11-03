@@ -6,7 +6,7 @@
     {
       "fecha": "2026-11-03",
       "tipo": "minimo",
-      "titulo": "Ajustes y VM: limpia Conexiones y aclara la instalación del bus OAuth de Antigravity",
+      "titulo": "Ajustes y Antigravity: muestra el motivo si falla el catálogo de modelos y corrige el bus OAuth",
       "pr": 178
     },
     {
