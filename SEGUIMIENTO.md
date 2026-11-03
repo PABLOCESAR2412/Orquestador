@@ -11,7 +11,7 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 - [~] Ollama Cloud: guarda `OLLAMA_API_KEY` cifrada, consulta `https://ollama.com/v1/models`, llama a `https://ollama.com/v1` mediante el broker con catálogo/modelo permitido y registra el uso de Telo. Pruebas del catálogo, compilación y UI aprobadas; falta probar una clave real. Precio y saldo quedan como desconocidos porque no se encontró una API oficial de saldo/cuota; la cuenta de Ollama sigue siendo la fuente de facturación.
 - [x] Interfaz: filas CLI de ancho completo, estado visible «Instalado · falta sesión» y formularios de conexión. Playwright pasó a 390 y 1440 px sin desbordamiento horizontal.
 - [x] Verificación final: suite del servidor 706 aprobadas, 100 omitidas y 0 fallidas; `bun run typecheck`, compilación web y `git diff --check` pasan. La prueba Playwright omitió solo el fixture opcional de video.
-- [~] CI de GitHub: la suite principal pasó; el job aislado de worker agotó el timeout predeterminado de Bun (5 s) en su primer flujo, aunque la espera de la prueba permite 10 s. El caso ahora tiene 15 s; falta el resultado del nuevo run.
+- [x] CI de GitHub: suite principal 795 aprobadas, 11 omitidas y 0 fallidas; flujo aislado de worker 9 aprobadas y 0 fallidas; checks de servidor e interfaz verdes. El timeout explícito de 15 s evita que Bun corte antes de la espera interna de 10 s.
 
 ## Bloqueos de publicación y reintentos — PR #174
 
