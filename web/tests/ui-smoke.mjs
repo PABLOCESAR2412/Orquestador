@@ -1368,7 +1368,7 @@ try {
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("No se debe aceptar mientras falte cuota");
     assert.equal(await page.getByRole("button", { name: "Enviar", exact: true }).isDisabled(), true);
     assert.equal((await page.locator(".cuota-aviso").textContent()).includes("La ejecución anterior se pausó por cuota en opencode/otro"), true);
-    assert.equal((await page.locator(".cuota-aviso").textContent()).includes("ChatGPT Plus se administra por separado"), true);
+    assert.equal((await page.locator(".cuota-aviso").textContent()).includes("El precio $0 no garantiza acceso ni muestra cuántas solicitudes quedan"), true);
     await page.screenshot({ path: `scratch/capturas-ci/cuota-chat-${width}.png` });
     await page.getByRole("button", { name: "Cambiar modelo", exact: true }).click();
     await page.locator(".picker").waitFor();
