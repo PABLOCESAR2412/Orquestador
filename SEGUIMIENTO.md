@@ -8,7 +8,7 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 
 - [~] Conexiones muestra las integraciones externas Meta y búsqueda de empleo/clientes con acceso al formulario MCP genérico. El estado confirma que el MCP está registrado, no que responda.
 - [x] Retirado de esta pantalla el catálogo de skills y las sugerencias de Obsidian, Harvey y Orca. Las skills existentes siguen disponibles en su sección de Ajustes; no se borraron skills ni conexiones MCP guardadas.
-- [~] Meta no tiene OAuth ni publicación nativos en Telo: la tarjeta explica el requisito de un MCP HTTPS externo que gestione su propia autenticación. Validación de build/CI pendiente.
+- [x] Meta no tiene OAuth ni publicación nativos en Telo: la tarjeta explica el requisito de un MCP HTTPS externo que gestione su propia autenticación. CI 41706404816 pasó: pruebas y build web, smoke Playwright y HTML preview; typecheck, suite del servidor y worker aislado.
 
 ## Antigravity CLI, Command Code Go y Ollama Cloud — PR #176
 
