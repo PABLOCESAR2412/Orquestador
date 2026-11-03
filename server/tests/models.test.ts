@@ -10,7 +10,7 @@ if (!process.env.TELO_PRUEBAS_MODELOS) {
 }
 process.env.DATA_DIR = join(raiz, "data");
 mkdirSync(process.env.DATA_DIR, { recursive: true });
-const { parseModels } = await import("../src/models");
+const { parseModels, parseModelsApiOpenCode, parseModelsListaOpenCode } = await import("../src/models");
 
 const modelo = JSON.stringify({ name: "Gemini 4 Argon", cost: { input: 0, output: 0 }, limit: { context: 1000 } });
 
@@ -36,6 +36,39 @@ test("un catálogo sin precio o con precio parcial/inválido no demuestra gratui
   }
   const gratis=parseModels('google/gratis\n{"cost":{"input":0,"output":0}}\n')[0]!;
   expect(gratis.free).toBe(true);expect(gratis.priceKnown).toBe(true);
+});
+
+test("lee el catálogo de OpenCode v2 y conserva precio, contexto y variantes", () => {
+  const catalogo = parseModelsApiOpenCode({ data: [
+    {
+      providerID: "opencode", modelID: "big-pickle", name: "Big Pickle", type: "chat", enabled: true,
+      status: "active", limit: { context: 200_000 }, variants: [{ id: "low" }, { id: "high" }],
+      cost: [{ input: 0, output: 0 }, { input: 0.2, output: 0.8 }],
+    },
+    {
+      providerID: "google", modelID: "gemini-embedding-001", name: "Embedding", type: "embedding",
+      enabled: true, cost: [{ input: 0, output: 0 }],
+    },
+    { providerID: "opencode", modelID: "retirado", name: "Retirado", status: "deprecated" },
+    { providerID: "opencode", modelID: "sin-precio", name: "Sin precio", type: "chat", enabled: true },
+  ] });
+
+  expect(catalogo.map((m) => m.id)).toEqual(["opencode/big-pickle", "opencode/sin-precio"]);
+  expect(catalogo[0]).toMatchObject({
+    name: "Big Pickle", context: 200_000, variants: ["low", "high"], inputUsd: 0.2,
+    outputUsd: 0.8, free: false, priceKnown: true, recommended: true,
+  });
+  expect(catalogo[1]).toMatchObject({ free: false, priceKnown: false, recommended: true });
+});
+
+test("el listado corto v2 deja seleccionar modelos sin asumir que son gratis", () => {
+  const catalogo = parseModelsListaOpenCode("opencode/big-pickle\nopenrouter/deepseek/deepseek-r1:free\n");
+  expect(catalogo.map((m) => m.id)).toEqual([
+    "opencode/big-pickle",
+    "openrouter/deepseek/deepseek-r1:free",
+  ]);
+  expect(catalogo[0]).toMatchObject({ free: false, priceKnown: false, recommended: true, variants: [], context: 0 });
+  expect(catalogo[1]?.free).toBe(false);
 });
 
 test("oculta modelos Gemini de Google cerrados o restringidos y conserva proveedores alternativos", () => {

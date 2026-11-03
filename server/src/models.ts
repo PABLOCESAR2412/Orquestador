@@ -7,6 +7,7 @@ import { listarModelosCommandCode } from "./modelos-commandcode";
 import { listarModelosOllama, invalidarCatalogoOllama } from "./modelos-ollama";
 import { proveedorCompatibleConBroker } from "./runners/red-agente";
 import { aislamientoActivo } from "./runners/aislamiento";
+import { consultarApiOpenCodeLocal } from "./opencode-api-local";
 
 export type CostTier = "gratis" | "economico" | "medio" | "alto" | "premium" | "desconocido";
 
@@ -64,6 +65,16 @@ type RawModel = {
   limit?: { context?: number };
   variants?: Record<string, unknown>;
 };
+
+type JsonObject = Record<string, unknown>;
+
+function objeto(valor: unknown): JsonObject | null {
+  return valor && typeof valor === "object" && !Array.isArray(valor) ? valor as JsonObject : null;
+}
+
+function numero(valor: unknown): number | null {
+  return typeof valor === "number" && Number.isFinite(valor) && valor >= 0 ? valor : null;
+}
 
 function tierFor(free: boolean, outputUsd: number): CostTier {
   if (free) return "gratis";
@@ -133,6 +144,63 @@ export function parseModels(txt: string, conClave: ReadonlyMap<string, string> =
   });
 }
 
+// OpenCode v2 retiró `models --verbose`; su API local conserva precio, contexto y variantes.
+export function parseModelsApiOpenCode(valor: unknown, conClave: ReadonlyMap<string, string> = new Map()): ModelInfo[] {
+  const cuerpo = objeto(valor);
+  const filas = Array.isArray(valor) ? valor : Array.isArray(cuerpo?.data) ? cuerpo.data : [];
+  const lineas: string[] = [];
+
+  for (const fila of filas) {
+    const model = objeto(fila);
+    if (!model || model.enabled === false || model.status === "deprecated") continue;
+    if (typeof model.type === "string" && model.type !== "chat") continue;
+
+    const provider = typeof model.providerID === "string" ? model.providerID : "";
+    const modelID = typeof model.modelID === "string"
+      ? model.modelID
+      : typeof model.id === "string"
+        ? model.id.startsWith(`${provider}/`) ? model.id.slice(provider.length + 1) : model.id
+        : "";
+    if (!provider || !modelID) continue;
+
+    const valoresCosto = Array.isArray(model.cost) ? model.cost : model.cost ? [model.cost] : [];
+    const costos = valoresCosto.map(objeto).filter((costo): costo is JsonObject => costo !== null);
+    const preciosDisponibles = costos.length > 0 && costos.every((costo) => numero(costo.input) !== null && numero(costo.output) !== null);
+    const inputUsd = preciosDisponibles ? Math.max(...costos.map((costo) => numero(costo.input)!)) : undefined;
+    const outputUsd = preciosDisponibles ? Math.max(...costos.map((costo) => numero(costo.output)!)) : undefined;
+    const limite = objeto(model.limit);
+    const variantes = Array.isArray(model.variants)
+      ? Object.fromEntries(model.variants.flatMap((variant) => {
+        const id = objeto(variant)?.id;
+        return typeof id === "string" ? [[id, {}]] : [];
+      }))
+      : objeto(model.variants) ?? {};
+    const capacidades = objeto(model.capabilities);
+    const modalidades = objeto(model.modalities);
+    const entrada = capacidades?.input;
+    const raw: RawModel = {
+      name: typeof model.name === "string" ? model.name : `${provider}/${modelID}`,
+      ...(preciosDisponibles ? { cost: { input: inputUsd, output: outputUsd } } : {}),
+      ...(numero(limite?.context) !== null ? { limit: { context: numero(limite?.context)! } } : {}),
+      ...(Array.isArray(entrada) || objeto(entrada) ? { capabilities: { input: entrada as string[] | { image?: boolean } } } : {}),
+      ...(Array.isArray(modalidades?.input) ? { modalities: { input: modalidades.input as string[] } } : {}),
+      variants: variantes,
+    };
+    lineas.push(`${provider}/${modelID}`, JSON.stringify(raw));
+  }
+
+  // La API local es la fuente de modelos habilitados para el CLI: todos deben seguir seleccionables,
+  // aunque el precio del catálogo no esté publicado. El precio desconocido no implica gratuidad.
+  return parseModels(lineas.join("\n"), conClave).map((model) => ({ ...model, recommended: true }));
+}
+
+// El listado corto de v2 solo expone IDs. Conserva los modelos seleccionables sin inventar metadatos.
+export function parseModelsListaOpenCode(txt: string, conClave: ReadonlyMap<string, string> = new Map()): ModelInfo[] {
+  const ids = [...new Set(txt.split(/\r?\n/).map((linea) => linea.trim()).filter((linea) => /^[^\s/]+\/\S+$/.test(linea)))];
+  const listado = ids.flatMap((id) => [id, JSON.stringify({ name: id.split("/").at(-1) ?? id })]).join("\n");
+  return parseModels(listado, conClave).map((model) => ({ ...model, recommended: true }));
+}
+
 // Tras cambiar una clave de proveedor, la lista de modelos se vuelve a pedir.
 export function invalidarModelos(): void {
   cache = null;
@@ -159,43 +227,82 @@ function entornoDelCli(): Record<string, string> {
   return { ...base, ...proveedores };
 }
 
-export async function getModels(force = false): Promise<ModelInfo[]> {
-  if (!force && cache && Date.now() - cache.at < TTL_MS) return cache.models;
-
-  const args = ["opencode", "models", "--verbose"];
-  if (force) args.push("--refresh");
+async function ejecutarComandoModelos(args: string[]): Promise<{ salida: string; codigo: number }> {
   const proc = Bun.spawn(args, {
     stdout: "pipe",
     stderr: "pipe",
     env: entornoDelCli(),
   });
-  // La validación del modelo ocurre antes de crear la tarea: un CLI detenido no debe bloquear el envío indefinidamente.
   let limite: ReturnType<typeof setTimeout> | undefined;
-  let out: string;
-  let code: number;
   try {
-    [out, code] = await Promise.race([
-      Promise.all([new Response(proc.stdout).text(), proc.exited, new Response(proc.stderr).text()]),
+    const [salida, codigo] = await Promise.race([
+      Promise.all([new Response(proc.stdout).text(), proc.exited, new Response(proc.stderr).text()]).then(([texto, code]) => [texto, code] as const),
       new Promise<never>((_, rechazar) => {
         limite = setTimeout(() => {
           try { proc.kill(); } catch { /* El CLI ya terminó. */ }
-          rechazar(new Error("opencode models no respondió en 15 segundos"));
+          rechazar(new Error("OpenCode no respondió en 15 segundos."));
         }, 15_000);
       }),
     ]);
-  } catch (error) {
-    if (cache) return cache.models;
-    throw error;
-  } finally { if (limite) clearTimeout(limite); }
-
-  if (code !== 0) {
-    // Si falla la actualización, se usa la última lista buena
-    if (cache) return cache.models;
-    throw new Error(`opencode models salió con código ${code}`);
+    return { salida, codigo };
+  } finally {
+    if (limite) clearTimeout(limite);
   }
+}
+
+export async function getModels(force = false): Promise<ModelInfo[]> {
+  if (!force && cache && Date.now() - cache.at < TTL_MS) return cache.models;
 
   const entorno = entornoProveedores();
-  const models = parseModels(out, proveedoresConClave()).filter(m => m.provider !== "ollama" && (!aislamientoActivo() || proveedorCompatibleConBroker(m.provider, entorno)));
+  let models: ModelInfo[] = [];
+  if (Bun.which("opencode", { PATH: process.env.PATH ?? "" })) {
+    let codigoDetallado = 1;
+    try {
+      const detallado = await ejecutarComandoModelos(["opencode", "models", "--verbose", ...(force ? ["--refresh"] : [])]);
+      codigoDetallado = detallado.codigo;
+      if (detallado.codigo === 0) models = parseModels(detallado.salida, proveedoresConClave());
+    } catch {
+      // Versiones recientes retiraron --verbose; se intenta su catálogo v2 y la API local.
+    }
+
+    if (models.length === 0) {
+      let modelosBreves: ModelInfo[] = [];
+      let codigoBreve = 1;
+      try {
+        const breve = await ejecutarComandoModelos(["opencode", "models", ...(force ? ["--refresh"] : [])]);
+        codigoBreve = breve.codigo;
+        if (breve.codigo === 0) modelosBreves = parseModelsListaOpenCode(breve.salida, proveedoresConClave());
+        else if (force) {
+          const sinRefresh = await ejecutarComandoModelos(["opencode", "models"]);
+          codigoBreve = sinRefresh.codigo;
+          if (sinRefresh.codigo === 0) modelosBreves = parseModelsListaOpenCode(sinRefresh.salida, proveedoresConClave());
+        }
+      } catch {
+        // La API local todavía puede ofrecer el catálogo completo.
+      }
+
+      let modelosApi: ModelInfo[] = [];
+      try {
+        const respuestaApi = await consultarApiOpenCodeLocal("/api/model", { timeoutMs: 8_000, env: entornoDelCli() });
+        if (respuestaApi.ok) modelosApi = parseModelsApiOpenCode(respuestaApi.datos, proveedoresConClave());
+      } catch {
+        // Mantener el listado corto si el servidor API no está disponible.
+      }
+      models = modelosApi.length > 0 ? modelosApi : modelosBreves;
+
+      if (models.length === 0 && cache) return cache.models;
+      if (models.length === 0) {
+        const detalle = codigoBreve !== 0
+          ? "El CLI rechazó tanto el catálogo detallado como el listado corto."
+          : codigoDetallado !== 0
+            ? "La API local no devolvió modelos habilitados para esta sesión."
+            : "OpenCode no devolvió modelos utilizables.";
+        throw new Error(`No se pudo consultar el catálogo de OpenCode. ${detalle} Comprueba la sesión del CLI.`);
+      }
+    }
+  }
+
+  models = models.filter((m) => m.provider !== "ollama" && (!aislamientoActivo() || proveedorCompatibleConBroker(m.provider, entorno)));
 
   try {
     if (await sesionCodexConectada()) {

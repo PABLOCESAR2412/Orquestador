@@ -11,6 +11,12 @@
     },
     {
       "fecha": "2026-11-03",
+      "tipo": "minimo",
+      "titulo": "OpenCode v2: conserva los modelos con su API local y usa el listado corto como respaldo",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-03",
       "tipo": "grande",
       "titulo": "Proveedores: inicia sesión con Antigravity, conecta Command Code Go y añade Ollama Cloud",
       "pr": 176
