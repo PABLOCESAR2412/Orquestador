@@ -373,6 +373,13 @@ try {
       else if (/^\/api\/providers\/[^/]+\/probar$/.test(path)) data = { ok: true, modelos: 7 };
       else if (path === "/api/providers/codex/models") data = { generado: now, models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", context: 100000, variants: ["high"] }] };
       else if (path === "/api/providers/codex/login") data = { estado: "esperando", conectada: false, url: "https://auth.openai.com/codex/device", codigo: "ABCD-EFGH", salida: "Salida de prueba\n" + "x".repeat(300) };
+      else if (path === "/api/providers/codex/usage") data = {
+        estado: "activo", plan: "ChatGPT Plus", comprobadoEn: now, reiniciosDisponibles: 0,
+        ventanas: [
+          { id: "actual", nombre: "Ventana actual", usadoPorcentaje: 3, restantePorcentaje: 97, duracionMinutos: 300, reiniciaEn: new Date(Date.now() + 2 * 86_400_000).toISOString() },
+          { id: "ampliada", nombre: "Ventana ampliada", usadoPorcentaje: 15, restantePorcentaje: 85, duracionMinutos: 10_080, reiniciaEn: new Date(Date.now() + 7 * 86_400_000).toISOString() },
+        ],
+      };
       else if (path === "/api/jev" && route.request().method() === "GET") data = { disponible: true, configurada: jevConfigurada, actualizada_en: jevConfigurada ? now : null };
       else if (path === "/api/jev" && route.request().method() === "PUT") {
         jevConfigurada = true;
@@ -547,6 +554,8 @@ try {
     const respuestaDiffTransitoria = page.waitForResponse(response => response.url().endsWith("/api/tasks/t1/diff"));
     await page.locator(".tl-inicio-recientes").getByRole("button").filter({ hasText: "Prueba de flujo" }).click();
     await page.getByText("Conversaciones", { exact: true }).waitFor();
+    assert.equal(await page.locator(".cost-meter").count(), 0, "el selector no muestra las barras de coste");
+    if (width === 390) assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).fontSize), "12px", "el tamaño base de letra móvil baja dos píxeles");
     let timeoutPollLargo;
     await Promise.race([
       pollLargoObservado,
@@ -568,13 +577,18 @@ try {
     await mensajeSubagente.getByText("Ejecutando git status", { exact: true }).waitFor();
     if (width === 390) {
       const cajaTituloSubchat = await page.getByRole("heading", { name: "Auditar API", exact: true }).boundingBox();
-      const cajaBotonVolver = await page.locator(".tl-subchat-padre").boundingBox();
       const cajaAccionesChat = await page.locator(".tl-chat-cabecera-der").boundingBox();
-      assert.ok(cajaTituloSubchat && cajaBotonVolver && cajaAccionesChat, "el encabezado del subchat conserva título, padre y acciones en móvil");
+      const botonMas = page.getByRole("button", { name: "Más opciones del chat", exact: true });
+      const cajaMas = await botonMas.boundingBox();
+      assert.ok(cajaTituloSubchat && cajaAccionesChat && cajaMas, "el encabezado móvil muestra el título y el menú de opciones");
       assert.ok(cajaTituloSubchat.width > 40, "el título del subchat tiene espacio visible en móvil");
-      assert.ok(cajaAccionesChat.y >= cajaBotonVolver.y + cajaBotonVolver.height, "las acciones quedan debajo de la identidad y el enlace al supervisor en móvil");
+      assert.equal(await page.getByRole("heading", { name: "Auditar API", exact: true }).evaluate(elemento => getComputedStyle(elemento).whiteSpace), "nowrap", "el nombre del chat permanece en una sola línea");
+      assert.ok(Math.abs(cajaTituloSubchat.y + cajaTituloSubchat.height / 2 - (cajaMas.y + cajaMas.height / 2)) < 3, "título y menú quedan alineados en una sola fila");
+      await botonMas.click();
+      await page.getByRole("group", { name: "Opciones del chat" }).getByRole("button", { name: "Volver al chat principal: Prueba de flujo", exact: true }).click();
+    } else {
+      await page.getByRole("button", { name: "Volver al chat principal: Prueba de flujo", exact: true }).click();
     }
-    await page.getByRole("button", { name: "Volver al chat principal: Prueba de flujo", exact: true }).click();
     await page.getByRole("heading", { name: "Prueba de flujo", exact: true }).waitFor();
     console.log(`${width}px: actividad en vivo y navegación entre supervisor y subchat comprobadas`);
     const compactaciones = page.locator(".tl-compactacion");
@@ -700,10 +714,29 @@ try {
     assert.equal(await vistaPreviaEnlace.getByRole("link", { name: "Abrir" }).getAttribute("target"), "_blank");
     await enlaceFuente.focus();
     await vistaPreviaEnlace.waitFor({ state: "visible" });
-    assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Llama Test" }).count(), 1);
-    assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Nemotron Test" }).count(), 1);
-    assert.equal(await page.locator(".tl-msg-esfuerzo").filter({ hasText: "Bajo" }).count(), 1);
-    assert.equal(await page.locator(".tl-msg-esfuerzo").filter({ hasText: "Alto" }).count(), 1);
+    assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Llama Test" }).count(), 0, "la respuesta no repite el modelo ya visible en el selector");
+    assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Nemotron Test" }).count(), 0);
+    assert.equal(await page.locator(".tl-msg-esfuerzo").count(), 0, "la respuesta conserva fecha y duración sin etiquetas redundantes de esfuerzo");
+    const controlesBarra = await page.locator(".tl-composer-izq > button").evaluateAll(elementos => elementos.map(elemento => {
+      const caja = elemento.getBoundingClientRect();
+      const estilo = getComputedStyle(elemento);
+      return { alto: Math.round(caja.height), arriba: Math.round(caja.y), radio: estilo.borderRadius };
+    }));
+    if (width === 390) {
+      assert.ok(controlesBarra.length >= 6 && controlesBarra.every(control => control.alto === 32 && control.radio === "8px"), "los controles del compositor tienen altura y esquinas uniformes en móvil");
+      assert.equal(new Set(controlesBarra.map(control => control.arriba)).size, 1, "todos los controles caben en una fila móvil");
+      const controlesSuperiores = await page.evaluate(() => [
+        document.querySelector(".tl-top .tl-herramientas-global"),
+        document.querySelector(".tl-top .tema-boton.ghost"),
+        document.querySelector(".tl-chat-mas"),
+      ].map(elemento => {
+        const caja = elemento.getBoundingClientRect();
+        return [Math.round(caja.width), Math.round(caja.height), getComputedStyle(elemento).borderRadius];
+      }));
+      assert.ok(controlesSuperiores.every(([ancho, alto, radio]) => ancho === 32 && alto === 32 && radio === "8px"), "herramientas, tema y menú del chat comparten tamaño y radio");
+    } else {
+      assert.ok(controlesBarra.every(({ alto, radio }) => alto === 34 && radio === "8px"), "los controles del compositor tienen altura y esquinas uniformes en escritorio");
+    }
     await page.locator(".tl-modelo-boton").click();
     const selectorModelo = page.getByRole("dialog", { name: "Elegir modelo" });
     assert.match(await selectorModelo.locator(".picker-tus-modelos").innerText(), /Llama Test/);
@@ -738,10 +771,9 @@ try {
     await selectorModelo.getByRole("button", { name: "Mostrar modelos de Groq API", exact: true }).click();
     await selectorModelo.locator(".picker-item").filter({ hasText: "Other Test" }).click();
     await page.locator(".tl-modelo-boton .tl-modelo-nombre").filter({ hasText: "Other Test" }).waitFor();
-    assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Llama Test" }).count(), 1);
-    assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Nemotron Test" }).count(), 1);
-    assert.equal(await page.locator(".tl-msg-esfuerzo").filter({ hasText: "Bajo" }).count(), 1);
-    assert.equal(await page.locator(".tl-msg-esfuerzo").filter({ hasText: "Alto" }).count(), 1);
+    assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Llama Test" }).count(), 0);
+    assert.equal(await page.locator(".tl-msg-meta").filter({ hasText: "Nemotron Test" }).count(), 0);
+    assert.equal(await page.locator(".tl-msg-esfuerzo").count(), 0);
     await page.locator(".tl-modelo-boton").click();
     await selectorModelo.locator(".picker-item").filter({ hasText: "Google Test" }).click();
     await page.locator(".tl-modelo-boton .tl-modelo-nombre").filter({ hasText: "Google Test" }).waitFor();
@@ -976,7 +1008,10 @@ try {
     await vistaChatLibre.getByRole("button", { name: "Cerrar vista de archivo", exact: true }).click();
     if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
     await page.getByText("Prueba de flujo", { exact: true }).click();
-    await page.getByRole("button", { name: "Contexto del chat", exact: true }).click();
+    if (width === 390) {
+      await page.getByRole("button", { name: "Más opciones del chat", exact: true }).click();
+      await page.getByRole("group", { name: "Opciones del chat" }).getByRole("button", { name: "Contexto del chat", exact: true }).click();
+    } else await page.getByRole("button", { name: "Contexto del chat", exact: true }).click();
     const contextoChat = page.getByRole("dialog", { name: "Contexto del chat" });
     await contextoChat.getByText("250 tokens de entrada (medida)", { exact: true }).waitFor();
     assert.equal(await contextoChat.locator(".tl-chat-contexto-porcentaje").textContent(), "25%");
@@ -1244,7 +1279,10 @@ try {
     }
     assert.equal(await page.getByRole("button", { name: "Herramientas y comandos", exact: true }).count(), 1, "herramientas y comandos están en la barra superior");
     assert.equal(await page.getByRole("button", { name: "Capacidades multimedia", exact: true }).count(), 0, "el compositor ya no muestra el panel antiguo de capacidades");
-    await page.getByRole("button", { name: "Configurar supervisor y modelos auxiliares", exact: true }).click();
+    if (width === 390) {
+      await page.getByRole("button", { name: "Más opciones del chat", exact: true }).click();
+      await page.getByRole("group", { name: "Opciones del chat" }).getByRole("button", { name: "Configurar supervisor y modelos auxiliares", exact: true }).click();
+    } else await page.getByRole("button", { name: "Configurar supervisor y modelos auxiliares", exact: true }).click();
     const dialogoOrquestacion = page.getByRole("dialog", { name: "Supervisor del chat" });
     await dialogoOrquestacion.waitFor();
     await dialogoOrquestacion.getByLabel("Preparar auxiliares para peticiones explícitas").check();
@@ -1258,7 +1296,10 @@ try {
     assert.equal(configuracionHeredada.orquestacion_modelos_personalizados, false);
     assert.equal(configuracionHeredada.orquestacion_trabajadores[0].model, "opencode/big-pickle", "se conserva el modelo antiguo sin utilizarlo");
     await dialogoOrquestacion.waitFor({ state: "hidden" });
-    await page.getByRole("button", { name: "Configurar supervisor y modelos auxiliares", exact: true }).click();
+    if (width === 390) {
+      await page.getByRole("button", { name: "Más opciones del chat", exact: true }).click();
+      await page.getByRole("group", { name: "Opciones del chat" }).getByRole("button", { name: "Configurar supervisor y modelos auxiliares", exact: true }).click();
+    } else await page.getByRole("button", { name: "Configurar supervisor y modelos auxiliares", exact: true }).click();
     await dialogoOrquestacion.getByLabel("Usar modelos diferentes para los auxiliares").check();
     await dialogoOrquestacion.getByRole("button", { name: "Rellenar con sugerencias gratis", exact: true }).click();
     assert.equal(await dialogoOrquestacion.locator(".tl-orquestacion-auxiliar").count(), 3, "el supervisor propone una lista dinámica de hasta tres modelos candidatos");
@@ -1308,12 +1349,10 @@ try {
     task.started_at = new Date(Date.now() - 12_000).toISOString();
     const pensando = page.locator(".tl-pensando");
     await pensando.waitFor();
-    const modeloEnCurso = page.locator(".tl-msg-procesando .tl-msg-modelo").last();
     const duracionEnCurso = page.locator(".tl-msg-procesando .tl-msg-duracion").last();
     await duracionEnCurso.waitFor();
     if (width === 390) {
-      const [modeloCaja, duracionCaja] = await Promise.all([modeloEnCurso.boundingBox(), duracionEnCurso.boundingBox()]);
-      assert.ok(modeloCaja && duracionCaja && duracionCaja.y >= modeloCaja.y + modeloCaja.height, "en móvil, el tiempo de proceso va debajo del modelo");
+      assert.equal(await page.locator(".tl-msg-procesando .tl-msg-modelo").count(), 0, "el modelo activo queda indicado solo en el selector del compositor");
       assert.match(await duracionEnCurso.textContent(), /^Procesando desde hace .+$/);
     }
     await page.screenshot({ path: `scratch/capturas-ci/chat-procesando-${width}.png` });
@@ -1616,6 +1655,26 @@ try {
     assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).count(), 1, "el catálogo de sesión evita duplicar el modelo de Codex incluido en /api/models");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/modelos-${width}.png` });
+    const modeloC1Anterior = modeloC1;
+    modeloC1 = "codex/gpt-5-codex";
+    await page.goto(`${base}/chat`);
+    await page.locator(".tl-inicio-recientes").getByRole("button").filter({ hasText: "Prueba de flujo" }).click();
+    await page.getByRole("button", { name: "Uso y límites", exact: true }).click();
+    const usoCodex = page.getByRole("dialog", { name: "Uso del proveedor" });
+    await usoCodex.locator(".usage-codex-quota").waitFor();
+    assert.equal(await usoCodex.getByText("Codex", { exact: true }).count(), 1);
+    assert.equal(await usoCodex.locator(".usage-codex-window").count(), 2, "la cuota de Codex muestra sus dos ventanas oficiales");
+    const textoCodex = await usoCodex.textContent();
+    assert.match(textoCodex, /ChatGPT Plus/);
+    assert.match(textoCodex, /Uso 3%/);
+    assert.match(textoCodex, /Reinicia/);
+    assert.match(textoCodex, /Reinicios de cuota disponibles: 0/);
+    assert.equal(textoCodex.includes("Últimos 7 días"), false, "Codex no mezcla los agregados de uso de Telo");
+    assert.equal(textoCodex.includes("Uso registrado por modelo"), false);
+    assert.equal(textoCodex.includes("Mes actual (UTC)"), false);
+    await page.screenshot({ path: `scratch/capturas-ci/cuota-codex-${width}.png` });
+    await page.keyboard.press("Escape");
+    modeloC1 = modeloC1Anterior;
     console.log(`${width}px: código de acceso comprobado`);
     await page.goto(`${base}/tareas`);
     await page.getByRole("heading", { name: "Tareas programadas", exact: true }).waitFor();
@@ -1665,7 +1724,7 @@ try {
     assert.equal(await origenTarea.getByRole("cell").nth(1).textContent(), "—");
     conversacionesDisponibles = true; sinDatos = false;
     await page.goto(`${base}/chat?conversacion=c1`);
-    const botonDetener = page.getByRole("button", { name: "Detener", exact: true });
+    const botonDetener = page.getByRole("button", { name: "Detener ejecución", exact: true });
     await botonDetener.waitFor();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/detener-${width}.png` });

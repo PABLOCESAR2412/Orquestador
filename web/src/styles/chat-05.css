@@ -292,7 +292,7 @@
   .tl-chat-cabecera { gap: 8px; padding: 10px 16px; }
   .tl-chat-cabecera-izq { grid-row: 1; }
   .tl-chat-cabecera-der { grid-row: 2; justify-self: stretch; justify-content: flex-end; gap: 8px; }
-  .tl-chat-cabecera-der .tl-boton { width: 44px; min-width: 44px; min-height: 44px; }
+  .tl-chat-cabecera-der .tl-boton { width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 8px; }
   .tl-chat-cabecera-izq > .tl-chat-titulo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 .tl-detener { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 8px 12px; white-space: nowrap; }
@@ -321,3 +321,21 @@
   border-top: 1px dashed var(--line-strong);
 }
 .tl-hilo-compacta svg { flex: 0 0 auto; opacity: 0.85; }
+@media (max-width: 760px) {
+  .tl-md { font-size: 12px; }
+  .tl-md h1 { font-size: 15px; }
+  .tl-md h2 { font-size: 14px; }
+  .tl-md h3 { font-size: 13px; }
+  .tl-md h4 { font-size: 12px; }
+  .tl-md table,
+  .tl-md th { font-size: 11px; }
+  .tl-chat-titulo { font-size: 13px; }
+  .tl-msg-meta { font-size: 10px; }
+  .tl-boton { font-size: 11px; }
+  .tl-boton-compacto,
+  .tl-modelo-boton { font-size: 10.5px; }
+  .tl-composer-input { font-size: 13px; }
+  .tl-composer-nota { font-size: 10px; }
+  .tl-cola-titulo,
+  .tl-cola-texto { font-size: 10px; }
+}

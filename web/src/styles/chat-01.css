@@ -229,6 +229,7 @@
 
 /* Cabecera de la conversación */
 .tl-chat-cabecera {
+  position: relative;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -251,6 +252,8 @@
   align-items: center;
   gap: 6px;
 }
+.tl-chat-acciones-escritorio { display: flex; align-items: center; gap: 6px; }
+.tl-chat-acciones-movil { display: none; }
 .tl-chat-titulo {
   min-width: 0;
   margin: 0;
@@ -1040,8 +1043,16 @@
 .tl-uso {
   min-height: 34px;
   gap: 7px;
-  border-radius: 9px;
+  border-radius: 8px;
 }
+.tl-composer-izq > .tl-boton,
+.tl-composer-izq > .tl-modelo-boton,
+.tl-composer-izq > .tl-accion-icono {
+  min-height: 34px;
+  height: 34px;
+  border-radius: 8px;
+}
+.tl-composer-izq > .tl-accion-icono { width: 34px; min-width: 34px; padding: 0; }
 .tl-accion-etiqueta { line-height: 1; }
 .tl-composer-der {
   flex-shrink: 0;
@@ -1055,10 +1066,10 @@
   gap: 8px;
   min-width: 0;
   max-width: 100%;
-  min-height: 30px;
+  min-height: 34px;
   padding: 0 10px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 8px;
   background: transparent;
   color: var(--ink);
   font-size: 12.5px;
@@ -1473,66 +1484,85 @@
 
 @media (max-width: 600px) {
   .tl-chat-cabecera {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto;
-    gap: 4px;
-    padding: 6px 10px;
+    display: flex;
+    gap: 8px;
+    min-height: 48px;
+    padding: 4px 10px;
   }
   .tl-chat-cabecera-izq {
-    grid-column: 1;
-    grid-row: 2;
-    width: 100%;
+    flex: 1 1 auto;
+    width: auto;
     min-width: 0;
-    gap: 8px;
+    gap: 0;
   }
   .tl-chat-cabecera-der {
-    grid-column: 1;
-    grid-row: 1;
-    justify-self: end;
+    flex: 0 0 auto;
+    margin-left: auto;
   }
-  .tl-chat-cabecera-izq > .tl-chip-modelo {
-    flex: 0 1 120px;
-    min-width: 0;
-    padding-inline: 7px;
+  .tl-chat-cabecera-izq > .tl-chat-titulo { flex: 1 1 auto; font-size: 13px; }
+  .tl-chat-cabecera-izq > .tl-subchat-padre,
+  .tl-chat-cabecera-izq > .tl-chip-proyecto { display: none; }
+  .tl-chat-acciones-escritorio { display: none; }
+  .tl-chat-acciones-movil { position: relative; display: flex; }
+  .tl-chat-mas { width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 8px; }
+  .tl-chat-menu-acciones {
+    position: absolute;
+    z-index: 60;
+    top: calc(100% + 8px);
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    width: min(248px, calc(100vw - 20px));
+    padding: 6px;
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    background: var(--surface-2);
+    box-shadow: 0 12px 32px rgb(0 0 0 / 28%);
   }
-  .tl-chat-cabecera-izq > .tl-chip-modelo .tl-chip-nombre {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .tl-chat-cabecera-izq > .tl-chat-titulo { flex: 1 1 0; }
-  .tl-chat-cabecera-izq > .tl-subchat-padre {
-    flex: 0 0 32px;
-    min-width: 32px;
-    justify-content: center;
-    padding-inline: 6px;
-  }
-  .tl-chat-cabecera-izq > .tl-subchat-padre > :not([aria-hidden="true"]) { display: none; }
-  .tl-composer-izq { column-gap: 4px; }
-  .tl-agentes-boton,
-  .tl-uso {
-    display: inline-grid;
-    flex: 0 0 40px;
-    place-items: center;
-    width: 40px;
-    min-width: 40px;
+  .tl-chat-menu-accion {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
     min-height: 40px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    text-align: left;
+  }
+  .tl-chat-menu-accion:hover:not(:disabled),
+  .tl-chat-menu-accion:focus-visible { background: var(--surface); }
+  .tl-chat-menu-accion:disabled { opacity: .45; }
+  .tl-chat-menu-accion > svg { flex: 0 0 18px; width: 18px; height: 18px; fill: none; stroke: var(--ink-2); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .tl-composer-izq { flex-wrap: nowrap; column-gap: 3px; }
+  .tl-agentes-boton,
+  .tl-uso,
+  .tl-composer-izq > .tl-agentes-boton,
+  .tl-composer-izq > .tl-uso,
+  .tl-composer-izq > .tl-boton-compacto,
+  .tl-composer-izq > .tl-accion-icono {
+    display: inline-grid;
+    flex: 0 0 32px;
+    place-items: center;
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
     padding: 0;
-    border-radius: 9px;
+    border-radius: 8px;
   }
   .tl-accion-etiqueta,
   .tl-plan-label,
   .tl-build-label,
   .tl-composer-izq > .tl-boton-compacto kbd { display: none; }
-  .tl-composer-izq > .tl-boton-compacto { width: 40px; min-width: 40px; min-height: 40px; padding: 0; justify-content: center; }
   .tl-build-icono { display: block; }
   .tl-composer-decisiones { gap: 8px; }
-  .tl-modelo-boton { gap: 5px; padding-inline: 7px; }
-  .tl-chip-dato { display: none; }
-  .tl-chat-cabecera-der .tl-boton { width: 32px; padding: 0; }
-  .tl-chat-cabecera-der .tl-boton-texto { display: none; }
+  .tl-composer-izq > .tl-modelo-boton { flex: 0 1 auto; width: auto; min-width: 76px; min-height: 32px; height: 32px; gap: 5px; padding-inline: 8px; border-radius: 8px; }
+  .tl-enviar { width: 32px; height: 32px; }
+  .tl-detener { flex: 0 0 32px; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 8px; font-size: 0; }
   .tl-composer-nota { font-size: 11.5px; }
   .tl-cola-cabecera { gap: 6px; padding-right: 9px; padding-left: 10px; }
   .tl-cola-titulo { gap: 6px; font-size: 11.5px; }

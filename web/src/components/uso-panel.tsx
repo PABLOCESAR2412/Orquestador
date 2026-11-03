@@ -51,16 +51,16 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
   const uso = useQuery({
     queryKey: ["uso"],
     queryFn: () => api.usage(),
-    enabled: proveedorId !== null,
+    enabled: proveedorId !== null && proveedorId !== "codex",
     refetchInterval: 30_000,
   });
   const catalogo = useQuery({
     queryKey: ["models"],
     queryFn: api.listModels,
-    enabled: proveedorId !== null,
+    enabled: proveedorId !== null && proveedorId !== "codex",
     staleTime: 5 * 60_000,
   });
-  const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders, staleTime: 5 * 60_000 });
+  const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders, staleTime: 5 * 60_000, enabled: proveedorId !== null && proveedorId !== "codex" });
   const actualizarUso = useMutation({
     mutationFn: () => api.usage(true),
     onSuccess: (datos) => queryClient.setQueryData(["uso"], datos),
@@ -103,7 +103,9 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
   }, [disparador, proveedorId, uso.data]);
 
   let cuerpo: ReactNode;
-  if (!proveedorId) {
+  if (proveedorId === "codex") {
+    cuerpo = null;
+  } else if (!proveedorId) {
     cuerpo = (
       <p className="usage-note">
         {modelo
@@ -206,7 +208,7 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
       <div className={`usage-popover${proveedorId === "codex" ? " is-codex-usage" : ""}${proveedorId === "antigravity" ? " is-antigravity-usage" : ""}`} role="dialog" aria-label="Uso del proveedor" ref={ref}>
         <div className="usage-title-row">
           <span className="usage-title">
-            {proveedor?.nombre ?? (proveedorId === "google" ? "Google (Gemini)" : proveedorId ?? "Uso de proveedor")}
+            {proveedorId === "codex" ? "Codex" : proveedor?.nombre ?? (proveedorId === "google" ? "Google (Gemini)" : proveedorId ?? "Uso de proveedor")}
           </span>
           <button type="button" className="ghost task-mini-btn" onClick={cerrar}>
             ✕
@@ -541,7 +543,7 @@ function CuotaSesionCodex() {
     <section className="usage-codex-quota" aria-label="Cuota de la sesión ChatGPT Codex">
       <div className="usage-window-heading">
         <div className="usage-window-copy">
-          <span className="window-label">Cuota de sesión · Codex</span>
+          <span className="window-label">Cuota de sesión</span>
           <span className="window-meta">
             {cuota.isPending ? "Consultando Codex…" : datos?.plan ?? "Plan no identificado"}
           </span>
@@ -574,7 +576,10 @@ function CuotaSesionCodex() {
             <strong>{Math.round(ventana.restantePorcentaje)}% restante</strong>
           </div>
           <progress className={ventana.restantePorcentaje <= 10 ? "is-low" : ""} max={100} value={ventana.restantePorcentaje} aria-label={`${ventana.nombre}: ${Math.round(ventana.restantePorcentaje)}% restante`} />
-          <span className="window-meta">Usado {Math.round(ventana.usadoPorcentaje)}% · reinicia {fecha(ventana.reiniciaEn)}</span>
+          <div className="usage-codex-window-meta">
+            <span className="window-meta">Uso {Math.round(ventana.usadoPorcentaje)}%</span>
+            <span className="window-meta">Reinicia {fecha(ventana.reiniciaEn)}</span>
+          </div>
         </div>
       ))}
       {datos?.estado === "activo" && datos.reiniciosDisponibles !== null && (
