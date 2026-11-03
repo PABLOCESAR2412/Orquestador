@@ -198,6 +198,7 @@ function respuestaDeFallo(resumen: string): string {
   return serializarRespuestaTarea({
     estado: "fallo",
     resumen,
+    tipo_cambio: null,
     cambios: [],
     pruebas: [],
     pendientes: [],

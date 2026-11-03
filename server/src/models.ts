@@ -2,6 +2,8 @@ import { entornoProveedores, proveedoresConClave, cuentaCloudflare } from "./cla
 import { sesionCodexConectada } from "./login-cli";
 import { listarModelosCodex } from "./modelos-codex";
 import { listarModelosAntigravity, sesionAntigravityConectada } from "./antigravity";
+import { autenticacionCommandCode } from "./runners/aislamiento";
+import { listarModelosCommandCode } from "./modelos-commandcode";
 import { proveedorCompatibleConBroker } from "./runners/red-agente";
 import { aislamientoActivo } from "./runners/aislamiento";
 
@@ -231,6 +233,21 @@ export async function getModels(force = false): Promise<ModelInfo[]> {
       }
     }
   } catch { /* Un fallo del catálogo de la sesión no elimina las otras integraciones. */ }
+
+  try {
+    if (autenticacionCommandCode()) {
+      for (const modelo of await listarModelosCommandCode(force)) {
+        const id = `commandcode/${modelo.id}`;
+        if (!models.some((existente) => existente.id === id)) models.push({
+          id, provider: "commandcode", name: modelo.nombre, inputUsd: 0, outputUsd: 0,
+          context: 0, variants: ["low", "medium", "high"], free: false,
+          priceKnown: false, costTier: "medio",
+          costWarning: "El plan Command Code Go aplica límites compartidos; revisa /usage en la CLI.",
+          group: "Command Code Go", recommended: true,
+        });
+      }
+    }
+  } catch { /* Si el catálogo de la CLI no responde, se conservan los demás proveedores. */ }
 
   cache = { at: Date.now(), models };
   return models;

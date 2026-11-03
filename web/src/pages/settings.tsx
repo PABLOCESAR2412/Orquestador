@@ -34,9 +34,11 @@ const PESTANAS: { id: Pestana; texto: string }[] = [
 ];
 
 // El prefijo de un modelo ("openai/...") no siempre es el id del proveedor en el servidor ("codex").
-const PROVEEDOR_DE_PREFIJO: Record<string, string> = { openai: "codex" };
+const PROVEEDOR_DE_PREFIJO: Record<string, string> = {};
 const PESTANAS_PROVEEDOR = [
   { id: "google", texto: "API de Google" },
+  { id: "openai", texto: "OpenAI API" },
+  { id: "xai", texto: "xAI · Grok" },
   { id: "groq", texto: "Groq Cloud" },
   { id: "deepseek", texto: "DeepSeek" },
   { id: "nvidia", texto: "NVIDIA NIM" },
@@ -401,16 +403,16 @@ export function SettingsPage() {
                   {integracionLocal === "cli" && (
                     <div className="aj-stack">
                       <div className="aj-herramientas-locales" aria-label="Estado de CLI del servidor">
-                        {(["opencode", "codex", "agy", "wrangler", "vercel", "script"] as const).map((nombre) => {
+                        {(["opencode", "codex", "agy", "cmd", "wrangler", "vercel", "script"] as const).map((nombre) => {
                           const herramienta = herramientaMedia(nombre);
-                          const etiqueta = nombre === "agy" ? "Antigravity CLI" : nombre === "script" ? "Terminal remota para OAuth" : `${nombre[0].toUpperCase()}${nombre.slice(1)} CLI`;
+                          const etiqueta = nombre === "agy" ? "Antigravity CLI" : nombre === "cmd" ? "Command Code CLI" : nombre === "script" ? "Terminal remota para OAuth" : `${nombre[0].toUpperCase()}${nombre.slice(1)} CLI`;
                           return (
                             <div className="aj-herramienta-local" key={nombre}>
                               <div><strong>{etiqueta}</strong><small>{herramienta?.version ?? (servidor.isPending ? "Consultando estado del servidor…" : "Versión no disponible")}</small></div>
                               <span className={`aj-estado-proveedor${herramienta?.disponible ? " is-conectado" : herramienta ? " is-error" : ""}`} role="status">
                                 <span className="aj-proveedor-punto" aria-hidden="true" />{herramienta?.disponible ? "Instalado" : herramienta ? "No instalado" : "Sin datos"}
                               </span>
-                              {herramienta?.disponible && ["opencode", "codex", "agy"].includes(nombre) && <div className="instalar-acciones">
+                              {herramienta?.disponible && ["opencode", "codex", "agy", "cmd"].includes(nombre) && <div className="instalar-acciones">
                                 <button type="button" className="aj-btn" aria-expanded={modelosCli === nombre} onClick={() => { setModelosCli(modelosCli === nombre ? null : nombre); setSesionCli(null); }}>Ver modelos</button>
                                 <button type="button" className="aj-texto-btn" aria-expanded={sesionCli === nombre} onClick={() => { setSesionCli(sesionCli === nombre ? null : nombre); setModelosCli(null); }}>Sesión</button>
                               </div>}
@@ -418,13 +420,15 @@ export function SettingsPage() {
                           );
                         })}
                       </div>
-                      {modelosCli && <ModelosVisibles key={modelosCli} proveedor={modelosCli === "agy" ? "antigravity" : modelosCli} />}
+                      {modelosCli && <ModelosVisibles key={modelosCli} proveedor={modelosCli === "agy" ? "antigravity" : modelosCli === "cmd" ? "commandcode" : modelosCli} />}
                       {sesionCli === "codex" && <LoginCodexPanel />}
                       {sesionCli === "opencode" && <SesionOpenCode />}
                       {sesionCli === "agy" && <p className="aj-nota">{proveedores.data?.find(p => p.id === "antigravity")?.hint ?? "Consulta el estado de Antigravity en el servidor."} Después de iniciar sesión con <code>~/.local/bin/agy</code> por SSH, abre «Ver modelos» y pulsa «Actualizar modelos».</p>}
+                      {sesionCli === "cmd" && <p className="aj-nota">Entra por SSH como usuario <code>orquestador</code> y ejecuta <code>cmd login</code>. La sesión se conserva en el servidor; el saldo exacto se consulta desde <code>cmd</code> con el comando <code>/usage</code>.</p>}
                       <div className="aj-proveedores-adicionales" aria-label="Acceso a CLIs y sesiones">
                         {!herramientaMedia("codex")?.disponible && proveedorCodex && <TarjetaProveedor p={proveedorCodex} etiqueta={etiquetaDe(proveedorCodex)} modelos={modelosDe(proveedorCodex.id)} />}
                         {!herramientaMedia("opencode")?.disponible && proveedorOpenCode && <TarjetaProveedor p={proveedorOpenCode} etiqueta={null} modelos={modelosDe(proveedorOpenCode.id)} />}
+                        {!herramientaMedia("cmd")?.disponible && proveedores.data?.find((p) => p.id === "commandcode") && <TarjetaProveedor p={proveedores.data.find((p) => p.id === "commandcode")!} etiqueta="Plan Go" modelos={modelosDe("commandcode")} />}
                         {!herramientaMedia("agy")?.disponible && <AntigravityCard />}
                         {!herramientaMedia("wrangler")?.disponible && (
                           <article className="aj-tarjeta" aria-labelledby="aj-wrangler-titulo">
@@ -972,7 +976,7 @@ function TarjetaProveedor({
   tabLabelId?: string;
 }) {
   // Codex está activo cuando hay sesión autenticada; los otros motores requieren clave disponible para agentes.
-  const listo = p.id === "codex" || p.id === "opencode" ? p.configured : p.id === "hermes" ? false : p.configured && p.enAgente;
+  const listo = p.id === "codex" || p.id === "commandcode" ? p.sesion : p.id === "opencode" ? p.configured : p.id === "hermes" ? false : p.configured && p.enAgente;
   const sinClave = p.variable === null;
   const nota = notaEstado(p, modelos);
   const esMotorDirecto = p.id !== "opencode" && p.id !== "codex" && PESTANAS_PROVEEDOR.some((tab) => tab.id === p.id);
@@ -1001,6 +1005,8 @@ function TarjetaProveedor({
               : null;
   const endpoints: Record<string, string> = {
     google: "generativelanguage.googleapis.com",
+    openai: "api.openai.com/v1",
+    xai: "api.x.ai/v1",
     groq: "api.groq.com/openai/v1",
     deepseek: "api.deepseek.com/v1",
     nvidia: "integrate.api.nvidia.com/v1",
@@ -1027,6 +1033,11 @@ function TarjetaProveedor({
           <div className={`aj-estado-proveedor${p.configured ? " is-conectado" : " is-error"}`} role="status">
             <span className="aj-proveedor-punto" aria-hidden="true" />
             {p.configured ? "CLI instalado en el servidor" : "CLI no instalado"}
+          </div>
+        ) : p.id === "commandcode" ? (
+          <div className={`aj-estado-proveedor${p.sesion ? " is-conectado" : p.configured ? "" : " is-error"}`} role="status">
+            <span className="aj-proveedor-punto" aria-hidden="true" />
+            {p.sesion ? "CLI y sesión Go detectados" : p.configured ? "CLI instalado · falta iniciar sesión" : "CLI no instalado"}
           </div>
         ) : p.id === "hermes" ? (
           <div className="aj-estado-proveedor" role="status">
@@ -1068,7 +1079,16 @@ function TarjetaProveedor({
       </div>
 
       {(credencialesAbiertas || !p.guardable) && <div className="aj-campos" id={`aj-prov-campos-${p.id}`}>
-        {p.id === "hermes" ? (
+        {p.id === "commandcode" ? (
+          <div className="aj-campo">
+            <div className="aj-campo-etiqueta"><span>Sesión de Command Code Go</span></div>
+            {p.sesion
+              ? <p className="aj-nota">Sesión detectada en el servidor. Telo monta la credencial en solo lectura y bloquea acciones de Git y publicación automática. El saldo se consulta con <code>/usage</code>.</p>
+              : p.configured
+                ? <p className="aj-nota">Entra por SSH como usuario <code>orquestador</code> y ejecuta <code>cmd login</code>. Después vuelve a consultar el estado.</p>
+                : <p className="aj-nota">Instala el CLI con el botón de abajo y luego inicia sesión por SSH con <code>cmd login</code>.</p>}
+          </div>
+        ) : p.id === "hermes" ? (
           <div className="aj-campo">
             <div className="aj-campo-etiqueta"><span>Preparar sesión del piloto</span></div>
             {p.sesion ? (
@@ -1111,7 +1131,7 @@ function TarjetaProveedor({
           </div>
         ) : null}
 
-        {p.id !== "codex" && p.id !== "hermes" && <div className="aj-campo">
+        {p.id !== "codex" && p.id !== "commandcode" && p.id !== "hermes" && <div className="aj-campo">
           <div className="aj-campo-etiqueta">
             <span>{p.id === "opencode" ? "Tipo de conexión" : "Endpoint base"}</span>
           </div>
@@ -1141,6 +1161,7 @@ function TarjetaProveedor({
           <LoginCodexPanel />
         </InstalarHerramienta>
       )}
+      {p.id === "commandcode" && !p.configured && <InstalarHerramienta id="commandcode" nombre="Command Code CLI" />}
       {p.id === "hermes" && (
         <InstalarHerramienta id="hermes" nombre="Hermes Agent">
           <p className="aj-nota">Hermes está instalado. La sesión se prepara por SSH con el comando mostrado arriba. El piloto de ejecución sigue desactivado hasta validar aislamiento y cancelación.</p>
@@ -1156,7 +1177,7 @@ function SesionOpenCode() {
   return (
     <div className="aj-campo">
       <div className="aj-campo-etiqueta"><span>Sesión de OpenCode</span></div>
-      <p className="aj-nota">En una terminal SSH de la VM, como usuario <code>orquestador</code>, ejecuta este comando para iniciar sesión o cambiar la cuenta. La sesión queda en el perfil local de OpenCode.</p>
+      <p className="aj-nota">En una terminal SSH de la VM, como usuario <code>orquestador</code>, ejecuta este comando para iniciar sesión o cambiar la cuenta. Telo habilita modelos de OpenCode si detecta una credencial API compatible; una sesión OAuth no se reenvía al agente aislado.</p>
       <div className="instalar-acciones">
         <code className="aj-mono">{comando}</code>
         <button type="button" className="aj-btn" onClick={async () => {
@@ -1166,7 +1187,7 @@ function SesionOpenCode() {
         </button>
       </div>
       {copia && <p className="aj-nota" role="status">{copia}</p>}
-      <p className="aj-nota">El inicio interactivo se completa en el CLI. Telo no guarda ni muestra las credenciales OAuth de OpenCode.</p>
+      <p className="aj-nota">El inicio interactivo se completa en el CLI. Telo no guarda ni muestra las credenciales OAuth de OpenCode; para el runner se requiere una API key compatible.</p>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { api, type ModeloCodex, type ModelInfo } from "../api";
 import { effortLabel, formatPrice, nombreProveedor } from "../lib/model";
 import { coincideModelo, agruparPorProveedor, normalizaBusca } from "../lib/busca-modelos";
@@ -24,6 +25,7 @@ type Props = {
 };
 
 const MAX_RESULTS = 120;
+const PROVEEDORES_CON_API = new Set(["google", "openai", "groq", "xai", "nvidia", "openrouter", "deepseek"]);
 
 const plural = (n: number) => (n === 1 ? "1 modelo" : `${n} modelos`);
 
@@ -83,6 +85,7 @@ export function ModelPicker({
 
   const devolverFoco = () => (disparador?.current ?? previo)?.focus();
   const cerrar = () => {
+    if (eligiendoEsfuerzo && draftModel) onSelect(draftModel, esfuerzoValido);
     devolverFoco();
     onClose();
   };
@@ -97,11 +100,23 @@ export function ModelPicker({
       // En móvil es una hoja fija: no se mide contra el compositor de escritorio.
       if (window.matchMedia("(max-width: 760px)").matches) {
         el.style.maxHeight = `${Math.floor((window.visualViewport?.height ?? window.innerHeight) * 0.85)}px`;
+        const boton = disparador?.current?.getBoundingClientRect();
+        if (boton) {
+          const caja = el.getBoundingClientRect();
+          el.style.setProperty("--picker-origin-x", `${boton.left + boton.width / 2 - caja.left}px`);
+          el.style.setProperty("--picker-origin-y", `${boton.top - caja.top}px`);
+        }
         return;
       }
       // 10 px de separación con el compositor y 8 px de aire bajo el borde visible.
       const disponible = ancla.getBoundingClientRect().top - limiteVisible(ancla) - 18;
       el.style.maxHeight = `${Math.max(ALTO_MINIMO, Math.min(window.innerHeight * 0.6, disponible))}px`;
+      const boton = disparador?.current?.getBoundingClientRect();
+      if (boton) {
+        const caja = el.getBoundingClientRect();
+        el.style.setProperty("--picker-origin-x", `${boton.left + boton.width / 2 - caja.left}px`);
+        el.style.setProperty("--picker-origin-y", `${boton.top - caja.top}px`);
+      }
     };
     ajustar();
     window.addEventListener("resize", ajustar);
@@ -110,7 +125,7 @@ export function ModelPicker({
       window.removeEventListener("resize", ajustar);
       window.visualViewport?.removeEventListener("resize", ajustar);
     };
-  }, []);
+  }, [disparador]);
 
   const elegir = (m: ModelInfo | null, esfuerzo: string | null = null) => {
     devolverFoco();
@@ -126,7 +141,9 @@ export function ModelPicker({
     guardarPreferenciasSelector(siguiente);
   };
 
-  const integracionAbierta = (id: string) => buscando || integracionesAbiertas[id] === true;
+  const proveedorActual = draftModel?.provider ?? currentId?.split("/")[0] ?? null;
+  const integracionActual = (id: string) => id === "codex-sesion" ? proveedorActual === "codex" : proveedorActual === id;
+  const integracionAbierta = (id: string) => buscando || (integracionesAbiertas[id] ?? integracionActual(id));
   const alternarIntegracion = (id: string) => setIntegracionesAbiertas((actual) => ({ ...actual, [id]: !actual[id] }));
   const cabeceraIntegracion = (id: string, nombre: string, cantidad: number) => (
     <div className="picker-integracion-heading">
@@ -226,9 +243,18 @@ export function ModelPicker({
   // Fila de un modelo: nombre con "✓ Activo" si es el actual; precio arriba y costo abajo.
   const fila = (m: ModelInfo, mostrarIntegracion = false) => {
     const fijado = preferencias.fijados.includes(m.id);
+    const estadoProveedor = proveedores.data?.find((proveedor) => proveedor.id === m.provider);
+    const usaSesion = ["opencode", "commandcode", "antigravity"].includes(m.provider);
+    const faltaClave = estadoProveedor !== undefined && (
+      (PROVEEDORES_CON_API.has(m.provider) && !estadoProveedor.configured) ||
+      (usaSesion && (!estadoProveedor.configured || !estadoProveedor.sesion))
+    );
+    const requisito = usaSesion
+      ? `Inicia sesión en ${nombreProveedor(m.provider)}`
+      : `Configura la clave API de ${nombreProveedor(m.provider)}`;
     return (
       <div className="picker-modelo-fila">
-        <button type="button" className="picker-item" aria-current={esActual(m) || undefined} aria-pressed={conEsfuerzo ? m.id === draftId : undefined} onClick={() => seleccionar(m)}>
+        <button type="button" className="picker-item" disabled={faltaClave} title={faltaClave ? `${requisito} en Ajustes para usar este modelo.` : undefined} aria-current={esActual(m) || undefined} aria-pressed={conEsfuerzo ? m.id === draftId : undefined} onClick={() => seleccionar(m)}>
           <span className="picker-main">
             <span className="picker-nombre-linea">
               <span className="picker-name">{m.name}</span>
@@ -237,11 +263,14 @@ export function ModelPicker({
             </span>
           </span>
           <span className="picker-meta">
-            <span className="picker-price" title="Precio de entrada / salida por millón de tokens">
-              {m.provider === "antigravity" ? "Sesión Antigravity" : formatPrice(m)}
+            <span className="picker-price" title={m.free
+              ? "El catálogo indica precio cero; el proveedor puede exigir acceso y aplicar cuotas."
+              : "Precio de entrada / salida por millón de tokens; el proveedor puede aplicar límites."}>
+              {faltaClave ? (usaSesion ? "Requiere sesión CLI" : "Requiere clave API") : m.provider === "antigravity" ? "Sesión Antigravity" : formatPrice(m)}
             </span>
           </span>
         </button>
+        {faltaClave && <Link className="picker-clave-link" to="/ajustes" search={{ pestana: usaSesion ? "servidor" : "proveedores" }}>{usaSesion ? "Iniciar sesión" : "Configurar"}</Link>}
         <button
           type="button"
           className={`picker-fijar${fijado ? " is-fijado" : ""}`}
@@ -429,14 +458,21 @@ export function ModelPicker({
             </div>
             <div className="picker-esfuerzo-barra">
               <strong aria-hidden="true">{esfuerzoValido ? effortLabel(esfuerzoValido) : "Auto"}</strong>
-              <input type="range" min="0" max={draftModel.variants.length} step="1" list="niveles-esfuerzo"
-                value={esfuerzoValido ? draftModel.variants.indexOf(esfuerzoValido) + 1 : 0}
-                aria-label="Nivel de esfuerzo" aria-valuetext={esfuerzoValido ? effortLabel(esfuerzoValido) : "Auto"}
-                onChange={(event) => elegir(draftModel, draftModel.variants[Number(event.target.value) - 1] ?? null)} />
+              <div className="picker-esfuerzo-range-wrap">
+                <div className="picker-esfuerzo-marcas" aria-hidden="true">
+                  {[...Array(draftModel.variants.length + 1)].map((_, i) => <i key={i} style={{ left: `${(i / draftModel.variants.length) * 100}%` }} />)}
+                </div>
+                <input type="range" min="0" max={draftModel.variants.length} step="1" list="niveles-esfuerzo"
+                  value={esfuerzoValido ? draftModel.variants.indexOf(esfuerzoValido) + 1 : 0}
+                  aria-label="Nivel de esfuerzo" aria-valuetext={esfuerzoValido ? effortLabel(esfuerzoValido) : "Auto"}
+                  onChange={(event) => setDraftEffort(draftModel.variants[Number(event.target.value) - 1] ?? null)} />
+              </div>
               <datalist id="niveles-esfuerzo">{[null, ...draftModel.variants].map((nivel, i) => <option key={nivel ?? "auto"} value={i} label={nivel ? effortLabel(nivel) : "Auto"} />)}</datalist>
-              <button type="button" className="ghost" onClick={() => elegir(draftModel, null)}>Auto</button>
-              <button type="button" className="ghost" onClick={() => setEligiendoEsfuerzo(false)}>Volver a modelos</button>
+              <button type="button" className="ghost picker-esfuerzo-auto" aria-pressed={!esfuerzoValido} onClick={() => setDraftEffort(null)}>Auto</button>
             </div>
+            <button type="button" className="picker-volver" aria-label="Volver a los modelos" title="Volver a los modelos" onClick={() => setEligiendoEsfuerzo(false)}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5m7 7-7-7 7-7" /></svg>
+            </button>
           </div>
         )}
       </div>

@@ -363,7 +363,8 @@ try {
         { id: "cloudflare-workers-ai", name: "Cloudflare Workers AI", configured: false, implemented: true, hint: "Account ID y token API.", accountId: null, variable: "CLOUDFLARE_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
         { id: "hermes", name: "Hermes Agent", configured: true, implemented: false, hint: "Piloto.", variable: null, enAgente: false, guardable: false, guardada: false, sesion: false },
         { id: "google", name: "Google (Gemini)", configured: true, implemented: true, hint: "Clave de prueba.", variable: "GOOGLE_GENERATIVE_AI_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
-        { id: "groq", name: "Groq", configured: false, implemented: true, hint: "Clave de prueba.", variable: "GROQ_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
+        { id: "openai", name: "OpenAI API", configured: false, implemented: true, hint: "Falta la clave API.", variable: "OPENAI_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
+        { id: "groq", name: "Groq", configured: true, implemented: true, hint: "Clave de prueba.", variable: "GROQ_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
         { id: "deepseek", name: "DeepSeek", configured: true, implemented: true, hint: "Clave de prueba.", variable: "DEEPSEEK_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
         { id: "nvidia", name: "NVIDIA", configured: true, implemented: true, hint: "Clave de prueba.", variable: "NVIDIA_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
         { id: "openrouter", name: "OpenRouter", configured: false, implemented: true, hint: "Clave de prueba.", variable: "OPENROUTER_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
@@ -1288,16 +1289,18 @@ try {
     await page.locator(".tl-aviso-generacion-media").filter({ hasText: "Telo no tiene conectado un generador externo de imagen" }).waitFor();
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.locator(".tl-aviso-generacion-media").waitFor({ state: "detached" });
-    await page.getByRole("button", { name: "Uso", exact: true }).click();
-    const panelUso = page.getByRole("dialog", { name: "Cuota del proveedor" });
+    await page.getByRole("button", { name: "Uso y límites", exact: true }).click();
+    const panelUso = page.getByRole("dialog", { name: "Uso del proveedor" });
     await panelUso.waitFor();
-    await panelUso.getByText("Consulta de cuenta", { exact: true }).waitFor();
+    await panelUso.getByRole("region", { name: "Estado de conexión con Google AI Studio" }).getByText("Disponible", { exact: true }).waitFor();
+    await panelUso.getByRole("region", { name: "Uso registrado por modelo" }).waitFor();
     const textoUso = await panelUso.textContent();
-    assert.equal(await panelUso.locator(".usage-window").count(), 0, "el popover no duplica los agregados de Analíticas");
-    assert.equal(textoUso.includes("Telo no consulta una cuota oficial de esta cuenta"), true);
-    assert.equal(textoUso.includes("Últimos 7 días"), false);
-    assert.equal(textoUso.includes("Estimación de coste"), false);
-    assert.equal(await panelUso.getByRole("link", { name: "Uso y límites de Gemini API ↗" }).getAttribute("href"), "https://aistudio.google.com/usage");
+    assert.equal(await panelUso.locator(".usage-window").count(), 4, "el panel muestra la comprobación de Google y las tres ventanas de uso de Telo");
+    assert.equal(textoUso.includes("Google aplica límites por proyecto y modelo"), true);
+    assert.equal(textoUso.includes("Últimos 7 días"), true);
+    assert.equal(textoUso.includes("Últimas 5 horas"), true);
+    assert.equal(textoUso.includes("Mes actual (UTC)"), true);
+    assert.equal(await panelUso.getByRole("link", { name: "Google AI Studio · Usage" }).getAttribute("href"), "https://aistudio.google.com/usage");
     await page.keyboard.press("Escape");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.screenshot({ path: `scratch/capturas-ci/chat-uso-${width}.png` });
@@ -1327,7 +1330,7 @@ try {
     const decisionesPlan = page.locator(".tl-composer-decisiones");
     const cajaComposer = page.locator(".tl-composer-caja");
     await decisionesPlan.waitFor();
-    assert.equal(await decisionesPlan.evaluate(el => getComputedStyle(el).display), width === 390 ? "grid" : "flex");
+    assert.equal(await decisionesPlan.evaluate(el => getComputedStyle(el).display), "flex");
     const [decisionesCaja, composerCaja, inputCaja] = await Promise.all([
       decisionesPlan.boundingBox(), cajaComposer.boundingBox(), respuestaPlan.boundingBox(),
     ]);
@@ -1340,7 +1343,7 @@ try {
     let liberarPlan;
     esperarPlan = new Promise(resolve => { liberarPlan = resolve; });
     const solicitudPlan = page.waitForRequest(request => request.url().endsWith("/api/tasks/t1/plan") && request.method() === "POST");
-    await page.getByRole("button", { name: "Re-analizar plan", exact: true }).click();
+    await page.getByRole("button", { name: "Reanalizar plan", exact: true }).click();
     await solicitudPlan;
     if (width === 390) await page.getByRole("button", { name: "Abrir navegación", exact: true }).click();
     await page.getByRole("button", { name: "Chat paralelo", exact: true }).click();
@@ -1366,7 +1369,7 @@ try {
     await page.getByRole("textbox", { name: "Mensaje", exact: true }).fill("No se debe aceptar mientras falte cuota");
     assert.equal(await page.getByRole("button", { name: "Enviar", exact: true }).isDisabled(), true);
     assert.equal((await page.locator(".cuota-aviso").textContent()).includes("La ejecución anterior se pausó por cuota en opencode/otro"), true);
-    assert.equal((await page.locator(".cuota-aviso").textContent()).includes("ChatGPT Plus se administra por separado"), true);
+    assert.equal((await page.locator(".cuota-aviso").textContent()).includes("El precio $0 no garantiza acceso ni muestra cuántas solicitudes quedan"), true);
     await page.screenshot({ path: `scratch/capturas-ci/cuota-chat-${width}.png` });
     await page.getByRole("button", { name: "Cambiar modelo", exact: true }).click();
     await page.locator(".picker").waitFor();
@@ -1424,8 +1427,8 @@ try {
     const tabGemini = proveedoresInferencia.getByRole("tab", { name: "API de Google" });
     await tabGemini.evaluate((tab) => tab.scrollIntoView({ block: "nearest", inline: "center" }));
     await tabGemini.waitFor();
-    assert.equal(await proveedoresInferencia.getByRole("tab").count(), 6);
-    await page.getByText("3 configurados", { exact: true }).waitFor();
+    assert.equal(await proveedoresInferencia.getByRole("tab").count(), 8);
+    await page.getByText("5 configurados", { exact: true }).waitFor();
     assert.equal(await proveedoresInferencia.getByRole("tab", { name: "OpenCode", exact: true }).count(), 0, "OpenCode se configura en la sección CLI");
     await proveedoresInferencia.getByRole("tab", { name: "DeepSeek", exact: true }).click();
     await page.getByRole("tabpanel", { name: "DeepSeek" }).waitFor();

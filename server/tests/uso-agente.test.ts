@@ -45,6 +45,8 @@ describe("registro inmediato del uso del agente", () => {
     expect(conEstilo("Crea un gráfico con estos datos", "chat")).toContain("Calidad visual por defecto");
     expect(conEstilo("Investiga y corrige estos defectos", "chat")).toContain("no las encadenes en un párrafo largo");
     expect(conEstilo("Crea un video", "chat")).toContain("no lo presentes como terminado hasta comprobar que el MP4 existe");
+    expect(conEstilo("No está claro el destino", "chat")).toContain("grupo de hasta 3 preguntas");
+    expect(conEstilo("No está claro el destino", "chat")).toContain("No presentes una conjetura como acuerdo del usuario");
   });
 
   test("el contrato común respeta el formato del llamador y exige evidencia comprobable", () => {
@@ -56,6 +58,7 @@ describe("registro inmediato del uso del agente", () => {
     expect(prompt).toContain("enlaces directos en Markdown");
     expect(prompt).toContain("libros, videos, informes, datasets");
     expect(prompt).toContain("nunca inventes enlaces ni fuentes");
+    expect(prompt).toContain("agrupa hasta 3 preguntas concretas");
     expect(prompt).toContain("no reveles razonamiento interno privado");
     expect(prompt).toContain("Redacta en español la actividad visible y los avisos de progreso");
     expect(prompt).toEndWith('{ "estado": "completado" }');

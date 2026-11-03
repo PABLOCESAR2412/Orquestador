@@ -15,6 +15,9 @@ export type Aprobacion = (typeof APROBACIONES)[number];
 
 export type PasoPlan = { id: number; descripcion: string; archivos: string[] };
 
+export const TIPOS_CAMBIO = ["feat", "fix", "docs", "test", "refactor", "perf", "build", "ci", "style", "revert", "chore"] as const;
+export type TipoCambio = (typeof TIPOS_CAMBIO)[number];
+
 export type Plan = {
   objetivo: string;
   supuestos: string[];
@@ -44,6 +47,8 @@ export function formatearPlan(plan: Plan): string {
 export type Reporte = {
   estado: "completado" | "fallo" | "desviacion";
   resumen: string;
+  // Puede faltar en reportes históricos; el mensaje de commit puede inferirlo del resumen y el diff.
+  tipo_cambio?: TipoCambio | null;
   cambios: { archivo: string; tipo: string }[];
   pruebas: { comando: string; resultado: string }[];
   pendientes: string[];
@@ -61,6 +66,7 @@ export function serializarRespuestaTarea(reporte: Reporte, textoPlano = ""): str
     version: 1,
     estado: reporte.estado,
     resumen: reporte.resumen?.trim() || textoPlano.trim() || "La tarea no devolvió un resumen.",
+    tipo_cambio: reporte.tipo_cambio ?? null,
     desviacion: reporte.desviacion,
     bloqueante_externo: reporte.bloqueante_externo ?? null,
     cambios: reporte.cambios ?? [],
@@ -190,6 +196,7 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
     return {
       estado: "fallo",
       resumen,
+      tipo_cambio: null,
       cambios: [],
       pruebas: [],
       pendientes: [],
@@ -201,6 +208,9 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
   const motivo = texto(valor.desviacion, 2000);
   const desviado = valor.estado === "desviacion" || motivo !== null;
   const estado: Reporte["estado"] = desviado ? "desviacion" : valor.estado === "fallo" ? "fallo" : "completado";
+  const tipoCambio = typeof valor.tipo_cambio === "string" && TIPOS_CAMBIO.includes(valor.tipo_cambio as TipoCambio)
+    ? valor.tipo_cambio as TipoCambio
+    : null;
 
   const cambios = Array.isArray(valor.cambios)
     ? valor.cambios.flatMap((c) => {
@@ -243,6 +253,7 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
     resumen: pruebaEnFallo
       ? `${resumenFinal} (Marcado como fallo por el servidor: el propio reporte declaró una prueba en fallo.)`
       : resumenFinal,
+    tipo_cambio: tipoCambio,
     cambios: cambios.slice(0, MAX_LISTA),
     pruebas: pruebas.slice(0, MAX_LISTA),
     pendientes,
@@ -379,7 +390,8 @@ export function promptObrero(plan: Plan): string {
   lineas.push(
     "",
     "Al terminar, responde solo con un objeto JSON, sin texto antes ni después. El resumen es obligatorio: explica qué hiciste aunque no hayas modificado archivos. No devuelvas una respuesta vacía. Usa esta forma:",
-    '{ "estado": "completado", "resumen": "...", "cambios": [{ "archivo": "ruta", "tipo": "crear | editar | borrar" }], "pruebas": [{ "comando": "...", "resultado": "ok | fallo | no_aplica" }], "pendientes": ["..."], "diff_disponible": true, "desviacion": null, "bloqueante_externo": null }',
+    '{ "estado": "completado", "resumen": "...", "tipo_cambio": "feat | fix | docs | test | refactor | perf | build | ci | style | revert | chore", "cambios": [{ "archivo": "ruta", "tipo": "crear | editar | borrar" }], "pruebas": [{ "comando": "...", "resultado": "ok | fallo | no_aplica" }], "pendientes": ["..."], "diff_disponible": true, "desviacion": null, "bloqueante_externo": null }',
+    "- El resumen y tipo_cambio describen el resultado observado en los cambios; no copies el prompt ni inventes una categoría.",
   );
   return lineas.join("\n");
 }

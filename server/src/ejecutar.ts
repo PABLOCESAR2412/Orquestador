@@ -9,11 +9,12 @@ import { entornoDeProyecto } from "./secretos";
 import { entornoProveedores, esClaveDeInferencia, proveedorConClave, valorClaveApiProveedor } from "./claves-proveedor";
 import { candidatosPorCuota, modeloSinCuota, modelosSinCuota, registrarCuotaModelo } from "./respaldos-cuota";
 import { redactar } from "./redaccion";
-import { AislamientoError, aislamientoActivo, prepararPerfilCodex, prepararPerfilOpenCode, eliminarPerfilCodex, eliminarPerfilOpenCode, prepararPerfilAntigravity, eliminarPerfilAntigravity } from "./runners/aislamiento";
+import { AislamientoError, autenticacionCommandCode, aislamientoActivo, prepararPerfilCodex, prepararPerfilOpenCode, eliminarPerfilCodex, eliminarPerfilOpenCode, prepararPerfilAntigravity, eliminarPerfilAntigravity, prepararPerfilCommandCode, eliminarPerfilCommandCode } from "./runners/aislamiento";
 import { setTimeout as esperar } from "node:timers/promises";
 import { ErrorAgente, runOpenCode, type RunResult, type Usage } from "./runners/opencode";
 import { runCodex } from "./runners/codex";
 import { runAntigravity } from "./runners/antigravity";
+import { runCommandCode } from "./runners/commandcode";
 import { promptConHistorial, sesionCompatible } from "./conversacion-contexto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -75,7 +76,7 @@ export type ResultadoAgente = RunResult & { modelo: string; variante: string | n
 // Contrato común, antes de los prompts de fase, para chats y tareas con cualquier runner.
 export const CONTRATO_EJECUCION = [
   "Contrato de ejecución común de Telo (cualquier modelo y proveedor):",
-  "- Resuelve el objetivo dentro del workspace, permisos y restricciones. Usa contexto pertinente; conserva trabajo terminado. Si falta un dato bloqueante, pregunta.",
+  "- Resuelve el objetivo dentro del workspace, permisos y restricciones. Usa contexto pertinente; conserva trabajo terminado. Si falta información que cambie alcance, resultado, destino o acceso, agrupa hasta 3 preguntas concretas en una sola interacción y recomienda una opción; decide por tu cuenta los detalles reversibles de bajo riesgo.",
   "- Ahorro permanente (Caveman lite/Ponytail): busca rutas concretas, lee tramos pertinentes y agrupa lecturas independientes. No repitas contexto, skills ni trabajo. Conserva errores, evidencia, seguridad y pruebas; escribe español claro, sin lenguaje telegráfico.",
   "- Verifica herramientas y dependencias. Reinstala con lockfile frozen/ci; el analizador no instala. No prometas capacidades sin comprobarlas.",
   "- Reportes: guarda en entregables y enlaza; al repo solo por petición. Commit, push, PR y cambios fuera del workspace requieren autorización.",
@@ -211,6 +212,28 @@ export function codigoHttpDelProveedor(err: unknown): number | null {
   }
 }
 
+// Registra únicamente metadatos del rechazo: nunca guarda texto de error, headers o credenciales.
+function registrarRechazoProveedor(modelo: string, err: unknown): void {
+  if (err instanceof ErrorCuota || err instanceof AislamientoError) return;
+  const estadoHttp = codigoHttpDelProveedor(err);
+  const categoria = esErrorDeCuota(err)
+    ? "cuota"
+    : estadoHttp === 429
+      ? "limite_temporal"
+      : estadoHttp === 401 || estadoHttp === 403
+        ? "acceso"
+        : estadoHttp === 404
+          ? "modelo"
+          : null;
+  if (!categoria) return;
+  try {
+    db.query("INSERT INTO provider_limit_events (provider, model, category, http_status) VALUES (?, ?, ?, ?)")
+      .run(proveedorAgente(modelo), modelo.slice(0, 240), categoria, estadoHttp);
+  } catch {
+    // La telemetría de límites nunca debe impedir terminar o reintentar la ejecución.
+  }
+}
+
 export function esErrorTransitorioDelProveedor(err: unknown, signal?: AbortSignal): boolean {
   if (err instanceof AislamientoError || signal?.aborted) return false;
   const codigo = codigoHttpDelProveedor(err);
@@ -313,6 +336,7 @@ export const ESTILO_CHAT = [
   "- Trabaja de forma unitaria salvo que el usuario pida expresamente delegar en la petición actual. Aplicar una skill o un agente predefinido no autoriza crear subagentes. Usa solo los perfiles que Telo habilite para este turno.",
   "- Jerarquía visual: Da primero la respuesta o el resultado. Usa ## y ### solo si la explicación tiene secciones reales; en respuestas cortas, usa un párrafo claro. No pongas todo en negrita: reserva **negrita** para etiquetas o conceptos puntuales.",
   "- Respuestas directas: Si la pregunta es breve o conceptual, responde en un párrafo conciso, sin forzar listas ni encabezados.",
+  "- Si una decisión cambia materialmente el resultado, el destino o los permisos, pregunta en un grupo de hasta 3 preguntas concretas y recomienda una opción. Resuelve detalles reversibles de bajo riesgo por tu cuenta. No presentes una conjetura como acuerdo del usuario.",
   "- Cuándo usar listas numeradas vs viñetas:",
   "  * Usa listas numeradas (1., 2., 3.) ÚNICAMENTE cuando exista un orden secuencial estricto, una guía de pasos cronológicos o prioridades ordenadas.",
   "  * Usa viñetas con guiones (-) para listas de elementos independientes, inventario de archivos modificados, características o hallazgos sin orden secuencial.",
@@ -565,6 +589,11 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
           ? prepararPerfilAntigravity(idPerfil, params.cwd, params.soloLectura, params.imagenes) : undefined;
         return await runAntigravity({ ...params, perfilAntigravityDir });
       }
+      if (modelo.startsWith("commandcode/")) {
+        const perfilCommandCodeDir = aislamientoActivo() && idPerfil
+          ? prepararPerfilCommandCode(idPerfil) : undefined;
+        return await runCommandCode({ ...params, perfilCommandCodeDir });
+      }
       return await runOpenCode(params);
     } finally { liberar(); }
   }
@@ -579,6 +608,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     // Si el tiempo se agotó o se canceló, no se reintenta ni se trata como cuota.
     const agotado = opts.timeoutMs !== undefined && opts.timeoutMs !== null && Date.now() - inicio >= opts.timeoutMs;
     if (agotado || opts.signal?.aborted) throw limpiarError(err);
+    registrarRechazoProveedor(opts.model, err);
     // Un modelo sin cuota se marca como tal (ver ErrorCuota); cualquier otro error sigue como antes.
     const comoCuota = (e: unknown, modelo: string): unknown =>
       esErrorDeCuota(e) ? new ErrorCuota(modelo, sesion) : limpiarError(e);
@@ -597,6 +627,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
         const r = await ejecutarConRunner(opts.model, baseParaModelo(opts.model, varianteInicial));
         return terminar(r, opts.model, opts.variant ?? null);
       } catch (reintentoSesionErr) {
+        registrarRechazoProveedor(opts.model, reintentoSesionErr);
         err = reintentoSesionErr;
       }
     }
@@ -630,6 +661,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
           const r = await ejecutarConRunner(opts.model, parametros);
           return terminar(r, opts.model, opts.variant ?? null);
         } catch (reintentoErr) {
+          registrarRechazoProveedor(opts.model, reintentoErr);
           err = reintentoErr;
           const codigo = codigoHttpDelProveedor(reintentoErr);
           const sigueTransitorio = (codigo !== null && codigo >= 500 && codigo <= 599)
@@ -656,7 +688,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       const modelosProbados = new Set([opts.model]);
       const catalogo = await getModels().catch(() => []);
       const proveedores = [...new Set(catalogo.map((m) => m.provider))];
-      const conectados = new Set(proveedores.filter((id) => id === "opencode" || id === "codex" || id === "antigravity" || valorClaveApiProveedor(id) || proveedorConClave(id)?.variables.some((v) => propias[v])));
+      const conectados = new Set(proveedores.filter((id) => id === "opencode" || id === "codex" || id === "antigravity" || (id === "commandcode" && autenticacionCommandCode() !== null) || valorClaveApiProveedor(id) || proveedorConClave(id)?.variables.some((v) => propias[v])));
       const alternativas = candidatosPorCuota(catalogo, [...(preferencias.quotaFallbackModels ?? []), ...(preferencias.fallbackModel ? [preferencias.fallbackModel] : [])], opts.model, conectados, modelosSinCuota(opts.projectId), preferencias.fallbackMode === "automatic");
       for (const info of alternativas) {
         const alternativa = info.id;
@@ -672,6 +704,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
           const resultado = await ejecutarConRunner(alternativa, parametros);
           return terminar(resultado, alternativa, variante ?? null);
         } catch (errorAlternativa) {
+          registrarRechazoProveedor(alternativa, errorAlternativa);
           const tiempoAgotado = opts.timeoutMs !== undefined && opts.timeoutMs !== null && Date.now() - inicio >= opts.timeoutMs;
           if (tiempoAgotado || opts.signal?.aborted) throw limpiarError(errorAlternativa);
           if (!esErrorDeCuota(errorAlternativa)) {
@@ -754,6 +787,7 @@ export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAge
       eliminarPerfilOpenCode(perfil);
       eliminarPerfilCodex(perfil);
       eliminarPerfilAntigravity(perfil);
+      eliminarPerfilCommandCode(perfil);
     }
   }
 }

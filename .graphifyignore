@@ -1,0 +1,39 @@
+# Cerebro de código: el contexto escrito vive en AGENTS.md, CLAUDE.md y DESIGN.md.
+# No indexar documentación en la extracción AST ni disparar extracción semántica.
+*.md
+*.mdx
+*.txt
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.svg
+**/*.yml
+**/*.yaml
+**/*.html
+**/*.min.*
+
+# No gastar recorrido ni memoria en dependencias, builds o datos regenerables.
+**/node_modules/
+**/vendor/
+**/dist/
+**/coverage/
+**/.venv/
+**/venv/
+**/__pycache__/
+**/scratch/
+**/.tmp*/
+**/tmp/
+**/.test-data-*/
+**/skills-upstream/
+**/.opencode/
+**/stitch_export/
+**/.telo-*/
+**/.work-pr*/
+.commandcode/
+.video-referencia/
+/output/
+graphify-out/
+*.log
