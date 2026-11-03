@@ -1329,7 +1329,7 @@ try {
     const decisionesPlan = page.locator(".tl-composer-decisiones");
     const cajaComposer = page.locator(".tl-composer-caja");
     await decisionesPlan.waitFor();
-    assert.equal(await decisionesPlan.evaluate(el => getComputedStyle(el).display), width === 390 ? "grid" : "flex");
+    assert.equal(await decisionesPlan.evaluate(el => getComputedStyle(el).display), "flex");
     const [decisionesCaja, composerCaja, inputCaja] = await Promise.all([
       decisionesPlan.boundingBox(), cajaComposer.boundingBox(), respuestaPlan.boundingBox(),
     ]);
