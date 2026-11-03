@@ -363,7 +363,7 @@ try {
         { id: "cloudflare-workers-ai", name: "Cloudflare Workers AI", configured: false, implemented: true, hint: "Account ID y token API.", accountId: null, variable: "CLOUDFLARE_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
         { id: "hermes", name: "Hermes Agent", configured: true, implemented: false, hint: "Piloto.", variable: null, enAgente: false, guardable: false, guardada: false, sesion: false },
         { id: "google", name: "Google (Gemini)", configured: true, implemented: true, hint: "Clave de prueba.", variable: "GOOGLE_GENERATIVE_AI_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
-        { id: "groq", name: "Groq", configured: false, implemented: true, hint: "Clave de prueba.", variable: "GROQ_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
+        { id: "groq", name: "Groq", configured: true, implemented: true, hint: "Clave de prueba.", variable: "GROQ_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
         { id: "deepseek", name: "DeepSeek", configured: true, implemented: true, hint: "Clave de prueba.", variable: "DEEPSEEK_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
         { id: "nvidia", name: "NVIDIA", configured: true, implemented: true, hint: "Clave de prueba.", variable: "NVIDIA_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
         { id: "openrouter", name: "OpenRouter", configured: false, implemented: true, hint: "Clave de prueba.", variable: "OPENROUTER_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
