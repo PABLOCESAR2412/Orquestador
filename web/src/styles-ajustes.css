@@ -953,8 +953,6 @@
 .aj-conexion-aviso { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--ink-2); font-size: 13px; }
 .aj-conexion-aviso::before { content: ""; flex: 0 0 7px; background: var(--online); }
 .aj-integraciones-catalogo { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
-.aj-integraciones-catalogo + .aj-integraciones-catalogo { margin-top: 14px; }
-.aj-integraciones-catalogo > h3 { margin: 0; padding: 13px 16px; border-bottom: 1px solid var(--line); font-size: 14px; font-weight: 600; }
 .aj-integracion-fila { display: grid; grid-template-columns: minmax(180px, 1.15fr) minmax(150px, auto) minmax(210px, 1fr) auto; align-items: center; gap: 12px 18px; min-width: 0; padding: 14px 16px; }
 .aj-integracion-fila + .aj-integracion-fila { border-top: 1px solid var(--line); }
 .aj-integracion-fila > div { min-width: 0; }
@@ -963,15 +961,12 @@
 .aj-integracion-fila p { margin: 4px 0 0; color: var(--ink-2); font-size: 12px; line-height: 1.45; }
 .aj-integracion-requisito { color: var(--ink-2); font-size: 12px; line-height: 1.45; }
 .aj-integracion-fila > .aj-btn { justify-self: end; min-height: 36px; }
-.aj-integracion-acciones { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; min-width: 0; }
-.aj-integracion-acciones .aj-error { flex-basis: 100%; margin: 0; }
 @media (max-width: 760px) {
   .aj-conexion-nativas { grid-template-columns: minmax(0, 1fr); }
   .aj-conexion-nativa + .aj-conexion-nativa { border-top: 1px solid var(--line); border-left: 0; }
   .aj-integracion-fila { grid-template-columns: minmax(0, 1fr) auto; }
   .aj-integracion-requisito { grid-column: 1 / -1; }
   .aj-integracion-fila > .aj-btn { justify-self: start; grid-column: 1 / -1; }
-  .aj-integracion-acciones { grid-column: 1 / -1; justify-content: flex-start; }
 }
 @media (max-width: 560px) {
   .aj-conexion-nativa { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 14px; }
@@ -985,7 +980,6 @@
   .aj-integracion-fila { grid-template-columns: minmax(0, 1fr); }
   .aj-integracion-fila > .aj-integracion-requisito,
   .aj-integracion-fila > .aj-btn { grid-column: auto; }
-  .aj-integracion-acciones { grid-column: auto; justify-content: flex-start; }
 }
 
 .aj-nota {

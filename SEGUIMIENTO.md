@@ -4,6 +4,12 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 3 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Ajustes de conexiones y skills — 3 de noviembre de 2026
+
+- [~] Conexiones muestra las integraciones externas Meta y búsqueda de empleo/clientes con acceso al formulario MCP genérico. El estado confirma que el MCP está registrado, no que responda.
+- [x] Retirado de esta pantalla el catálogo de skills y las sugerencias de Obsidian, Harvey y Orca. Las skills existentes siguen disponibles en su sección de Ajustes; no se borraron skills ni conexiones MCP guardadas.
+- [~] Meta no tiene OAuth ni publicación nativos en Telo: la tarjeta explica el requisito de un MCP HTTPS externo que gestione su propia autenticación. Validación de build/CI pendiente.
+
 ## Antigravity CLI, Command Code Go y Ollama Cloud — PR #176
 
 - [~] Antigravity: Ajustes inicia `agy` en una terminal remota, muestra únicamente el enlace HTTPS de `accounts.google.com`, recibe el código en la pantalla y comprueba `/usage` más el archivo de sesión que usa el aislamiento. Pruebas sintéticas de host permitido/rechazado y flujo UI a 390/1440 px aprobadas; falta autorizar una cuenta real en la VM. El servicio necesita lingering y el bus de Secret Service configurados con `deploy/orquestador-antigravity.conf`.
