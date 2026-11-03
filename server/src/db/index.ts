@@ -971,6 +971,18 @@ const migrations: Migration[] = [
     name: "058_commit_fuente_revision",
     sql: `ALTER TABLE tasks ADD COLUMN source_commit TEXT;`,
   },
+  {
+    name: "059_rechazos_cuota_proveedor",
+    sql: `CREATE TABLE provider_limit_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        category TEXT NOT NULL CHECK (category IN ('cuota','limite_temporal','acceso','modelo')),
+        http_status INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX provider_limit_events_model_date ON provider_limit_events(provider, model, created_at DESC);`,
+  },
 ];
 
 function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {

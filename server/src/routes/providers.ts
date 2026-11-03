@@ -1,13 +1,15 @@
 import { Hono } from "hono";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { proveedorConClave, tieneClaveProveedor, valorClaveApiProveedor, cuentaCloudflare } from "../claves-proveedor";
+import { proveedorConClave, tieneClaveProveedor, valorClaveApiProveedor, valorClaveProveedor, cuentaCloudflare } from "../claves-proveedor";
 import { cancelarLoginCodex, confirmarLoginCodex, estadoLoginCodex, iniciarLoginCodex, LoginError, sesionCodexConectada } from "../login-cli";
 import { hallarEjecutable } from "../ejecutable";
 import { carpetaHome } from "../hogar";
 import { listarModelosCodex } from "../modelos-codex";
 import { obtenerCuotaCodex } from "../cuota-codex";
 import { listarModelosAntigravity, sesionAntigravityConectada } from "../antigravity";
+import { obtenerCuotaAntigravity } from "../cuota-antigravity";
+import { autenticacionCommandCode } from "../runners/aislamiento";
 
 
 type ProviderStatus = {
@@ -81,20 +83,25 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
   const enAgente = variablesDeAgente();
   const sesionCodex = await sesionCodexConectada();
   const sesionAntigravity = await sesionAntigravityConectada();
+  const sesionOpenCode = Boolean(process.env.OPENCODE_API_KEY || process.env.OPENCODE_ZEN_API_KEY || valorClaveProveedor("opencode"));
   const hermesInstalado = hallarEjecutable("hermes") !== null;
   const hermesConectado = hermesInstalado && hermesCodexAuthConfigurada();
+  const commandCodeInstalado = Boolean(hallarEjecutable("command-code") ?? hallarEjecutable("cmdc") ?? hallarEjecutable("cmd"));
+  const commandCodeSesion = commandCodeInstalado && autenticacionCommandCode() !== null;
   return [
     {
       id: "opencode",
       name: "OpenCode",
       configured: hallarEjecutable("opencode") !== null,
       implemented: true,
-      hint: "CLI de OpenCode instalado en el servidor.",
+      hint: sesionOpenCode
+        ? "CLI y credencial API compatible de OpenCode detectados en el servidor."
+        : "El CLI está instalado, pero falta una credencial API compatible para ejecutar sus modelos dentro del aislamiento de Telo.",
       variable: null,
-      enAgente: true,
+      enAgente: sesionOpenCode,
       guardable: false,
       guardada: false,
-      sesion: false,
+      sesion: sesionOpenCode,
     },
     {
       id: "codex",
@@ -119,6 +126,15 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
           ? "Inicia agy por SSH como usuario orquestador. El aislamiento necesita el almacén de sesión de archivos de esa VM; una sesión que solo vive en el keyring no se puede reutilizar aquí."
           : "Instala Antigravity CLI e inicia su sesión por SSH como usuario orquestador.",
       variable: null, enAgente: sesionAntigravity, guardable: false, guardada: false, sesion: sesionAntigravity,
+    },
+    {
+      id: "commandcode", name: "Command Code Go", configured: commandCodeInstalado, implemented: true,
+      hint: commandCodeSesion
+        ? "CLI y sesión de Command Code Go detectados en el servidor. El proveedor informa su saldo con /usage en la CLI."
+        : commandCodeInstalado
+          ? "CLI instalado. Inicia sesión por SSH con cmd login para consultar sus modelos."
+          : "Instala Command Code CLI e inicia sesión por SSH como usuario orquestador.",
+      variable: null, enAgente: commandCodeSesion, guardable: false, guardada: false, sesion: commandCodeSesion,
     },
     {
       id: "hermes",
@@ -186,6 +202,7 @@ providers.post("/providers/:id/probar", async (c) => {
 
   const destinos: Record<string, { url: string; headers: Record<string, string> }> = {
     deepseek: { url: "https://api.deepseek.com/models", headers: { Authorization: `Bearer ${clave}` } },
+    openai: { url: "https://api.openai.com/v1/models", headers: { Authorization: `Bearer ${clave}` } },
     xai: { url: "https://api.x.ai/v1/models", headers: { Authorization: `Bearer ${clave}` } },
     google: { url: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1", headers: { "x-goog-api-key": clave } },
     groq: { url: "https://api.groq.com/openai/v1/models", headers: { Authorization: `Bearer ${clave}` } },
@@ -278,6 +295,7 @@ providers.get("/providers/codex/models", async (c) => {
   }
 });
 providers.get("/providers/codex/usage", async (c) => c.json(await obtenerCuotaCodex(c.req.query("refresh") === "1")));
+providers.get("/providers/antigravity/usage", async (c) => c.json(await obtenerCuotaAntigravity(c.req.query("refresh") === "1")));
 providers.get("/providers/antigravity/models", async (c) => {
   if (!await sesionAntigravityConectada()) return c.json({ error: "antigravity_no_conectado", mensaje: "Inicia agy por SSH como usuario orquestador; una sesión que solo vive en el keyring no puede usarse dentro del aislamiento." }, 409);
   try { return c.json(await listarModelosAntigravity(c.req.query("refresh") === "1")); }

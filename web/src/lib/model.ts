@@ -31,6 +31,7 @@ const PROVEEDOR_LABEL: Record<string, string> = {
   nvidia: "NVIDIA API",
   "cloudflare-workers-ai": "Cloudflare Workers AI",
   antigravity: "Antigravity CLI",
+  commandcode: "Command Code Go",
 };
 
 export const nombreProveedor = (id: string) =>

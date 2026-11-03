@@ -27,7 +27,7 @@ export function AvisoCuota({
         {puedeSeguir ? "Pulsa Seguir para iniciar con ese modelo y conservar el trabajo anterior." : "Elige otro modelo y pulsa Seguir para conservar el trabajo anterior."}
       </p>
       <p className="cuota-aviso-ayuda">
-        Este límite depende de la cuenta o clave del proveedor del modelo; ChatGPT Plus se administra por separado.
+        El proveedor rechazó la llamada por su límite de uso. El precio $0 no garantiza acceso ni muestra cuántas solicitudes quedan; Telo no recibe ese contador en esta respuesta. Revisa el panel de la cuenta del proveedor.
       </p>
       <div className="cuota-aviso-acciones">
         <button type="button" className="ghost" onClick={onCambiarModelo}>

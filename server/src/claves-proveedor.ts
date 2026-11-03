@@ -16,6 +16,7 @@ export type ProveedorConClave = { id: string; etiqueta: string; variables: strin
 // usa GOOGLE_GENERATIVE_AI_API_KEY y la antigua GEMINI_API_KEY: se envían las dos.
 // NVIDIA_API_KEY viene de un artículo de terceros y debe confirmarse con `opencode models` en el VM.
 export const PROVEEDORES_CON_CLAVE: ProveedorConClave[] = [
+  { id: "openai", etiqueta: "OpenAI API", variables: ["OPENAI_API_KEY"] },
   { id: "groq", etiqueta: "Groq", variables: ["GROQ_API_KEY"] },
   { id: "nvidia", etiqueta: "NVIDIA", variables: ["NVIDIA_API_KEY"] },
   { id: "google", etiqueta: "Google (Gemini)", variables: ["GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"] },

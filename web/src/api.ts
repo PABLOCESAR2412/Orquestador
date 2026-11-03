@@ -277,6 +277,69 @@ export type BalanceDeepSeek = {
   comprobadoEn: string;
 };
 
+export type CuotaAntigravity = {
+  estado: "activo" | "sin_cli" | "sin_sesion" | "no_disponible";
+  respuesta: string | null;
+  detalle: string | null;
+  comprobadoEn: string;
+};
+
+export type LimitesOpenAI = {
+  estado: "consultado" | "sin_configurar" | "sin_permisos" | "no_disponible";
+  mensaje: string;
+  limites: { modelo: string; rpm: number | null; tpm: number | null; rpd: number | null }[];
+  ultimaComprobacion: string;
+};
+
+export type UsoOpenAIAdmin = {
+  estado: "consultado" | "sin_configurar" | "sin_permisos" | "no_disponible";
+  mensaje: string;
+  desde: string;
+  costoUsd30d: number | null;
+  tokensEntrada30d: number;
+  tokensSalida30d: number;
+  solicitudes30d: number;
+  porModelo: { modelo: string; solicitudes: number; tokensEntrada: number; tokensSalida: number }[];
+  ultimaComprobacion: string;
+};
+
+export type LimitesOpenCode = {
+  estado: "consultado" | "sin_cli" | "sin_sesion" | "no_disponible";
+  mensaje: string;
+  espacio: string | null;
+  go: { rolling: { percent: number; limited: boolean; resetsAt: number }; weekly: { percent: number; limited: boolean; resetsAt: number }; monthly: { percent: number; limited: boolean; resetsAt: number } } | null;
+  presupuestos: { id: string; limit: number; spent: number; scope: "each" | "combined"; per: "set" | "model"; coverage: "all" | "models"; resetsAt: number; models: { providerID: string; modelID: string; name: string; spent: number }[] }[];
+  comprobadoEn: string;
+};
+
+export type LimitesOpenRouter = {
+  estado: "consultado" | "sin_clave" | "clave_invalida" | "rate_limit" | "no_disponible";
+  mensaje: string;
+  usoUsd: number | null;
+  limiteUsd: number | null;
+  restanteUsd: number | null;
+  reinicio: string | null;
+  esGratis: boolean | null;
+  solicitudesGratis: { limite: number; usadas: number; restantes: number } | null;
+  comprobadoEn: string;
+};
+
+export type UsoModeloProveedor = {
+  modelo: string;
+  ejecucionesDesdeReinicioDiario: number;
+  tokensDesdeReinicioDiario: number;
+  tokensMedidosDesdeReinicioDiario: number;
+  tokensEstimadosDesdeReinicioDiario: number;
+  ejecucionesUltimas24h: number;
+  tokensUltimas24h: number;
+  tokensMedidosUltimas24h: number;
+  tokensEstimadosUltimas24h: number;
+  ejecucionesUltimoMinuto: number;
+  tokensUltimoMinuto: number;
+  ejecucionesUltimos30d: number;
+  ultimoRechazo: { categoria: "cuota" | "limite_temporal" | "acceso" | "modelo"; estadoHttp: number | null; fecha: string } | null;
+};
+
 export type UsoProveedor = {
   id: string;
   nombre: string;
@@ -284,7 +347,12 @@ export type UsoProveedor = {
   ultimos7d: UsoVentanaProveedor;
   mesActual: UsoVentanaProveedor;
   precision: "registro_telo" | "sin_datos";
+  porModelo?: UsoModeloProveedor[];
   googleLive?: GoogleLiveMetrics;
+  openaiLimits?: LimitesOpenAI;
+  openaiUsage?: UsoOpenAIAdmin;
+  openCodeLimits?: LimitesOpenCode;
+  openRouterLimits?: LimitesOpenRouter;
 };
 
 export type UsoVentanaProveedor = {
@@ -1101,8 +1169,9 @@ export const api = {
     request<{ ok: boolean }>(`/api/programadas/${id}`, { method: "DELETE" }),
   runProgramada: (id: string) =>
     request<Task>(`/api/programadas/${id}/ejecutar`, { method: "POST", body: "{}" }),
-  usage: () => request<{ generado: string; proveedores: UsoProveedor[]; googleLive?: GoogleLiveMetrics }>("/api/uso"),
+  usage: (forzar = false) => request<{ generado: string; proveedores: UsoProveedor[]; googleLive?: GoogleLiveMetrics; openaiLimits?: LimitesOpenAI; openaiUsage?: UsoOpenAIAdmin; openCodeLimits?: LimitesOpenCode; openRouterLimits?: LimitesOpenRouter }>(`/api/uso${forzar ? "?refresh=1" : ""}`),
   codexUsage: (forzar = false) => request<CuotaCodex>(`/api/providers/codex/usage${forzar ? "?refresh=1" : ""}`),
+  antigravityUsage: (forzar = false) => request<CuotaAntigravity>(`/api/providers/antigravity/usage${forzar ? "?refresh=1" : ""}`),
   deepseekBalance: () => request<BalanceDeepSeek>("/api/providers/deepseek/balance"),
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
   googleDriveArchives: () => request<AlmacenamientoDrive>("/api/google-drive/archives"),

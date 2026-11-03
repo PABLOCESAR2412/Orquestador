@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { constants, closeSync, copyFileSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { config } from "../config";
 import { carpetaEntregables } from "../entregables";
@@ -97,6 +97,68 @@ function rutaPerfilOpenCode(id: string): string {
 function rutaPerfilCodex(id: string): string {
   const sello = createHash("sha256").update(id).digest("hex");
   return join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-codex", sello);
+}
+
+function rutaPerfilCommandCode(id: string): string {
+  const sello = createHash("sha256").update(id).digest("hex");
+  return join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-commandcode", sello);
+}
+
+export function autenticacionCommandCode(): string | null {
+  const home = process.env.HOME && process.env.HOME !== "/" ? process.env.HOME : "";
+  if (!home) return null;
+  const archivo = join(home, ".commandcode", "auth.json");
+  try {
+    const stat = lstatSync(archivo);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size < 2 || stat.size > 1_000_000 || realpathSync(archivo) !== archivo) return null;
+    const datos: unknown = JSON.parse(readFileSync(archivo, "utf8"));
+    if (!datos || typeof datos !== "object" || Array.isArray(datos) || Object.keys(datos).length === 0) return null;
+    return archivo;
+  } catch { return null; }
+}
+
+function escribirArchivoPerfilSeguro(ruta: string, contenido: string): void {
+  let fd: number | null = null;
+  try {
+    fd = openSync(ruta, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0), 0o600);
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.nlink !== 1) throw new AislamientoError("carpeta_no_permitida", "El archivo de política Command Code no es seguro.");
+    writeFileSync(fd, contenido, "utf8");
+  } finally { if (fd !== null) closeSync(fd); }
+}
+
+export function prepararPerfilCommandCode(id: string): string {
+  const raiz = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-commandcode");
+  const perfil = rutaPerfilCommandCode(id);
+  for (const ruta of [raiz, perfil, join(perfil, ".commandcode"), join(perfil, ".agents")]) {
+    mkdirSync(ruta, { recursive: true, mode: 0o700 });
+    const stat = lstatSync(ruta);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(ruta) !== ruta) {
+      throw new AislamientoError("carpeta_no_permitida", "El perfil de Command Code contiene una ruta no segura.");
+    }
+  }
+  const settings = join(perfil, ".commandcode", "settings.json");
+  const reglas = { permissions: { deny: [
+    "Read(//tmp/telo-commandcode-home/.commandcode/auth.json)",
+    "Read(//tmp/telo-commandcode-global/auth.json)",
+    "Read(//tmp/telo-commandcode-home/.commandcode/settings.json)",
+    "Edit(//tmp/telo-commandcode-home/.commandcode/settings.json)",
+    "Shell(*auth.json*)", "Shell(*telo-commandcode-global*)",
+    "Shell(git commit:*)", "Shell(git push:*)", "Shell(gh pr create:*)",
+    "Shell(vercel deploy:*)", "Shell(wrangler deploy:*)", "Shell(npm publish:*)",
+  ] } };
+  try {
+    const stat = lstatSync(settings);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || realpathSync(settings) !== settings) {
+      throw new AislamientoError("carpeta_no_permitida", "La política Command Code no es segura.");
+    }
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  escribirArchivoPerfilSeguro(settings, JSON.stringify(reglas));
+  return perfil;
+}
+
+export function eliminarPerfilCommandCode(id: string): void {
+  rmSync(rutaPerfilCommandCode(id), { recursive: true, force: true });
 }
 
 export async function prepararPerfilCodex(id: string, sessionId?: string | null): Promise<string> {
@@ -313,6 +375,7 @@ export function prefijoAislamiento(
   perfilCodexDir?: string,
   redDir?: string,
   perfilAntigravityDir?: string,
+  perfilCommandCodeDir?: string,
 ): string[] {
   if (!aislamientoActivo()) return [];
 
@@ -331,6 +394,10 @@ export function prefijoAislamiento(
   }
 
   const home = process.env.HOME && process.env.HOME !== "/" ? process.env.HOME : "";
+  const authCommandCode = perfilCommandCodeDir ? autenticacionCommandCode() : null;
+  if (perfilCommandCodeDir && !authCommandCode) {
+    throw new AislamientoError("carpeta_no_permitida", "Command Code necesita una sesión válida en ~/.commandcode/auth.json.");
+  }
   const configuracionCodexGlobal = perfilCodexDir && home
     ? ["auth.json", "config.toml", "requirements.toml"].flatMap((nombre) => {
       const ruta = archivoConfiguracionCodex(home, nombre);
@@ -357,6 +424,22 @@ export function prefijoAislamiento(
       if (!archivo.isFile() || archivo.isSymbolicLink() || archivo.nlink !== 1 || realpathSync(destinoArchivo) !== destinoArchivo) {
         throw new AislamientoError("carpeta_no_permitida", `El archivo ${nombre} del perfil Codex no es seguro.`);
       }
+    }
+  }
+  let perfilCommandCodeReal: string | null = null;
+  let politicaCommandCode: string | null = null;
+  if (perfilCommandCodeDir) {
+    const raizPerfiles = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-commandcode");
+    const perfilReal = rutaReal(perfilCommandCodeDir);
+    const stat = lstatSync(perfilCommandCodeDir);
+    if (!perfilReal || !dentro(perfilReal, raizPerfiles) || !stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new AislamientoError("carpeta_no_permitida", "El perfil de Command Code no está dentro del almacenamiento de Telo.");
+    }
+    perfilCommandCodeReal = perfilReal;
+    politicaCommandCode = join(perfilReal, ".commandcode", "settings.json");
+    const politicaStat = lstatSync(politicaCommandCode);
+    if (!politicaStat.isFile() || politicaStat.isSymbolicLink() || politicaStat.nlink !== 1 || rutaReal(politicaCommandCode) !== politicaCommandCode) {
+      throw new AislamientoError("carpeta_no_permitida", "La política Command Code no es segura.");
     }
   }
 
@@ -421,6 +504,13 @@ export function prefijoAislamiento(
         // Bubblewrap resuelve los orígenes en el host, no en los destinos ya montados.
         args.push("--ro-bind", archivo.ruta, join(destino, archivo.nombre));
       }
+    }
+    if (perfilCommandCodeReal && politicaCommandCode && authCommandCode) {
+      args.push("--dir", "/tmp/telo-commandcode-global", "--ro-bind", authCommandCode, "/tmp/telo-commandcode-global/auth.json");
+      args.push("--dir", "/tmp/telo-commandcode-home", "--bind", perfilCommandCodeReal, "/tmp/telo-commandcode-home");
+      args.push("--ro-bind", politicaCommandCode, "/tmp/telo-commandcode-home/.commandcode/settings.json");
+      args.push("--ro-bind", "/tmp/telo-commandcode-global/auth.json", "/tmp/telo-commandcode-home/.commandcode/auth.json");
+      args.push("--dir", "/tmp/telo-commandcode-home/.agents/skills", "--ro-bind-try", join(home, ".config", "opencode", "skills"), "/tmp/telo-commandcode-home/.agents/skills");
     }
     if (perfilOpenCodeDir) {
       const raizPerfiles = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-opencode");

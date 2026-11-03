@@ -3,6 +3,7 @@ node_modules/
 data/
 *.db*
 dist/
+graphify-out/
 scratch/
 web/scratch/
 test-visual-runner.mjs

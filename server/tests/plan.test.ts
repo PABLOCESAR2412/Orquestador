@@ -171,6 +171,18 @@ describe("validarReporte", () => {
     expect(r.resumen).toContain("Marcado como fallo por el servidor");
   });
 
+  test("conserva solo categorías de cambio válidas para describir el resultado", () => {
+    const valido = validarReporte({
+      estado: "completado",
+      resumen: "Se corrigió la sincronización al guardar.",
+      tipo_cambio: "fix",
+      cambios: [{ archivo: "src/sync.ts", tipo: "editar" }],
+    }, "");
+    const invalido = validarReporte({ estado: "completado", resumen: "Se actualizó el proyecto.", tipo_cambio: "feature" }, "");
+    expect(valido.tipo_cambio).toBe("fix");
+    expect(invalido.tipo_cambio).toBeNull();
+  });
+
   test("marca faltantes de workspace y credenciales como bloqueantes externos", () => {
     const r = validarReporte({
       estado: "fallo",
@@ -248,6 +260,8 @@ describe("prompts", () => {
     expect(texto).toContain("Ordenar las notas");
     expect(texto).toContain("Usa la rama principal");
     expect(texto).toContain("bloqueante_externo");
+    expect(texto).toContain("tipo_cambio");
+    expect(texto).toContain("no copies el prompt");
     expect(texto).toContain("No hagas commit, push ni PR");
     expect(texto).toContain("Telo ejecutará esas operaciones");
     expect(texto).toContain("Telo conserva el remoto fuera del workspace");

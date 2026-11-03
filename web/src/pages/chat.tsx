@@ -2257,6 +2257,11 @@ export function ChatPage() {
                 <MenuComandosChat comandos={comandosFiltrados} activo={indiceSlash} onElegir={elegirComando} />
               )}
 
+              {planPendiente && (tareaChat?.plan?.preguntas.length ?? 0) > 0 && (
+                <div className="tl-plan-preguntas" role="group" aria-label="Preguntas para responder antes de continuar">
+                  {tareaChat!.plan!.preguntas.map((pregunta, indice) => <p key={indice}>{pregunta}</p>)}
+                </div>
+              )}
               <textarea
                 ref={inputRef}
                 className="tl-composer-input"
@@ -2358,7 +2363,12 @@ export function ChatPage() {
               <div className="tl-composer-barra">
                 <div className="tl-composer-izq">
                   <button type="button" className="tl-boton tl-boton-compacto" aria-label="Modo de trabajo" aria-pressed={current?.work_mode === "plan"} disabled={!current || configure.isPending || pensando} onClick={() => configure.mutate({ work_mode: current?.work_mode === "plan" ? "build" : "plan" })} title="Tab dentro del mensaje alterna Construir y Planear; Mayúsculas+Tab mueve el foco.">
-                    {current?.work_mode === "plan" ? "Planear · solo lectura" : "Construir"}<kbd>Tab</kbd>
+                    <svg className="tl-build-icono" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      {current?.work_mode === "plan"
+                        ? <><path d="M9 6h11M9 12h11M9 18h7" /><path d="m3 6 1.2 1.2L6.5 5M3 12l1.2 1.2L6.5 11M3 18l1.2 1.2L6.5 17" /></>
+                        : <><path d="m14.5 6.5 3 3M4 20l5.5-1.5L20 8a2.12 2.12 0 0 0-3-3L6.5 15.5 4 20Z" /><path d="M3 4h6" /></>}
+                    </svg>
+                    <span className="tl-build-label">{current?.work_mode === "plan" ? "Planear · solo lectura" : "Construir"}</span><kbd>Tab</kbd>
                   </button>
                   <button
                     type="button"
@@ -2392,13 +2402,19 @@ export function ChatPage() {
                     className="tl-boton tl-boton-compacto tl-agentes-boton"
                     aria-haspopup="dialog"
                     aria-expanded={agentesAbiertos}
+                    aria-label="Agentes"
+                    title="Agentes"
                     onClick={() => {
                       setPickerOpen(false);
                       setUsoAbierto(false);
                       setAgentesAbiertos(true);
                     }}
                   >
-                    Agentes
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M12 3.5 14 9l5.5 2-5.5 2-2 5.5-2-5.5-5.5-2L10 9l2-5.5Z" />
+                      <path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z" />
+                    </svg>
+                    <span className="tl-accion-etiqueta">Agentes</span>
                   </button>
 
                   <button
@@ -2426,12 +2442,20 @@ export function ChatPage() {
                     className="tl-boton tl-boton-compacto tl-uso"
                     aria-haspopup="dialog"
                     aria-expanded={usoAbierto}
+                    aria-label="Uso y límites"
+                    title="Uso y límites"
                     onClick={() => {
                       setPickerOpen(false);
                       setUsoAbierto((o) => !o);
                     }}
                   >
-                    Uso
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M4 19V5M4 19h17" />
+                      <rect x="7" y="12" width="3" height="4" rx=".5" />
+                      <rect x="13" y="9" width="3" height="7" rx=".5" />
+                      <rect x="19" y="6" width="2" height="10" rx=".5" />
+                    </svg>
+                    <span className="tl-accion-etiqueta">Uso</span>
                   </button>
 
                 </div>
@@ -2459,8 +2483,10 @@ export function ChatPage() {
                           if (tareaChat?.id) cancelarPlanMutation.mutate(tareaChat.id);
                         }}
                         title="Cancelar la tarea actual"
+                        aria-label="Cancelar tarea"
                       >
-                        {cancelarPlanMutation.isPending ? "Cancelando…" : "Cancelar tarea"}
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+                        <span className="tl-plan-label">{cancelarPlanMutation.isPending ? "Cancelando…" : "Cancelar"}</span>
                       </button>
                       {draft.trim() && (
                         <button
@@ -2471,8 +2497,10 @@ export function ChatPage() {
                             decidirPlan("revise", draft.trim());
                           }}
                           title="Solicitar al analizador que elabore un nuevo plan con estas aclaraciones"
+                        aria-label="Reanalizar plan"
                         >
-                          {decidirPlanMutation.isPending ? "Enviando…" : "Re-analizar plan"}
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5" /><path d="M5.6 9a7 7 0 0 1 11.7-2L20 12M4 12l2.7 5a7 7 0 0 0 11.7-2" /></svg>
+                        <span className="tl-plan-label">{decidirPlanMutation.isPending ? "Enviando…" : "Reanalizar"}</span>
                         </button>
                       )}
                       <button
@@ -2483,8 +2511,10 @@ export function ChatPage() {
                           decidirPlan("approve", draft.trim() || undefined);
                         }}
                         title={draft.trim() ? "Aprobar el plan incluyendo tus notas" : "Aprobar el plan"}
+                        aria-label="Aprobar plan"
                       >
-                        {decidirPlanMutation.isPending ? "Aprobando…" : "Aprobar plan"}
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>
+                        <span className="tl-plan-label">{decidirPlanMutation.isPending ? "Aprobando…" : "Aprobar"}</span>
                       </button>
                     </div>
                   ) : (

@@ -49,6 +49,14 @@ const ACCIONES = {
     ejecutable: () => join(carpetaHome(), ".local", "bin", "agy"),
     binario: "agy",
   },
+  commandcode: {
+    nombre: "Command Code CLI",
+    comando: "npm install -g --prefix ~/.opencode command-code",
+    programa: "npm",
+    argv: (prefijo) => ["install", "-g", "--prefix", prefijo, "command-code"],
+    ejecutable: (prefijo) => join(prefijo, "bin", "cmd"),
+    binario: "cmd",
+  },
   hermes: {
     nombre: "Hermes Agent",
     comando: "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --non-interactive --skip-browser --skip-computer-use",
@@ -177,7 +185,7 @@ export function iniciarInstalacion(id: string): InstalacionPublica {
   if (["antigravity", "hermes"].includes(id) && hallarEjecutable("curl") === null) throw new InstalacionError("curl_no_disponible", 503);
 
   const prefijo = carpetaDeInstalacion();
-  if (["opencode", "codex", "wrangler", "vercel"].includes(id)) mkdirSync(prefijo, { recursive: true });
+  if (["opencode", "codex", "commandcode", "wrangler", "vercel"].includes(id)) mkdirSync(prefijo, { recursive: true });
 
   let proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
   try {

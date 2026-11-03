@@ -820,9 +820,18 @@ button:disabled { opacity: 0.4; cursor: default; }
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-height: min(72dvh, 620px);
+  overflow-y: auto;
   z-index: 50;
   box-shadow: 0 4px 20px var(--shadow);
+  transform-origin: var(--usage-origin-x, 85%) var(--usage-origin-y, 100%);
+  animation: usage-from-trigger 150ms cubic-bezier(.2,.75,.25,1) both;
 }
+@keyframes usage-from-trigger {
+  from { opacity: 0; transform: scale(.94) translateY(7px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.usage-antigravity-texto { max-height: 220px; overflow: auto; margin: 0; white-space: pre-wrap; color: var(--ink-2); font: 11.5px/1.5 var(--font-mono); }
 .usage-title-row {
   display: flex;
   align-items: center;
@@ -950,6 +959,70 @@ button:disabled { opacity: 0.4; cursor: default; }
   border-top: 1px solid var(--line);
   padding-top: 8px;
   margin: 0;
+}
+.usage-models {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 2px 0 9px;
+  border-bottom: 1px solid var(--line);
+}
+.usage-models-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.usage-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 210px;
+  overflow: auto;
+  margin: 0;
+  padding: 0 3px 0 0;
+  list-style: none;
+}
+.usage-model-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.usage-model-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.usage-model-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.usage-model-name {
+  color: var(--ink);
+  font: 11px/1.35 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.usage-model-summary strong {
+  color: var(--ink);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.usage-model-rejection {
+  color: var(--danger);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.usage-models-empty { border-top: 0; padding-top: 0; }
+.usage-models-footnote {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .usage-popover { animation: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .usage-ring-value { transition: none; }

@@ -61,6 +61,19 @@ test("un runner sin subagentes publica herramientas en curso y mantiene resultad
   } finally { spawn.mockRestore(); }
 });
 
+test("un cierre exitoso de OpenCode sin respuesta visible se informa como error recuperable", async () => {
+  const spawn = spyOn(Bun, "spawn").mockImplementation((() => ({
+    pid: 2147483647,
+    stdout: new Blob([]).stream(),
+    stderr: new Blob([]).stream(),
+    exited: Promise.resolve(0),
+  })) as unknown as typeof Bun.spawn);
+  try {
+    await expect(runOpenCode({ cwd: raiz, model: "google/gemini-3.1-flash-lite", prompt: "Analiza", timeoutMs: null, tiempoSinActividadMs: null }))
+      .rejects.toThrow("el proveedor no devolvió texto final");
+  } finally { spawn.mockRestore(); }
+});
+
 test("tres fallos internos explícitos cierran con error recuperable sin esperar indefinidamente", async () => {
   let sesion: string | null = null;
   const spawn = spyOn(Bun, "spawn").mockImplementation(((_args: unknown, opts: { env: Record<string, string> }) => {
