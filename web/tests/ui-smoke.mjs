@@ -363,6 +363,7 @@ try {
         { id: "cloudflare-workers-ai", name: "Cloudflare Workers AI", configured: false, implemented: true, hint: "Account ID y token API.", accountId: null, variable: "CLOUDFLARE_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
         { id: "hermes", name: "Hermes Agent", configured: true, implemented: false, hint: "Piloto.", variable: null, enAgente: false, guardable: false, guardada: false, sesion: false },
         { id: "google", name: "Google (Gemini)", configured: true, implemented: true, hint: "Clave de prueba.", variable: "GOOGLE_GENERATIVE_AI_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
+        { id: "openai", name: "OpenAI API", configured: false, implemented: true, hint: "Falta la clave API.", variable: "OPENAI_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
         { id: "groq", name: "Groq", configured: true, implemented: true, hint: "Clave de prueba.", variable: "GROQ_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
         { id: "deepseek", name: "DeepSeek", configured: true, implemented: true, hint: "Clave de prueba.", variable: "DEEPSEEK_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
         { id: "nvidia", name: "NVIDIA", configured: true, implemented: true, hint: "Clave de prueba.", variable: "NVIDIA_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
@@ -1426,8 +1427,8 @@ try {
     const tabGemini = proveedoresInferencia.getByRole("tab", { name: "API de Google" });
     await tabGemini.evaluate((tab) => tab.scrollIntoView({ block: "nearest", inline: "center" }));
     await tabGemini.waitFor();
-    assert.equal(await proveedoresInferencia.getByRole("tab").count(), 6);
-    await page.getByText("3 configurados", { exact: true }).waitFor();
+    assert.equal(await proveedoresInferencia.getByRole("tab").count(), 8);
+    await page.getByText("5 configurados", { exact: true }).waitFor();
     assert.equal(await proveedoresInferencia.getByRole("tab", { name: "OpenCode", exact: true }).count(), 0, "OpenCode se configura en la sección CLI");
     await proveedoresInferencia.getByRole("tab", { name: "DeepSeek", exact: true }).click();
     await page.getByRole("tabpanel", { name: "DeepSeek" }).waitFor();
