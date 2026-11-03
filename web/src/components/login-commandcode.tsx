@@ -36,9 +36,14 @@ export function LoginCommandCodePanel() {
 
   return <section className="login-commandcode" aria-label="Conectar Command Code Go">
     <h3>Conectar Command Code Go</h3>
-    <p className="aj-nota">
-      En la VM, Command Code recomienda una API key de CLI porque no hay navegador para completar OAuth. Telo la guarda cifrada y la entrega a Command Code CLI solo para sus modelos. Esto usa los límites compartidos del plan Go; no habilita la Provider API.
-    </p>
+    <details className="aj-nota">
+      <summary>Iniciar sesión con cmdc login por SSH</summary>
+      <p>El callback apunta a 127.0.0.1 dentro de la VM, pero el navegador se abre en tu PC. Mantén cmdc esperando en la terminal SSH.</p>
+      <p>En otra terminal de tu PC, crea un túnel para el puerto que aparece en el callback. Para el puerto de esta captura:</p>
+      <p><code>ssh -N -L 41679:127.0.0.1:41679 orquestador@test</code></p>
+      <p>Ejecuta esto en Windows, cambia orquestador@test por el mismo destino SSH que usas y reemplaza 41679 si el CLI muestra otro puerto. Deja abierto el túnel; vuelve a la URL de autorización original y completa el login.</p>
+    </details>
+    <p className="aj-nota">También puedes pegar una API key de CLI abajo. Telo la guarda cifrada y se la entrega a Command Code CLI solo para sus modelos; se aplican los límites compartidos del plan Go y no se habilita la Provider API.</p>
     {status?.sesion && <p className="aj-nota" role="status">Command Code está autenticado en el servidor.</p>}
     {status?.guardada && <p className="aj-nota">Ya hay una clave cifrada. Al guardar otra, la reemplazas.</p>}
     <label className="aj-campo" htmlFor="commandcode-api-key">

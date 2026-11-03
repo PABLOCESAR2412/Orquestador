@@ -10,6 +10,7 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 - [x] Retirado de esta pantalla el catálogo de skills y las sugerencias de Obsidian, Harvey y Orca. Las skills existentes siguen disponibles en su sección de Ajustes; no se borraron skills ni conexiones MCP guardadas.
 - [x] Meta no tiene OAuth ni publicación nativos en Telo: la tarjeta explica el requisito de un MCP HTTPS externo que gestione su propia autenticación. CI 41706404816 pasó: pruebas y build web, smoke Playwright y HTML preview; typecheck, suite del servidor y worker aislado.
 - [x] `deploy/orquestador-antigravity.conf` sí está versionado. «cannot stat» ocurre antes de systemd: la ruta relativa no existe desde el directorio actual, o el checkout del VM aún no contiene el archivo. `deploy/README.md` ahora usa ruta absoluta y comprueba el archivo antes de instalarlo.
+- [~] El catálogo de modelos ya usa el cargador que pasa XDG_RUNTIME_DIR y DBUS_SESSION_BUS_ADDRESS y acepta JSON/texto. Ajustes consulta su endpoint directo y diferencia sesión ausente, errores de login, Secret Service, red, tiempo agotado y catálogo vacío; así el fallo ya no queda oculto como lista vacía. Pruebas y verificación en la VM pendientes. Command Code Go por SSH muestra un callback a localhost de la VM; Ajustes ahora documenta el túnel SSH con el puerto que imprime cmdc y conserva la API key como alternativa headless.
 
 ## Antigravity CLI, Command Code Go y Ollama Cloud — PR #176
 

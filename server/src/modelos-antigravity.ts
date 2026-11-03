@@ -82,12 +82,14 @@ export function parsearModelosAntigravity(texto: string): ModeloAntigravity[] {
   return [...modelos.values()];
 }
 
-export async function listarModelosAntigravity(forzar = false): Promise<ModeloAntigravity[]> {
-  if (!forzar && cache && Date.now() - cache.at < TTL_MS) return cache.models;
+export async function listarModelosAntigravity(forzar = false): Promise<{ generado: string; models: ModeloAntigravity[] }> {
+  if (!forzar && cache && Date.now() - cache.at < TTL_MS) {
+    return { generado: new Date(cache.at).toISOString(), models: cache.models };
+  }
   if (!enCurso) enCurso = cargar().finally(() => { enCurso = null; });
   const models = await enCurso;
   cache = { at: Date.now(), models };
-  return models;
+  return { generado: new Date(cache.at).toISOString(), models };
 }
 
 async function cargar(): Promise<ModeloAntigravity[]> {
@@ -107,12 +109,19 @@ async function cargar(): Promise<ModeloAntigravity[]> {
     proceso = Bun.spawn([agy, "models"], { stdout: "pipe", stderr: "pipe", env, stdin: "ignore" });
     salida = await finalizar(proceso);
   }
-  if (salida.codigo !== 0) throw new Error("antigravity_models_unavailable");
+  if (salida.codigo !== 0) throw new Error(clasificarError(salida.stderr));
   const models = parsearModelosAntigravity(salida.stdout);
   if (!models.length) throw new Error("antigravity_models_empty");
   return models;
 }
 
+function clasificarError(stderr: string): string {
+  const texto = stderr.toLocaleLowerCase();
+  if (["dbus", "secret service", "keyring", "freedesktop"].some(fragmento => texto.includes(fragmento))) return "antigravity_secret_service_unavailable";
+  if (["auth", "login", "logged in", "credential", "oauth", "unauthorized", "not signed in"].some(fragmento => texto.includes(fragmento))) return "antigravity_auth_required";
+  if (["timeout", "timed out", "network", "fetch", "connect", "socket"].some(fragmento => texto.includes(fragmento))) return "antigravity_network_error";
+  return "antigravity_models_unavailable";
+}
 async function finalizar(proceso: Bun.Subprocess<"ignore" | "pipe", "pipe", "pipe">) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {

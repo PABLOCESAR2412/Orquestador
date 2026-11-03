@@ -7,9 +7,17 @@ export function ModelosVisibles({ proveedor, authPendiente = false }: { proveedo
   const qc = useQueryClient();
   const [busca, setBusca] = useState("");
   const catalogo = useQuery({ queryKey: ["models"], queryFn: api.listModels });
+  const antigravity = useQuery({
+    queryKey: ["antigravity-models"], queryFn: () => api.antigravityModels(),
+    enabled: proveedor === "antigravity" && !authPendiente, retry: false, staleTime: 30_000,
+  });
   const preferencias = useQuery({ queryKey: ["preferences"], queryFn: api.getPreferences });
-  const refrescar = useMutation({ mutationFn: api.refreshModels, onSuccess: datos => {
+  const refrescar = useMutation({ mutationFn: async () => {
+    if (proveedor === "antigravity") await api.antigravityModels(true);
+    return api.refreshModels();
+  }, onSuccess: datos => {
     qc.setQueryData(["models"], datos);
+    void qc.invalidateQueries({ queryKey: ["antigravity-models"] });
     void qc.invalidateQueries({ queryKey: ["providers"] });
   } });
   const guardar = useMutation({
@@ -38,7 +46,7 @@ export function ModelosVisibles({ proveedor, authPendiente = false }: { proveedo
       </label>)}
     </div>
     {(catalogo.isPending || preferencias.isPending) && <p role="status" className="aj-nota">Consultando modelos…</p>}
-    {!catalogo.isPending && !modelos.length && !authPendiente && <p className="aj-nota">No hay modelos disponibles. Comprueba la conexión o la sesión de esta integración.</p>}
-    {(guardar.error || catalogo.error || refrescar.error) && <p role="alert" className="aj-error">{errorText(guardar.error ?? catalogo.error ?? refrescar.error)}</p>}
+    {!catalogo.isPending && !modelos.length && !authPendiente && !antigravity.isPending && !antigravity.error && <p className="aj-nota">No hay modelos disponibles. Comprueba la conexión o la sesión de esta integración.</p>}
+    {(guardar.error || antigravity.error || catalogo.error || refrescar.error) && <p role="alert" className="aj-error">{errorText(guardar.error ?? antigravity.error ?? catalogo.error ?? refrescar.error)}</p>}
   </div>;
 }

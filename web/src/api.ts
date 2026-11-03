@@ -1204,6 +1204,7 @@ export const api = {
   cancelarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "DELETE" }),
   confirmarCodexLogin: () => request<LoginCodex>("/api/providers/codex/confirmar", { method: "POST" }),
   antigravityLogin: () => request<LoginAntigravity>("/api/providers/antigravity/login"),
+  antigravityModels: (forzar = false) => request<{ generado: string; models: { id: string; name: string; context: number; variants: string[] }[] }>("/api/providers/antigravity/models" + (forzar ? "?refresh=1" : "")),
   iniciarAntigravityLogin: () => request<LoginAntigravity>("/api/providers/antigravity/login", { method: "POST", body: "{}" }),
   enviarCodigoAntigravity: (codigo: string) => request<LoginAntigravity>("/api/providers/antigravity/confirmar", { method: "POST", body: JSON.stringify({ codigo }) }),
   cancelarAntigravityLogin: () => request<LoginAntigravity>("/api/providers/antigravity/login", { method: "DELETE" }),
