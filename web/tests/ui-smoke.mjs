@@ -1288,7 +1288,7 @@ try {
     await page.locator(".tl-aviso-generacion-media").filter({ hasText: "Telo no tiene conectado un generador externo de imagen" }).waitFor();
     await page.getByRole("button", { name: "Enviar", exact: true }).click();
     await page.locator(".tl-aviso-generacion-media").waitFor({ state: "detached" });
-    await page.getByRole("button", { name: "Uso", exact: true }).click();
+    await page.getByRole("button", { name: "Uso y límites", exact: true }).click();
     const panelUso = page.getByRole("dialog", { name: "Cuota del proveedor" });
     await panelUso.waitFor();
     await panelUso.getByText("Consulta de cuenta", { exact: true }).waitFor();
