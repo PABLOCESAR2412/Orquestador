@@ -7,10 +7,17 @@ const temporal = mkdtempSync(join(tmpdir(), "telo-agy-"));
 const anteriorData = process.env.DATA_DIR;
 process.env.DATA_DIR = join(temporal, "data");
 const { parsearCatalogoAntigravity, archivosSesionAntigravity, TOKEN_ANTIGRAVITY } = await import("../src/antigravity");
+const { extraerUrlAutorizacionAntigravity } = await import("../src/login-antigravity");
 const { configuracionAntigravityAislada, prepararPerfilAntigravity, prefijoAislamiento } = await import("../src/runners/aislamiento");
 const { runAntigravity, usoAntigravity } = await import("../src/runners/antigravity");
 const { db } = await import("../src/db");
 afterAll(() => { db.close(); rmSync(temporal, { recursive: true, force: true }); if (anteriorData === undefined) delete process.env.DATA_DIR; else process.env.DATA_DIR = anteriorData; });
+
+test("el login solo muestra URLs HTTPS del host oficial de cuentas Google", () => {
+  expect(extraerUrlAutorizacionAntigravity("Open this link: https://accounts.google.com/o/oauth2/auth?client_id=example.")).toBe("https://accounts.google.com/o/oauth2/auth?client_id=example");
+  expect(extraerUrlAutorizacionAntigravity("https://attacker.example/login")).toBeNull();
+  expect(extraerUrlAutorizacionAntigravity("http://accounts.google.com/login")).toBeNull();
+});
 
 test("AGY usa slugs del catálogo y no inventa contexto ni esfuerzo", () => {
   // Fila del ejemplo oficial: https://antigravity.google/docs/cli/headless/#select-a-model-effort-or-agent

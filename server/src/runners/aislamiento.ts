@@ -4,6 +4,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { config } from "../config";
 import { carpetaEntregables } from "../entregables";
 import { hallarEjecutable } from "../ejecutable";
+import { valorClaveApiProveedor } from "../claves-proveedor";
 import { archivosSesionAntigravity } from "../antigravity";
 
 
@@ -115,6 +116,10 @@ export function autenticacionCommandCode(): string | null {
     if (!datos || typeof datos !== "object" || Array.isArray(datos) || Object.keys(datos).length === 0) return null;
     return archivo;
   } catch { return null; }
+}
+
+export function commandCodeConectado(): boolean {
+  return autenticacionCommandCode() !== null || valorClaveApiProveedor("commandcode") !== null;
 }
 
 function escribirArchivoPerfilSeguro(ruta: string, contenido: string): void {
@@ -395,8 +400,9 @@ export function prefijoAislamiento(
 
   const home = process.env.HOME && process.env.HOME !== "/" ? process.env.HOME : "";
   const authCommandCode = perfilCommandCodeDir ? autenticacionCommandCode() : null;
-  if (perfilCommandCodeDir && !authCommandCode) {
-    throw new AislamientoError("carpeta_no_permitida", "Command Code necesita una sesión válida en ~/.commandcode/auth.json.");
+  const commandCodeKey = perfilCommandCodeDir ? valorClaveApiProveedor("commandcode") : null;
+  if (perfilCommandCodeDir && !authCommandCode && !commandCodeKey) {
+    throw new AislamientoError("carpeta_no_permitida", "Command Code necesita una sesión guardada o una API key de CLI configurada.");
   }
   const configuracionCodexGlobal = perfilCodexDir && home
     ? ["auth.json", "config.toml", "requirements.toml"].flatMap((nombre) => {
@@ -505,11 +511,12 @@ export function prefijoAislamiento(
         args.push("--ro-bind", archivo.ruta, join(destino, archivo.nombre));
       }
     }
-    if (perfilCommandCodeReal && politicaCommandCode && authCommandCode) {
-      args.push("--dir", "/tmp/telo-commandcode-global", "--ro-bind", authCommandCode, "/tmp/telo-commandcode-global/auth.json");
+    if (perfilCommandCodeReal && politicaCommandCode) {
+      args.push("--dir", "/tmp/telo-commandcode-global");
+      if (authCommandCode) args.push("--ro-bind", authCommandCode, "/tmp/telo-commandcode-global/auth.json");
       args.push("--dir", "/tmp/telo-commandcode-home", "--bind", perfilCommandCodeReal, "/tmp/telo-commandcode-home");
       args.push("--ro-bind", politicaCommandCode, "/tmp/telo-commandcode-home/.commandcode/settings.json");
-      args.push("--ro-bind", "/tmp/telo-commandcode-global/auth.json", "/tmp/telo-commandcode-home/.commandcode/auth.json");
+      if (authCommandCode) args.push("--ro-bind", "/tmp/telo-commandcode-global/auth.json", "/tmp/telo-commandcode-home/.commandcode/auth.json");
       args.push("--dir", "/tmp/telo-commandcode-home/.agents/skills", "--ro-bind-try", join(home, ".config", "opencode", "skills"), "/tmp/telo-commandcode-home/.agents/skills");
     }
     if (perfilOpenCodeDir) {

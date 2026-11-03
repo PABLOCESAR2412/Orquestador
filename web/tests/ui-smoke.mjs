@@ -103,6 +103,7 @@ try {
     let trabajadoresC1 = [{ rol: "arquitectura", model: "opencode/big-pickle" }];
     let configuracionesOrquestacion = [];
     let codexSesionEnPicker = false;
+    let antigravityLoginEstado = { estado: "inactivo", instalada: true, conectada: false, url: null, motivo: null, iniciada: null };
     let jevConfigurada = false;
     let approvals = 0;
     let reanudaciones = 0;
@@ -345,6 +346,7 @@ try {
         { id: "opencode/claude-fable-5", provider: "opencode", name: "Claude Fable 5", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Claude", recommended: true },
         { id: "codex/gpt-5-codex", provider: "codex", name: "GPT-5 Codex", inputUsd: 0, outputUsd: 0, context: 100000, variants: ["high"], free: false, costTier: "medio", costWarning: null, group: "Codex", recommended: true },
         { id: "antigravity/gemini-prueba", provider: "antigravity", name: "Gemini de Antigravity", inputUsd: 0, outputUsd: 0, priceKnown: false, context: 0, variants: [], free: false, costTier: "medio", costWarning: null, group: "Antigravity", recommended: true },
+        { id: "ollama/deepseek-v4:cloud", provider: "ollama", name: "DeepSeek V4 Cloud", inputUsd: 0, outputUsd: 0, priceKnown: false, context: 0, variants: [], free: false, costTier: "desconocido", costWarning: "Precio no publicado", group: "Ollama Cloud", recommended: true },
         { id: "google/prueba", provider: "google", name: "Google Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Gemini", recommended: true },
         { id: "nvidia/nemotron-test", provider: "nvidia", name: "Nemotron Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Nemotron", recommended: true },
         { id: "nvidia/llama-test", provider: "nvidia", name: "NVIDIA Test", inputUsd: 0, outputUsd: 0, context: 1000, variants: [], free: true, costTier: "gratis", costWarning: null, group: "Llama", recommended: true },
@@ -359,7 +361,8 @@ try {
       else if (path === "/api/providers") data = [
         { id: "opencode", name: "OpenCode", configured: true, implemented: true, hint: "CLI instalado.", variable: null, enAgente: true, guardable: false, guardada: false, sesion: false },
         { id: "codex", name: "Codex", configured: codexSesionEnPicker, implemented: true, hint: "Sesión de Codex.", variable: null, enAgente: codexSesionEnPicker, guardable: false, guardada: false, sesion: codexSesionEnPicker },
-        { id: "antigravity", name: "Antigravity CLI", configured: true, implemented: true, hint: "Sesión SSH detectada.", variable: null, enAgente: true, guardable: false, guardada: false, sesion: true },
+        { id: "antigravity", name: "Antigravity CLI", configured: false, implemented: true, hint: "Falta iniciar sesión.", variable: null, enAgente: false, guardable: false, guardada: false, sesion: false },
+        { id: "commandcode", name: "Command Code Go", configured: true, implemented: true, hint: "CLI instalado; falta iniciar sesión.", variable: "COMMAND_CODE_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
         { id: "cloudflare-workers-ai", name: "Cloudflare Workers AI", configured: false, implemented: true, hint: "Account ID y token API.", accountId: null, variable: "CLOUDFLARE_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
         { id: "hermes", name: "Hermes Agent", configured: true, implemented: false, hint: "Piloto.", variable: null, enAgente: false, guardable: false, guardada: false, sesion: false },
         { id: "google", name: "Google (Gemini)", configured: true, implemented: true, hint: "Clave de prueba.", variable: "GOOGLE_GENERATIVE_AI_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
@@ -368,11 +371,25 @@ try {
         { id: "deepseek", name: "DeepSeek", configured: true, implemented: true, hint: "Clave de prueba.", variable: "DEEPSEEK_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
         { id: "nvidia", name: "NVIDIA", configured: true, implemented: true, hint: "Clave de prueba.", variable: "NVIDIA_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
         { id: "openrouter", name: "OpenRouter", configured: false, implemented: true, hint: "Clave de prueba.", variable: "OPENROUTER_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
+        { id: "ollama", name: "Ollama Cloud", configured: false, implemented: true, hint: "Clave API de Ollama Cloud.", variable: "OLLAMA_API_KEY", enAgente: false, guardable: true, guardada: false, sesion: false },
         { id: "xai", name: "xAI", configured: true, implemented: true, hint: "Clave de prueba.", variable: "XAI_API_KEY", enAgente: true, guardable: true, guardada: true, sesion: false },
       ];
       else if (/^\/api\/providers\/[^/]+\/probar$/.test(path)) data = { ok: true, modelos: 7 };
       else if (path === "/api/providers/codex/models") data = { generado: now, models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", context: 100000, variants: ["high"] }] };
       else if (path === "/api/providers/codex/login") data = { estado: "esperando", conectada: false, url: "https://auth.openai.com/codex/device", codigo: "ABCD-EFGH", salida: "Salida de prueba\n" + "x".repeat(300) };
+      else if (path === "/api/providers/antigravity/login" && route.request().method() === "GET") data = antigravityLoginEstado;
+      else if (path === "/api/providers/antigravity/login" && route.request().method() === "POST") {
+        antigravityLoginEstado = { ...antigravityLoginEstado, estado: "esperando", url: "https://accounts.google.com/o/oauth2/auth?client_id=fixture" };
+        data = antigravityLoginEstado;
+      }
+      else if (path === "/api/providers/antigravity/confirmar") {
+        antigravityLoginEstado = { ...antigravityLoginEstado, estado: "verificando" };
+        data = antigravityLoginEstado;
+      }
+      else if (path === "/api/providers/antigravity/login" && route.request().method() === "DELETE") {
+        antigravityLoginEstado = { estado: "inactivo", instalada: true, conectada: false, url: null, motivo: "cancelado", iniciada: null };
+        data = antigravityLoginEstado;
+      }
       else if (path === "/api/providers/codex/usage") data = {
         estado: "activo", plan: "ChatGPT Plus", comprobadoEn: now, reiniciosDisponibles: 0,
         ventanas: [
@@ -416,6 +433,7 @@ try {
           { nombre: "opencode", version: "1.2.0", disponible: true },
           { nombre: "codex", version: "0.162.1", disponible: true },
           { nombre: "agy", version: "1.4.12", disponible: true },
+          { nombre: "cmd", version: "1.0.0", disponible: true },
           { nombre: "wrangler", version: herramientasPublicacionInstaladas ? "4.156.0" : null, disponible: herramientasPublicacionInstaladas },
           { nombre: "vercel", version: herramientasPublicacionInstaladas ? "65.5.0" : null, disponible: herramientasPublicacionInstaladas },
           { nombre: "script", version: "2.37.2", disponible: true },
@@ -1466,7 +1484,7 @@ try {
     const tabGemini = proveedoresInferencia.getByRole("tab", { name: "API de Google" });
     await tabGemini.evaluate((tab) => tab.scrollIntoView({ block: "nearest", inline: "center" }));
     await tabGemini.waitFor();
-    assert.equal(await proveedoresInferencia.getByRole("tab").count(), 8);
+    assert.equal(await proveedoresInferencia.getByRole("tab").count(), 9);
     await page.getByText("5 configurados", { exact: true }).waitFor();
     assert.equal(await proveedoresInferencia.getByRole("tab", { name: "OpenCode", exact: true }).count(), 0, "OpenCode se configura en la sección CLI");
     await proveedoresInferencia.getByRole("tab", { name: "DeepSeek", exact: true }).click();
@@ -1507,7 +1525,8 @@ try {
     await escalaTexto.press("ArrowRight");
     await escalaTexto.press("ArrowRight");
     await escalaTexto.press("ArrowRight");
-    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector("#root")).zoom), "1.15");
+    assert.equal(await escalaTexto.inputValue(), "115");
+    assert.equal(await page.evaluate(() => document.documentElement.style.getPropertyValue("--telo-escala")), "1.15");
     await page.screenshot({ path: `scratch/capturas-ci/personalizacion-${width}.png` });
     await page.reload();
     await page.getByRole("heading", { name: "Ajustes y Servidor", exact: true }).waitFor();
@@ -1526,7 +1545,12 @@ try {
     const listaClis = page.locator('[aria-label="Estado de CLI del servidor"]');
     await listaClis.getByText("4.156.0", { exact: true }).waitFor();
     await listaClis.getByText("65.5.0", { exact: true }).waitFor();
-    assert.equal(await listaClis.getByText("Instalado", { exact: true }).count(), 6);
+    assert.equal(await listaClis.getByText("Instalado", { exact: true }).count(), 5);
+    assert.equal(await listaClis.getByText("Instalado · falta sesión", { exact: true }).count(), 2);
+    const filasCli = listaClis.locator(".aj-herramienta-local");
+    const anchoListaCli = (await listaClis.boundingBox()).width;
+    const anchoPrimeraFilaCli = (await filasCli.first().boundingBox()).width;
+    assert.ok(Math.abs(anchoListaCli - anchoPrimeraFilaCli) < 2, "las tarjetas CLI usan el ancho completo de la lista, también en móvil");
     assert.equal(await page.locator('article[aria-labelledby="aj-prov-codex"]').count(), 0);
     assert.equal(await page.locator('article[aria-labelledby="aj-prov-opencode"]').count(), 0);
     assert.equal(await page.locator('article[aria-labelledby="aj-antigravity-titulo"]').count(), 0);
@@ -1537,12 +1561,31 @@ try {
     await page.waitForFunction(() => document.querySelector('[aria-label="Modelos visibles de opencode"] input')?.disabled === false);
     assert.equal(modelVisibility["opencode/claude-fable-5"], false, "la selección por CLI se guarda en el servidor");
     await page.screenshot({ path: `scratch/capturas-ci/cli-instalados-${width}.png` });
+    const filaAntigravity = filasCli.filter({ hasText: "Antigravity CLI" });
+    await filaAntigravity.getByRole("button", { name: "Ver modelos", exact: true }).click();
+    const accesoAntigravity = page.locator(".login-antigravity");
+    await accesoAntigravity.getByRole("button", { name: "Iniciar sesión con Google", exact: true }).click();
+    const enlaceGoogle = accesoAntigravity.getByRole("link", { name: "Abrir autorización de Google", exact: true });
+    await enlaceGoogle.waitFor();
+    assert.match(await enlaceGoogle.getAttribute("href"), /^https:\/\/accounts\.google\.com\//);
+    await accesoAntigravity.getByLabel("Código que aparece en Google").fill("GOOGLE-CODE-123");
+    await accesoAntigravity.getByRole("button", { name: "Enviar código", exact: true }).click();
+    await accesoAntigravity.getByText("Código enviado. Telo espera la confirmación del CLI.", { exact: true }).waitFor();
+    const filaCommandCode = filasCli.filter({ hasText: "Command Code CLI" });
+    await filaCommandCode.getByRole("button", { name: "Iniciar sesión", exact: true }).click();
+    await page.locator(".login-commandcode").getByLabel("API key de Command Code Go").waitFor();
+    await proveedoresInferencia.getByRole("tab", { name: "Ollama Cloud", exact: true }).click();
+    const panelOllama = page.getByRole("tabpanel", { name: "Ollama Cloud" });
+    await panelOllama.getByLabel("Clave API").waitFor();
+    await panelOllama.getByText(/Telo registra las llamadas y tokens/).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     assert.equal(await page.locator('article[aria-labelledby="aj-wrangler-titulo"]').count(), 0, "Wrangler instalado aparece en la lista y oculta su tarjeta de instalación");
     assert.equal(await page.locator('article[aria-labelledby="aj-vercel-titulo"]').count(), 0, "Vercel instalado aparece en la lista y oculta su tarjeta de instalación");
     herramientasPublicacionInstaladas = false;
     await page.reload();
     const tarjetaWrangler = page.locator('article[aria-labelledby="aj-wrangler-titulo"]');
     await tarjetaWrangler.waitFor();
+    await tarjetaWrangler.getByText("Crear Pages una vez", { exact: true }).waitFor();
     assert.equal(await tarjetaWrangler.getByText("Crear Pages una vez", { exact: true }).count(), 1);
     assert.equal(await tarjetaWrangler.getByText(/--branch preview/).count(), 1, "Cloudflare indica una subida sin Git a una rama de vista previa");
     await tarjetaWrangler.getByRole("button", { name: "Copiar", exact: true }).first().click();
@@ -1649,7 +1692,7 @@ try {
     await selectorModelos.getByRole("button", { name: "Mostrar modelos de Codex CLI · sesión de ChatGPT", exact: true }).click();
     assert.equal(await gruposCodex.isVisible(), true);
     await selectorModelos.getByRole("button", { name: "Solo gratis", exact: true }).click();
-    assert.equal(await selectorModelos.locator(".picker-conteo").textContent(), conteoConCodex?.replace(/\d+/, String(Number(conteoConCodex.match(/\d+/)?.[0]) - 3)), "las sesiones Codex/Antigravity y los modelos sin precio no aparecen como gratis");
+    assert.equal(await selectorModelos.locator(".picker-conteo").textContent(), conteoConCodex?.replace(/\d+/, String(Number(conteoConCodex.match(/\d+/)?.[0]) - 4)), "las sesiones Codex/Antigravity y los modelos sin precio no aparecen como gratis");
     await selectorModelos.getByRole("button", { name: "Solo gratis", exact: true }).click();
     assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).isDisabled(), false);
     assert.equal(await selectorModelos.getByRole("button", { name: /GPT-5 Codex/ }).count(), 1, "el catálogo de sesión evita duplicar el modelo de Codex incluido en /api/models");

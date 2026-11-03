@@ -668,7 +668,7 @@
 .aj-clave-guardada > span { flex: 1; justify-content: flex-start; }
 .aj-proveedores-adicionales { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .aj-integracion-local-panel { min-width: 0; margin-top: 12px; }
-.aj-herramientas-locales { display: grid; gap: 8px; max-width: 760px; }
+.aj-herramientas-locales { display: grid; grid-column: 1 / -1; gap: 8px; width: 100%; max-width: none; }
 .aj-herramienta-local {
   display: flex;
   flex-wrap: wrap;
@@ -676,6 +676,7 @@
   justify-content: space-between;
   gap: 16px;
   min-width: 0;
+  width: 100%;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -690,6 +691,15 @@
 .aj-modelo-opcion { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px; border-bottom: 1px solid var(--line); }
 .aj-modelo-opcion span { min-width: 0; overflow-wrap: anywhere; }
 .aj-modelo-opcion small { display: block; color: var(--ink-2); font-size: 11px; }
+.login-antigravity,
+.login-commandcode { display: grid; grid-column: 1 / -1; gap: 12px; min-width: 0; margin-top: 12px; }
+.login-commandcode h3 { margin: 0; color: var(--ink); font-size: 14px; font-weight: 600; }
+.login-antigravity-paso { display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-lowest); }
+.login-antigravity-url { display: block; max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+.login-antigravity-manual { font-size: 12px; color: var(--ink-2); }
+.login-antigravity-manual summary { width: fit-content; cursor: pointer; }
+.login-commandcode .aj-campo { min-width: 0; }
+.login-commandcode .aj-input { width: 100%; }
 @media (max-width: 760px) {
   .aj-herramienta-local { align-items: flex-start; flex-direction: column; gap: 8px; }
 }

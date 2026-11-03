@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Preferences } from "../../api";
 import { errorText } from "../../lib/model";
 
-export function ModelosVisibles({ proveedor }: { proveedor: string }) {
+export function ModelosVisibles({ proveedor, authPendiente = false }: { proveedor: string; authPendiente?: boolean }) {
   const qc = useQueryClient();
   const [busca, setBusca] = useState("");
   const catalogo = useQuery({ queryKey: ["models"], queryFn: api.listModels });
@@ -38,7 +38,7 @@ export function ModelosVisibles({ proveedor }: { proveedor: string }) {
       </label>)}
     </div>
     {(catalogo.isPending || preferencias.isPending) && <p role="status" className="aj-nota">Consultando modelos…</p>}
-    {!catalogo.isPending && !modelos.length && <p className="aj-nota">No hay modelos disponibles. Comprueba la conexión o la sesión de esta integración.</p>}
+    {!catalogo.isPending && !modelos.length && !authPendiente && <p className="aj-nota">No hay modelos disponibles. Comprueba la conexión o la sesión de esta integración.</p>}
     {(guardar.error || catalogo.error || refrescar.error) && <p role="alert" className="aj-error">{errorText(guardar.error ?? catalogo.error ?? refrescar.error)}</p>}
   </div>;
 }

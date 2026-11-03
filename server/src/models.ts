@@ -2,8 +2,9 @@ import { entornoProveedores, proveedoresConClave, cuentaCloudflare } from "./cla
 import { sesionCodexConectada } from "./login-cli";
 import { listarModelosCodex } from "./modelos-codex";
 import { listarModelosAntigravity, sesionAntigravityConectada } from "./antigravity";
-import { autenticacionCommandCode } from "./runners/aislamiento";
+import { commandCodeConectado } from "./runners/aislamiento";
 import { listarModelosCommandCode } from "./modelos-commandcode";
+import { listarModelosOllama, invalidarCatalogoOllama } from "./modelos-ollama";
 import { proveedorCompatibleConBroker } from "./runners/red-agente";
 import { aislamientoActivo } from "./runners/aislamiento";
 
@@ -135,6 +136,7 @@ export function parseModels(txt: string, conClave: ReadonlyMap<string, string> =
 // Tras cambiar una clave de proveedor, la lista de modelos se vuelve a pedir.
 export function invalidarModelos(): void {
   cache = null;
+  invalidarCatalogoOllama();
 }
 
 // El CLI recibe solo lo que usa (como el agente) más las claves de proveedor guardadas: nunca TELO_*.
@@ -152,7 +154,9 @@ function entornoDelCli(): Record<string, string> {
     if (process.env[variable]) base[variable] = process.env[variable]!;
   }
   if (!base.CLOUDFLARE_API_KEY && base.CLOUDFLARE_API_TOKEN) base.CLOUDFLARE_API_KEY = base.CLOUDFLARE_API_TOKEN;
-  return { ...base, ...entornoProveedores() };
+  const proveedores = entornoProveedores();
+  delete proveedores.COMMAND_CODE_API_KEY;
+  return { ...base, ...proveedores };
 }
 
 export async function getModels(force = false): Promise<ModelInfo[]> {
@@ -191,7 +195,7 @@ export async function getModels(force = false): Promise<ModelInfo[]> {
   }
 
   const entorno = entornoProveedores();
-  const models = parseModels(out, proveedoresConClave()).filter(m => !aislamientoActivo() || proveedorCompatibleConBroker(m.provider, entorno));
+  const models = parseModels(out, proveedoresConClave()).filter(m => m.provider !== "ollama" && (!aislamientoActivo() || proveedorCompatibleConBroker(m.provider, entorno)));
 
   try {
     if (await sesionCodexConectada()) {
@@ -235,7 +239,19 @@ export async function getModels(force = false): Promise<ModelInfo[]> {
   } catch { /* Un fallo del catálogo de la sesión no elimina las otras integraciones. */ }
 
   try {
-    if (autenticacionCommandCode()) {
+    for (const modelo of await listarModelosOllama(force)) {
+      const id = "ollama/" + modelo.id;
+      if (!models.some((existente) => existente.id === id)) models.push({
+        id, provider: "ollama", name: modelo.nombre, inputUsd: 0, outputUsd: 0, context: 0, variants: [],
+        free: false, priceKnown: false, costTier: "desconocido",
+        costWarning: "La tarifa depende del plan y del modelo de Ollama Cloud. Telo registra el uso, pero no consulta el saldo de la cuenta.",
+        group: "Ollama Cloud", recommended: true,
+      });
+    }
+  } catch { /* Si Ollama no devuelve el catálogo, se conservan los demás proveedores. */ }
+
+  try {
+    if (commandCodeConectado()) {
       for (const modelo of await listarModelosCommandCode(force)) {
         const id = `commandcode/${modelo.id}`;
         if (!models.some((existente) => existente.id === id)) models.push({
