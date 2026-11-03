@@ -9,7 +9,7 @@ const raiz = mkdtempSync(join(tmpdir(), "telo-seguimiento-"));
 const previos = { DATA_DIR: process.env.DATA_DIR, TELO_AISLAMIENTO: process.env.TELO_AISLAMIENTO };
 process.env.DATA_DIR = join(raiz, "data");
 process.env.TELO_AISLAMIENTO = "desactivado";
-const { runOpenCode } = await import("../src/runners/opencode");
+const { runOpenCode, ErrorAgente } = await import("../src/runners/opencode");
 const { itemDeLinea } = await import("../src/actividad");
 const { db } = await import("../src/db");
 afterAll(() => {
@@ -60,6 +60,19 @@ test("un runner sin subagentes publica herramientas en curso y mantiene resultad
   } finally { spawn.mockRestore(); }
 });
 
+test("un cierre exitoso de OpenCode sin respuesta visible se informa como error recuperable", async () => {
+  const spawn = spyOn(Bun, "spawn").mockImplementation((() => ({
+    pid: 2147483647,
+    stdout: new Blob([]).stream(),
+    stderr: new Blob([]).stream(),
+    exited: Promise.resolve(0),
+  })) as unknown as typeof Bun.spawn);
+  try {
+    await expect(runOpenCode({ cwd: raiz, model: "google/gemini-3.1-flash-lite", prompt: "Analiza", timeoutMs: null, tiempoSinActividadMs: null }))
+      .rejects.toThrow("el proveedor no devolvió texto final");
+  } finally { spawn.mockRestore(); }
+});
+
 test("tres fallos internos explícitos cierran con error recuperable sin esperar indefinidamente", async () => {
   let sesion: string | null = null;
   const spawn = spyOn(Bun, "spawn").mockImplementation(((_args: unknown, opts: { env: Record<string, string> }) => {
@@ -69,7 +82,12 @@ test("tres fallos internos explícitos cierran con error recuperable sin esperar
     return { pid: 2147483647, stdout: new Blob([]).stream(), stderr: new Blob([]).stream(), exited: new Promise(() => {}) };
   }) as unknown as typeof Bun.spawn);
   try {
-    await expect(runOpenCode({ cwd: raiz, model: "opencode/prueba", prompt: "Analiza", timeoutMs: null, tiempoSinActividadMs: null, onSesion: id => { sesion = id; } })).rejects.toThrow("tres reintentos internos");
+    const error = await runOpenCode({ cwd: raiz, model: "opencode/prueba", prompt: "Analiza", timeoutMs: null, tiempoSinActividadMs: null, onSesion: id => { sesion = id; } }).then(() => null, e => e);
+    expect(error).toBeInstanceOf(ErrorAgente);
+    if (error instanceof ErrorAgente) {
+      expect(error.message).toContain("tres reintentos internos");
+      expect(error.reintentosInternosAgotados).toBe(true);
+    }
     expect(String(sesion)).toBe("ses_guardada");
   } finally { spawn.mockRestore(); }
 });

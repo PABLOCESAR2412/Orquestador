@@ -33,7 +33,7 @@ import { valorSecreto, valoresDeProyecto } from "./secretos";
 import { tokenGithubGlobal } from "./github-auth";
 import { tokenGithubAppParaRepo } from "./github-app";
 import { opcionesDeCredenciales } from "./git-credenciales";
-import { eliminarPerfilCodex, eliminarPerfilOpenCode, prepararDirectorioOpenCode } from "./runners/aislamiento";
+  import { eliminarPerfilAntigravity, eliminarPerfilCommandCode, eliminarPerfilCodex, eliminarPerfilOpenCode, prepararDirectorioOpenCode } from "./runners/aislamiento";
 import { enMantenimiento, registrarTrabajo } from "./despliegue";
 export { opcionesDeCredenciales } from "./git-credenciales";
 
@@ -308,6 +308,26 @@ async function prepararRepo(clon: string): Promise<void> {
   if (!(await esRaizGit(clon))) throw new ErrorTarea("task_without_repo", 409);
 }
 
+// Git permite clonar un repositorio sin commits, pero deja HEAD sin un commit resoluble.
+// Las tareas nuevas necesitan una base para calcular diffs y preparar acciones de Git.
+async function asegurarHeadBaseTarea(clon: string): Promise<void> {
+  const head = await gitSeguro(["rev-parse", "--verify", "HEAD^{commit}"], { cwd: clon });
+  if (head.code === 0) return;
+
+  const referencia = await gitSeguro(["symbolic-ref", "--quiet", "HEAD"], { cwd: clon });
+  if (referencia.code !== 0 || !referencia.stdout.trim()) throw new ErrorTarea("task_head_invalid", 409);
+  const rama = referencia.stdout.trim();
+  const ramaExistente = await gitSeguro(["show-ref", "--verify", "--quiet", rama], { cwd: clon });
+  if (ramaExistente.code === 0) throw new ErrorTarea("task_head_invalid", 409);
+
+  await gitOkSeguro([
+    "-c", "user.name=Telo",
+    "-c", "user.email=telo@localhost",
+    "-c", "commit.gpgsign=false",
+    "commit", "--allow-empty", "-m", "Base inicial de la tarea",
+  ], { cwd: clon });
+}
+
 function rutaRemoto(taskId: string): string {
   return join(carpetaTarea(taskId), NOMBRE_REMOTO);
 }
@@ -412,6 +432,35 @@ export function copiarCarpetaSana(origen: string, destino: string): void {
   }
 }
 
+// El grafo local suele estar en .gitignore y por eso no llega al clon de tarea. Copiamos
+// únicamente los dos artefactos que usan los agentes; no trasladamos visualizaciones ni cachés.
+function sincronizarGraphifyDeProyecto(repoPath: string, clon: string): void {
+  const origen = join(repoPath, "graphify-out");
+  const destino = join(clon, "graphify-out");
+  try {
+    const infoOrigen = lstatSync(origen);
+    if (!infoOrigen.isDirectory() || infoOrigen.isSymbolicLink()) return;
+    const infoDestino = lstatSync(clon);
+    if (!infoDestino.isDirectory() || infoDestino.isSymbolicLink()) return;
+    prepararDestinoSkills(destino);
+
+    for (const nombre of ["graph.json", "GRAPH_REPORT.md"]) {
+      const archivoOrigen = join(origen, nombre);
+      const info = lstatSync(archivoOrigen);
+      if (!info.isFile() || info.isSymbolicLink() || info.size > 32 * 1024 * 1024) continue;
+      const temporal = join(destino, `.telo-graphify-${crypto.randomUUID()}.tmp`);
+      try {
+        copyFileSync(archivoOrigen, temporal, fsConstants.COPYFILE_EXCL);
+        renameSync(temporal, join(destino, nombre));
+      } finally {
+        rmSync(temporal, { force: true });
+      }
+    }
+  } catch {
+    // Graphify es contexto auxiliar: su ausencia no impide trabajar en el proyecto.
+  }
+}
+
 // Sincroniza las carpetas de skills del proyecto hacia el clon del workspace,
 // asegurando que las skills locales y no commiteadas estén disponibles para el agente.
 function sincronizarSkillsDeProyecto(repoPath: string, clon: string): void {
@@ -432,10 +481,10 @@ function sincronizarSkillsDeProyecto(repoPath: string, clon: string): void {
       mkdirSync(infoDir, { recursive: true });
       const excludeFile = join(infoDir, "exclude");
       let contenido = existsSync(excludeFile) ? readFileSync(excludeFile, "utf-8") : "";
-      if (!contenido.includes(".opencode")) {
-        contenido = `${contenido.trim()}\n.opencode\n.opencode/\n`;
-        writeFileSync(excludeFile, contenido.trim() + "\n", "utf-8");
-      }
+      const lineas = new Set(contenido.split(/\r?\n/).map((linea) => linea.trim()));
+      const nuevas = [".opencode", ".opencode/", "graphify-out/"]
+        .filter((linea) => !lineas.has(linea));
+      if (nuevas.length) writeFileSync(excludeFile, `${contenido.trim()}\n${nuevas.join("\n")}\n`, "utf-8");
     }
 
     const skillsOpencode = join(repoPath, ".opencode", "skills");
@@ -490,6 +539,9 @@ export function prepararCopia(
 
     // Antes de cualquier otra operación: en un reanudado, el .git lo pudo tocar el agente.
     await prepararRepo(clon);
+    // Un repo recién inicializado puede no tener todavía un commit. Git lo clona igual,
+    // pero HEAD queda simbólico y sin destino; crea una base vacía solo dentro del clon de tarea.
+    if (nuevo && !fila.source_branch) await asegurarHeadBaseTarea(clon);
     // El clon no conserva remoto: la subida usa solo remoto.txt, nunca el origen del clon.
     await gitSeguro(["remote", "remove", "origin"], { cwd: clon });
     // La URL se fija al crear el clon. En un reanudado solo se escribe si el archivo falta.
@@ -560,6 +612,7 @@ export function prepararCopia(
     }
 
     sincronizarSkillsDeProyecto(repoPath, clon);
+    sincronizarGraphifyDeProyecto(repoPath, clon);
     db.query("UPDATE tasks SET rama = ?, base_commit = ? WHERE id = ?").run(rama, base, taskId);
     return { cwd: clon, rama, base_commit: base, copia: true };
   });
@@ -1182,6 +1235,8 @@ export async function limpiarCopias(): Promise<void> {
         if (!muyVieja.conversation_id) {
           eliminarPerfilOpenCode(id);
           eliminarPerfilCodex(id);
+          eliminarPerfilAntigravity(id);
+          eliminarPerfilCommandCode(id);
         }
         if (existsSync(carpetaTarea(id)) && !existsSync(rutaClon(id))) {
           rmSync(carpetaTarea(id), { recursive: true, force: true });

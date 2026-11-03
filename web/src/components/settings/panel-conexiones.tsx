@@ -236,7 +236,13 @@ export function PanelConexiones() {
             <span className="aj-integracion-requisito">{servidor.isPending ? "Consultando Node…" : nodeMajor >= 22 ? `Node ${nodeMajor} · cumple versión 22+` : nodeMajor ? `Node ${nodeMajor} · requiere versión 22+` : "Node no disponible"} · FFmpeg {herramientasPorNombre.get("ffmpeg")?.disponible ? "listo" : "faltante"} · FFprobe {herramientasPorNombre.get("ffprobe")?.disponible ? "listo" : "faltante"}{libreServidor === null ? "" : ` · ${ (libreServidor / 1024 ** 3).toFixed(1)} GiB libres ahora (espacio disponible, no requisito fijo)`}</span>
             {accionSkills("hyperframes", "heygen-com/hyperframes", ["hyperframes", "hyperframes-cli", "hyperframes-registry", "media-use"])}
           </div>
-          {([ ["using-superpowers", "Superpowers", "obra/superpowers", "Skill de flujo de trabajo. Telo importa el SKILL.md; no instala hooks ni el plugin completo."], ["strategic-compact", "ECC · Everything Claude Code", "affaan-m/everything-claude-code", "Skill strategic-compact. Telo no instala el paquete entero, sus hooks o agentes." ] ] as const).map(([id, nombre, repositorio, descripcion]) => (
+          <div className="aj-integracion-fila">
+            <div><strong>UI/UX Pro Max · diseño de interfaces</strong><p>Guías de diseño y búsqueda local de estilos, tipografía, accesibilidad y patrones. Telo descarga los datos y referencias necesarios, más cuatro scripts permitidos; no ejecuta nada durante la instalación. <a href="https://github.com/nextlevelbuilder/ui-ux-pro-max-skill" target="_blank" rel="noreferrer">Repositorio oficial</a>.</p></div>
+            <span className={`aj-conexion-estado${skillDisponible("ui-ux-pro-max") ? " is-ok" : ""}`}><i aria-hidden="true" />{estadoSkill("ui-ux-pro-max")}</span>
+            <span className="aj-integracion-requisito">No requiere clave. La consulta del catálogo corre bajo demanda con Python 3.</span>
+            {accionSkills("ui-ux-pro-max", "nextlevelbuilder/ui-ux-pro-max-skill", ["ui-ux-pro-max"])}
+          </div>
+          {([ ["code-review", "Code Review", "vercel-labs/open-agents", "Revisión de diffs en solo lectura; Telo no instala agentes ni herramientas auxiliares."], ["writing-plans", "Writing Plans", "obra/superpowers", "Planes de implementación compatibles con el flujo de aprobación propio de Telo."], ["using-superpowers", "Superpowers", "obra/superpowers", "Skill de flujo de trabajo. Telo importa el SKILL.md; no instala hooks ni el plugin completo."], ["strategic-compact", "ECC · Everything Claude Code", "affaan-m/everything-claude-code", "Skill strategic-compact. Telo no instala el paquete entero, sus hooks o agentes." ] ] as const).map(([id, nombre, repositorio, descripcion]) => (
             <div className="aj-integracion-fila" key={id}>
               <div><strong>{nombre}</strong><p>{descripcion} <a href={`https://github.com/${repositorio}`} target="_blank" rel="noreferrer">Repositorio fuente</a>.</p></div>
               <span className={`aj-conexion-estado${skillsPorNombre.get(id)?.valida ? " is-ok" : ""}`}><i aria-hidden="true" />{estadoSkill(id)}</span>
@@ -244,6 +250,12 @@ export function PanelConexiones() {
               {accionSkills(nombre, repositorio, [id])}
             </div>
           ))}
+          <div className="aj-integracion-fila">
+            <div><strong>Superpowers · pruebas y depuración</strong><p>Incluye Test-Driven Development y Systematic Debugging. Se activan para esas tareas o al invocarlas por nombre; no instala hooks ni plugins. <a href="https://github.com/obra/superpowers/tree/main/skills" target="_blank" rel="noreferrer">Repositorio fuente</a>.</p></div>
+            <span className={`aj-conexion-estado${skillsDisponibles("test-driven-development", "systematic-debugging") ? " is-ok" : ""}`}><i aria-hidden="true" />{skills.isPending ? "Consultando…" : skillsDisponibles("test-driven-development", "systematic-debugging") ? "Skills instaladas" : "Skills incompletas"}</span>
+            <span className="aj-integracion-requisito">No requiere credenciales externas.</span>
+            {accionSkills("superpowers-calidad", "obra/superpowers", ["test-driven-development", "systematic-debugging"])}
+          </div>
         </div>
 
         <div className="aj-integraciones-catalogo">

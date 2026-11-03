@@ -7,7 +7,7 @@ const raiz = mkdtempSync(join(tmpdir(), "telo-skills-"));
 
 // config se inicializa al importar: se apunta a un temporal para no tocar la base real.
 process.env.DATA_DIR = join(raiz, "datos");
-const { copiarCarpetaSana, prepararCopia } = await import("../src/workspace");
+const { copiarCarpetaSana, prepararCopia, rutaClon } = await import("../src/workspace");
 const { db } = await import("../src/db");
 const { gitOk } = await import("../src/git");
 
@@ -121,6 +121,35 @@ test("al reanudar, .opencode enlazado no recibe escrituras fuera del clon", asyn
     expect(existsSync(join(fuera, ".gitignore"))).toBe(false);
     expect(readFileSync(join(fuera, "skills", "demo", "SKILL.md"), "utf8")).toBe("conservar");
     expect(lstatSync(opencode).isSymbolicLink()).toBe(true);
+  } finally {
+    db.query("DELETE FROM tasks WHERE id=?").run(id);
+  }
+});
+
+test("prepararCopia sincroniza el cerebro Graphify local y lo excluye del diff Git", async () => {
+  const caso = mkdtempSync(join(raiz, "graphify-"));
+  const proyecto = join(caso, "proyecto");
+  mkdirSync(proyecto, { recursive: true });
+  await gitOk(["init", "-b", "main"], { cwd: proyecto });
+  const grafo = join(proyecto, "graphify-out");
+  mkdirSync(grafo, { recursive: true });
+  writeFileSync(join(grafo, "graph.json"), JSON.stringify({ nodes: [{ id: "inicio" }] }));
+  writeFileSync(join(grafo, "GRAPH_REPORT.md"), "Resumen del proyecto");
+  writeFileSync(join(grafo, "graph.html"), "visualización grande");
+
+  const id = crypto.randomUUID();
+  db.query("INSERT INTO tasks(id,title,prompt,model,status) VALUES (?,'Graphify','Prueba','prueba','queued')").run(id);
+  try {
+    // El clon preexistente evita lanzar `git clone`, que necesita MSYS/SSH fuera del sandbox.
+    const clon = rutaClon(id);
+    mkdirSync(clon, { recursive: true });
+    await gitOk(["init", "-b", "main"], { cwd: clon });
+    await gitOk(["-c", "user.name=Prueba", "-c", "user.email=prueba@example.test", "commit", "--allow-empty", "-m", "Base"], { cwd: clon });
+    const copia = await prepararCopia(id, proyecto, null);
+    expect(JSON.parse(readFileSync(join(copia.cwd, "graphify-out", "graph.json"), "utf8"))).toEqual({ nodes: [{ id: "inicio" }] });
+    expect(readFileSync(join(copia.cwd, "graphify-out", "GRAPH_REPORT.md"), "utf8")).toBe("Resumen del proyecto");
+    expect(existsSync(join(copia.cwd, "graphify-out", "graph.html"))).toBe(false);
+    await gitOk(["check-ignore", "graphify-out/graph.json"], { cwd: copia.cwd });
   } finally {
     db.query("DELETE FROM tasks WHERE id=?").run(id);
   }

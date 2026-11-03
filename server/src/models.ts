@@ -1,6 +1,9 @@
 import { entornoProveedores, proveedoresConClave } from "./claves-proveedor";
 import { sesionCodexConectada } from "./login-cli";
 import { listarModelosCodex } from "./modelos-codex";
+import { listarModelosAntigravity } from "./modelos-antigravity";
+import { listarModelosCommandCode } from "./modelos-commandcode";
+import { hallarEjecutable } from "./ejecutable";
 
 export type CostTier = "gratis" | "economico" | "medio" | "alto" | "premium";
 
@@ -13,6 +16,7 @@ export type ModelInfo = {
   context: number;
   variants: string[];
   free: boolean;
+  costAvailable?: boolean;
   costTier: CostTier;
   costWarning: string | null;
   group: string;
@@ -30,9 +34,12 @@ const GROUPS: { label: string; pattern: RegExp }[] = [
 ];
 
 // Alias que cambian solos y modelos de imagen o visión: nunca se listan.
-const ALWAYS_EXCLUDE = /~|image|vision/;
+const ALWAYS_EXCLUDE = /~|image|vision|embedding|\bembed\b/;
 // Versiones preview de pago: duplican a las estables. Las gratuitas sí se listan.
 const PAID_EXCLUDE = /preview|customtools/;
+// No mostrar endpoints de Google que están cerrados o restringidos para cuentas nuevas.
+// Google cerró Gemini 2.0 en junio de 2026 y limita toda la familia 2.5 a cuentas que ya la usaban.
+const GOOGLE_NO_DISPONIBLES = /^google\/(?:gemini-2\.0-|gemini-2\.5-|gemini-3\.1-flash-lite-preview$)/;
 
 const WARNINGS: Record<CostTier, string | null> = {
   gratis: null,
@@ -78,9 +85,10 @@ export function parseModels(txt: string, conClave: ReadonlyMap<string, string> =
 
     const inputUsd = raw.cost?.input ?? 0;
     const outputUsd = raw.cost?.output ?? 0;
-    const free = inputUsd === 0 && outputUsd === 0;
+    const costAvailable = typeof raw.cost?.input === "number" && typeof raw.cost?.output === "number";
+    const free = costAvailable && inputUsd === 0 && outputUsd === 0;
 
-    if (ALWAYS_EXCLUDE.test(id) || (!free && PAID_EXCLUDE.test(id))) continue;
+    if (ALWAYS_EXCLUDE.test(id) || GOOGLE_NO_DISPONIBLES.test(id) || (!free && PAID_EXCLUDE.test(id))) continue;
 
     const matched = GROUPS.find((g) => g.pattern.test(id));
     const costTier = tierFor(free, outputUsd);
@@ -96,10 +104,11 @@ export function parseModels(txt: string, conClave: ReadonlyMap<string, string> =
       context: raw.limit?.context ?? 0,
       variants: Object.keys(raw.variants ?? {}),
       free,
+      costAvailable,
       costTier,
-      costWarning: WARNINGS[costTier],
-      group: matched?.label ?? etiquetaProveedor ?? (free ? "Gratis" : "Otros"),
-      recommended: free || matched !== undefined || etiquetaProveedor !== undefined,
+      costWarning: costAvailable ? WARNINGS[costTier] : "El catálogo no publica el precio de este modelo.",
+      group: matched?.label ?? etiquetaProveedor ?? (free ? "Precio $0" : !costAvailable && provider === "opencode" ? "Precio no publicado" : "Otros"),
+      recommended: free || matched !== undefined || etiquetaProveedor !== undefined || (!costAvailable && provider === "opencode"),
     });
   }
   // OpenCode Zen también publica algunos modelos de Google. Si el proveedor oficial está
@@ -137,39 +146,101 @@ function entornoDelCli(): Record<string, string> {
 export async function getModels(force = false): Promise<ModelInfo[]> {
   if (!force && cache && Date.now() - cache.at < TTL_MS) return cache.models;
 
-  const args = ["opencode", "models", "--verbose"];
-  if (force) args.push("--refresh");
-  const proc = Bun.spawn(args, {
-    stdout: "pipe",
-    stderr: "pipe",
-    env: entornoDelCli(),
-  });
-  // La validación del modelo ocurre antes de crear la tarea: un CLI detenido no debe bloquear el envío indefinidamente.
-  let limite: ReturnType<typeof setTimeout> | undefined;
-  let out: string;
-  let code: number;
-  try {
-    [out, code] = await Promise.race([
-      Promise.all([new Response(proc.stdout).text(), proc.exited, new Response(proc.stderr).text()]),
-      new Promise<never>((_, rechazar) => {
-        limite = setTimeout(() => {
-          try { proc.kill(); } catch { /* El CLI ya terminó. */ }
-          rechazar(new Error("opencode models no respondió en 15 segundos"));
-        }, 15_000);
-      }),
-    ]);
-  } catch (error) {
-    if (cache) return cache.models;
-    throw error;
-  } finally { if (limite) clearTimeout(limite); }
+  let models: ModelInfo[] = [];
+  if (hallarEjecutable("opencode")) {
+    const args = ["opencode", "models", "--verbose"];
+    if (force) args.push("--refresh");
+    const proc = Bun.spawn(args, {
+      stdout: "pipe",
+      stderr: "pipe",
+      env: entornoDelCli(),
+    });
+    // La validación del modelo ocurre antes de crear la tarea: un CLI detenido no debe bloquear el envío indefinidamente.
+    let limite: ReturnType<typeof setTimeout> | undefined;
+    let out: string;
+    let code: number;
+    try {
+      [out, code] = await Promise.race([
+        Promise.all([new Response(proc.stdout).text(), proc.exited, new Response(proc.stderr).text()]),
+        new Promise<never>((_, rechazar) => {
+          limite = setTimeout(() => {
+            try { proc.kill(); } catch { /* El CLI ya terminó. */ }
+            rechazar(new Error("opencode models no respondió en 15 segundos"));
+          }, 15_000);
+        }),
+      ]);
+    } catch (error) {
+      if (cache) return cache.models;
+      if (hallarEjecutable("agy")) out = "";
+      else throw error;
+      code = 0;
+    } finally { if (limite) clearTimeout(limite); }
 
-  if (code !== 0) {
-    // Si falla la actualización, se usa la última lista buena
-    if (cache) return cache.models;
-    throw new Error(`opencode models salió con código ${code}`);
+    if (code !== 0) {
+      // Si falla la actualización, se usa la última lista buena
+      if (cache) return cache.models;
+      if (!hallarEjecutable("agy")) throw new Error(`opencode models salió con código ${code}`);
+      out = "";
+    }
+
+    models = parseModels(out, proveedoresConClave());
   }
 
-  const models = parseModels(out, proveedoresConClave());
+  if (hallarEjecutable("agy")) {
+    try {
+      const agy = await listarModelosAntigravity(force);
+      for (const m of agy) {
+        const id = `antigravity/${m.id}`;
+        if (models.some((existente) => existente.id === id)) continue;
+        models.push({
+          id,
+          provider: "antigravity",
+          name: m.name,
+          inputUsd: 0,
+          outputUsd: 0,
+          context: m.context,
+          variants: m.variants,
+          free: false,
+          costAvailable: false,
+          costTier: "medio",
+          costWarning: "Usa los límites de tu cuenta Antigravity. Consulta Uso para ver el informe oficial.",
+          group: "Antigravity CLI",
+          recommended: true,
+        });
+      }
+    } catch {
+      // Si la CLI no tiene sesión, el resto del catálogo sigue disponible.
+    }
+  }
+
+  if (hallarEjecutable("command-code") || (process.platform !== "win32" && hallarEjecutable("cmd"))) {
+    try {
+      const commandCode = await listarModelosCommandCode(force);
+      for (const modelo of commandCode) {
+        const id = `commandcode/${modelo.id}`;
+        if (models.some((existente) => existente.id === id)) continue;
+        models.push({
+          id,
+          provider: "commandcode",
+          name: modelo.nombre,
+          inputUsd: 0,
+          outputUsd: 0,
+          context: 0,
+          variants: [],
+          // El plan incluye créditos, pero la tarifa efectiva y el saldo dependen del modelo y no
+          // los publica `--list-models`; no lo etiquetamos como un endpoint gratuito ilimitado.
+          free: false,
+          costAvailable: false,
+          costTier: "medio",
+          costWarning: "Consume créditos del plan Command Code Go; el CLI no publica aquí el precio por modelo.",
+          group: "Command Code Go",
+          recommended: true,
+        });
+      }
+    } catch {
+      // Si Command Code aún no terminó el login, el resto del catálogo sigue disponible.
+    }
+  }
 
   try {
     if (await sesionCodexConectada()) {
@@ -186,6 +257,7 @@ export async function getModels(force = false): Promise<ModelInfo[]> {
             context: m.context,
             variants: m.variants.length > 0 ? m.variants : ["low", "medium", "high"],
             free: false,
+            costAvailable: false,
             costTier: "medio",
             costWarning: null,
             group: "Codex",

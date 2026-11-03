@@ -70,6 +70,12 @@ describe("validarPlan", () => {
     if (!v.ok) expect(v.motivo).toContain("más de 12 pasos");
   });
 
+  test("limita las preguntas bloqueantes a tres por turno", () => {
+    const v = validarPlan({ ...planValido, preguntas: ["Una", "Dos", "Tres", "Cuatro"] });
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.motivo).toContain("más de 3 preguntas");
+  });
+
   test("rechaza rutas fuera del workspace y cualquier segmento .git antes de aprobar", () => {
     for (const ruta of ["/etc/passwd","\\\\servidor\\archivo","C:/repo/archivo","C:archivo","../otro","src/../../otro",".git/","src/.git/hooks/pre-commit","src\\.GIT\\config","./","src\u0000archivo"]) {
       const valor = { ...planValido, pasos: [{ descripcion: "Revisar archivos", archivos: [ruta] }] };
@@ -93,23 +99,30 @@ describe("requiereAprobacion", () => {
 });
 
 describe("validarReporte", () => {
-  test("sin JSON, el texto del agente es el resumen", () => {
+  test("sin JSON estructurado, el texto libre no confirma que el plan se completó", () => {
     const r = validarReporte(undefined, "Listo, ordené las notas.");
-    expect(r.estado).toBe("completado");
-    expect(r.resumen).toBe("Listo, ordené las notas.");
+    expect(r.estado).toBe("fallo");
+    expect(r.resumen).toContain("reporte estructurado obligatorio");
     expect(r.desviacion).toBeNull();
   });
 
   test("una respuesta vacía no se presenta como una tarea completada", () => {
     const r = validarReporte(undefined, "");
     expect(r.estado).toBe("fallo");
-    expect(r.resumen).toContain("No se puede confirmar el resultado");
+    expect(r.resumen).toContain("No se puede confirmar");
   });
 
   test("un reporte sin resumen ni resultados verificables tampoco pasa como éxito", () => {
     const r = validarReporte({ estado: "completado", resumen: "", cambios: [], pruebas: [], pendientes: [] }, "");
     expect(r.estado).toBe("fallo");
     expect(r.resumen).toContain("No se puede confirmar el resultado");
+  });
+
+  test("conserva el tipo de cambio para redactar commits desde el resultado real", () => {
+    const r = validarReporte({ estado: "completado", resumen: "Se corrigió la sincronización.", tipo_cambio: "fix" }, "");
+    expect(r.tipo_cambio).toBe("fix");
+    expect(JSON.parse(serializarRespuestaTarea(r)).tipo_cambio).toBe("fix");
+    expect(validarReporte({ estado: "completado", resumen: "Actualizado.", tipo_cambio: "inventado" }, "").tipo_cambio).toBeUndefined();
   });
 
   test("un reporte que solo enumera pendientes no confirma que la tarea se completó", () => {
@@ -177,6 +190,20 @@ describe("validarReporte", () => {
     expect(r.estado).toBe("desviacion");
     expect(r.resumen).not.toContain("Marcado como fallo");
   });
+
+  test("marca faltantes de workspace y credenciales como bloqueantes externos", () => {
+    const r = validarReporte({
+      estado: "fallo",
+      resumen: "El workspace sigue sin package.json, lockfile, fuentes ni dist/; CLOUDFLARE_API_TOKEN no está disponible.",
+      cambios: [],
+      pruebas: [],
+      pendientes: ["Configurar Cloudflare y preparar el proyecto"],
+    }, "");
+    expect(r.estado).toBe("fallo");
+    expect(r.bloqueante_externo).toContain("CLOUDFLARE_API_TOKEN");
+    expect(r.bloqueante_externo).toContain("workspace");
+    expect(r.desviacion).toBeNull();
+  });
 });
 
 describe("serializarRespuestaTarea", () => {
@@ -189,6 +216,7 @@ describe("serializarRespuestaTarea", () => {
       pendientes: ["Corregir la expectativa"],
       diff_disponible: true,
       desviacion: "La prueba esperaba otro estado.",
+      bloqueante_externo: "Falta una credencial.",
     }));
     expect(respuesta).toMatchObject({
       tipo: "telo_reporte_tarea",
@@ -199,6 +227,7 @@ describe("serializarRespuestaTarea", () => {
       cambios: [{ archivo: "tests/auditoria.test.ts", tipo: "editar" }],
       pruebas: [{ comando: "bun test tests/auditoria.test.ts", resultado: "fallo" }],
       pendientes: ["Corregir la expectativa"],
+      bloqueante_externo: "Falta una credencial.",
     });
   });
 });
@@ -217,11 +246,30 @@ describe("prompts", () => {
     expect(prompt).toContain("no requieren aprobación previa por sí solos");
   });
 
+  test("el analizador detiene los despliegues para confirmar destino, plataforma y repositorio", () => {
+    const prompt = promptAnalizador("Publica el sitio");
+    expect(prompt).toContain("incluye una confirmación final");
+    expect(prompt).toContain("Vercel, Cloudflare Workers o Cloudflare Pages");
+    expect(prompt).toContain("conexión del repositorio");
+    expect(prompt).toContain("Respeta el máximo de 3 preguntas");
+  });
+
   test("el analizador expone pasos y preguntas bloqueantes, no razonamiento interno", () => {
     const prompt = promptAnalizador("Corrige el error y compruébalo");
     expect(prompt).toContain("identifica la intención, las restricciones, las precondiciones");
     expect(prompt).toContain("preguntas que bloqueen el trabajo");
     expect(prompt).toContain("no incluyas razonamiento interno detallado");
+    expect(prompt).toContain("agrupa hasta 3 preguntas concretas por turno");
+    expect(prompt).toContain("recomienda una opción");
+  });
+
+  test("el obrero clasifica el cambio y resume el resultado, no el prompt", () => {
+    const plan = (validarPlan(planValido) as { valor: Plan }).valor;
+    const prompt = promptObrero(plan);
+    expect(prompt).toContain("Resume el resultado observado, no copies el prompt ni el título");
+    expect(prompt).toContain("tipo_cambio");
+    expect(prompt).toContain("feat para capacidad nueva, fix para fallo corregido");
+    expect(prompt).toContain("bloqueante_externo");
   });
 
   test("el obrero recibe el plan y las notas del usuario", () => {
@@ -249,8 +297,8 @@ describe("prompts", () => {
     expect(texto).toContain("Ordenar las notas");
   });
 
-  test("el tope de planes es el plan inicial más dos replanificaciones", () => {
-    expect(MAX_PLANES).toBe(3);
+  test("el tope de planes es el plan inicial más una replanificación", () => {
+    expect(MAX_PLANES).toBe(2);
   });
 });
 

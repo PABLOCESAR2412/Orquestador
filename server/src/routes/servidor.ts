@@ -21,7 +21,7 @@ const TIEMPO_CACHE_MS = 30_000;
 const TIEMPO_HERRAMIENTA_MS = 3_000;
 const TIEMPO_DF_MS = 5_000;
 const MAX_ENTRADAS_ALMACENAMIENTO = 250_000;
-const HERRAMIENTAS = ["opencode", "codex", "agy", "script", "bwrap", "git", "bun", "node", "ffmpeg", "ffprobe"] as const;
+const HERRAMIENTAS = ["opencode", "codex", "command-code", "agy", "script", "bwrap", "git", "bun", "node", "ffmpeg", "ffprobe"] as const;
 const RAIZ_REPOSITORIO = resolve(import.meta.dir, "../../..");
 
 // Entorno mínimo para los comandos de diagnóstico: nunca se pasan variables TELO_* ni claves.
@@ -95,13 +95,15 @@ async function medirCarpetas(): Promise<Carpeta[]> {
   const datos = resolve(config.dataDir);
   const sinProyectos = { bytes: 0, archivos: 0, truncado: false };
   const medir = (ruta: string) => medirCarpeta(ruta, MAX_ENTRADAS_ALMACENAMIENTO);
-  const [tareas, chat, respaldos, proyectos, perfiles, perfilesCodex, entregables, adjuntos] = await Promise.all([
+  const [tareas, chat, respaldos, proyectos, perfiles, perfilesCodex, perfilesAntigravity, perfilesCommandCode, entregables, adjuntos] = await Promise.all([
     medir(join(datos, "tasks")),
     medir(join(datos, "chat-workspace")),
     medir(join(datos, "respaldos-migracion")),
     config.projectsDir ? medir(resolve(config.projectsDir)) : Promise.resolve(sinProyectos),
     medir(join(datos, "perfiles-opencode")),
     medir(join(datos, "perfiles-codex")),
+    medir(join(datos, "perfiles-antigravity")),
+    medir(join(datos, "perfiles-commandcode")),
     medir(join(datos, "entregables")),
     medir(join(datos, "chat-attachments")),
   ]);
@@ -112,25 +114,35 @@ async function medirCarpetas(): Promise<Carpeta[]> {
     { nombre: "respaldos-migracion", ...respaldos },
     { nombre: "base de datos", ...base, truncado: false },
     { nombre: "proyectos", ...proyectos },
-    { nombre: "sesiones de agentes", bytes: perfiles.bytes + perfilesCodex.bytes, archivos: perfiles.archivos + perfilesCodex.archivos, truncado: perfiles.truncado || perfilesCodex.truncado },
+    { nombre: "sesiones de agentes", bytes: perfiles.bytes + perfilesCodex.bytes + perfilesAntigravity.bytes + perfilesCommandCode.bytes, archivos: perfiles.archivos + perfilesCodex.archivos + perfilesAntigravity.archivos + perfilesCommandCode.archivos, truncado: perfiles.truncado || perfilesCodex.truncado || perfilesAntigravity.truncado || perfilesCommandCode.truncado },
     { nombre: "entregables", ...entregables },
     { nombre: "adjuntos", ...adjuntos },
   ];
 }
 
 let cacheCarpetas: { at: number; valor: Carpeta[] } | null = null;
-let medicionCarpetas: Promise<Carpeta[]> | null = null;
-async function carpetasCacheadas(): Promise<Carpeta[]> {
-  if (cacheCarpetas && Date.now() - cacheCarpetas.at < TIEMPO_CACHE_MS) return cacheCarpetas.valor;
+let medicionCarpetas: Promise<void> | null = null;
+let errorMedicionCarpetas = false;
+function actualizarCarpetasEnSegundoPlano(): void {
+  if (medicionCarpetas) return;
+  errorMedicionCarpetas = false;
   // El recorrido puede medir cientos de miles de entradas. Comparte la medición si varias
-  // solicitudes de estado llegan a la vez, en vez de multiplicar el I/O del servidor.
+  // solicitudes de estado llegan a la vez, y nunca bloquea la respuesta HTTP mientras lee disco.
   medicionCarpetas ??= medirCarpetas()
     .then((valor) => {
       cacheCarpetas = { at: Date.now(), valor };
-      return valor;
     })
+    .catch(() => { errorMedicionCarpetas = true; })
     .finally(() => { medicionCarpetas = null; });
-  return medicionCarpetas;
+}
+
+function carpetasCacheadas(): { carpetas: Carpeta[]; actualizando: boolean; error: boolean } {
+  if (!cacheCarpetas || Date.now() - cacheCarpetas.at >= TIEMPO_CACHE_MS) actualizarCarpetasEnSegundoPlano();
+  return {
+    carpetas: cacheCarpetas?.valor ?? [],
+    actualizando: medicionCarpetas !== null,
+    error: errorMedicionCarpetas,
+  };
 }
 
 // Versión de una herramienta: primera línea, sin rutas. Nunca lanza error.
@@ -250,10 +262,10 @@ servidor.post("/servidor/limpieza", async c => {
 
 // GET /api/servidor
 servidor.get("/servidor", async (c) => {
-  const [disco_datos, disco_proyectos, carpetas, herramientas, commit] = await Promise.all([
+  const estadoCarpetas = carpetasCacheadas();
+  const [disco_datos, disco_proyectos, herramientas, commit] = await Promise.all([
     discoDe(resolve(config.dataDir)),
     discoDe(config.projectsDir ? resolve(config.projectsDir) : null),
-    carpetasCacheadas(),
     herramientasCacheadas(),
     commitDelServidor(),
   ]);
@@ -272,7 +284,9 @@ servidor.get("/servidor", async (c) => {
       { etiqueta: "datos", ...disco_datos },
       { etiqueta: "proyectos", ...disco_proyectos },
     ],
-    carpetas,
+    carpetas: estadoCarpetas.carpetas,
+    carpetas_actualizando: estadoCarpetas.actualizando,
+    carpetas_error: estadoCarpetas.error,
     herramientas,
     ...costosYTareas(),
   });

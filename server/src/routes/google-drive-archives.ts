@@ -45,7 +45,7 @@ class ArchivoError extends Error {
 const dataDir = () => resolve(config.dataDir);
 const tareaDir = (id: string) => join(dataDir(), "tasks", id);
 const perfilHash = (id: string) => createHash("sha256").update(id).digest("hex");
-const perfilesTarea = (id: string) => ["perfiles-opencode", "perfiles-codex"].map((nombre) => ({
+const perfilesTarea = (id: string) => ["perfiles-opencode", "perfiles-codex", "perfiles-antigravity", "perfiles-commandcode"].map((nombre) => ({
   nombre,
   ruta: join(dataDir(), nombre, perfilHash(id)),
 }));

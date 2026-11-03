@@ -148,17 +148,19 @@ test("PR usa remoto real del clon aunque no exista project_git; REST recibe rama
   expect(llamadas).toHaveLength(2);
 });
 
-test("el commit automático toma un asunto convencional de la tarea", { timeout: 60000 }, async () => {
+test("el commit automático resume el reporte real y no copia el prompt del usuario", { timeout: 60000 }, async () => {
   const p = await tareaConCommit();
-  db.query("UPDATE tasks SET title=?,prompt=? WHERE id=?").run(
-    "Corrige el scroll al cargar diagramas",
-    "Arregla el salto de scroll al cargar diagramas",
+  db.query("UPDATE tasks SET title=?,prompt=?,reporte=? WHERE id=?").run(
+    "pero el sistema no se actualiza después de un cambio",
+    "pero el sistema no se actualiza después de un cambio, debería...",
+    JSON.stringify({ estado: "completado", resumen: "Se corrigió la sincronización al guardar cambios.", tipo_cambio: "fix", cambios: [], pruebas: [], pendientes: [] }),
     p.taskId,
   );
   const respuesta = await pedir(`/projects/${p.id}/acciones`, { action: "commit", taskId: p.taskId });
   expect(respuesta.status).toBe(201);
   const accion = await respuesta.json() as { payload: string };
-  expect(JSON.parse(accion.payload).message).toBe("fix: corrige el scroll al cargar diagramas");
+  expect(JSON.parse(accion.payload).message).toBe("fix: corrige la sincronización al guardar cambios");
+  expect(JSON.parse(accion.payload).message).not.toContain("pero el sistema");
 });
 
 test("fusionar PR por número desde el chat no crea otra tarea ni otra rama", async () => {

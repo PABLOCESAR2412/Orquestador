@@ -31,11 +31,13 @@ const PESTANAS: { id: Pestana; texto: string }[] = [
   { id: "almacenamiento", texto: "Almacenamiento" },
 ];
 
-// El prefijo de un modelo ("openai/...") no siempre es el id del proveedor en el servidor ("codex").
-const PROVEEDOR_DE_PREFIJO: Record<string, string> = { openai: "codex" };
+// Codex CLI usa su propio prefijo; OpenAI API queda separado y consume facturación API.
+const PROVEEDOR_DE_PREFIJO: Record<string, string> = {};
 const PESTANAS_PROVEEDOR = [
   { id: "google", texto: "Google Gemini" },
+  { id: "openai", texto: "OpenAI API" },
   { id: "groq", texto: "Groq Cloud" },
+  { id: "xai", texto: "xAI · Grok" },
   { id: "nvidia", texto: "NVIDIA NIM" },
   { id: "openrouter", texto: "OpenRouter" },
   { id: "opencode", texto: "OpenCode" },
@@ -168,7 +170,7 @@ export function SettingsPage() {
   const primarioId = proveedorDeModelo(value?.defaultModel);
   const respaldoId = proveedorDeModelo(prefs.data?.fallbackModel);
   const etiquetaDe = (p: ProviderStatus): string | null =>
-    p.id === primarioId ? "Primario" : p.id === respaldoId ? "Respaldo" : p.id === "codex" ? "Sesión" : p.id === "hermes" ? "Piloto" : p.variable === null ? "Local" : null;
+    p.id === primarioId ? "Primario" : p.id === respaldoId ? "Respaldo" : p.id === "codex" ? "Sesión" : p.id === "commandcode" ? "Plan Go" : p.id === "hermes" ? "Piloto" : p.variable === null ? "Local" : null;
 
   // Diagnóstico interno para distinguir una clave que no expone modelos de una conexión válida.
   const modelosDe = (id: string): { total: number; enSelector: number } | null => {
@@ -195,6 +197,7 @@ export function SettingsPage() {
   const proveedorActivo = proveedoresPrincipales.find((p) => p.id === proveedorSeleccionado) ?? proveedoresPrincipales[0];
   const proveedoresAdicionales = proveedores.data?.filter((p) => !PESTANAS_PROVEEDOR.some((tab) => tab.id === p.id)) ?? [];
   const proveedorCodex = proveedores.data?.find((p) => p.id === "codex");
+  const proveedorCommandCode = proveedores.data?.find((p) => p.id === "commandcode");
   const conexionesTtsLista = (conexionesTts.data?.conexiones ?? []).filter((conexion) => /voice|voz|tts|speech/i.test(conexion.nombre));
   const datos = servidor.data;
   const herramientaMedia = (nombre: string) => datos?.herramientas.find((herramienta) => herramienta.nombre === nombre);
@@ -406,9 +409,9 @@ export function SettingsPage() {
                   {integracionLocal === "cli" && (
                     <div className="aj-stack">
                       <div className="aj-herramientas-locales" aria-label="Estado de CLI del servidor">
-                        {(["opencode", "codex", "agy", "script"] as const).map((nombre) => {
+                        {(["opencode", "codex", "command-code", "agy", "script"] as const).map((nombre) => {
                           const herramienta = herramientaMedia(nombre);
-                          const etiqueta = nombre === "agy" ? "Antigravity CLI" : nombre === "script" ? "Terminal remota para OAuth" : `${nombre[0].toUpperCase()}${nombre.slice(1)} CLI`;
+                          const etiqueta = nombre === "agy" ? "Antigravity CLI" : nombre === "command-code" ? "Command Code CLI" : nombre === "script" ? "Terminal remota para OAuth" : `${nombre[0].toUpperCase()}${nombre.slice(1)} CLI`;
                           return (
                             <div className="aj-herramienta-local" key={nombre}>
                               <div><strong>{etiqueta}</strong><small>{herramienta?.version ?? (servidor.isPending ? "Consultando estado del servidor…" : "Versión no disponible")}</small></div>
@@ -421,6 +424,7 @@ export function SettingsPage() {
                       </div>
                       <div className="aj-proveedores-adicionales" aria-label="Acceso a sesiones CLI">
                         {proveedorCodex && <TarjetaProveedor p={proveedorCodex} etiqueta={etiquetaDe(proveedorCodex)} modelos={modelosDe(proveedorCodex.id)} />}
+                        {proveedorCommandCode && <TarjetaProveedor p={proveedorCommandCode} etiqueta={etiquetaDe(proveedorCommandCode)} modelos={modelosDe(proveedorCommandCode.id)} />}
                         <AntigravityCard />
                       </div>
                     </div>
@@ -769,10 +773,10 @@ function SelectorAlternativasCuota({
             disabled={!prefs || guardar.isPending || !modelosListos || disponibles.length === 0 || ids.length >= 20}
             onChange={(event) => setNuevo(event.target.value)}
           >
-            <option value="">Añadir modelo gratis o de Codex</option>
+            <option value="">Añadir modelo con precio $0 o de Codex</option>
             {disponibles.map((modelo) => (
               <option key={modelo.id} value={modelo.id}>
-                {modelo.name} · {modelo.provider === "codex" ? "plan ChatGPT" : "gratis"}
+                {modelo.name} · {modelo.provider === "codex" ? "plan ChatGPT" : "precio $0 en catálogo"}
               </option>
             ))}
           </select>
@@ -792,7 +796,7 @@ function SelectorAlternativasCuota({
       </div>
       <p className="aj-nota">
         Si el proveedor confirma que se agotó la cuota, Telo prueba estos modelos en orden y muestra el cambio en la actividad.
-        Se admiten hasta 20 modelos con coste cero o cubiertos por la sesión Codex; los modelos con cobro por API no pueden entrar.
+        Se admiten hasta 20 modelos con precio publicado de $0 o cubiertos por la sesión Codex; los modelos con cobro por API no pueden entrar.
         Si también se agotan, el chat o tarea queda listo para continuar cuando elijas otro modelo.
       </p>
       {ids.length > 0 && (
@@ -804,7 +808,7 @@ function SelectorAlternativasCuota({
                 <span className="aj-modelo-cuota-posicion" aria-hidden="true">{indice + 1}</span>
                 <span className="aj-modelo-cuota-nombre">
                   {modelo?.name ?? id}
-                  <small>{modelo?.provider === "codex" ? "Usa el cupo de tu plan ChatGPT" : modelo ? "Gratis según el catálogo actual" : "No disponible en el catálogo; se omitirá"}</small>
+                  <small>{modelo?.provider === "codex" ? "Usa el cupo de tu plan ChatGPT" : modelo ? "Precio $0 según el catálogo; el proveedor aún puede exigir cuenta y aplicar límites" : "No disponible en el catálogo; se omitirá"}</small>
                 </span>
                 <div className="aj-modelo-cuota-acciones">
                   <button type="button" className="aj-btn" aria-label={`Subir ${modelo?.name ?? id}`} disabled={indice === 0 || guardar.isPending} onClick={() => {
@@ -880,7 +884,7 @@ function TarjetaProveedor({
   tabLabelId?: string;
 }) {
   // Codex está activo cuando hay sesión autenticada; los otros motores requieren clave disponible para agentes.
-  const listo = p.id === "codex" || p.id === "opencode" ? p.configured : p.id === "hermes" ? false : p.configured && p.enAgente;
+  const listo = p.id === "codex" || p.id === "commandcode" ? p.sesion : p.id === "opencode" ? p.configured : p.id === "hermes" ? false : p.configured && p.enAgente;
   const sinClave = p.variable === null;
   const nota = notaEstado(p, modelos);
   const esMotorDirecto = p.id !== "opencode" && p.id !== "codex" && PESTANAS_PROVEEDOR.some((tab) => tab.id === p.id);
@@ -907,7 +911,9 @@ function TarjetaProveedor({
               : null;
   const endpoints: Record<string, string> = {
     google: "generativelanguage.googleapis.com",
+    openai: "api.openai.com/v1",
     groq: "api.groq.com/openai/v1",
+    xai: "api.x.ai/v1",
     nvidia: "integrate.api.nvidia.com/v1",
     openrouter: "openrouter.ai/api/v1",
   };
@@ -930,7 +936,12 @@ function TarjetaProveedor({
         {p.id === "opencode" ? (
           <div className={`aj-estado-proveedor${p.configured ? " is-conectado" : " is-error"}`} role="status">
             <span className="aj-proveedor-punto" aria-hidden="true" />
-            {p.configured ? "CLI instalado en el servidor" : "CLI no instalado"}
+            {p.configured ? `CLI instalado · ${p.sesion ? "sesión detectada" : "sin sesión"}` : "CLI no instalado"}
+          </div>
+        ) : p.id === "commandcode" ? (
+          <div className={`aj-estado-proveedor${p.sesion ? " is-conectado" : p.configured ? "" : " is-error"}`} role="status">
+            <span className="aj-proveedor-punto" aria-hidden="true" />
+            {p.sesion ? "CLI y sesión Go detectados" : p.configured ? "CLI instalado · falta iniciar sesión" : "CLI no instalado"}
           </div>
         ) : p.id === "hermes" ? (
           <div className="aj-estado-proveedor" role="status">
@@ -972,7 +983,14 @@ function TarjetaProveedor({
       </div>
 
       {(credencialesAbiertas || !p.guardable) && <div className="aj-campos" id={`aj-prov-campos-${p.id}`}>
-        {p.id === "hermes" ? (
+        {p.id === "commandcode" ? (
+          <div className="aj-campo">
+            <div className="aj-campo-etiqueta"><span>Sesión de Command Code Go</span></div>
+            <p className="aj-nota">Telo conserva la sesión en el servidor y monta sus credenciales en modo de solo lectura. Las reglas internas bloquean la lectura de la credencial y las acciones Git/deploy automáticas.</p>
+            <pre className="aj-registros-texto">command-code login</pre>
+            <p className="aj-nota">Ejecuta el comando por SSH como usuario <code>orquestador</code>. Si ya aparece una sesión, no hace falta volver a iniciar sesión.</p>
+          </div>
+        ) : p.id === "hermes" ? (
           <div className="aj-campo">
             <div className="aj-campo-etiqueta"><span>Preparar sesión del piloto</span></div>
             {p.sesion ? (
@@ -1015,7 +1033,7 @@ function TarjetaProveedor({
           </div>
         ) : null}
 
-        {p.id !== "codex" && p.id !== "hermes" && <div className="aj-campo">
+        {p.id !== "codex" && p.id !== "commandcode" && p.id !== "hermes" && <div className="aj-campo">
           <div className="aj-campo-etiqueta">
             <span>{p.id === "opencode" ? "Tipo de conexión" : "Endpoint base"}</span>
           </div>
@@ -1033,8 +1051,34 @@ function TarjetaProveedor({
           {errorPrueba && <p className="aj-error" role="alert">{errorPrueba}</p>}
         </div>
       )}
+      {p.id === "nvidia" && (
+        <p className="aj-nota aj-nota-aviso">
+          El precio $0 del catálogo no activa el acceso: NVIDIA requiere una clave API y una cuenta con acceso al servicio. Probar conexión solo consulta el catálogo; no comprueba el saldo ni las cuotas de inferencia. Cuando el proveedor rechaza una llamada por límite, Telo marca el modelo como agotado.{" "}
+          <a href="https://build.nvidia.com/explore/discover" target="_blank" rel="noopener noreferrer">Abrir NVIDIA API Catalog</a>
+        </p>
+      )}
+      {p.id === "openai" && (
+        <p className="aj-nota aj-nota-aviso">
+          La clave de OpenAI API es independiente de Codex CLI y del plan ChatGPT Plus. La lista de modelos se consulta sin generar texto; Telo registra su propio consumo y enlaza al uso y facturación de la cuenta. Si tienes Pro o Business, revisa si puedes reclamar créditos API en el panel de facturación.
+          {" "}<a href="https://platform.openai.com/usage" target="_blank" rel="noopener noreferrer">Uso de OpenAI API</a>
+        </p>
+      )}
+      {p.id === "xai" && (
+        <p className="aj-nota aj-nota-aviso">
+          La API de Grok se factura por separado de la app/web de Grok y requiere una cuenta API con créditos. Las cuotas de solicitudes y tokens varían por modelo y nivel de gasto; consulta el panel del equipo.
+          {" "}<a href="https://console.x.ai/" target="_blank" rel="noopener noreferrer">Abrir xAI Console</a>
+        </p>
+      )}
       {nota && <p className="aj-nota aj-nota-aviso">{nota}</p>}
+      {p.id === "opencode" && (
+        <p className="aj-nota"><a href="https://opencode.ai/console" target="_blank" rel="noopener noreferrer">Abrir OpenCode Console para revisar uso y cuenta</a></p>
+      )}
       {p.id === "opencode" && !p.configured && <InstalarHerramienta id="opencode" nombre="OpenCode" />}
+      {p.id === "commandcode" && (
+        <InstalarHerramienta id="commandcode" nombre="Command Code CLI">
+          {!p.sesion && <p className="aj-nota">El CLI está instalado. Entra por SSH al VM con el usuario <code>orquestador</code> y ejecuta <code>command-code login</code>.</p>}
+        </InstalarHerramienta>
+      )}
       {p.id === "codex" && (
         <InstalarHerramienta id="codex" nombre="Codex">
           <LoginCodexPanel />
@@ -1324,7 +1368,11 @@ function IconoVisibilidad({ visible }: { visible: boolean }) {
 // Lo que impide que un proveedor llegue a los agentes, con el nombre real de la variable.
 // Un proveedor sin clave que se puede guardar ya lo dice su propio campo, así que no se repite aquí.
 function notaEstado(p: ProviderStatus, modelos: { total: number } | null): string | null {
-  if (p.id === "opencode") return p.configured ? null : "El CLI de OpenCode no se encontró en el servidor.";
+  if (p.id === "opencode") {
+    if (!p.configured) return "El CLI de OpenCode no se encontró en el servidor.";
+    if (!p.sesion) return "El CLI está instalado, pero no detecto una sesión de OpenCode Console. Inicia sesión en el servidor con `opencode auth login`; sin esa cuenta, los modelos Console pueden aparecer en una lista antigua y rechazar el uso.";
+    return "Un precio $0 solo indica la tarifa publicada. El acceso y los límites dependen de OpenCode Console; Telo marca el modelo como agotado cuando el proveedor informa que alcanzó su cuota.";
+  }
   // Codex: la sesión se inicia desde su panel; los agentes pueden seleccionarlo.
   if (p.id === "codex") return p.configured ? "Sesión conectada con ChatGPT. Los modelos de Codex están disponibles en el selector." : null;
   if (p.id === "hermes") return "Preparación del harness. Hermes todavía no ejecuta chats ni tareas de Telo.";
@@ -1628,6 +1676,14 @@ function IconoProveedor({ id }: { id: string }) {
       <svg width="18" height="18" viewBox="0 0 24 24" {...TRAZO}>
         <polygon points="12 2 21 7 21 17 12 22 3 17 3 7" />
         <circle cx="12" cy="12" r="3" />
+      </svg>
+    );
+  }
+  if (id === "commandcode") {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" {...TRAZO}>
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <path d="m7 10 3 2-3 2M12.5 14h4" />
       </svg>
     );
   }

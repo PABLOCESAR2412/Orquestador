@@ -476,7 +476,15 @@ export function HistorialCambios({
                   return (
                     <article className="tl-version-card" key={actualizacion.pr} aria-label={`PR #${actualizacion.pr}`}>
                       <div className="tl-version-header">
-                        <span className="tl-version-tag">PR #{actualizacion.pr}</span>
+                        <a
+                          className="tl-version-tag"
+                          href={`https://github.com/PABLOCESAR2412/Orquestador/pull/${actualizacion.pr}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={`Ver estado y cambios del pull request ${actualizacion.pr} en GitHub`}
+                        >
+                          PR #{actualizacion.pr}
+                        </a>
                         <span className="tl-badge-tipo">{tipoLabel}</span>
                         <span className="tl-version-fecha">{actualizacion.fecha}</span>
                       </div>
@@ -486,6 +494,14 @@ export function HistorialCambios({
                       <p className="tl-version-resumen">
                         {cantidad} {cantidad === 1 ? "cambio registrado" : "cambios registrados"}.
                       </p>
+                      <a
+                        className="tl-version-pr-enlace"
+                        href={`https://github.com/PABLOCESAR2412/Orquestador/pull/${actualizacion.pr}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Ver estado y cambios en GitHub
+                      </a>
                       {cantidad > 1 && (
                         <ul className="tl-version-items">
                           {actualizacion.cambios.map((cambio, idx) => {

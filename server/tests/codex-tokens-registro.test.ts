@@ -1,4 +1,4 @@
-﻿import { expect, spyOn, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { afterAll } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -36,6 +36,33 @@ function procesoFalso(codigo: number): never {
     pid: 999_999_999,
   } as never;
 }
+
+test("arranque y resume conservan sandbox, perfil y permisos de solo lectura", async () => {
+  const which = spyOn(Bun, "which").mockReturnValue("codex-falso");
+  const capturas: { args: string[]; env: Record<string, string> }[] = [];
+  const spawn = spyOn(Bun, "spawn").mockImplementation(((args: string[], opts: any) => {
+    capturas.push({ args, env: opts.env });
+    return procesoFalso(1);
+  }) as unknown as typeof Bun.spawn);
+  const anterior = process.env.TELO_AISLAMIENTO;
+  process.env.TELO_AISLAMIENTO = "desactivado";
+  try {
+    for (const soloLectura of [false, true]) {
+      await expect(runCodex({ prompt: "revisa", model: "codex/prueba", cwd, soloLectura, perfilCodexDir: cwd,
+        sessionId: soloLectura ? "11111111-2222-3333-4444-555555555555" : null })).rejects.toThrow("Codex falló");
+    }
+    expect(capturas[0]?.args).toContain('sandbox_mode="workspace-write"');
+    expect(capturas[1]?.args).toContain('sandbox_mode="read-only"');
+    expect(capturas[1]?.args).toContain("resume");
+    for (const captura of capturas) {
+      expect(captura.args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+      expect(captura.env.CODEX_HOME).toBe(cwd);
+    }
+  } finally {
+    spawn.mockRestore(); which.mockRestore();
+    if (anterior === undefined) delete process.env.TELO_AISLAMIENTO; else process.env.TELO_AISLAMIENTO = anterior;
+  }
+});
 
 test("Codex deja registrado el gasto real aunque el turno muera a medias, una sola vez", async () => {
   const which = spyOn(Bun, "which").mockReturnValue("codex-falso");

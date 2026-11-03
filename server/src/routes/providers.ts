@@ -1,13 +1,15 @@
 import { Hono } from "hono";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { proveedorConClave, tieneClaveProveedor, valorClaveApiProveedor } from "../claves-proveedor";
+import { claveDeAuthJson, proveedorConClave, tieneClaveProveedor, valorClaveApiProveedor } from "../claves-proveedor";
 import { cancelarLoginCodex, confirmarLoginCodex, estadoLoginCodex, iniciarLoginCodex, LoginError, sesionCodexConectada } from "../login-cli";
-import { cancelarLoginAntigravity, enviarCodigoAntigravity, estadoLoginAntigravity, iniciarLoginAntigravity, LoginAntigravityError } from "../login-antigravity";
+import { cancelarLoginAntigravity, enviarCodigoAntigravity, estadoLoginAntigravityEnVivo, iniciarLoginAntigravity, LoginAntigravityError } from "../login-antigravity";
 import { hallarEjecutable } from "../ejecutable";
 import { carpetaHome } from "../hogar";
 import { listarModelosCodex } from "../modelos-codex";
 import { obtenerCuotaCodex } from "../cuota-codex";
+import { obtenerCuotaAntigravity } from "../cuota-antigravity";
+import { autenticacionCommandCode } from "../runners/aislamiento";
 
 
 type ProviderStatus = {
@@ -81,6 +83,8 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
   const sesionCodex = await sesionCodexConectada();
   const hermesInstalado = hallarEjecutable("hermes") !== null;
   const hermesConectado = hermesInstalado && hermesCodexAuthConfigurada();
+  const commandCodeInstalado = hallarEjecutable("command-code") !== null || (process.platform !== "win32" && hallarEjecutable("cmd") !== null);
+  const commandCodeConectado = commandCodeInstalado && autenticacionCommandCode() !== null;
   return [
     {
       id: "opencode",
@@ -92,7 +96,7 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
       enAgente: true,
       guardable: false,
       guardada: false,
-      sesion: false,
+      sesion: Boolean(process.env.OPENCODE_API_KEY) || claveDeAuthJson("opencode") !== null,
     },
     {
       id: "codex",
@@ -108,6 +112,22 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
       guardable: false,
       guardada: false,
       sesion: sesionCodex,
+    },
+    {
+      id: "commandcode",
+      name: "Command Code Go",
+      configured: commandCodeInstalado,
+      implemented: true,
+      hint: commandCodeConectado
+        ? "CLI instalado y sesión detectada. Usa la suscripción Go; Telo mantiene límites y perfiles propios."
+        : commandCodeInstalado
+          ? "CLI instalado, pero no detecto una sesión. Inicia `command-code login` en una terminal SSH del servidor."
+          : "CLI de Command Code no instalado. El plan Go usa la sesión OAuth de su CLI, no una Provider API key.",
+      variable: null,
+      enAgente: commandCodeConectado,
+      guardable: false,
+      guardada: false,
+      sesion: commandCodeConectado,
     },
     {
       id: "hermes",
@@ -133,9 +153,21 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
       enAgente,
     ),
     proveedorGuardable(
+      "openai",
+      "OpenAI API",
+      "Clave de OpenAI Platform. La API se factura y consulta por separado de Codex CLI y de ChatGPT.",
+      enAgente,
+    ),
+    proveedorGuardable(
       "groq",
       "Groq",
       "Clave de Groq. Se guarda aquí, cifrada, o viene del archivo de entorno del servidor.",
+      enAgente,
+    ),
+    proveedorGuardable(
+      "xai",
+      "xAI (Grok API)",
+      "Clave de xAI API. La cuota de Grok en la web/app y la facturación de xAI API son productos separados.",
       enAgente,
     ),
     proveedorGuardable(
@@ -166,7 +198,9 @@ providers.post("/providers/:id/probar", async (c) => {
 
   const destinos: Record<string, { url: string; headers: Record<string, string> }> = {
     google: { url: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1", headers: { "x-goog-api-key": clave } },
+    openai: { url: "https://api.openai.com/v1/models", headers: { Authorization: `Bearer ${clave}` } },
     groq: { url: "https://api.groq.com/openai/v1/models", headers: { Authorization: `Bearer ${clave}` } },
+    xai: { url: "https://api.x.ai/v1/models", headers: { Authorization: `Bearer ${clave}` } },
     nvidia: { url: "https://integrate.api.nvidia.com/v1/models", headers: { Authorization: `Bearer ${clave}` } },
     openrouter: { url: "https://openrouter.ai/api/v1/models", headers: { Authorization: `Bearer ${clave}` } },
   };
@@ -207,6 +241,10 @@ providers.get("/providers/codex/models", async (c) => {
   }
 });
 providers.get("/providers/codex/usage", async (c) => c.json(await obtenerCuotaCodex(c.req.query("refresh") === "1")));
+providers.get("/providers/antigravity/usage", async (c) => {
+  c.header("Cache-Control", "no-store");
+  return c.json(await obtenerCuotaAntigravity(c.req.query("refresh") === "1"));
+});
 providers.post("/providers/codex/login", async (c) => {
   try {
     return c.json(await iniciarLoginCodex(), 202);
@@ -219,9 +257,9 @@ providers.delete("/providers/codex/login", async (c) => c.json(await cancelarLog
 providers.post("/providers/codex/confirmar", async (c) => c.json(await confirmarLoginCodex()));
 
 // Antigravity requiere un TTY remoto: el servidor presenta su URL y devuelve al prompt el código de Google.
-providers.get("/providers/antigravity/login", (c) => {
+providers.get("/providers/antigravity/login", async (c) => {
   c.header("Cache-Control", "no-store");
-  return c.json(estadoLoginAntigravity());
+  return c.json(await estadoLoginAntigravityEnVivo());
 });
 providers.post("/providers/antigravity/login", (c) => {
   c.header("Cache-Control", "no-store");

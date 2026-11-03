@@ -22,10 +22,13 @@ const PROVEEDOR_LABEL: Record<string, string> = {
   opencode: "OpenCode",
   anthropic: "Anthropic",
   openai: "OpenAI API",
+  xai: "xAI · Grok API",
+  antigravity: "Antigravity CLI",
   google: "Google API",
   deepseek: "DeepSeek",
   github: "GitHub Copilot",
   openrouter: "OpenRouter",
+  commandcode: "Command Code Go",
   groq: "Groq API",
   nvidia: "NVIDIA API",
 };
@@ -39,6 +42,8 @@ export function proveedorDeModelo(modelo: string | null): string {
   if (m.startsWith("google/") || m.includes("/google/") || m.includes("gemini") || m.includes("argon")) return "google";
   if (m.startsWith("codex/") || m === "codex" || m.includes("/codex/")) return "codex";
   if (m.startsWith("openai/") || m.includes("/openai/")) return "openai";
+  if (m.startsWith("xai/") || m.includes("/xai/")) return "xai";
+  if (m.startsWith("antigravity/") || m.includes("/antigravity/")) return "antigravity";
   if (m.startsWith("anthropic/") || m.includes("claude")) return "anthropic";
   if (m.startsWith("groq/") || m.includes("/groq/")) return "groq";
   if (m.startsWith("nvidia/") || m.includes("/nvidia/")) return "nvidia";
@@ -67,7 +72,8 @@ const TIER_BARS: Record<CostTier, number> = {
 export const tierBars = (tier: CostTier) => TIER_BARS[tier];
 
 export function formatPrice(m: ModelInfo): string {
-  if (m.free) return "Sin costo";
+  if (m.free) return "$0 en catálogo";
+  if (m.costAvailable === false) return "Precio no publicado";
   return `$${m.inputUsd} / $${m.outputUsd} por M`;
 }
 
@@ -114,6 +120,8 @@ export const EVENT_LABEL: Record<TaskEventKind, string> = {
   clasificacion_jev: "Clasificación sugerida por Jev",
   memoria_evaluada: "Propuesta de memoria evaluada por Jev",
   memoria_propuesta: "Propuesta de memoria guardada para revisión",
+  graphify_consulta: "Graphify del proyecto",
+  skills_activadas: "Skills de esta fase",
   conflictos_pr_preparados: "PR preparado: conflictos por resolver",
 };
 
@@ -202,6 +210,8 @@ export function motivoTexto(motivo: string | null): string | null {
       return "El inicio de sesión no se completó. Vuelve a intentarlo.";
     case "antigravity_login_no_confirmado":
       return "Google no confirmó el acceso. Revisa el código y vuelve a iniciar sesión.";
+    case "antigravity_sesion_no_persistida":
+      return "Google aceptó el acceso, pero Antigravity no pudo volver a leerlo desde el keyring del servicio. Revisa el bus de usuario y vuelve a autorizar.";
     case "antigravity_login_sin_enlace":
       return "Antigravity no mostró el enlace de Google. Completa su configuración inicial por SSH y vuelve a intentar.";
     case "cancelado":

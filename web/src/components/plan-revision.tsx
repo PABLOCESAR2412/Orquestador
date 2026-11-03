@@ -41,11 +41,6 @@ export function PlanRevision({ tarea }: { tarea: Task }) {
           {p.requiere_aprobacion.join(", ")}.
         </p>
       )}
-      {p.preguntas.map((q, i) => (
-        <p key={i} className="hint">
-          {q}
-        </p>
-      ))}
       {tarea.error && <p role="alert">{tarea.error}</p>}
       <div className="tl-plan-aviso-composer">
         <span>Responde a las preguntas o indica qué cambiar en el compositor de abajo antes de aprobar.</span>

@@ -192,7 +192,7 @@ export function borrarConexionMcp(id: string): boolean {
 
 // Los agentes reciben solo servidores habilitados. Los secretos cifrados nunca se serializan a la API
 // ni se escriben en archivos de configuración: se resuelven por variables temporales del proceso.
-export function configuracionMcpParaAgente(incluirContext7 = false): ConfiguracionMcpAgente {
+export function configuracionMcpParaAgente(incluirContext7 = false, soloLectura = false): ConfiguracionMcpAgente {
   const filas = db.query<FilaMcp, []>(
     `SELECT id, name, url, enabled, token_iv, token_tag, token_enc, created_at, updated_at
        FROM mcp_connections ORDER BY name COLLATE NOCASE`,
@@ -206,6 +206,8 @@ export function configuracionMcpParaAgente(incluirContext7 = false): Configuraci
 
   for (const fila of filas) {
     if (fila.enabled !== 1) continue;
+    // Un filesystem de solo lectura no limita las escrituras de herramientas remotas.
+    if (soloLectura && fila.url !== CONTEXT7_URL) continue;
     const servidor: ServidorMcpAgente = {
       clave: `telo_${fila.id.replace(/-/g, "").slice(0, 16)}`,
       url: fila.url,

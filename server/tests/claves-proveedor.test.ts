@@ -276,7 +276,7 @@ describe("rutas de claves de proveedor", () => {
     expect(texto).not.toContain(VALOR);
     const datos = JSON.parse(texto) as { disponible: boolean; proveedores: { id: string; configurada: boolean }[] };
     expect(datos.disponible).toBe(true);
-    expect(datos.proveedores.map((p) => p.id)).toEqual(["groq", "nvidia", "google", "openrouter"]);
+    expect(datos.proveedores.map((p) => p.id)).toEqual(["openai", "groq", "xai", "nvidia", "google", "openrouter"]);
     expect(datos.proveedores.find((p) => p.id === "groq")?.configurada).toBe(true);
   });
 
@@ -290,7 +290,7 @@ describe("rutas de claves de proveedor", () => {
   });
 
   test("PUT con proveedor desconocido da 404", async () => {
-    const res = await put("openai", { valor: VALOR });
+    const res = await put("proveedor-no-existente", { valor: VALOR });
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "proveedor_desconocido" });
   });
@@ -325,7 +325,7 @@ describe("rutas de claves de proveedor", () => {
   });
 
   test("DELETE de proveedor desconocido da 404 proveedor_desconocido", async () => {
-    const res = await clavesProveedor.request("/claves-proveedor/openai", { method: "DELETE" });
+    const res = await clavesProveedor.request("/claves-proveedor/proveedor-no-existente", { method: "DELETE" });
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "proveedor_desconocido" });
   });

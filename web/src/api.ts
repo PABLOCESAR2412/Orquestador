@@ -253,6 +253,59 @@ export type GoogleLiveMetrics = {
   ultimaComprobacion: string;
 };
 
+export type LimitesOpenAI = {
+  estado: "consultado" | "sin_configurar" | "sin_permisos" | "no_disponible";
+  mensaje: string;
+  limites: { modelo: string; rpm: number | null; tpm: number | null; rpd: number | null }[];
+  ultimaComprobacion: string;
+};
+
+export type UsoOpenAIAdmin = {
+  estado: "consultado" | "sin_configurar" | "sin_permisos" | "no_disponible";
+  mensaje: string;
+  desde: string;
+  costoUsd30d: number | null;
+  tokensEntrada30d: number;
+  tokensSalida30d: number;
+  solicitudes30d: number;
+  porModelo: { modelo: string; solicitudes: number; tokensEntrada: number; tokensSalida: number }[];
+  ultimaComprobacion: string;
+};
+
+export type LimitesOpenCode = {
+  estado: "consultado" | "sin_cli" | "sin_sesion" | "no_disponible";
+  mensaje: string;
+  espacio: string | null;
+  go: {
+    rolling: { percent: number; limited: boolean; resetsAt: number };
+    weekly: { percent: number; limited: boolean; resetsAt: number };
+    monthly: { percent: number; limited: boolean; resetsAt: number };
+  } | null;
+  presupuestos: {
+    id: string;
+    limit: number;
+    spent: number;
+    scope: "each" | "combined";
+    per: "set" | "model";
+    coverage: "all" | "models";
+    resetsAt: number;
+    models: { providerID: string; modelID: string; name: string; spent: number }[];
+  }[];
+  comprobadoEn: string;
+};
+
+export type LimitesOpenRouter = {
+  estado: "consultado" | "sin_clave" | "clave_invalida" | "rate_limit" | "no_disponible";
+  mensaje: string;
+  usoUsd: number | null;
+  limiteUsd: number | null;
+  restanteUsd: number | null;
+  reinicio: string | null;
+  esGratis: boolean | null;
+  solicitudesGratis: { limite: number; usadas: number; restantes: number } | null;
+  comprobadoEn: string;
+};
+
 export type CuotaCodex = {
   estado: "activo" | "sin_cli" | "sin_sesion" | "no_disponible";
   plan: string | null;
@@ -268,14 +321,46 @@ export type CuotaCodex = {
   comprobadoEn: string;
 };
 
+export type CuotaAntigravity = {
+  estado: "activo" | "sin_cli" | "sin_sesion" | "no_disponible";
+  respuesta: string | null;
+  detalle: string | null;
+  comprobadoEn: string;
+};
+
 export type UsoProveedor = {
   id: string;
   nombre: string;
   ultimas5h: UsoVentanaProveedor;
   ultimos7d: UsoVentanaProveedor;
   mesActual: UsoVentanaProveedor;
+  porModelo: UsoModeloProveedor[];
   precision: "registro_telo" | "sin_datos";
   googleLive?: GoogleLiveMetrics;
+  openaiLimits?: LimitesOpenAI;
+  openaiUsage?: UsoOpenAIAdmin;
+  openCodeLimits?: LimitesOpenCode;
+  openRouterLimits?: LimitesOpenRouter;
+};
+
+export type UsoModeloProveedor = {
+  modelo: string;
+  ejecucionesDesdeReinicioDiario: number;
+  tokensDesdeReinicioDiario: number;
+  tokensMedidosDesdeReinicioDiario: number;
+  tokensEstimadosDesdeReinicioDiario: number;
+  ejecucionesUltimas24h: number;
+  tokensUltimas24h: number;
+  tokensMedidosUltimas24h: number;
+  tokensEstimadosUltimas24h: number;
+  ejecucionesUltimoMinuto: number;
+  tokensUltimoMinuto: number;
+  ejecucionesUltimos30d: number;
+  ultimoRechazo: {
+    categoria: "cuota" | "limite_temporal" | "acceso" | "modelo";
+    estadoHttp: number | null;
+    fecha: string;
+  } | null;
 };
 
 export type UsoVentanaProveedor = {
@@ -352,6 +437,8 @@ export type ServidorEstado = {
   proceso: { arrancado: string; segundosActivo: number; bun: string; commit: string | null; rssMb: number; plataforma: string };
   disco: { etiqueta: "datos" | "proyectos"; totalBytes: number; usadoBytes: number; libreBytes: number }[];
   carpetas: { nombre: string; bytes: number; archivos: number; truncado: boolean }[];
+  carpetas_actualizando: boolean;
+  carpetas_error: boolean;
   herramientas: { nombre: string; version: string | null; disponible: boolean }[];
   costos: { mesUsd: number; ultimos30dUsd: number; llamadas30d: number; tokens30d: number };
   tareas: { ultimos30d: number; en_cola: number; en_curso: number; max_simultaneas: number };
@@ -467,6 +554,7 @@ export type ModelInfo = {
   context: number;
   variants: string[];
   free: boolean;
+  costAvailable?: boolean;
   costTier: CostTier;
   costWarning: string | null;
   group: string;
@@ -511,6 +599,7 @@ export type TaskPlan = {
 export type TaskReport = {
   estado: "completado" | "fallo" | "desviacion";
   resumen: string;
+  tipo_cambio?: "feat" | "fix" | "docs" | "test" | "refactor" | "perf" | "build" | "ci" | "style" | "revert" | "chore";
   cambios: { archivo: string; tipo: string }[];
   pruebas: { comando: string; resultado: string }[];
   pendientes: string[];
@@ -579,6 +668,8 @@ export type TaskEventKind =
   | "clasificacion_jev"
   | "memoria_evaluada"
   | "memoria_propuesta"
+  | "graphify_consulta"
+  | "skills_activadas"
   | "conflictos_pr_preparados"
   | "seguida";
 
@@ -1089,7 +1180,7 @@ export const api = {
     request<{ ok: boolean }>(`/api/programadas/${id}`, { method: "DELETE" }),
   runProgramada: (id: string) =>
     request<Task>(`/api/programadas/${id}/ejecutar`, { method: "POST", body: "{}" }),
-  usage: () => request<{ generado: string; proveedores: UsoProveedor[]; googleLive?: GoogleLiveMetrics }>("/api/uso"),
+  usage: (refresh = false) => request<{ generado: string; proveedores: UsoProveedor[]; googleLive?: GoogleLiveMetrics; openaiLimits?: LimitesOpenAI; openaiUsage?: UsoOpenAIAdmin; openCodeLimits?: LimitesOpenCode; openRouterLimits?: LimitesOpenRouter }>(`/api/uso${refresh ? "?refresh=1" : ""}`),
   codexUsage: (forzar = false) => request<CuotaCodex>(`/api/providers/codex/usage${forzar ? "?refresh=1" : ""}`),
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
   googleDriveArchives: () => request<AlmacenamientoDrive>("/api/google-drive/archives"),
@@ -1109,6 +1200,7 @@ export const api = {
     }),
   codexLogin: () => request<LoginCodex>("/api/providers/codex/login"),
   codexModels: () => request<{ generado: string; models: ModeloCodex[] }>("/api/providers/codex/models"),
+  antigravityUsage: (forzar = false) => request<CuotaAntigravity>(`/api/providers/antigravity/usage${forzar ? "?refresh=1" : ""}`),
   iniciarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "POST", body: "{}" }),
   cancelarCodexLogin: () => request<LoginCodex>("/api/providers/codex/login", { method: "DELETE" }),
   confirmarCodexLogin: () => request<LoginCodex>("/api/providers/codex/confirmar", { method: "POST" }),

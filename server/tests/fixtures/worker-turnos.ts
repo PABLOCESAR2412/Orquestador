@@ -2,8 +2,10 @@
 import { mock } from "bun:test";
 import { strict as assert } from "node:assert";
 import type { OpcionesAgente } from "../../src/ejecutar";
+import { pideSubagentes } from "../../../shared/delegacion";
 
 const acciones: { taskId: string; messageId: string | null }[] = [];
+const llamadas: OpcionesAgente[] = [];
 mock.module("../../src/comprobaciones-tarea", () => ({ comprobarHerramientas: () => [], revisarDependencias: () => [] }));
 mock.module("../../src/jev", () => ({ clasificarTareaJev: async () => null }));
 mock.module("../../src/routes/repository-actions", () => ({
@@ -12,13 +14,14 @@ mock.module("../../src/routes/repository-actions", () => ({
     return Response.json({ ok: true });
   } },
 }));
-mock.module("../../src/subagentes", () => ({ prepararSubagentes: async () => ({
+mock.module("../../src/subagentes", () => ({ pideSubagentes, prepararSubagentes: async () => ({
   instruccion: "", directorio: "fixture", rutaCaptura: "fixture", finalizarCaptura() {}, limpiar() {},
 }) }));
 mock.module("../../src/ejecutar", () => ({
   ErrorCuota: class extends Error {},
   promptContinuacion: (prompt: string) => prompt,
   ejecutarAgente: async (opts: OpcionesAgente) => {
+    llamadas.push(opts);
     opts.onLinea?.(JSON.stringify({ type: "text", part: { text: `actividad ${opts.taskId}` } }));
     opts.onSubagente?.(JSON.stringify({ kind: "created", sessionId: `hijo_${opts.taskId}_${opts.soloLectura ? "plan" : "obra"}`, title: `hijo ${opts.taskId}` }));
     const text = JSON.stringify(opts.soloLectura ? {
@@ -73,6 +76,27 @@ try {
   assert.equal(acciones.find((accion) => accion.taskId === legacy)?.messageId, null);
   assert.equal(db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM chat_actividad WHERE conversation_id=?").get(chatLegacy)?.n, 0);
   assert.equal(db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM conversations WHERE parent_conversation_id=?").get(chatLegacy)?.n, 0);
+  const proyectoGestionado = crypto.randomUUID(), chatGestionado = crypto.randomUUID(), turnoGestionado = crypto.randomUUID();
+  db.query("INSERT INTO projects(id,name) VALUES (?,'Gestionado')").run(proyectoGestionado);
+  db.query("INSERT INTO conversations(id,project_id,orquestacion_habilitada,orquestacion_trabajadores) VALUES (?,?,1,?)")
+    .run(chatGestionado, proyectoGestionado, JSON.stringify([{ model: "codex/revisor", rol: "seguridad" }]));
+  db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,'user','Usa subagentes para auditar el proyecto')").run(turnoGestionado, chatGestionado);
+  const gestionada = crearTarea({ ...base, projectId: proyectoGestionado, conversationId: chatGestionado, messageId: turnoGestionado, prompt: "Usa subagentes para auditar el proyecto" });
+  await esperar(() => estado(gestionada).status === "waiting_approval");
+  const revisores = llamadas.filter((l) => l.taskId === gestionada && l.usageRole?.startsWith("reviewer:"));
+  assert.equal(revisores.length, 1);
+  assert.equal(revisores[0].model, "codex/revisor");
+  assert.equal(revisores[0].soloLectura, true);
+  assert.equal(revisores[0].turnId, turnoGestionado);
+  assert(llamadas.find((l) => l.taskId === gestionada && l.usageRole === "analyzer")?.prompt.includes("Informes auxiliares"));
+  assert.equal(aprobarPlan(gestionada, null, estado(gestionada).plan_hash), "ok");
+  await esperar(() => estado(gestionada).status === "done");
+  assert.equal(llamadas.filter((l) => l.taskId === gestionada && l.usageRole === "worker").length, 1);
+  const turnoDirecto = crypto.randomUUID();
+  db.query("INSERT INTO messages(id,conversation_id,role,content) VALUES(?,?,'user','Describe el proyecto')").run(turnoDirecto, chatGestionado);
+  const directa = crearTarea({ ...base, projectId: proyectoGestionado, conversationId: chatGestionado, messageId: turnoDirecto, prompt: "Describe el proyecto" });
+  await esperar(() => estado(directa).status === "waiting_approval");
+  assert.equal(llamadas.filter((l) => l.taskId === directa && l.usageRole?.startsWith("reviewer:")).length, 0);
   console.log("turnos de tareas verificados");
   db.close();
   process.exit(0);

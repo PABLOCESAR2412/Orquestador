@@ -3,11 +3,14 @@ import { registrarEvento } from "./eventos";
 import { getModels, validateSelection } from "./models";
 import { getPreferences } from "./preferences";
 import { entornoDeProyecto } from "./secretos";
-import { entornoProveedores } from "./claves-proveedor";
+import { entornoProveedores, esClaveDeInferencia } from "./claves-proveedor";
 import { redactar } from "./redaccion";
-import { AislamientoError, aislamientoActivo, prepararPerfilCodex, prepararPerfilOpenCode } from "./runners/aislamiento";
+import { AislamientoError, aislamientoActivo, prepararPerfilAntigravity, prepararPerfilCommandCode, prepararPerfilCodex, prepararPerfilOpenCode, eliminarPerfilAntigravity, eliminarPerfilCommandCode, eliminarPerfilCodex, eliminarPerfilOpenCode } from "./runners/aislamiento";
+import { setTimeout as esperar } from "node:timers/promises";
 import { ErrorAgente, runOpenCode, type RunResult, type Usage } from "./runners/opencode";
 import { runCodex } from "./runners/codex";
+import { runAntigravity } from "./runners/antigravity";
+import { runCommandCode } from "./runners/commandcode";
 import { promptConHistorial, sesionCompatible } from "./conversacion-contexto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -29,6 +32,8 @@ const MINIMO_OCULTAR = 4;
 
 export type OpcionesAgente = {
   prompt: string;
+  solicitudSkills?: string;
+  modelosAuxiliares?: string[];
   model: string;
   variant?: string | null;
   sessionId?: string | null;
@@ -67,7 +72,8 @@ export type ResultadoAgente = RunResult & { modelo: string; variante: string | n
 export const CONTRATO_EJECUCION = [
   "Contrato de ejecución común de Telo (aplica a cualquier modelo y proveedor):",
   "- Interpreta la petición como objetivo; respeta restricciones y usa el historial, memoria, instrucciones y skills pertinentes. No repitas trabajo terminado.",
-  "- Define alcance, precondiciones y evidencia de término. Si falta un dato bloqueante, pregunta; si no, elige una opción segura y explícala al final.",
+  "- Define alcance, precondiciones y evidencia de término. Si falta un dato bloqueante, agrupa hasta 3 preguntas concretas; si no, elige una opción segura y explícala al final. No repitas preguntas ya respondidas.",
+  "- No des la razón por cortesía si la evidencia contradice una premisa: corrige con respeto, explica qué comprobaste y pregunta solo si esa diferencia cambia el resultado o el riesgo.",
   "- Comprueba contexto y herramientas antes de usarlas; no afirmes capacidades sin verificarlas.",
   "- Dependencias ausentes: reinstala con lockfile frozen/ci; el analizador no instala.",
   "- Resuelve el objetivo con el cambio/investigación mínimos, en el workspace y dentro de las autorizaciones.",
@@ -85,12 +91,6 @@ export function conContratoEjecucion(prompt: string, workspace?: string): string
 }
 
 export function canonicalizarModelo(modelo: string): string {
-  if (modelo.startsWith("opencode/gemini-")) {
-    return modelo.replace("opencode/gemini-", "google/gemini-");
-  }
-  if (modelo === "opencode/argon" || modelo === "opencode/gemini-4-argon") {
-    return "google/gemini-4-argon";
-  }
   if (modelo === "argon" || modelo === "gemini-4-argon") {
     return "google/gemini-4-argon";
   }
@@ -102,32 +102,8 @@ export function canonicalizarModelo(modelo: string): string {
 
 export function proveedorDeModelo(modelo: string): string {
   const m = canonicalizarModelo(modelo);
-  if (m.startsWith("google/") || m.includes("/google/") || /gemini|argon/i.test(m)) {
-    return "google";
-  }
-  if (m.startsWith("codex/") || m === "codex" || m.includes("/codex/")) {
-    return "codex";
-  }
-  if (m.startsWith("openai/") || m.includes("/openai/")) {
-    return "openai";
-  }
-  if (m.startsWith("groq/") || m.includes("/groq/")) {
-    return "groq";
-  }
-  if (m.startsWith("nvidia/") || m.includes("/nvidia/")) {
-    return "nvidia";
-  }
-  if (m.startsWith("openrouter/")) {
-    return "openrouter";
-  }
+  // La integración de entrada gobierna el consumo, aunque el modelo tenga otro fabricante.
   return m.split("/")[0] || "opencode";
-}
-
-export function estimarCosteGemini(modelo: string, inputTokens: number, outputTokens: number): number {
-  const esPro = /pro/i.test(modelo);
-  const tarifaInput = esPro ? 1.25 / 1_000_000 : 0.075 / 1_000_000;
-  const tarifaOutput = esPro ? 5.00 / 1_000_000 : 0.30 / 1_000_000;
-  return Math.round((inputTokens * tarifaInput + outputTokens * tarifaOutput) * 10_000) / 10_000;
 }
 
 // Cada paso se persiste al llegar: fallos, cancelaciones y respaldos conservan el consumo previo.
@@ -138,13 +114,8 @@ export function registrarUsoAgente(
 ): void {
   const modeloCanonico = canonicalizarModelo(modelo);
   const provider = proveedorDeModelo(modeloCanonico);
-  let costo = uso.cost;
-  let costPrecision = uso.costeDisponible === undefined ? "desconocida" : uso.costeDisponible ? "estimado" : "no_disponible";
-
-  if (costo === 0 && uso.tokensEstimados !== true && (uso.input > 0 || uso.output > 0) && provider === "google") {
-    costo = estimarCosteGemini(modeloCanonico, uso.input, uso.output);
-    costPrecision = "estimado";
-  }
+  const costo = uso.cost;
+  const costPrecision = uso.costeDisponible === undefined ? "desconocida" : uso.costeDisponible ? "estimado" : "no_disponible";
 
   db.query(
     `INSERT INTO usage (id, conversation_id, provider, model, input_tokens, output_tokens,
@@ -159,6 +130,28 @@ export function registrarUsoAgente(
     costPrecision,
     contexto.turnId ?? null, contexto.usageRole ?? "unknown",
   );
+}
+
+function registrarRechazoProveedor(modelo: string, error: unknown): void {
+  const status = codigoHttpDelProveedor(error);
+  const categoria = esErrorDeCuota(error)
+    ? "cuota"
+    : status === 429
+      ? "limite_temporal"
+      : status === 401 || status === 403
+        ? "acceso"
+        : status === 404
+          ? "modelo"
+          : null;
+  if (!categoria) return;
+  try {
+    db.query(`
+      INSERT INTO provider_limit_events (provider, model, category, http_status)
+      VALUES (?, ?, ?, ?)
+    `).run(proveedorDeModelo(canonicalizarModelo(modelo)), canonicalizarModelo(modelo), categoria, status);
+  } catch {
+    // Un problema de telemetría no cambia el resultado que devolvió el proveedor.
+  }
 }
 
 // Saturación, error de servidor o límite del proveedor: justifica probar otro modelo.
@@ -368,6 +361,9 @@ export const ESTILO_CHAT = [
   "Estilo de respuesta, presentación y razonamiento nativo de Telo (no lo menciones en la respuesta):",
   "- Conversación natural: habla como un agente que responde al usuario, no como un generador de planes. No repitas planes, listas de pasos ni frases de arranque en cada turno; anuncia brevemente una acción solo si ayuda a entender una espera y entrega el resultado cuando termines.",
   "- Respuesta final: escribe solo la respuesta útil para el usuario, en su idioma. No muestres razonamiento privado, borradores, notas para ti, hipótesis descartadas ni conversaciones internas; resume únicamente acciones realizadas, resultados comprobados y bloqueos reales. No entregues una respuesta provisional como si fuera el resultado.",
+  "- Curiosidad con criterio: inspecciona el contexto y las instrucciones antes de decidir. Si falta una elección que cambia materialmente el resultado, pregunta en un grupo de hasta 3 preguntas y recomienda una opción. Si es un detalle reversible que puedes inferir, resuélvelo y declara el supuesto; no abras rondas de preguntas por preferencias menores.",
+  "- Continuidad del chat: interpreta referencias como «eso», «lo anterior», «también» y «mejor» usando los mensajes recientes; integra las correcciones del usuario en el objetivo vigente y no conviertas cada turno en una tarea aislada. Si hay dos interpretaciones con resultados materialmente distintos, pregunta una sola vez y en forma concreta.",
+  "- Corrige premisas equivocadas sin confrontar: cita el comportamiento, archivo o dato observado, explica la consecuencia y ofrece la alternativa razonable. No presentes una conjetura como acuerdo del usuario.",
   "- Si el trabajo tuvo varias acciones o una skill produjo un artefacto, presenta un resultado escaneable: empieza por lo entregado y usa títulos Markdown breves para verificación y pendientes cuando correspondan. Separa acciones independientes con viñetas; no las encadenes en un párrafo largo.",
   "- Si el usuario pidió crear, editar o entregar un video, no lo presentes como terminado hasta comprobar que el MP4 existe en una carpeta accesible del chat y dar su ruta relativa como enlace Markdown. Usa un nombre simple sin espacios. Si no logras producirlo, indica que quedó pendiente y explica el bloqueo; nunca lo sustituyas por una promesa de copiarlo después.",
   "- Si necesitas documentarte sobre librerías o frameworks modernos, usa skills del proyecto (como context7) o inspecciona el código existente.",
@@ -421,17 +417,24 @@ export function promptContinuacion(prompt: string, tieneSesion = true): string {
   ].join("\n");
 }
 
+function perfilAuxiliar(opts: OpcionesAgente): string | null {
+  return opts.usageRole?.startsWith("reviewer:") && opts.conversationId && opts.turnId
+    ? `${opts.conversationId}:${opts.turnId}:${opts.usageRole}` : null;
+}
+
 async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoAgente> {
   mkdirSync(carpetaEntregables(opts.cwd), { recursive: true });
-  const mcp = configuracionMcpParaAgente(requiereContext7(opts.prompt));
+  const solicitudSkills = opts.solicitudSkills ?? opts.prompt;
+  const mcp = configuracionMcpParaAgente(requiereContext7(solicitudSkills), opts.soloLectura);
+  const secretosProyecto = opts.projectId ? entornoDeProyecto(opts.projectId) : {};
   // Claves de proveedor (Ajustes) y secretos del proyecto. Si un nombre se repite, gana el del proyecto.
   const propias: Record<string, string> = {
     ...entornoProveedores(),
-    ...(opts.projectId ? entornoDeProyecto(opts.projectId) : {}),
+    ...Object.fromEntries(Object.entries(secretosProyecto).filter(([nombre]) => !opts.soloLectura || esClaveDeInferencia(nombre))),
     ...mcp.variables,
   };
-  const ocultos = valoresAOcultar(propias);
-  const idPerfil = opts.conversationId
+  const ocultos = valoresAOcultar({ ...secretosProyecto, ...propias });
+  const idPerfil = perfilAuxiliar(opts) ?? (opts.conversationId
     ? db.query<{ id: string }, [string]>(`
         WITH RECURSIVE familia(id,parent_conversation_id) AS (
           SELECT id,parent_conversation_id FROM conversations WHERE id=?
@@ -440,14 +443,11 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
         )
         SELECT id FROM familia WHERE parent_conversation_id IS NULL LIMIT 1
       `).get(opts.conversationId)?.id ?? opts.conversationId
-    : opts.taskId;
+    : opts.taskId);
   const sesionCodexInicial = sesionCompatible(opts.sessionId, opts.sessionModel, opts.model) ? opts.sessionId! : null;
   // El modelo de respaldo puede usar OpenCode aunque el primario sea Codex.
   const perfilOpenCodeDir = aislamientoActivo() && idPerfil
     ? prepararPerfilOpenCode(idPerfil)
-    : undefined;
-  const perfilCodexDir = aislamientoActivo() && idPerfil && opts.model.startsWith("codex/")
-    ? await prepararPerfilCodex(idPerfil, sesionCodexInicial)
     : undefined;
 
   // Una sesión solo conserva contexto si pertenece exactamente al modelo que se va a ejecutar.
@@ -468,28 +468,36 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     onLinea: opts.onLinea ? (linea: string) => opts.onLinea?.(ocultarValores(linea, ocultos)) : undefined,
     onSubagente: opts.onSubagente ? (linea: string) => opts.onSubagente?.(ocultarValores(linea, ocultos)) : undefined,
     extraEnv: propias,
+    modelosAuxiliares: opts.modelosAuxiliares,
     servidoresMcp: mcp.servidores,
     opencodeConfigDir: opts.opencodeConfigDir,
     subagentesTracePath: opts.opencodeSubagentesTracePath,
     perfilOpenCodeDir,
-    perfilCodexDir,
     soloLectura: opts.soloLectura,
   };
 
+  let skillsRegistradas = false;
   const baseParaModelo = (modelo: string, variante?: string) => {
     if (sesion && modeloSesion !== modelo) alSesion(null, null);
-    const prompt = sesion
+    const prompt = sesion || perfilAuxiliar(opts)
       ? opts.prompt
       : opts.conversationId
         ? promptConHistorial(opts.conversationId, opts.prompt)
         : opts.prompt;
     const visuales = imagenesDelPrompt(opts.conversationId, prompt);
+    const skills = inyectarSkillsEnPrompt(visuales.prompt, opts.projectId, solicitudSkills);
+    if (opts.taskId && !skillsRegistradas) {
+      skillsRegistradas = true;
+      const fase = opts.usageRole === "analyzer" ? "Analizador" : "Obrero";
+      const lista = skills.skillsInvocadas.length ? skills.skillsInvocadas.join(", ") : "ninguna para esta solicitud";
+      registrarEvento(opts.taskId, "skills_activadas", `${fase}: ${lista}.`);
+    }
     return {
       ...comunes,
       prompt: conEstilo(
         conContratoEjecucion(
           conMemoria(
-            conInstrucciones(opts.projectId, inyectarSkillsEnPrompt(visuales.prompt, opts.projectId).promptFinal, opts.conversationId, opts.cwd),
+            conInstrucciones(opts.projectId, skills.promptFinal, opts.conversationId, opts.cwd),
             memoria,
             opts.aprender === true,
           ), opts.cwd,
@@ -593,7 +601,27 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     })));
     inicio = Date.now();
     try {
-      return await (modelo.startsWith("codex/") ? runCodex(params) : runOpenCode(params));
+      if (modelo.startsWith("antigravity/")) {
+        const perfilAntigravityDir = aislamientoActivo()
+          ? prepararPerfilAntigravity(idPerfil ?? opts.conversationId ?? opts.taskId ?? id)
+          : undefined;
+        return await runAntigravity({ ...params, perfilAntigravityDir });
+      }
+      if (modelo.startsWith("codex/")) {
+        const perfilCodexDir = aislamientoActivo() && idPerfil
+          ? await prepararPerfilCodex(idPerfil, params.sessionId) : undefined;
+        return await runCodex({ ...params, perfilCodexDir });
+      }
+      if (modelo.startsWith("commandcode/")) {
+        const perfilCommandCodeDir = aislamientoActivo()
+          ? prepararPerfilCommandCode(idPerfil ?? opts.conversationId ?? opts.taskId ?? id)
+          : undefined;
+        return await runCommandCode({ ...params, perfilCommandCodeDir });
+      }
+      return await runOpenCode(params);
+    } catch (error) {
+      registrarRechazoProveedor(modelo, error);
+      throw error;
     } finally { liberar(); }
   }
 
@@ -636,17 +664,18 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     const esErrorServidor = codigoHttp !== null && codigoHttp >= 500 && codigoHttp <= 599;
     const esRateLimitTransitorio = codigoHttp === 429 && !esErrorDeCuota(err);
 
-    if (esErrorServidor || esRateLimitTransitorio) {
-      // Las esperas suben con cada intento: un corte de segundos se resuelve con la primera;
-      // una saturación más larga con las siguientes. En total el proveedor tiene ~1,5 min de
-      // margen antes de que el fallo llegue al usuario. TELO_REINTENTO_ESPERAS_MS (lista separada
-      // por comas, en ms) permite a las pruebas acortarlas sin tocar el comportamiento real.
-      const esperas = process.env.TELO_REINTENTO_ESPERAS_MS
+    if ((esErrorServidor || esRateLimitTransitorio) && !(err instanceof ErrorAgente && err.reintentosInternosAgotados)) {
+      // Una sola reanudación corta: evita multiplicar los reintentos que OpenCode/proveedor ya realizó.
+      // TELO_REINTENTO_ESPERAS_MS permite ajustar la espera (en ms) para entornos y pruebas.
+      const esperasConfiguradas = process.env.TELO_REINTENTO_ESPERAS_MS
         ? process.env.TELO_REINTENTO_ESPERAS_MS.split(",").map(Number).filter((n) => Number.isFinite(n) && n >= 0)
-        : esRateLimitTransitorio ? [2_500, 15_000, 45_000] : [1_200, 10_000, 30_000];
+        : null;
+      const esperas = esperasConfiguradas?.length
+        ? esperasConfiguradas
+        : [esRateLimitTransitorio ? 5_000 : 3_000];
       let transitorio = true;
       for (const espera of esperas) {
-        await Bun.sleep(espera);
+        await esperar(espera, undefined, { signal: opts.signal });
         if (opts.signal?.aborted) { transitorio = false; break; }
         try {
           const parametros = baseParaModelo(opts.model, varianteInicial);
@@ -669,7 +698,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
       if (transitorio) {
         const detalle = err instanceof ErrorAgente ? err.detalleProveedor : "";
         err = new ErrorAgente(
-          `${err instanceof Error ? err.message : String(err)} Telo lo reintentó automáticamente ${esperas.length} veces con esperas de hasta ${Math.round(esperas[esperas.length - 1] / 1000)} s y siguió fallando. Puedes usar «Seguir» (o responder «siga») para retomar la misma sesión, o elegir otro modelo.`,
+          `${err instanceof Error ? err.message : String(err)} Telo lo reintentó automáticamente ${esperas.length} ${esperas.length === 1 ? "vez" : "veces"} (hasta ${Math.round(esperas[esperas.length - 1] / 1000)} s) y siguió fallando. Puedes usar «Seguir» (o responder «siga») para retomar la misma sesión, o elegir otro modelo.`,
           detalle,
         );
       }
@@ -760,5 +789,15 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
 }
 
 export async function ejecutarAgente(opts: OpcionesAgente): Promise<ResultadoAgente> {
-  return ejecutarAgenteReservado(opts);
+  try {
+    return await ejecutarAgenteReservado(opts);
+  } finally {
+    const perfil = perfilAuxiliar(opts);
+    if (perfil && aislamientoActivo()) {
+      eliminarPerfilOpenCode(perfil);
+      eliminarPerfilCodex(perfil);
+      eliminarPerfilAntigravity(perfil);
+      eliminarPerfilCommandCode(perfil);
+    }
+  }
 }

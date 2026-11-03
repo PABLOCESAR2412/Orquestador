@@ -175,7 +175,7 @@ function textoServicio(datos: ServicioEstado | undefined, error: boolean): strin
 }
 
 export function EstadoServidor({ latencia }: { latencia: MuestrasLatencia }) {
-  const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000, retry: reintentarConsultaTransitoria });
+  const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: (query) => query.state.data?.carpetas_actualizando ? 5_000 : 30_000, retry: reintentarConsultaTransitoria });
   const runner = useQuery({ queryKey: ["runner"], queryFn: api.runnerStatus, refetchInterval: 60_000 });
   const servicio = useQuery({ queryKey: ["servidor-servicio"], queryFn: api.serverService, refetchInterval: 30_000 });
   const [verRegistros, setVerRegistros] = useState(false);
@@ -282,9 +282,11 @@ export function EstadoServidor({ latencia }: { latencia: MuestrasLatencia }) {
         <TarjetaServidor
           id="aj-carpetas"
           titulo="Carpetas"
-          principal={datos ? `${datos.carpetas.length} carpetas` : "—"}
+          principal={datos ? datos.carpetas_actualizando && datos.carpetas.length === 0 ? "Calculando…" : `${datos.carpetas.length} carpetas` : "—"}
         >
-          {datos && datos.carpetas.length === 0 && <Fila etiqueta="Carpetas" valor="Sin carpetas" />}
+          {datos?.carpetas_actualizando && <Fila etiqueta="Actualización" valor="Calculando tamaños en segundo plano…" />}
+          {datos?.carpetas_error && <Fila etiqueta="Actualización" valor={datos.carpetas.length ? "No se pudo actualizar; se muestran los últimos datos." : "No se pudieron medir todavía; se reintentará automáticamente."} />}
+          {datos && datos.carpetas.length === 0 && !datos.carpetas_actualizando && !datos.carpetas_error && <Fila etiqueta="Carpetas" valor="Sin carpetas" />}
           {datos?.carpetas.map((c) => (
             <Fila
               key={c.nombre}
@@ -740,7 +742,7 @@ function PanelArchivoGoogleDrive() {
 
 // Discos y carpetas reales del servidor.
 export function AlmacenamientoServidor() {
-  const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: 30_000, retry: reintentarConsultaTransitoria });
+  const servidor = useQuery({ queryKey: ["servidor"], queryFn: api.serverStatus, refetchInterval: (query) => query.state.data?.carpetas_actualizando ? 5_000 : 30_000, retry: reintentarConsultaTransitoria });
   const datos = servidor.data;
   const carpetas = datos?.carpetas ?? [];
   const mayor = Math.max(0, ...carpetas.map((c) => c.bytes));
@@ -771,7 +773,9 @@ export function AlmacenamientoServidor() {
           Carpetas
         </h3>
         {servidor.isPending && !servidor.data && <LoadingSkeleton tipo="lineas" cantidad={3} />}
-        {datos && carpetas.length === 0 && <p className="aj-nota">Sin carpetas.</p>}
+        {datos?.carpetas_actualizando && <p className="aj-nota">Calculando tamaños en segundo plano…</p>}
+        {datos?.carpetas_error && <p className="aj-nota">{carpetas.length ? "No se pudo actualizar; se muestran los últimos datos." : "No se pudieron medir las carpetas todavía; se reintentará automáticamente."}</p>}
+        {datos && carpetas.length === 0 && !datos.carpetas_actualizando && !datos.carpetas_error && <p className="aj-nota">Sin carpetas.</p>}
         {carpetas.some((c) => c.truncado) && (
           <p className="aj-nota">El conteo alcanzó el límite de lectura; los valores parciales son mínimos y el uso real puede ser mayor.</p>
         )}

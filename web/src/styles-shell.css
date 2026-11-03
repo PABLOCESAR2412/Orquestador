@@ -1064,6 +1064,7 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+.tl-version-pr-enlace { display: inline-block; margin-top: 6px; font-size: 13px; }
 
 .tl-version-tag {
   font-size: 15px;

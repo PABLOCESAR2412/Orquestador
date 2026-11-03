@@ -11,6 +11,7 @@ import type { ServidorMcpAgente } from "../conexiones-mcp";
 import { configuracionOpenCodeMcp } from "../conexiones-mcp";
 import { esCompactacionOpenCode } from "../../../shared/compactacion";
 import { pluginSeguimientoOpenCode } from "./seguimiento-opencode";
+import { PROVEEDORES_CON_CLAVE } from "../claves-proveedor";
 
 // Tope de memoria para la salida del agente: 16 MB en total (arranque de 1 MB con los eventos
 // de sesión, cola de 15 MB con el detalle del fallo; el medio se recorta).
@@ -154,8 +155,12 @@ export function explicarErrorProveedor(evento: unknown): string {
   if (status === 429) {
     return "El proveedor limitó las solicitudes temporalmente. Por dónde empezar: espera un momento o elige otro modelo/proveedor.";
   }
-  if ((status !== null && status >= 500) || /server error|internal error|service unavailable|bad gateway|gateway timeout|temporarily unavailable/i.test(mensaje)) {
+  const error500Generico = /^Unexpected server error(?:\. Check server logs for details\.)?$/i.test(mensaje.trim());
+  if ((status !== null && status >= 500) || error500Generico || /server error|internal error|service unavailable|bad gateway|gateway timeout|temporarily unavailable/i.test(mensaje)) {
     const detalleMsg = mensaje ? `: «${mensaje.slice(0, 160)}»` : "";
+    if (error500Generico) {
+      return `OpenCode devolvió «Unexpected server error», que Telo clasifica como HTTP 500${detalleMsg}. El evento no identifica si falló el proveedor, su gateway o la conexión, así que no permite precisar el origen. Por dónde empezar: revisa la actividad técnica y prueba otro modelo o proveedor.`;
+    }
     return `El proveedor del modelo tuvo un error temporal en sus servidores${status ? ` (HTTP ${status})` : ""}${detalleMsg}. Por dónde empezar: espera unos momentos y vuelve a intentarlo; si el problema persiste, selecciona otro modelo en el selector (por ejemplo, Claude, GPT o Groq).`;
   }
   if (mensaje) return `El proveedor devolvió un error${status === null ? "" : ` (HTTP ${status})`}: ${mensaje.slice(0, 500)}`;
@@ -176,6 +181,7 @@ export class ErrorAgente extends Error {
   constructor(
     mensaje: string,
     readonly detalleProveedor: string,
+    readonly reintentosInternosAgotados = false,
   ) {
     super(mensaje);
   }
@@ -227,7 +233,7 @@ function variablesExtra(): Set<string> {
 
 // `propias` son variables de esta ejecución (p. ej. secretos del proyecto). Se fusionan encima
 // de las permitidas y, como todo lo demás, nunca pueden llamarse TELO_*.
-export function entornoDelAgente(propias?: Record<string, string>): Record<string, string> {
+export function entornoDelAgente(propias?: Record<string, string>, modelosPermitidos?: readonly string[]): Record<string, string> {
   const extra = variablesExtra();
   const env: Record<string, string> = {};
   for (const [clave, valor] of Object.entries(process.env)) {
@@ -245,6 +251,12 @@ export function entornoDelAgente(propias?: Record<string, string>): Record<strin
     if (esVariableReservada(clave) || SECRETOS_SOLO_SERVIDOR.includes(clave)) continue;
     if (VARIABLES_PERMITIDAS.has(clave) || PREFIJOS_PERMITIDOS.some((p) => clave.startsWith(p))) continue;
     env[clave] = valor;
+  }
+  if (modelosPermitidos) {
+    const proveedores = new Set(modelosPermitidos.map((modelo) => modelo.split("/")[0]));
+    for (const proveedor of PROVEEDORES_CON_CLAVE) {
+      if (!proveedores.has(proveedor.id)) for (const variable of proveedor.variables) delete env[variable];
+    }
   }
   return env;
 }
@@ -348,6 +360,7 @@ function vigilarSubagentes(ruta: string | undefined, alLeer: ((linea: string) =>
 }
 
 export async function runOpenCode(opts: {
+  modelosAuxiliares?: string[];
   servidoresMcp?: ServidorMcpAgente[];
   prompt: string;
   model: string;
@@ -394,6 +407,7 @@ export async function runOpenCode(opts: {
 }
 
 async function ejecutarOpenCode(opts: {
+  modelosAuxiliares?: string[];
   servidoresMcp?: ServidorMcpAgente[];
   opencodeMcpConfigPath?: string;
   actividadTracePath?: string;
@@ -449,7 +463,7 @@ async function ejecutarOpenCode(opts: {
 
   // `setsid` deja al agente como líder de su propio grupo (pgid == pid),
   // para poder cerrar todo su árbol de procesos de una vez.
-  const env = entornoDelAgente(opts.extraEnv);
+  const env = entornoDelAgente(opts.extraEnv, [opts.model, ...(opts.modelosAuxiliares ?? [])]);
   // La política del turno prevalece sobre el proyecto y sobre sesiones anteriores.
   const autorizados: Record<string, string> = { "*": "deny" };
   if (opts.opencodeConfigDir) {
@@ -562,6 +576,7 @@ async function ejecutarOpenCode(opts: {
       errorReintentos = new ErrorAgente(
         "El proveedor falló en tres reintentos internos consecutivos. Se conservan la sesión y los archivos; puedes continuar desde el chat o elegir otro modelo.",
         JSON.stringify({ message: String(ev.message || "Error temporal del proveedor").slice(0, 1000) }),
+        true,
       );
       terminarGrupo(proc.pid);
       rechazarReintentos(errorReintentos);
@@ -639,6 +654,12 @@ async function ejecutarOpenCode(opts: {
   const textoFinal = textoTrasHerramientas.trim() || text.trim() || (huboCompactacion
     ? "El contexto se compactó, pero la ejecución terminó sin una respuesta final. Puedes continuar desde la sesión guardada."
     : "");
+  if (!textoFinal) {
+    throw new ErrorAgente(
+      `OpenCode terminó correctamente con ${opts.model}, pero el proveedor no devolvió texto final. No se guardó una respuesta vacía; puedes reintentar el turno o revisar la actividad del proveedor.`,
+      "",
+    );
+  }
   if (!usage || (usage.input === 0 && usage.output === 0)) {
     usage = estimarUso(opts.prompt, textoEstimacion.trim() || textoFinal);
     opts.onUso?.(usage);

@@ -4,6 +4,114 @@
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
     {
+      "fecha": "2026-11-02",
+      "tipo": "minimo",
+      "titulo": "Chat y tareas: excluye embeddings, evita 409 al repetir Seguir y muestra Graphify y skills por fase",
+      "pr": 174
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "mediano",
+      "titulo": "Proveedores: integra Command Code Go y consulta límites de OpenAI API y OpenRouter",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "minimo",
+      "titulo": "OpenAI API: muestra coste de organización y tokens por modelo con Admin API",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "minimo",
+      "titulo": "Uso: consulta budgets de OpenCode Console y separa tokens medidos de estimados",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "minimo",
+      "titulo": "Uso: desglosa consumo por modelo y muestra los últimos rechazos de cuota y acceso",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "minimo",
+      "titulo": "Contexto: sincroniza el cerebro Graphify del proyecto en los clones de Telo y CLIs externos",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "minimo",
+      "titulo": "Agentes y Git: redacta commits desde el resultado real y limita las preguntas a decisiones bloqueantes",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "mediano",
+      "titulo": "Agentes: conecta Antigravity CLI con aislamiento propio, registro de tokens y consulta de cuota",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "minimo",
+      "titulo": "Proveedores: separa OpenAI API de Codex y explica credenciales, límites y cuota por modelo",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "minimo",
+      "titulo": "Chat móvil: compacta controles en iconos y muestra preguntas del plan junto al compositor",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "minimo",
+      "titulo": "Selector: abre el proveedor del modelo activo, conserva el esfuerzo y anima desde el botón",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "mediano",
+      "titulo": "Modelos: separa precio $0 de acceso y cuota, y añade consulta de uso de Antigravity CLI",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "minimo",
+      "titulo": "Proyectos: prepara tareas en repos vacíos y trata las instrucciones ausentes como opcionales",
+      "pr": 172
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "minimo",
+      "titulo": "Servidor y modelos: evita 502 durante el escaneo, oculta Gemini no disponible y detecta respuestas vacías",
+      "pr": 172
+    },
+    {
+      "fecha": "2026-11-02",
+      "tipo": "minimo",
+      "titulo": "Obrero: conserva la marca de corrección para distinguir el primer intento de la reparación",
+      "pr": 173
+    },
+    {
+      "fecha": "2026-11-01",
+      "tipo": "minimo",
+      "titulo": "Chat: corrige orquestación de proyecto, perfiles de ejecución, selección de skills y atribución del uso",
+      "pr": null
+    },
+    {
+      "fecha": "2026-11-01",
+      "tipo": "mediano",
+      "titulo": "Skills: añade UI/UX Pro Max, Code Review y Writing Plans; activa TDD y depuración sistemática por tarea",
+      "pr": null
+    },
+    {
+      "fecha": "2026-10-31",
+      "tipo": "minimo",
+      "titulo": "Despliegue: usa Actions de GitHub con PAT fine-grained de solo lectura para validar CI",
+      "pr": 163
+    },
+    {
       "fecha": "2026-10-31",
       "tipo": "mediano",
       "titulo": "Analíticas: filtros por fecha y hora, uso detallado y equivalente API; chat diferencia supervisor y subagentes y refuerza el estándar visual de video",

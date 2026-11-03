@@ -4,14 +4,17 @@ import { createHash } from "node:crypto";
 // El usuario lo aprueba si hace falta. El obrero ejecuta solo ese plan y entrega un reporte en JSON.
 // Aquí están los prompts y la validación; no hay estado ni acceso a la base.
 
-// Plan inicial + dos replanificaciones. Pasado el tope, una desviación falla la tarea.
-export const MAX_PLANES = 3;
+// Plan inicial + una replanificación. Pasado el tope, una desviación falla la tarea.
+export const MAX_PLANES = 2;
 const MAX_PASOS = 12;
+const MAX_PREGUNTAS = 3;
 const MAX_TEXTO = 500;
 const MAX_LISTA = 20;
 
 const APROBACIONES = ["commit", "push", "pr"] as const;
 export type Aprobacion = (typeof APROBACIONES)[number];
+export const TIPOS_CAMBIO = ["feat", "fix", "docs", "test", "refactor", "perf", "build", "ci", "style", "revert", "chore"] as const;
+export type TipoCambio = (typeof TIPOS_CAMBIO)[number];
 
 export type PasoPlan = { id: number; descripcion: string; archivos: string[] };
 
@@ -30,10 +33,13 @@ export type Plan = {
 export type Reporte = {
   estado: "completado" | "fallo" | "desviacion";
   resumen: string;
+  tipo_cambio?: TipoCambio;
   cambios: { archivo: string; tipo: string }[];
   pruebas: { comando: string; resultado: string }[];
   pendientes: string[];
   diff_disponible: boolean;
+  // Precondición externa que requiere configuración humana (credencial, proyecto o workspace).
+  bloqueante_externo?: string | null;
   // Motivo por el que el obrero no siguió el plan. Null si lo siguió.
   desviacion: string | null;
 };
@@ -45,10 +51,12 @@ export function serializarRespuestaTarea(reporte: Reporte, textoPlano = ""): str
     version: 1,
     estado: reporte.estado,
     resumen: reporte.resumen?.trim() || textoPlano.trim() || "La tarea no devolvió un resumen.",
+    ...(reporte.tipo_cambio ? { tipo_cambio: reporte.tipo_cambio } : {}),
     desviacion: reporte.desviacion,
     cambios: reporte.cambios ?? [],
     pruebas: reporte.pruebas ?? [],
     pendientes: reporte.pendientes ?? [],
+    bloqueante_externo: reporte.bloqueante_externo ?? null,
   });
 }
 
@@ -80,6 +88,20 @@ function rutaValida(ruta: string): boolean {
     !ruta.includes("\0") &&
     !partes.some((parte) => parte === ".." || parte.toLowerCase() === ".git") &&
     partes.some((parte) => parte && parte !== ".");
+}
+
+function detectarBloqueosExternos(textoReporte: string): string | null {
+  const motivos: string[] = [];
+  const faltaToken = /(?:CLOUDFLARE_API_TOKEN[\s\S]{0,100}(?:no\s+(?:está|se encuentra|hay|aparece|está configurado|está disponible)|falta|ausente|missing|not\s+(?:set|available|present))|(?:sin|falta|ausente|missing|not\s+(?:set|available|present))[\s\S]{0,100}CLOUDFLARE_API_TOKEN)/i;
+  if (faltaToken.test(textoReporte)) {
+    motivos.push("Falta configurar CLOUDFLARE_API_TOKEN en el servicio que ejecuta la tarea.");
+  }
+  const faltaWorkspace = /\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b[\s\S]{0,120}(?:\bsin\b|\bno\s+(?:tiene|contiene|incluye|hay)\b|\bfalta(?:n)?\b|\bausente\b|\bmissing\b)[\s\S]{0,120}(?:package\.json|lockfile|fuentes?|dist\/)/i.test(textoReporte)
+    || /(?:package\.json|lockfile|fuentes?|dist\/)[\s\S]{0,120}(?:\bfalta(?:n)?\b|\bausente\b|\bmissing\b|\bno\s+(?:está|se encuentra|existe))[\s\S]{0,120}\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b/i.test(textoReporte);
+  if (faltaWorkspace) {
+    motivos.push("El workspace no contiene los archivos o fuentes necesarios para compilar la app.");
+  }
+  return motivos.length ? motivos.join(" ") : null;
 }
 
 // Saca el primer objeto JSON de una respuesta: el texto entero, un bloque ```json o lo que va de la
@@ -125,6 +147,8 @@ export function validarPlan(valor: unknown): Validacion<Plan> {
 
   const criterios = listaDeTextos(valor.criterios_de_aceptacion);
   if (criterios.length === 0) return { ok: false, motivo: "faltan los criterios de aceptación" };
+  const preguntas = listaDeTextos(valor.preguntas);
+  if (preguntas.length > MAX_PREGUNTAS) return { ok: false, motivo: `el plan tiene más de ${MAX_PREGUNTAS} preguntas bloqueantes` };
 
   const requiere = Array.isArray(valor.requiere_aprobacion)
     ? [...new Set(valor.requiere_aprobacion.filter(esAprobacion))]
@@ -139,7 +163,7 @@ export function validarPlan(valor: unknown): Validacion<Plan> {
       criterios_de_aceptacion: criterios,
       requiere_aprobacion: requiere,
       riesgos: listaDeTextos(valor.riesgos),
-      preguntas: listaDeTextos(valor.preguntas),
+      preguntas,
     },
   };
 }
@@ -149,21 +173,24 @@ export function requiereAprobacion(plan: Plan): boolean {
   return plan.requiere_aprobacion.length > 0 || plan.preguntas.length > 0;
 }
 
-// Un reporte sin JSON no se pierde: el texto del agente pasa a ser el resumen.
+// Sin el reporte JSON, el texto libre no demuestra que el plan se haya completado.
 export function validarReporte(valor: unknown, textoPlano: string): Reporte {
   if (!esObjeto(valor)) {
-    const resumen = textoPlano.trim().slice(0, 4000);
     return {
-      estado: resumen ? "completado" : "fallo",
-      resumen: resumen || "El agente terminó sin devolver un resumen ni cambios o pruebas verificables. No se puede confirmar el resultado.",
+      estado: "fallo",
+      resumen: "El agente no entregó el reporte estructurado obligatorio. No se puede confirmar que el plan se haya completado.",
       cambios: [],
       pruebas: [],
       pendientes: [],
       diff_disponible: false,
+      bloqueante_externo: null,
       desviacion: null,
     };
   }
   const motivo = texto(valor.desviacion, 2000);
+  const tipoCambio = typeof valor.tipo_cambio === "string" && TIPOS_CAMBIO.includes(valor.tipo_cambio as TipoCambio)
+    ? valor.tipo_cambio as TipoCambio
+    : undefined;
   const desviado = valor.estado === "desviacion" || motivo !== null;
   const estado: Reporte["estado"] = desviado ? "desviacion" : valor.estado === "fallo" ? "fallo" : "completado";
 
@@ -200,9 +227,12 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
       : estadoFinal === "desviacion"
         ? motivo ?? "La tarea necesita un plan actualizado."
         : `El reporte no incluyó un resumen, pero registró ${cambios.length} cambio(s), ${pruebas.length} prueba(s) y ${pendientes.length} pendiente(s).`);
+  const bloqueanteExterno = texto(valor.bloqueante_externo, 1000)
+    ?? (estadoFinal === "completado" ? null : detectarBloqueosExternos([resumenFinal, ...pendientes, ...pruebas.map((prueba) => `${prueba.comando} ${prueba.resultado}`)].join("\n")));
 
   return {
-    estado: estadoFinal,
+    estado: bloqueanteExterno ? "fallo" : estadoFinal,
+    ...(tipoCambio ? { tipo_cambio: tipoCambio } : {}),
     resumen: pruebaEnFallo
       ? `${resumenFinal} (Marcado como fallo por el servidor: el propio reporte declaró una prueba en fallo.)`
       : resumenFinal,
@@ -210,7 +240,8 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
     pruebas: pruebas.slice(0, MAX_LISTA),
     pendientes,
     diff_disponible: valor.diff_disponible === true,
-    desviacion: estado === "desviacion" ? (motivo ?? "Sin motivo indicado.") : null,
+    bloqueante_externo: bloqueanteExterno,
+    desviacion: bloqueanteExterno ? null : estado === "desviacion" ? (motivo ?? "Sin motivo indicado.") : null,
   };
 }
 
@@ -238,6 +269,9 @@ const REGLAS_PLAN = [
   "Reglas:",
   "- La revisión del plan no es un paso obligatorio. Deja requiere_aprobacion y preguntas vacíos salvo que la petición exija commit, push o PR, incluya una acción fuera del workspace, o falte una decisión crítica que impida trabajar.",
   "- No pidas al usuario que confirme un plan genérico, revise una investigación rutinaria o elija detalles que puedas inferir de la tarea y del proyecto. En esos casos, formula un supuesto breve y permite que el obrero avance automáticamente.",
+  "- Antes de preguntar, revisa el repositorio, sus instrucciones, configuración y respuestas previas. Pregunta solo si la respuesta cambia materialmente el alcance, el resultado o el riesgo y no se puede inferir; agrupa hasta 3 preguntas concretas por turno y recomienda una opción. Para detalles reversibles, elige una convención del proyecto y anota el supuesto. No repitas preguntas respondidas.",
+  "- Si la petición parte de una premisa que contradice el código o evidencia, corrígela con respeto y explica qué observaste. No inventes acuerdos ni decidas en silencio un destino, requisito de producto o acción externa que cambie el resultado.",
+  "- Si la tarea pide desplegar o publicar, incluye una confirmación final antes de publicar. Agrupa destino/producto en una sola pregunta (Vercel, Cloudflare Workers o Cloudflare Pages); pregunta por conexión del repositorio solo si no consta. Respeta el máximo de 3 preguntas.",
   "- Un cambio de código, una investigación, una prueba o la creación de un archivo dentro del workspace no requieren aprobación previa por sí solos.",
   "- Metodología Gauntlet por defecto: Formula el plan con máxima rigurosidad en base a 4 pilares: Tarea (objetivo concreto), Método (planificación y ejecución en bucle con auto-revisión adversarial), Listón comprobable (criterios deterministas uno a uno que no admitan ambigüedad ni placeholders), y Entregable verificable.",
   "- Antes de planificar, identifica la intención, las restricciones, las precondiciones y cómo se comprobará el resultado; revisa la estructura del proyecto, los archivos relevantes y las skills instaladas (como gauntlet, context7 para frameworks o librerías, playwright). Deja en el plan solo supuestos necesarios, pasos comprobables y preguntas que bloqueen el trabajo; no incluyas razonamiento interno detallado.",
@@ -250,7 +284,7 @@ const REGLAS_PLAN = [
   '- "requiere_aprobacion": incluye "commit", "push" o "pr" solo si el plan necesita alguna de esas acciones. Si no, [].',
   "- Telo ejecuta commit, push y PR mediante tarjetas de autorización al terminar. No incluyas su ejecución como pasos del obrero; los pasos solo preparan y comprueban los cambios.",
   "- Telo conserva el remoto fuera del clon por seguridad. Que git remote esté vacío no prueba que falte configuración: Telo valida el destino al preparar la autorización.",
-  '- Si falta información crítica, ponla en "preguntas". No la inventes.',
+  '- Si falta información crítica que cumpla esos criterios, ponla en "preguntas". No la inventes.',
   "- Responde en español.",
 ].join("\n");
 
@@ -281,6 +315,7 @@ export function promptAnalizador(tarea: string, replanificacion?: { planAnterior
 export function promptReparacion(motivo: string): string {
   return [
     `Tu respuesta no es un plan válido: ${motivo}.`,
+    "Deja como máximo 3 preguntas y conserva solo las que bloqueen el alcance, el resultado o el riesgo; combina decisiones relacionadas y recomienda una opción.",
     "Usa solo rutas relativas dentro del workspace; no incluyas rutas absolutas, rutas con .. ni ningún segmento .git.",
     "Responde de nuevo solo con el objeto JSON corregido, sin texto antes ni después.",
   ].join("\n");
@@ -291,7 +326,7 @@ export function promptReparacion(motivo: string): string {
 // desviaciones se comprueban igual que en la ejecución original.
 export function promptCorreccion(plan: Plan, reporte: Reporte, texto: string): string {
   const lineas = [
-    "Eres el obrero de Telo. CORRECCIÓN DEL OBRERO: tu verificación reportó un fallo. Corrígelo y vuelve a entregar.",
+    "Eres el obrero de Telo. CORRECCIÓN DEL OBRERO: la ejecución anterior no dejó una entrega verificable. Revisa el plan y el estado actual del workspace; completa lo pendiente, corrige los fallos comprobados y vuelve a entregar.",
     "",
     "Reporte del intento anterior:",
     JSON.stringify(reporte, null, 2),
@@ -302,6 +337,8 @@ export function promptCorreccion(plan: Plan, reporte: Reporte, texto: string): s
   }
   lineas.push(
     "",
+    "No inventes fallos ni repitas trabajo ya terminado. Si el trabajo ya cumple el plan, compruébalo y entrega el reporte estructurado; si falta algo, termínalo dentro del plan.",
+    "Si falta una precondición externa que no puedes configurar desde el workspace (por ejemplo, credencial, proyecto de hosting o archivos fuente), no repitas intentos de despliegue. Detente, conserva los cambios y marca el requisito en bloqueante_externo; nunca incluyas valores secretos.",
     "Corrige el fallo dentro del plan aprobado de abajo: mismos archivos y pasos, sin salirte del alcance.",
     'Si el fallo solo se arregla saliéndote del plan, responde con "estado": "desviacion" y el motivo, igual que antes.',
     "",
@@ -337,8 +374,8 @@ export function promptObrero(plan: Plan): string {
   if (plan.notas) lineas.push("", "Notas y respuestas del usuario al aprobar:", plan.notas);
   lineas.push(
     "",
-    "Al terminar, responde solo con un objeto JSON, sin texto antes ni después. El resumen es obligatorio: explica qué hiciste aunque no hayas modificado archivos. No devuelvas una respuesta vacía. Usa esta forma:",
-    '{ "estado": "completado", "resumen": "...", "cambios": [{ "archivo": "ruta", "tipo": "crear | editar | borrar" }], "pruebas": [{ "comando": "...", "resultado": "ok | fallo | no_aplica" }], "pendientes": ["..."], "diff_disponible": true, "desviacion": null }',
+    "Al terminar, responde solo con un objeto JSON, sin texto antes ni después. El resumen es obligatorio: explica qué hiciste aunque no hayas modificado archivos. No devuelvas una respuesta vacía. Resume el resultado observado, no copies el prompt ni el título de la tarea. Indica tipo_cambio según el diff real (feat para capacidad nueva, fix para fallo corregido, docs/test/refactor/perf/build/ci/style/revert cuando corresponda; chore para el resto). Si el cambio es mixto, elige su efecto principal. Usa esta forma:",
+    '{ "estado": "completado", "resumen": "...", "tipo_cambio": "feat | fix | docs | test | refactor | perf | build | ci | style | revert | chore", "cambios": [{ "archivo": "ruta", "tipo": "crear | editar | borrar" }], "pruebas": [{ "comando": "...", "resultado": "ok | fallo | no_aplica" }], "pendientes": ["..."], "diff_disponible": true, "desviacion": null, "bloqueante_externo": null }',
   );
   return lineas.join("\n");
 }

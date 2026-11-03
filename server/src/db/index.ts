@@ -948,6 +948,21 @@ const migrations: Migration[] = [
       CREATE INDEX chat_orquestacion_etapas_conversation ON chat_orquestacion_etapas(conversation_id, origin_turn_id);
     `,
   },
+  {
+    // Conserva solo señales estructuradas de cuotas y acceso rechazados; nunca el texto del proveedor.
+    name: "054_rechazos_cuota_proveedor",
+    sql: `
+      CREATE TABLE provider_limit_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        category TEXT NOT NULL CHECK (category IN ('cuota', 'limite_temporal', 'acceso', 'modelo')),
+        http_status INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX provider_limit_events_model_time ON provider_limit_events(provider, model, created_at DESC);
+    `,
+  },
 ];
 
 function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {

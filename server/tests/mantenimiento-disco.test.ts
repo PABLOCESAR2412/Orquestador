@@ -76,8 +76,19 @@ test("el respaldo suspende el mantenimiento sin retirar archivos", async () => {
   }
 });
 test("diagnóstico incluye sesiones, adjuntos y entregables sin exponer rutas", async () => {
-  const res = await servidor.request("http://localhost/servidor");
-  expect(res.status).toBe(200);
-  const datos = await res.json() as { carpetas: { nombre: string }[] };
-  for (const nombre of ["sesiones de agentes", "adjuntos", "entregables"]) expect(datos.carpetas.some(c => c.nombre === nombre)).toBe(true);
+  type Datos = { carpetas: { nombre: string }[]; carpetas_actualizando: boolean; carpetas_error: boolean };
+  let datos: Datos | null = null;
+  const limite = Date.now() + 10_000;
+  do {
+    const res = await servidor.request("http://localhost/servidor");
+    expect(res.status).toBe(200);
+    datos = await res.json() as Datos;
+    expect(typeof datos.carpetas_actualizando).toBe("boolean");
+    expect(typeof datos.carpetas_error).toBe("boolean");
+    if (!datos.carpetas_actualizando) break;
+    await Bun.sleep(50);
+  } while (Date.now() < limite);
+  expect(datos).not.toBeNull();
+  expect(datos!.carpetas_actualizando).toBe(false);
+  for (const nombre of ["sesiones de agentes", "adjuntos", "entregables"]) expect(datos!.carpetas.some(c => c.nombre === nombre)).toBe(true);
 }, 15_000);

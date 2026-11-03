@@ -247,6 +247,75 @@
   border-radius: 50%;
   animation: picker-giro 0.8s linear infinite;
 }
+
+/* Selector de esfuerzo dentro del picker. Los marcadores quedan centrados en la pista gruesa. */
+.picker-configuracion {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 24px;
+  min-height: 210px;
+  padding: 22px 20px;
+}
+.picker-eleccion { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding-right: 42px; }
+.picker-eleccion strong { overflow: hidden; color: var(--ink); font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.picker-eleccion span { color: var(--ink-2); font-size: 12px; }
+.picker-esfuerzo-barra { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.picker-esfuerzo-barra > strong { grid-column: 1 / -1; color: var(--ink); font-size: 13px; }
+.picker-esfuerzo-range-wrap { position: relative; grid-column: 1 / -1; display: flex; align-items: center; min-height: 38px; padding: 0 9px; }
+.picker-esfuerzo-range-wrap input[type="range"] {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 12px;
+  margin: 0;
+  appearance: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-3);
+  cursor: pointer;
+}
+.picker-esfuerzo-range-wrap input[type="range"]::-webkit-slider-thumb {
+  width: 22px;
+  height: 22px;
+  appearance: none;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+.picker-esfuerzo-range-wrap input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+.picker-esfuerzo-marcas { position: absolute; z-index: 2; inset: 50% 9px auto; height: 0; pointer-events: none; }
+.picker-esfuerzo-marcas i { position: absolute; top: 0; width: 4px; height: 4px; border-radius: 50%; background: var(--ink-3); transform: translate(-50%, -50%); }
+.picker-esfuerzo-auto { grid-column: 1 / -1; justify-self: end; min-height: 36px; padding-inline: 14px; border-radius: 9px; }
+.picker-volver {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink-2);
+}
+.picker-volver:hover { border-color: var(--line-strong); background: var(--surface-2); color: var(--ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  .picker { animation: none; }
+}
 @keyframes picker-giro { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .picker-spinner { animation-duration: 2.4s; }

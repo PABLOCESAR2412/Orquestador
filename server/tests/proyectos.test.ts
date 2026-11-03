@@ -198,6 +198,15 @@ describe("API de proyectos", () => {
     expect(log.stdout.toString().trim()).toBe("Proyecto creado");
   });
 
+  test("un proyecto vacío no genera 404 al pedir instrucciones sugeridas", async () => {
+    const creado = await projects.request("/projects", json({ name: "Repo Vacío", url: "https://github.com/acme/repo-vacio" }));
+    expect(creado.status).toBe(201);
+    const p = await creado.json() as { id: string };
+    const sugeridas = await projects.request(`/projects/${p.id}/instrucciones/sugeridas`);
+    expect(sugeridas.status).toBe(200);
+    expect(await sugeridas.json()).toEqual({ texto: "", fuentes: [] });
+  });
+
   test("abre una referencia por nombre único y enumera las rutas si hay duplicados", async () => {
     const carpeta = join(process.env.TELO_PROYECTOS_DIR!, "referencias-archivos");
     mkdirSync(join(carpeta, "src", "uno"), { recursive: true });

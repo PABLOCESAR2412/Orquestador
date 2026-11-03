@@ -32,6 +32,19 @@ beforeEach(() => {
   db.query("DELETE FROM mcp_connections").run();
 });
 
+test("el analizador no recibe MCP con capacidad de escritura ni sus tokens", async () => {
+  for (const [nombre, url] of [["Repositorio", "https://repo.ejemplo.test/mcp"], ["Context7", "https://mcp.context7.com/mcp"]]) {
+    const r = await app.request("/conexiones", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nombre, url, token: "token-ficticio-prueba" }) });
+    expect(r.status).toBe(201);
+  }
+  const completo = configuracionMcpParaAgente(true);
+  const lectura = configuracionMcpParaAgente(true, true);
+  expect(completo.servidores).toHaveLength(2);
+  expect(lectura.servidores).toHaveLength(1);
+  expect(lectura.servidores[0]?.url).toBe("https://mcp.context7.com/mcp");
+  expect(Object.keys(lectura.variables)).toHaveLength(1);
+});
+
 afterAll(() => {
   if (claveOriginal === undefined) delete process.env.TELO_CLAVE_CIFRADO;
   else process.env.TELO_CLAVE_CIFRADO = claveOriginal;

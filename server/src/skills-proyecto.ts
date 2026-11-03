@@ -3,11 +3,13 @@ import { redactar } from "./redaccion";
 import { valoresDeProyecto } from "./secretos";
 import {
   borrarSkill as borrarSkillArchivo,
+  guardarRecursoSkill,
   guardarSkill as guardarSkillArchivo,
   leerSkill,
   listarSkills as listarSkillsArchivos,
   leerFrontmatter,
   LIMITE_SKILL,
+  LIMITE_RECURSO_SKILL,
   type AmbitoSkills,
   SkillError as SkillArchivoError,
 } from "./skills";
@@ -288,7 +290,29 @@ const SKILLS_CONOCIDAS: Record<string, { owner: string; repo: string; name: stri
   context7: { owner: "upstash", repo: "context7", name: "context7-mcp" },
   "context-7": { owner: "upstash", repo: "context7", name: "context7-mcp" },
   "context7-mcp": { owner: "upstash", repo: "context7", name: "context7-mcp" },
+  "ui-ux-pro-max": { owner: "nextlevelbuilder", repo: "ui-ux-pro-max-skill", name: "ui-ux-pro-max" },
+  "code-review": { owner: "vercel-labs", repo: "open-agents", name: "code-review" },
+  "writing-plans": { owner: "obra", repo: "superpowers", name: "writing-plans" },
+  "writting-plans": { owner: "obra", repo: "superpowers", name: "writing-plans" },
+  "test-driven-development": { owner: "obra", repo: "superpowers", name: "test-driven-development" },
+  "systematic-debugging": { owner: "obra", repo: "superpowers", name: "systematic-debugging" },
 };
+
+const UI_UX_REPO = { owner: "nextlevelbuilder", repo: "ui-ux-pro-max-skill", name: "ui-ux-pro-max" };
+const UI_UX_SKILL_PATH = ".claude/skills/ui-ux-pro-max/SKILL.md";
+const UI_UX_MAX_RECURSOS = 64;
+const UI_UX_MAX_TOTAL = 32 * 1024 * 1024;
+
+function recursoUiUxPermitido(ruta: string, carpetaSkill: string): string | null {
+  if (!ruta.startsWith(`${carpetaSkill}/`)) return null;
+  const relativa = ruta.slice(carpetaSkill.length + 1);
+  if (relativa.split("/").some((parte) => !/^[A-Za-z0-9._-]+$/.test(parte) || parte === "." || parte === "..")) return null;
+  if (/^references\/(?:quick-reference|pro-rules)\.md$/.test(relativa)) return relativa;
+  if (/^scripts\/(?:core|design_system|reasoning_contract|search)\.py$/.test(relativa)) return relativa;
+  if (/^data\/[A-Za-z0-9._-]+\.(?:csv|json)$/.test(relativa)) return relativa;
+  if (/^data\/stacks\/[A-Za-z0-9._-]+\.csv$/.test(relativa)) return relativa;
+  return null;
+}
 
 // Interpreta el comando de Skills CLI como datos. Soporta comandos completos, abreviados y URLs.
 export function parsearComandoSkill(comando: unknown): ComandoSkill {
@@ -458,8 +482,11 @@ async function leerRespuesta(respuesta: Response, limite: number): Promise<strin
 
 export async function instalarSkillComando(ambito: AmbitoSkills, comando: unknown) {
   const pedido = parsearComandoSkill(comando);
+  const esUiUxProMax = pedido.owner.toLowerCase() === UI_UX_REPO.owner &&
+    pedido.repo.toLowerCase() === UI_UX_REPO.repo && pedido.name === UI_UX_REPO.name;
   let contenido = "";
   let fuente = "";
+  const recursosUiUx: { ruta: string; contenido: string }[] = [];
 
   // Si se instala a nivel proyecto y la skill ya existe globalmente en el servidor,
   // la conservamos como respaldo confiable ante límites de cuota de la API de GitHub.
@@ -489,11 +516,13 @@ export async function instalarSkillComando(ambito: AmbitoSkills, comando: unknow
       .filter((item) => item?.type === "blob" && typeof item.path === "string" && (item.path as string).toLowerCase().endsWith("skill.md"))
       .map((item) => item.path as string);
 
-    let candidatos = blobs.filter((path) => {
-      const p = path.toLowerCase();
-      return p.endsWith(`/${pedido.name}/skill.md`) || p === `${pedido.name}/skill.md` || p === "skill.md";
-    });
-    if (candidatos.length === 0) {
+    let candidatos = esUiUxProMax
+      ? blobs.filter((path) => path === UI_UX_SKILL_PATH)
+      : blobs.filter((path) => {
+        const p = path.toLowerCase();
+        return p.endsWith(`/${pedido.name}/skill.md`) || p === `${pedido.name}/skill.md` || p === "skill.md";
+      });
+    if (candidatos.length === 0 && !esUiUxProMax) {
       candidatos = blobs;
     }
     if (!candidatos.length) throw new SkillError("skill_no_encontrada", 404);
@@ -509,10 +538,52 @@ export async function instalarSkillComando(ambito: AmbitoSkills, comando: unknow
     fuente = `https://github.com/${pedido.owner}/${pedido.repo}/blob/${rama}/${ruta}`;
     const raw = `https://raw.githubusercontent.com/${pedido.owner}/${pedido.repo}/${rama}/${ruta}`;
     contenido = await descargar(raw, LIMITE_SKILL);
+
+    if (esUiUxProMax) {
+      if (ruta !== UI_UX_SKILL_PATH) throw new SkillError("skill_catalog_failed", 502);
+      const carpetaSkill = UI_UX_SKILL_PATH.slice(0, -"/SKILL.md".length);
+      const recursos = (arbol.tree as { type?: unknown; path?: unknown; size?: unknown }[])
+        .filter((item) => item?.type === "blob" && typeof item.path === "string")
+        .map((item) => ({
+          rutaRepo: item.path as string,
+          ruta: recursoUiUxPermitido(item.path as string, carpetaSkill),
+          size: typeof item.size === "number" ? item.size : null,
+        }))
+        .filter((item): item is { rutaRepo: string; ruta: string; size: number | null } => item.ruta !== null);
+      if (recursos.length > UI_UX_MAX_RECURSOS) throw new SkillError("skill_catalog_failed", 502);
+      const obligatorios = [
+        "references/quick-reference.md", "references/pro-rules.md",
+        "scripts/core.py", "scripts/design_system.py", "scripts/reasoning_contract.py", "scripts/search.py",
+      ];
+      const disponibles = new Set(recursos.map((item) => item.ruta));
+      if (obligatorios.some((recurso) => !disponibles.has(recurso)) || !recursos.some((item) => item.ruta.startsWith("data/"))) {
+        throw new SkillError("skill_catalog_failed", 502);
+      }
+      let bytesTotales = 0;
+      for (const recurso of recursos) {
+        if (recurso.size !== null && recurso.size > LIMITE_RECURSO_SKILL) throw new SkillError("skill_demasiado_grande", 413);
+        bytesTotales += recurso.size ?? 0;
+        if (bytesTotales > UI_UX_MAX_TOTAL) throw new SkillError("skill_demasiado_grande", 413);
+      }
+      for (const recurso of recursos) {
+        const rutaRaw = recurso.rutaRepo.split("/").map(encodeURIComponent).join("/");
+        const contenidoRecurso = await descargar(
+          `https://raw.githubusercontent.com/${pedido.owner}/${pedido.repo}/${rama}/${rutaRaw}`,
+          LIMITE_RECURSO_SKILL,
+        );
+        bytesTotales += Buffer.byteLength(contenidoRecurso, "utf8") - (recurso.size ?? 0);
+        if (bytesTotales > UI_UX_MAX_TOTAL) throw new SkillError("skill_demasiado_grande", 413);
+        recursosUiUx.push({ ruta: recurso.ruta, contenido: contenidoRecurso });
+      }
+    }
   } catch (err) {
-    if (copiaGlobal) {
+    if (copiaGlobal && !esUiUxProMax) {
       contenido = copiaGlobal.content;
       fuente = copiaGlobal.source ?? `https://github.com/${pedido.owner}/${pedido.repo}`;
+    } else if (esUiUxProMax) {
+      // Esta skill necesita sus datos, referencias y herramienta de búsqueda. No se instala
+      // un SKILL.md aislado si no se pudo validar y descargar el conjunto permitido.
+      throw err;
     } else {
       // Intento de descarga directa de CDN raw sin consumir cuota de la API REST de GitHub
       const urlsCdn = [
@@ -548,7 +619,26 @@ export async function instalarSkillComando(ambito: AmbitoSkills, comando: unknow
     campos.push(`source: ${fuente}`);
     contenido = `---\n${campos.join("\n")}\n---${cabecera[2]}${contenido.slice(cabecera[0].length)}`;
   }
+  if (esUiUxProMax) {
+    const rutaSkill = ambito.ambito === "proyecto"
+      ? ".opencode/skills/ui-ux-pro-max"
+      : "$HOME/.config/opencode/skills/ui-ux-pro-max";
+    contenido = contenido.replaceAll(
+      "${CLAUDE_PLUGIN_ROOT}/.claude/skills/ui-ux-pro-max",
+      rutaSkill,
+    );
+    contenido += [
+      "",
+      "## Compatibilidad con Telo",
+      "",
+      "Telo no define CLAUDE_PLUGIN_ROOT. Para OpenCode, ejecuta los ejemplos con `$HOME/.config/opencode/skills/ui-ux-pro-max/scripts/search.py`. Si esa ruta no existe en una ejecución de Codex, usa `$HOME/.agents/skills/ui-ux-pro-max/scripts/search.py`. Si la skill se instaló en un proyecto, usa la copia de `.opencode/skills/ui-ux-pro-max` dentro del workspace. No ejecutes los scripts durante la instalación; `search.py` se ejecuta solo cuando la tarea realmente requiere consultar el catálogo. Guarda los archivos generados únicamente en el workspace del proyecto y sigue las aprobaciones de Telo.",
+      "",
+    ].join("\n");
+  }
   operacionArchivo(() => guardarSkillArchivo(ambito, pedido.name, contenido));
+  for (const recurso of recursosUiUx) {
+    operacionArchivo(() => guardarRecursoSkill(ambito, pedido.name, recurso.ruta, recurso.contenido));
+  }
   const detalle = operacionArchivo(() => leerSkill(ambito, pedido.name));
   return { name: pedido.name, content: detalle.contenido, source: fuente };
 }

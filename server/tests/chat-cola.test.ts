@@ -105,6 +105,21 @@ test("seguir vincula la ejecución al mensaje de continuación y conserva la ses
     .toEqual({ message_id: cuerpo.messages[0].id, status: "queued", provider_session_id: "sesion-conservada" });
   expect(db.query("SELECT 1 FROM messages WHERE id=?").get(primera.messages[0].id)).not.toBeNull();
 });
+test("repetir seguir después de encolar la tarea es idempotente y no duplica el mensaje", async () => {
+  const c = await crear();
+  const primera = (await (await enviar(c.id, "Encargo original")).json()) as any;
+  db.query("UPDATE tasks SET status='sin_cuota',modelo_agotado='opencode/agotado',provider_session_id='sesion-conservada' WHERE id=?").run(primera.taskId);
+  db.query("UPDATE conversations SET model='opencode/continuacion',cuota_modelo='opencode/agotado' WHERE id=?").run(c.id);
+
+  const primerSeguir = await chat.request(`http://telo/conversations/${c.id}/seguir`, { method: "POST" });
+  expect(primerSeguir.status).toBe(202);
+  const mensajesAntes = db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM messages WHERE conversation_id=?").get(c.id)?.n;
+  const repetir = await chat.request(`http://telo/conversations/${c.id}/seguir`, { method: "POST" });
+
+  expect(repetir.status).toBe(202);
+  expect(await repetir.json()).toMatchObject({ taskId: primera.taskId, alreadyContinued: true, messages: [] });
+  expect(db.query<{ n: number }, [string]>("SELECT COUNT(*) AS n FROM messages WHERE conversation_id=?").get(c.id)?.n).toBe(mensajesAntes);
+});
 test("dos conversaciones de un proyecto reciben tareas distintas", async () => {
   const c = await crear();
   const resOtra = await chat.request("http://telo/conversations", {

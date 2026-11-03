@@ -9,7 +9,8 @@ import { join, resolve } from "node:path";
 import { config } from "./config";
 import { limiteProveedor, MAX_TAREAS_SIMULTANEAS, proveedorAgente } from "./limites";
 import { db } from "./db";
-import { prepararSubagentes } from "./subagentes";
+import { prepararSubagentes, pideSubagentes } from "./subagentes";
+import { ejecutarAnalisisOrquestado } from "./orquestacion-chat";
 import { cerrarSubagentesDelTurno, registrarEventoSubagente } from "./subagentes-chat";
 import { publicar } from "./bus";
 import { publicarEstado, registrarEvento } from "./eventos";
@@ -17,6 +18,7 @@ import { ejecutarAgente, ErrorCuota, promptContinuacion, type ResultadoAgente } 
 import { sesionCompatible } from "./conversacion-contexto";
 import { redactar } from "./redaccion";
 import { clasificarTareaJev } from "./jev";
+import { consultarGraphify } from "./graphify-context";
 import {
   extraerJson,
   hashPlan,
@@ -56,10 +58,8 @@ import { enMantenimiento, registrarPausaActiva, registrarTrabajo } from "./despl
 
 const MENSAJE_INTERRUMPIDA = "El servidor se reinició mientras la tarea corría. Puedes reanudarla o reintentarla.";
 const MENSAJE_PAUSA_DESPLIEGUE = "Tarea pausada para aplicar una actualización. Se conservó el espacio de trabajo y la sesión del proveedor, si ya existía; puedes continuarla cuando el servidor vuelva.";
-// Iniciativa del obrero: tras un reporte con fallo, el mismo agente corrige en su sesión hasta
-// este tope de ciclos antes de fallar la tarea. TELO_CICLOS_OBRERO lo ajusta; 0 desactiva
-// la iniciativa y falla con el primer reporte, como antes.
-const MAX_CICLOS_OBRERO = Math.max(0, Math.floor(Number(process.env.TELO_CICLOS_OBRERO ?? 2)) || 0);
+// Como máximo una autocorrección; un bloqueo de credenciales/workspace se reporta sin repetir trabajo.
+const MAX_CICLOS_OBRERO = Math.min(1, Math.max(0, Math.floor(Number(process.env.TELO_CICLOS_OBRERO ?? 1)) || 0));
 // Tamaño máximo de cada línea de salida que viaja por el canal en vivo.
 const MAX_LINEA_EN_VIVO = 4096;
 export const MAX_NOTAS = 2000;
@@ -272,8 +272,20 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
   let turnoTerminado = false;
   const turnoChat = turnoDeTarea(task);
   try {
+    let informes: string[] = [];
+    let gestionada = false;
+    if (analizarConSubagentes && task.conversation_id && turnoChat && pideSubagentes(task.prompt)) {
+      const conv = db.query<{ id: string; project_id: string | null; parent_conversation_id: string | null; orquestacion_habilitada: number; orquestacion_trabajadores: string }, [string]>(
+        "SELECT id,project_id,parent_conversation_id,orquestacion_habilitada,orquestacion_trabajadores FROM conversations WHERE id=?",
+      ).get(task.conversation_id);
+      if (conv?.orquestacion_habilitada && !conv.parent_conversation_id) {
+        gestionada = true;
+        const origen = db.query<{ delegacion_origen: string | null }, [string]>("SELECT delegacion_origen FROM messages WHERE id=?").get(turnoChat.id)?.delegacion_origen ?? turnoChat.id;
+        informes = await ejecutarAnalisisOrquestado(conv, turnoChat.id, origen, task.prompt, ctx.cwd, controller.signal, task.model, task.id);
+      }
+    }
     // Solo el analizador puede delegar y sus auxiliares son de lectura. El obrero queda único.
-    if (analizarConSubagentes) {
+    if (analizarConSubagentes && !gestionada) {
       perfilesSubagente = await prepararSubagentes({
         // El prompt de la fase obrero ya incluye el plan, pero la autorización para delegar
         // viene de la petición original del usuario.
@@ -284,11 +296,19 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
         soloLectura: true,
       });
     }
+    let promptConGraphify = prompt;
+    if (task.project_id) {
+      const graphify = consultarGraphify(ctx.cwd, task.prompt);
+      registrarEvento(task.id, "graphify_consulta", graphify.detalle);
+      if (graphify.contexto) promptConGraphify = `${graphify.contexto}\n\n${promptConGraphify}`;
+    }
     const promptAvisos = ctx.avisos?.length
-      ? `${prompt}\n\nComprobaciones previas de Telo (incorpora su resolución al plan antes de ejecutar pruebas):\n${ctx.avisos.join("\n")}`
-      : prompt;
+      ? `${promptConGraphify}\n\nComprobaciones previas de Telo (incorpora su resolución al plan antes de ejecutar pruebas):\n${ctx.avisos.join("\n")}`
+      : promptConGraphify;
     const result = await ejecutarAgente({
-      prompt: perfilesSubagente ? `${perfilesSubagente.instruccion}\n\n${promptAvisos}` : promptAvisos,
+      solicitudSkills: task.prompt,
+      modelosAuxiliares: perfilesSubagente?.modelos,
+      prompt: [...informes, perfilesSubagente ? `${perfilesSubagente.instruccion}\n\n${promptAvisos}` : promptAvisos].join("\n\n"),
       model: task.model,
       variant: task.effort,
       sessionId: task.provider_session_id,
@@ -603,7 +623,7 @@ async function ejecutarTarea(task: QueuedTask) {
     let resultado = await faseObrero(ctx);
     for (
       let ciclo = 1;
-      !("desviacion" in resultado) && resultado.reporte.estado === "fallo" && ciclo <= MAX_CICLOS_OBRERO;
+      !("desviacion" in resultado) && resultado.reporte.estado === "fallo" && !resultado.reporte.bloqueante_externo && ciclo <= MAX_CICLOS_OBRERO;
       ciclo++
     ) {
       resultado = await faseObrero(ctx, { numero: ciclo, reporte: resultado.reporte, texto: resultado.texto });

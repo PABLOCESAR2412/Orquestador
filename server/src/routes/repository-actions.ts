@@ -21,29 +21,7 @@ import {
   githubApiPr,
 } from "./proyecto-config";
 import { redactar } from "../redaccion";
-
-function mensajeCommitConvencional(titulo: string, prompt: string): string {
-  const generico = /^(cambios revisados en telo|cambios de la tarea|commit)$/i;
-  const texto = [titulo, prompt].find((valor) => valor.trim() && !generico.test(valor.trim()))?.trim() || "actualiza cambios del proyecto";
-  const primeraLinea = texto.split(/[\r\n]/, 1)[0]!.replace(/\s+/g, " ").replace(/[.!?]+$/, "").trim();
-  const yaTipado = /^(feat|fix|docs|test|refactor|perf|chore|build|ci|style|revert)(\([^)]+\))?:\s*.+$/i.test(primeraLinea);
-  if (yaTipado) return primeraLinea.slice(0, 120);
-  const tipo = /\b(corrige|corregir|arregla|arreglar|bug|error|fallo|fix|conflicto|inconsistencia)\b/i.test(`${titulo} ${prompt}`)
-    ? "fix"
-    : /\b(documenta|documentación|docs?)\b/i.test(`${titulo} ${prompt}`)
-      ? "docs"
-      : /\b(prueba|test|specs?)\b/i.test(`${titulo} ${prompt}`)
-        ? "test"
-        : /\b(refactor|limpia|limpieza|simplifica)\b/i.test(`${titulo} ${prompt}`)
-          ? "refactor"
-          : /\b(performance|rendimiento|optimiza|optimización)\b/i.test(`${titulo} ${prompt}`)
-            ? "perf"
-            : /\b(agrega|añade|crea|implemente|implementa|incorpora|nueva función|nuevo)\b/i.test(`${titulo} ${prompt}`)
-              ? "feat"
-              : "chore";
-  const subject = primeraLinea.charAt(0).toLocaleLowerCase("es") + primeraLinea.slice(1);
-  return `${tipo}: ${subject}`.slice(0, 120);
-}
+import { mensajeCommitConvencional } from "../mensaje-commit";
 
 type DiagnosticoConflictos = {
   codigo: "merge_conflicts";
@@ -110,9 +88,9 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
   const tarea = b.taskId
     ? db
         .query<
-          { id: string; status: string; conversation_id: string | null; title: string; prompt: string; model: string; effort: string | null; source_branch: string | null; source_base_branch: string | null; source_pr_number: number | null },
+          { id: string; status: string; conversation_id: string | null; title: string; prompt: string; reporte: string | null; model: string; effort: string | null; source_branch: string | null; source_base_branch: string | null; source_pr_number: number | null },
           [string, string]
-        >("SELECT id,status,conversation_id,title,prompt,model,effort,source_branch,source_base_branch,source_pr_number FROM tasks WHERE id=? AND project_id=?")
+        >("SELECT id,status,conversation_id,title,prompt,reporte,model,effort,source_branch,source_base_branch,source_pr_number FROM tasks WHERE id=? AND project_id=?")
         .get(b.taskId, projectId)
     : null;
   if (b.action !== "init" && b.action !== "merge" && !tarea) return c.json({ error: "task_without_repo" }, 409);
@@ -216,7 +194,7 @@ repositoryActions.post("/projects/:id/acciones", async (c) => {
       truncado: diff?.truncado ?? false,
       remote: remotoDestino,
       base: cfg.base_branch,
-      message: redactar(b.message || (b.action === "merge" ? "Fusionar Pull Request" : tarea ? mensajeCommitConvencional(tarea.title, tarea.prompt) : "chore: actualiza cambios del proyecto")),
+      message: redactar(b.message || (b.action === "merge" ? "Fusionar Pull Request" : tarea ? mensajeCommitConvencional(tarea.reporte, diff?.archivos.map((archivo) => archivo.ruta) ?? []) : "chore: actualiza cambios del proyecto")),
       title: redactar(b.title || (b.action === "merge" ? `Fusionar Pull Request #${b.pr_number ?? numeroPrUrlNumerico ?? ""} en ${cfg.base_branch}` : "Cambios revisados en Telo")),
       pr_number: b.pr_number ?? numeroPrUrlNumerico,
       pr_url: b.pr_url ?? (tarea?.source_pr_number && remotoDestino ? `${remotoDestino}/pull/${tarea.source_pr_number}` : null),

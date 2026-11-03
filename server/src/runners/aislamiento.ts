@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { constants, closeSync, copyFileSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { config } from "../config";
 import { carpetaEntregables } from "../entregables";
@@ -95,12 +95,89 @@ function dentro(ruta: string, raiz: string): boolean {
 
 function rutaPerfilOpenCode(id: string): string {
   const sello = createHash("sha256").update(id).digest("hex");
-  return join(config.dataDir, "perfiles-opencode", sello);
+  return join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-opencode", sello);
 }
 
 function rutaPerfilCodex(id: string): string {
   const sello = createHash("sha256").update(id).digest("hex");
   return join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-codex", sello);
+}
+
+function rutaPerfilCommandCode(id: string): string {
+  const sello = createHash("sha256").update(id).digest("hex");
+  return join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-commandcode", sello);
+}
+
+export function autenticacionCommandCode(): string | null {
+  const home = process.env.HOME && process.env.HOME !== "/" ? process.env.HOME : "";
+  if (!home) return null;
+  const archivo = join(home, ".commandcode", "auth.json");
+  try {
+    const stat = lstatSync(archivo);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || stat.size < 2 || stat.size > 1_000_000 || realpathSync(archivo) !== archivo) return null;
+    const datos: unknown = JSON.parse(readFileSync(archivo, "utf8"));
+    if (!datos || typeof datos !== "object" || Array.isArray(datos) || Object.keys(datos).length === 0) return null;
+    return archivo;
+  } catch {
+    return null;
+  }
+}
+
+function escribirArchivoPerfilSeguro(ruta: string, contenido: string): void {
+  let fd: number | null = null;
+  try {
+    fd = openSync(ruta, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0), 0o600);
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.nlink !== 1) throw new AislamientoError("carpeta_no_permitida", "El archivo de política Command Code no es seguro.");
+    writeFileSync(fd, contenido, "utf8");
+  } finally {
+    if (fd !== null) closeSync(fd);
+  }
+}
+
+export function prepararPerfilCommandCode(id: string): string {
+  const raiz = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-commandcode");
+  mkdirSync(raiz, { recursive: true, mode: 0o700 });
+  for (const ruta of [raiz, rutaPerfilCommandCode(id), join(rutaPerfilCommandCode(id), ".commandcode"), join(rutaPerfilCommandCode(id), ".agents")]) {
+    try { mkdirSync(ruta, { recursive: true, mode: 0o700 }); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+    const stat = lstatSync(ruta);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(ruta) !== ruta) {
+      throw new AislamientoError("carpeta_no_permitida", "El perfil de Command Code contiene una ruta no segura.");
+    }
+  }
+  const perfil = rutaPerfilCommandCode(id);
+  const settings = join(perfil, ".commandcode", "settings.json");
+  const reglas = {
+    permissions: {
+      deny: [
+        "Read(//tmp/telo-commandcode-home/.commandcode/auth.json)",
+        "Read(//tmp/telo-commandcode-home/.commandcode/settings.json)",
+        "Edit(//tmp/telo-commandcode-home/.commandcode/settings.json)",
+        "Shell(*auth.json*)",
+        "Shell(git commit:*)",
+        "Shell(git push:*)",
+        "Shell(gh pr create:*)",
+        "Shell(vercel deploy:*)",
+        "Shell(wrangler deploy:*)",
+        "Shell(npm publish:*)",
+      ],
+    },
+  };
+  try {
+    const stat = lstatSync(settings);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || realpathSync(settings) !== settings) {
+      throw new AislamientoError("carpeta_no_permitida", "La política Command Code no es un archivo regular seguro.");
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  escribirArchivoPerfilSeguro(settings, JSON.stringify(reglas));
+  return perfil;
+}
+
+export function eliminarPerfilCommandCode(id: string): void {
+  rmSync(rutaPerfilCommandCode(id), { recursive: true, force: true });
 }
 
 export async function prepararPerfilCodex(id: string, sessionId?: string | null): Promise<string> {
@@ -161,6 +238,30 @@ export function eliminarPerfilCodex(id: string): void {
   rmSync(rutaPerfilCodex(id), { recursive: true, force: true });
 }
 
+// El perfil local contiene solo las sesiones y los registros de la CLI. OAuth de Antigravity se
+// resuelve por el keyring del usuario y no se copia a este directorio.
+export function prepararPerfilAntigravity(id: string): string {
+  const raiz = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-antigravity");
+  mkdirSync(raiz, { recursive: true, mode: 0o700 });
+  const raizStat = lstatSync(raiz);
+  if (raizStat.isSymbolicLink() || !raizStat.isDirectory() || realpathSync(raiz) !== raiz) {
+    throw new AislamientoError("carpeta_no_permitida", "La carpeta de perfiles de Antigravity no es segura.");
+  }
+  const perfil = join(raiz, createHash("sha256").update(id).digest("hex"));
+  mkdirSync(perfil, { recursive: true, mode: 0o700 });
+  const stat = lstatSync(perfil);
+  if (stat.isSymbolicLink() || !stat.isDirectory() || realpathSync(perfil) !== perfil) {
+    throw new AislamientoError("carpeta_no_permitida", "El perfil de Antigravity no es seguro.");
+  }
+  return perfil;
+}
+
+export function eliminarPerfilAntigravity(id: string): void {
+  const raiz = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-antigravity");
+  const objetivo = join(raiz, createHash("sha256").update(id).digest("hex"));
+  if (dentro(objetivo, raiz)) rmSync(objetivo, { recursive: true, force: true });
+}
+
 function archivoConfiguracionCodex(home: string, nombre: string): string | null {
   const carpetaCodex = process.env.CODEX_HOME?.trim() ? resolve(process.env.CODEX_HOME) : join(home, ".codex");
   const ruta = join(carpetaCodex, nombre);
@@ -189,9 +290,16 @@ export function prepararDirectorioOpenCode(carpeta: string): string {
 // Una sesión por conversación permite reanudarla sin compartir las sesiones entre chats.
 // Las tareas sin chat usan su propio ID y la limpieza de tareas purga el perfil tras la retención.
 export function prepararPerfilOpenCode(id: string): string {
+  const raiz = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-opencode");
+  mkdirSync(raiz, { recursive: true, mode: 0o700 });
   const perfil = rutaPerfilOpenCode(id);
-  for (const ruta of ["data/opencode", "state/opencode", "cache/opencode"]) {
-    mkdirSync(join(perfil, ruta), { recursive: true, mode: 0o700 });
+  for (const ruta of [raiz, perfil, ...["data", "state", "cache"].flatMap((parte) => [join(perfil, parte), join(perfil, parte, "opencode")])]) {
+    try { mkdirSync(ruta, { mode: 0o700 }); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+    const stat = lstatSync(ruta);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(ruta) !== ruta) {
+      throw new AislamientoError("carpeta_no_permitida", "El perfil de OpenCode contiene una ruta no segura.");
+    }
   }
   return perfil;
 }
@@ -277,6 +385,8 @@ export function prefijoAislamiento(
   opencodeMcpConfigPath?: string,
   opencodeActividadTracePath?: string,
   perfilCodexDir?: string,
+  perfilAntigravityDir?: string,
+  perfilCommandCodeDir?: string,
 ): string[] {
   if (!aislamientoActivo()) return [];
 
@@ -301,6 +411,10 @@ export function prefijoAislamiento(
       return ruta ? [{ nombre, ruta }] : [];
     })
     : [];
+  const authCommandCode = perfilCommandCodeDir ? autenticacionCommandCode() : null;
+  if (perfilCommandCodeDir && !authCommandCode) {
+    throw new AislamientoError("carpeta_no_permitida", "Command Code necesita una sesión válida en ~/.commandcode/auth.json.");
+  }
   let perfilCodexReal: string | null = null;
   if (perfilCodexDir) {
     const raizPerfiles = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-codex");
@@ -321,6 +435,32 @@ export function prefijoAislamiento(
       if (!archivo.isFile() || archivo.isSymbolicLink() || archivo.nlink !== 1 || realpathSync(destinoArchivo) !== destinoArchivo) {
         throw new AislamientoError("carpeta_no_permitida", `El archivo ${nombre} del perfil Codex no es seguro.`);
       }
+    }
+  }
+  let perfilAntigravityReal: string | null = null;
+  if (perfilAntigravityDir) {
+    const raizPerfiles = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-antigravity");
+    const perfilReal = rutaReal(perfilAntigravityDir);
+    const stat = lstatSync(perfilAntigravityDir);
+    if (!perfilReal || !dentro(perfilReal, raizPerfiles) || !stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new AislamientoError("carpeta_no_permitida", "El perfil de Antigravity no está dentro del almacenamiento de Telo.");
+    }
+    perfilAntigravityReal = perfilReal;
+  }
+  let perfilCommandCodeReal: string | null = null;
+  let politicaCommandCode: string | null = null;
+  if (perfilCommandCodeDir) {
+    const raizPerfiles = join(rutaReal(config.dataDir) ?? resolve(config.dataDir), "perfiles-commandcode");
+    const perfilReal = rutaReal(perfilCommandCodeDir);
+    const stat = lstatSync(perfilCommandCodeDir);
+    if (!perfilReal || !dentro(perfilReal, raizPerfiles) || !stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new AislamientoError("carpeta_no_permitida", "El perfil de Command Code no está dentro del almacenamiento de Telo.");
+    }
+    perfilCommandCodeReal = perfilReal;
+    politicaCommandCode = join(perfilReal, ".commandcode", "settings.json");
+    const politicaStat = lstatSync(politicaCommandCode);
+    if (!politicaStat.isFile() || politicaStat.isSymbolicLink() || politicaStat.nlink !== 1 || rutaReal(politicaCommandCode) !== politicaCommandCode) {
+      throw new AislamientoError("carpeta_no_permitida", "La política Command Code no es segura.");
     }
   }
 
@@ -345,11 +485,26 @@ export function prefijoAislamiento(
   // /tmp propio y vacío para cada ejecución. Sin esto, /tmp es de solo lectura dentro del sandbox y OpenCode
   // falla al escribir su TMPDIR. Va después de "--ro-bind / /" y antes de lo que se monta encima.
   args.push("--tmpfs", "/tmp");
+  if (perfilAntigravityReal) {
+    args.push("--dir", "/tmp/telo-antigravity-home", "--bind", perfilAntigravityReal, "/tmp/telo-antigravity-home");
+  }
   if (perfilCodexReal && configuracionCodexGlobal.length) {
     args.push("--dir", "/tmp/telo-codex-global");
     for (const archivo of configuracionCodexGlobal) {
       const destino = join("/tmp/telo-codex-global", archivo.nombre);
       args.push("--bind", join(perfilCodexReal, archivo.nombre), destino, "--ro-bind", archivo.ruta, destino);
+    }
+  }
+  if (perfilCommandCodeReal && politicaCommandCode && authCommandCode) {
+    args.push("--dir", "/tmp/telo-commandcode-global");
+    args.push("--ro-bind", authCommandCode, "/tmp/telo-commandcode-global/auth.json");
+    args.push("--dir", "/tmp/telo-commandcode-home");
+    args.push("--bind", perfilCommandCodeReal, "/tmp/telo-commandcode-home");
+    args.push("--ro-bind", politicaCommandCode, "/tmp/telo-commandcode-home/.commandcode/settings.json");
+    args.push("--ro-bind", "/tmp/telo-commandcode-global/auth.json", "/tmp/telo-commandcode-home/.commandcode/auth.json");
+    if (home) {
+      args.push("--dir", "/tmp/telo-commandcode-home/.agents/skills");
+      args.push("--ro-bind-try", join(home, ".config", "opencode", "skills"), "/tmp/telo-commandcode-home/.agents/skills");
     }
   }
   for (const ruta of [...new Set([...ocultar, ...rutasSensibles()])]) args.push("--tmpfs", ruta);
@@ -484,6 +639,14 @@ export function prefijoAislamiento(
   const opencodeEnCwd = prepararDirectorioOpenCode(carpeta);
   if (soloLectura && existsSync(opencodeEnCwd)) {
     args.push("--tmpfs", opencodeEnCwd);
+    // El runtime temporal no debe ocultar los datos y scripts de las skills del proyecto.
+    const skills = join(opencodeEnCwd, "skills");
+    if (existsSync(skills)) {
+      if (!lstatSync(skills).isDirectory() || lstatSync(skills).isSymbolicLink() || rutaReal(skills) !== skills) {
+        throw new AislamientoError("carpeta_no_permitida", "La carpeta de skills del workspace no es segura.");
+      }
+      args.push("--dir", skills, "--ro-bind", skills, skills);
+    }
   }
   // El servidor es el único que escribe Git: commit y push pasan por aprobación.
   const git = join(carpeta, ".git");

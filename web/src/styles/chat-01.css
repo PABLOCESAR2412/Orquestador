@@ -723,7 +723,7 @@
 .tl-auxiliar-vivo-estado.is-running { color: var(--signal); }
 .tl-auxiliar-vivo-estado.is-failed { color: var(--danger); }
 .tl-auxiliar-vivo > p { margin: 5px 0 2px 15px; color: var(--ink-2); font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
-.tl-auxiliar-vivo-encargo { margin: 6px 0 0 15px; padding-left: 8px; border-left: 2px solid var(--line-strong); }
+.tl-auxiliar-vivo-encargo { margin: 6px 0 0 15px; padding-left: 8px; border-left: 1px solid var(--line-strong); }
 .tl-auxiliar-vivo-encargo strong { color: var(--ink); font-size: 10.5px; font-weight: 600; }
 .tl-auxiliar-vivo-encargo p { margin: 2px 0 0; color: var(--ink-2); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
 .tl-auxiliar-vivo-pasos { margin: 6px 0 0 15px; color: var(--ink-3); font-size: 11px; }
@@ -1004,6 +1004,20 @@
   line-height: 1.5;
 }
 .tl-composer-input::placeholder { color: var(--ink-2); }
+.tl-plan-preguntas {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: min(24vh, 180px);
+  overflow-y: auto;
+  margin: 0 0 7px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+.tl-plan-preguntas p { margin: 0; font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere; }
 /* El contorno global de :focus-visible dibujaba un recuadro grueso dentro del compositor.
    El foco se ve en la caja (ver .tl-composer-caja:focus-within). */
 .tl-composer-input:focus,
@@ -1022,6 +1036,13 @@
   align-items: center;
   gap: 6px 8px;
 }
+.tl-agentes-boton,
+.tl-uso {
+  min-height: 34px;
+  gap: 7px;
+  border-radius: 9px;
+}
+.tl-accion-etiqueta { line-height: 1; }
 .tl-composer-der {
   flex-shrink: 0;
   display: flex;
@@ -1110,6 +1131,7 @@
   white-space: nowrap;
   transition: all 0.15s ease;
 }
+.tl-composer-decisiones button svg { flex: 0 0 auto; }
 .tl-composer-decisiones .tl-boton-plan-cancelar {
   border: 1px solid var(--line);
   color: var(--ink-2);
@@ -1143,8 +1165,8 @@
   margin-top: 12px;
   padding: 8px 12px;
   background: var(--surface-2);
-  border-left: 3px solid var(--primary);
-  border-radius: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   font-size: 12.5px;
   color: var(--ink-2);
 }
@@ -1167,8 +1189,8 @@
 .tl-aviso-generacion-media {
   margin: 2px 4px 4px;
   padding: 9px 11px;
-  border-left: 3px solid var(--signal);
-  border-radius: 0 8px 8px 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
   background: var(--surface-2);
   color: var(--ink-2);
   font-size: 12px;
@@ -1437,13 +1459,12 @@
   .tl-composer-barra:has(.tl-composer-decisiones) .tl-composer-izq { flex: 1 1 100%; width: 100%; }
   .tl-composer-barra:has(.tl-composer-decisiones) .tl-composer-der { flex: 1 1 100%; width: 100%; justify-content: flex-end; }
   .tl-composer-decisiones {
-    display: grid;
+    display: flex;
     flex: 1 1 auto;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: flex-end;
     width: 100%;
   }
-  .tl-composer-decisiones button { min-width: 0; padding-inline: 8px; }
-  .tl-composer-decisiones .tl-boton-plan-aprobar { grid-column: 1 / -1; }
+  .tl-composer-decisiones button { min-width: 40px; min-height: 40px; padding: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1490,6 +1511,20 @@
   }
   .tl-chat-cabecera-izq > .tl-subchat-padre > :not([aria-hidden="true"]) { display: none; }
   .tl-composer-izq { column-gap: 4px; }
+  .tl-agentes-boton,
+  .tl-uso {
+    display: inline-grid;
+    flex: 0 0 40px;
+    place-items: center;
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+    border-radius: 9px;
+  }
+  .tl-accion-etiqueta,
+  .tl-plan-label { display: none; }
+  .tl-composer-decisiones { gap: 8px; }
   .tl-modelo-boton { gap: 5px; padding-inline: 7px; }
   .tl-chip-dato { display: none; }
   .tl-chat-cabecera-der .tl-boton { width: 32px; padding: 0; }

@@ -13,8 +13,8 @@ mkdirSync(bin, { recursive: true });
 process.env.DATA_DIR = join(raiz, "data");
 process.env.TELO_PROYECTOS_DIR = join(raiz, "proyectos");
 process.env.TELO_AISLAMIENTO = "desactivado";
-// Esperas mínimas: el multireintento es lo que se prueba, no la paciencia real del servidor.
-process.env.TELO_REINTENTO_ESPERAS_MS = "5,10,15";
+// Una sola reanudación: la política acotada es lo que se prueba, no la espera real del servidor.
+process.env.TELO_REINTENTO_ESPERAS_MS = "5";
 process.env.PATH = `${bin}${delimiter}${entornoAnterior.PATH ?? ""}`;
 
 writeFileSync(join(bin, "opencode"), `#!/bin/sh
@@ -145,8 +145,8 @@ test.skipIf(!Bun.which("setsid"))("el respaldo continúa el trabajo previo con u
   });
 
   expect(resultado.textoFinal).toBe("Respaldo completó lo pendiente.");
-  // Original + 3 reintentos transitorios + el intento del respaldo.
-  expect(readFileSync(contador, "utf8")).toBe("5\n");
+  // Original + 1 reintento transitorio + el intento del respaldo.
+  expect(readFileSync(contador, "utf8")).toBe("3\n");
   expect(readFileSync(sesionRecibida, "utf8")).toBe("");
   const prompt = readFileSync(promptRecibido, "utf8");
   expect(prompt).toContain("Continúa la petición con el historial y el estado del workspace disponibles");
@@ -164,7 +164,7 @@ test.skipIf(!Bun.which("setsid"))("un modelo gratuito no recurre automáticament
     model: "opencode/prueba",
     cwd: raiz,
   })).rejects.toThrow("no se usó el respaldo de pago opencode/respaldo-pago para evitar cargos");
-  // Original + 3 reintentos transitorios; sin respaldo de pago tras agotarlos.
-  expect(readFileSync(contador, "utf8")).toBe("4\n");
+  // Original + 1 reintento transitorio; sin respaldo de pago.
+  expect(readFileSync(contador, "utf8")).toBe("2\n");
   savePreferences(DEFAULT_PREFERENCES);
 });

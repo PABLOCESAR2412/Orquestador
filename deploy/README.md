@@ -16,11 +16,11 @@ Desde Telo: clona Test, pide un cambio mínimo en un archivo de prueba, revisa e
 
 Un timer de systemd revisa `main` cada 5 minutos y comparte con el respaldo un `flock`. Si el cambio se limita a `web/src/*.css`, `web/src/cambios.json` y documentación (`README.md`, `SEGUIMIENTO.md` o este archivo), no crea una pausa ni reinicia el servidor. La interfaz se compila en una carpeta temporal; primero se publican los assets con hash y al final se sustituye `index.html`, para que las tareas y las pestañas abiertas sigan usando archivos completos. Los assets antiguos se conservan para clientes que aún los soliciten.
 
-Antes de desplegar cualquier commit de `main`, el timer consulta la API de GitHub para ese SHA y exige que los checks `servidor` e `interfaz` terminen con `success`. Si un check sigue en curso, falta o falla, ese ciclo se pospone; el siguiente vuelve a consultar y acepta una nueva ejecución de CI sin requerir otro commit. La falta de autenticación o un error de red también bloquea el despliegue. El token solo se usa en `orquestador-deploy.service`, nunca se pasa al servicio web ni a los agentes.
+Antes de desplegar cualquier commit de `main`, el timer consulta GitHub Actions para ese SHA, toma la ejecución más reciente del workflow `.github/workflows/ci.yml` disparada por un `push` a `main` y exige que los trabajos `servidor` e `interfaz` terminen con `success`. Si falta una ejecución, sigue en curso, falla o falta un trabajo, ese ciclo se pospone; el siguiente vuelve a consultar sin requerir otro commit. La falta de autenticación, permiso o red también bloquea el despliegue. El PAT solo se usa durante esta consulta en `orquestador-deploy.service` y se elimina del entorno antes de compilar; nunca se pasa al servicio web ni a los agentes.
 
 La instalación de Antigravity descarga el instalador oficial por HTTPS, limita su tamaño y comprueba su sintaxis antes de ejecutarlo. Google no publica un checksum o firma verificable para ese script; TLS protege el transporte, pero no ofrece una verificación criptográfica independiente del contenido.
 
-Como el repositorio es privado, crea un token fine-grained limitado a `PABLOCESAR2412/Orquestador` con permiso **Checks: Read-only**. En el VM crea el archivo de entorno y edítalo directamente; no pegues el valor en el chat ni en un comando:
+Como el repositorio es privado, crea un token fine-grained limitado al repositorio `PABLOCESAR2412/Orquestador` con **Repository permissions → Actions: Read-only**. Los PAT fine-grained no ofrecen el permiso `Checks`; por eso el actualizador lee los workflow runs y sus jobs mediante la API de Actions. No habilites permisos de escritura. Si el PAT ya se creó sin `Actions: Read-only`, GitHub no permite cambiar sus permisos: crea otro con ese alcance. En el VM edita el archivo directamente; no pegues el valor en el chat ni en un comando:
 
 ```bash
 sudo install -o root -g root -m 600 /dev/null /etc/orquestador/deploy.env
@@ -33,14 +33,30 @@ Contenido dentro del editor:
 TELO_GITHUB_CI_TOKEN=github_pat_REEMPLAZAR_EN_EL_EDITOR
 ```
 
-Después de incorporar la unidad actualizada desde `main`, recárgala y ejecuta un ciclo manual para comprobar los registros:
+Al pasar desde la versión que consultaba la API Checks, el primer despliegue de este cambio tiene que ser manual: el actualizador viejo no puede usar un PAT fine-grained para esa API. Guarda el PAT en `deploy.env` y, cuando no haya tareas activas, actualiza así el checkout. Primero comprueba que `git status --short` no muestre cambios; si aparecen archivos, consérvalos y no uses `reset`.
 
 ```bash
-sudo cp ~/orquestador/orquestador/deploy/orquestador-deploy.service /etc/systemd/system/
-sudo systemctl daemon-reload
+sudo systemctl stop orquestador-deploy.timer
+sudo systemctl stop orquestador.service
+cd ~/orquestador/orquestador
+git status --short
+git fetch origin main
+git merge --ff-only origin/main
+(cd server && bun install --frozen-lockfile)
+(cd web && bun install --frozen-lockfile && bun run build)
+sudo systemctl start orquestador.service
+curl -fsS http://127.0.0.1:3000/api/health
+sudo systemctl start orquestador-deploy.timer
+```
+
+Después de ese primer cambio, `systemd` vuelve a leer `EnvironmentFile` al iniciar cada ciclo. Para comprobar manualmente la puerta nueva:
+
+```bash
 sudo systemctl start orquestador-deploy.service
 journalctl -u orquestador-deploy.service -n 30 --no-pager
 ```
+
+Un `403` indica que al PAT le falta `Actions: Read-only` o que GitHub no lo autorizó para ese repositorio; un `404` suele indicar que el repositorio no está incluido en el alcance del token. En ambos casos el actualizador conserva la versión instalada y vuelve a intentarlo en el siguiente ciclo.
 
 Los demás cambios se tratan como potencialmente capaces de afectar el chat o las tareas: la API rechaza nuevas escrituras, el worker deja de tomar trabajos y una señal exclusiva hace que los turnos activos se detengan y queden reanudables. Se conserva la sesión del proveedor y el workspace; al volver el servicio, el usuario puede continuar manualmente. La cola y los planes pendientes de aprobación se conservan. Si algún proceso no termina dentro del plazo, el ciclo se pospone sin detener el servicio. Una vez drenado, el actualizador para el servicio, avanza `main`, instala dependencias congeladas y compila. Después arranca y comprueba `/api/health`; ante un build o arranque fallido, restaura el código anterior, reinstala, recompila y verifica. La base conserva las migraciones aditivas.
 
@@ -181,12 +197,40 @@ Sin ese permiso, la pestaña muestra un aviso en lugar de los registros. El gast
 - **Instalar OpenCode** usa `npm` del PATH de `orquestador.service`. Si no hay `npm`, el botón lo dice. Instala en `~/.opencode`, que el agente ya ve en solo lectura. El servidor añade esa carpeta a su PATH sin reiniciar. No hace falta sudo.
 - **Login de Codex** necesita el CLI `codex` en el servidor. Antes de usarlo, confirma con `codex login --help` que existe `--device-auth`, y mira qué archivo de sesión crea (la app espera `~/.codex/auth.json`; si es otro, hay que cambiarlo en `server/src/login-cli.ts`).
 - **Aislamiento de credenciales Codex:** antes de ejecutar modelos Codex en Telo, instala la política administrada que impide que los comandos del agente lean `auth.json` y `config.toml` desde sus dos rutas visibles dentro de Bubblewrap:
-
   ```bash
   sudo bash ./deploy/instalar-politica-codex.sh orquestador
   ```
 
   El script crea `/etc/codex/requirements.toml` solo si todavía no existe y lo deja propiedad de `root`; exige que el directorio también sea confiable. Si ya existe una política, no la reemplaza: añade las cuatro rutas a `permissions.filesystem.deny_read` y vuelve a ejecutar el script. Telo verifica la política y los permisos antes de lanzar Codex, y falla de forma cerrada si algo falta. El runner mantiene el sandbox `workspace-write`; Bubblewrap sigue imponiendo su propio límite al workspace.
+
+## Mantener accesible la sesión de Antigravity
+
+Antigravity guarda OAuth en Secret Service del usuario `orquestador`. El servicio systemd no hereda el bus de una terminal SSH; para conservarlo entre cierres de sesión y reinicios, activa el bus persistente del usuario y añade el drop-in:
+
+```bash
+sudo loginctl enable-linger orquestador
+sudo install -d -m 755 /etc/systemd/system/orquestador.service.d
+sudo install -m 644 deploy/orquestador-antigravity.conf /etc/systemd/system/orquestador.service.d/antigravity.conf
+sudo systemctl daemon-reload
+sudo systemctl restart orquestador
+```
+
+El servidor busca `/run/user/<UID>/bus` cuando consulta modelos, valida `/usage` e inicia sesión, sin copiar tokens al perfil temporal ni al prompt. Después, Ajustes > Proveedores > Antigravity verifica la autorización ejecutando `/usage`; el panel de Uso puede volver a consultarla. Si el keyring no está accesible, el estado queda como no verificado y Telo pide volver a autorizar, en vez de afirmar que la sesión sigue activa. No cierres ni borres el keyring del usuario `orquestador`.
+
+Este ajuste conserva acceso al keyring del usuario para los procesos aislados de Antigravity. Mantén el VM y la cuenta de Google bajo tu control.
+
+## Consultar topes de OpenAI (opcional)
+
+OpenAI ofrece límites por modelo/proyecto en su API de administración. Para habilitar esa lectura sin sustituir la clave de inferencia, añade una Admin API key y el ID del proyecto al archivo protegido `/etc/orquestador/orquestador.env`:
+
+```text
+TELO_OPENAI_ADMIN_API_KEY=...
+TELO_OPENAI_PROJECT_ID=proj_...
+```
+
+La clave administrativa se usa solo para `GET /v1/organization/projects/{project_id}/rate_limits`; no se entrega a los agentes. El panel muestra los topes del proveedor y, aparte, el uso del último minuto que Telo registró. No descuenta llamadas hechas en otras aplicaciones ni representa saldo restante. Referencia: [API de límites por proyecto](https://developers.openai.com/api/reference/resources/admin/subresources/organization/subresources/projects/subresources/rate_limits/methods/list_rate_limits).
+
+Para OpenCode Console, Telo intenta leer allowance de Go y presupuestos mediante el endpoint experimental del CLI, si está instalado y conectado. La consulta levanta `opencode serve` solo durante la comprobación, ligado a `127.0.0.1` y protegido con contraseña aleatoria. Si la versión no incluye el endpoint o no hay sesión de Console, el panel conserva el uso medido por Telo. Referencia: [API experimental de límites](https://opencode.ai/v2/docs/api#usage).
 
 ## Google Drive para archivar espacios de tareas (una vez)
 
@@ -247,4 +291,4 @@ La App debe tener instalados los permisos antes de emitir credenciales. Los toke
 
 - No corre migraciones a mano: las aplica el servidor al arrancar.
 - Si `main` tiene cambios locales en el VM, el script se detiene con un aviso en el journal. No descarta nada.
-- El patrón de ejecuciones incluye OpenCode y Codex. Añadir el patrón de agy cuando ese runner exista.
+- El registro de uso incluye OpenCode, Codex y Antigravity cuando cada runner devuelve métricas; los tokens estimados se distinguen de los medidos.

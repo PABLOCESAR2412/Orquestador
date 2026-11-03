@@ -8,6 +8,7 @@ export { pideSubagentes } from "../../shared/delegacion";
 const MAX_MODELOS = 3;
 
 export type PreparacionSubagentes = {
+  modelos: string[];
   instruccion: string;
   directorio: string;
   rutaCaptura: string;
@@ -268,6 +269,7 @@ function emitError(sessionId, error) {
   writeFileSync(pluginPath, plugin, { encoding: "utf8", flag: "wx", mode: 0o600 });
   writeFileSync(rutaCaptura, "", { encoding: "utf8", flag: "wx", mode: 0o600 });
   return {
+    modelos: seleccionados.map((modelo) => modelo.id),
     directorio,
     rutaCaptura,
     instruccion: [

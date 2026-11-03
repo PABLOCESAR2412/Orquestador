@@ -41,6 +41,14 @@ const ACCIONES = {
     ejecutable: (prefijo) => join(prefijo, "bin", "codex"),
     binario: "codex",
   },
+  commandcode: {
+    nombre: "Command Code CLI",
+    comando: "npm install -g --prefix ~/.opencode command-code@latest",
+    programa: "npm",
+    argv: (prefijo) => ["install", "-g", "--prefix", prefijo, "command-code@latest"],
+    ejecutable: (prefijo) => join(prefijo, "bin", "command-code"),
+    binario: "command-code",
+  },
   antigravity: {
     nombre: "Antigravity CLI",
     comando: COMANDO_ANTIGRAVITY,
@@ -161,7 +169,7 @@ export function iniciarInstalacion(id: string): InstalacionPublica {
   if (["antigravity", "hermes"].includes(id) && hallarEjecutable("curl") === null) throw new InstalacionError("curl_no_disponible", 503);
 
   const prefijo = carpetaDeInstalacion();
-  if (id === "opencode" || id === "codex") mkdirSync(prefijo, { recursive: true });
+  if (id === "opencode" || id === "codex" || id === "commandcode") mkdirSync(prefijo, { recursive: true });
 
   let proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
   try {

@@ -73,6 +73,29 @@ test("mantiene un perfil de estado por conversación y permite purgarlo", () => 
   eliminarPerfilOpenCode("conversacion-dos");
 });
 
+test.skipIf(process.platform === "win32")("reanudar OpenCode no crea carpetas a través de un enlace de su perfil", () => {
+  const perfil = prepararPerfilOpenCode("perfil-manipulado");
+  const fuera = join(raiz, "fuera-del-perfil");
+  mkdirSync(fuera);
+  rmSync(join(perfil, "cache"), { recursive: true });
+  symlinkSync(fuera, join(perfil, "cache"), "dir");
+  expect(() => prepararPerfilOpenCode("perfil-manipulado")).toThrow("ruta no segura");
+  expect(existsSync(join(fuera, "opencode"))).toBe(false);
+});
+
+test.skipIf(process.platform === "win32" || !Bun.which("bwrap"))("el runtime de solo lectura conserva los recursos de las skills del proyecto", async () => {
+  const workspace = join(proyectos, "lectura-skills");
+  const skills = join(workspace, ".opencode", "skills");
+  const recurso = join(skills, "datos", "referencia.txt");
+  mkdirSync(join(skills, "datos"), { recursive: true });
+  writeFileSync(recurso, "recurso-del-proyecto");
+  const args = prefijoAislamiento(workspace, true, [], prepararPerfilOpenCode("lectura-skills"));
+  const proceso = Bun.spawn([...args, "sh", "-c", 'cat .opencode/skills/datos/referencia.txt; if echo cambio > .opencode/skills/datos/referencia.txt; then exit 1; fi'], { stdout: "pipe", stderr: "pipe" });
+  const [codigo, salida] = await Promise.all([proceso.exited, new Response(proceso.stdout).text()]);
+  expect(codigo).toBe(0);
+  expect(salida).toContain("recurso-del-proyecto");
+});
+
 test.skipIf(process.platform === "win32" || !Bun.which("bwrap"))("monta el perfil de OpenCode y las credenciales originales en solo lectura", () => {
   const workspace = join(proyectos, "repo");
   mkdirSync(workspace, { recursive: true });
