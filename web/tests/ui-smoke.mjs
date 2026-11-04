@@ -1821,7 +1821,14 @@ try {
     await page.screenshot({ path: `scratch/capturas-ci/disco-${width}.png` });
     await page.goto(`${base}/oficina`);
     await page.getByRole("heading", { name: "Oficina", exact: true }).waitFor();
-    await page.locator(".oficina-plano").waitFor();
+    const planoOficina = page.locator(".oficina-lienzo");
+    await planoOficina.waitFor({ state: "visible" });
+    const imagenPlano = planoOficina.locator(".oficina-plano-img");
+    await imagenPlano.waitFor({ state: "visible" });
+    await page.waitForFunction(() => {
+      const imagen = document.querySelector(".oficina-lienzo .oficina-plano-img");
+      return imagen instanceof HTMLImageElement && imagen.complete && imagen.naturalWidth > 0;
+    });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "la oficina cabe en el ancho disponible");
     await page.screenshot({ path: `scratch/capturas-ci/oficina-${width}.png` });
     assert.deepEqual(errors, []);
