@@ -12,6 +12,12 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 - [x] `deploy/orquestador-antigravity.conf` sí está versionado. «cannot stat» ocurre antes de systemd: la ruta relativa no existe desde el directorio actual, o el checkout del VM aún no contiene el archivo. `deploy/README.md` ahora usa ruta absoluta y comprueba el archivo antes de instalarlo.
 - [~] El catálogo de modelos ya usa el cargador que pasa XDG_RUNTIME_DIR y DBUS_SESSION_BUS_ADDRESS y acepta JSON/texto. Ajustes consulta su endpoint directo y diferencia sesión ausente, errores de login, Secret Service, red, tiempo agotado y catálogo vacío; así el fallo ya no queda oculto como lista vacía. Pruebas y verificación en la VM pendientes. Command Code Go por SSH muestra un callback a localhost de la VM; Ajustes ahora documenta el túnel SSH con el puerto que imprime cmdc y conserva la API key como alternativa headless.
 
+## Catálogo de modelos OpenCode v2 — 3 de noviembre de 2026
+
+- [x] OpenCode 2 retiró `opencode models --verbose`, que Telo todavía exigía. El catálogo conserva compatibilidad con versiones anteriores, consulta `GET /api/model` en un servidor OpenCode temporal limitado a loopback y usa `opencode models` como respaldo si la API local no responde. El selector conserva IDs incluso cuando el CLI solo publica el listado corto; contexto, variantes y precios solo se muestran cuando el catálogo los publica. Un precio ausente nunca se interpreta como gratuito.
+- [x] Siete pruebas focalizadas de modelos aprobadas; CI 41744670137 también pasó el typecheck y la suite completa del servidor, el worker aislado, build y pruebas de interfaz. El primer CI falló porque el fixture del broker simulaba `Bun.spawn` pero no la presencia del ejecutable; ahora simula ambos. Checks `servidor` e `interfaz` verdes.
+- [ ] Falta desplegarlo en la VM y confirmar allí el catálogo real con la sesión del usuario; el cambio del repo por sí solo no actualiza el servicio.
+
 ## Antigravity CLI, Command Code Go y Ollama Cloud — PR #176
 
 - [~] Antigravity: Ajustes inicia `agy` en una terminal remota, muestra únicamente el enlace HTTPS de `accounts.google.com`, recibe el código en la pantalla y comprueba `/usage` más el archivo de sesión que usa el aislamiento. Pruebas sintéticas de host permitido/rechazado y flujo UI a 390/1440 px aprobadas; falta autorizar una cuenta real en la VM. El servicio necesita lingering y el bus de Secret Service configurados con `deploy/orquestador-antigravity.conf`.
