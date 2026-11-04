@@ -16,7 +16,9 @@ const {prepararRedAgente,proveedorCompatibleConBroker}=await import("../../src/r
 const {getModels}=await import("../../src/models");
 const {db}=await import("../../src/db");
 const spawn=Bun.spawn;
+const which=Bun.which;
 const catalogo=["opencode/gemini-prueba","deepseek/chat","xai/grok","google/gemini-api","openai/api","sin-broker/modelo"].map(id=>`${id}\n${JSON.stringify({name:"Modelo de prueba",cost:{input:1,output:1}})}\n`).join("");
+Bun.which=((nombre:string,opciones?:{PATH?:string})=>nombre==="opencode"?"/tmp/opencode":which(nombre,opciones)) as typeof Bun.which;
 Bun.spawn=((args:string[])=>{assert.equal(args[0],"opencode");return {stdout:new Blob([catalogo]).stream(),stderr:new Blob([]).stream(),exited:Promise.resolve(0),kill(){}};}) as any;
 const vistas:any[]=[];
 const transporte={resolver:async()=>"93.184.216.34",https:(opciones:any,callback:any)=>{
@@ -68,4 +70,4 @@ try {
     const p=request({socketPath:join(red.directorio,"broker.sock"),path:"/telo-inference/opencode/zen/v1/chat/completions",method:"POST",headers:{"content-type":"application/json"}});p.on("error",()=>{});p.end('{"model":"prueba"}');
     await iniciada;assert(!pendiente.destroyed);p.destroy();await new Promise(r=>setTimeout(r,40));assert(pendiente.destroyed,"Cancelar el cliente debe cerrar la inferencia pendiente");
   } finally {await red.cerrar();}
-} finally {Bun.spawn=spawn;db.close();rmSync(raiz,{recursive:true,force:true});}
+} finally {Bun.spawn=spawn;Bun.which=which;db.close();rmSync(raiz,{recursive:true,force:true});}
