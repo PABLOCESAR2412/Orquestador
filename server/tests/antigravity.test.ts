@@ -93,6 +93,21 @@ async function conCliFalso(eventos: unknown[], ejecutar: (capturas: any[]) => Pr
   finally { which.mockRestore(); spawn.mockRestore(); if (anterior === undefined) delete process.env.TELO_AISLAMIENTO; else process.env.TELO_AISLAMIENTO = anterior; }
 }
 
+test("AGY agrupa los fragmentos por paso antes de registrar la actividad", async () => {
+  const paso = (step_index: number, text_delta: string, state = "RUNNING") => ({
+    event: "step_update", step_update: { step_index, step_type: "agent_response", text_delta, state },
+  });
+  const actividad: string[] = [];
+  await conCliFalso([
+    paso(1, "Comp"), paso(1, "ilar el proyecto.", "DONE"),
+    paso(2, "Vista previa."),
+    { event: "result", result: { status: "SUCCESS", response: "Listo." } },
+  ], async () => {
+    await runAntigravity({ cwd: temporal, prompt: "revisa", model: "antigravity/gemini-test", onLinea: linea => actividad.push(linea) });
+  });
+  expect(actividad.map(linea => JSON.parse(linea).part.text)).toEqual(["Compilar el proyecto.", "Vista previa."]);
+});
+
 test("AGY conserva modelo/sesión, separa reasoning y cuenta cada paso una vez", async () => {
   const sesion = "11111111-aaaa-bbbb-cccc-111111111111";
   const paso = { event: "step_update", step_update: { conversation_id: sesion, step_index: 1, state: "DONE", step_type: "agent_response", text_delta: "Lista", usage: { input_tokens: 80, output_tokens: 20, thinking_tokens: 5, cache_read_tokens: 10 } } };

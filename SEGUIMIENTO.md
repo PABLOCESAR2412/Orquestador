@@ -4,6 +4,12 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 3 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Aprobación móvil, actividad y destino de Cloudflare
+
+- La aprobación, cancelación y reanálisis comparten la fila de herramientas del compositor móvil. La prueba de Chromium comprueba posición y tamaño de los botones.
+- Antigravity acumula los fragmentos del mismo paso antes de registrar su narración. Los pasos de herramienta mantienen sus propias entradas.
+- El analizador distingue Pages de Workers y pregunta por proyecto y dominio si el destino sigue ambiguo. La revisión de Pages detecta un proyecto inexistente antes de copiar el lote. La tarjeta publica únicamente sitios estáticos de Pages.
+
 ## Confirmación de Pages, sesión y compositor móvil
 
 - Pages presenta la rama de producción, tamaño, nombres de muestra y huella del lote. Al confirmar vuelve a copiar y comparar los bytes que recibirá Wrangler. Cambios de archivo, cuenta, ruta, proyecto o rama invalidan la revisión.

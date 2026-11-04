@@ -1413,6 +1413,14 @@ try {
       decisionesPlan.boundingBox(), cajaComposer.boundingBox(), respuestaPlan.boundingBox(),
     ]);
     assert.ok(decisionesCaja && composerCaja && inputCaja);
+    if (width === 390) {
+      const usoCaja = await page.getByRole("button", { name: "Uso y límites", exact: true }).boundingBox();
+      assert.ok(usoCaja && Math.abs(usoCaja.y - decisionesCaja.y) <= 1, "la aprobación queda en la fila de herramientas");
+      for (const boton of await decisionesPlan.getByRole("button").all()) {
+        const caja = await boton.boundingBox();
+        assert.ok(caja && caja.width === usoCaja.width && caja.height === usoCaja.height, "los controles son cuadrados del mismo tamaño");
+      }
+    }
     assert.ok(inputCaja.height <= 180, "responder al plan no debe estirar el textarea fuera de su límite");
     assert.ok(decisionesCaja.x >= composerCaja.x && decisionesCaja.x + decisionesCaja.width <= composerCaja.x + composerCaja.width + 1, "los botones de plan deben quedar dentro del compositor");
     assert.ok(await page.locator(".tl-composer-barra").evaluate(el => el.scrollWidth <= el.clientWidth + 1), "la barra del compositor no debe desbordarse");
