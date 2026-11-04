@@ -12,7 +12,7 @@ export type InformeTareaChat = {
 function detectarBloqueoAntiguo(valor: Record<string, unknown>, pendientes: string[], pruebas: { comando: string; resultado: string }[]): string | null {
   if (valor.estado !== "fallo") return null;
   const evidencia = [String(valor.resumen ?? ""), ...pendientes, ...pruebas.map((prueba) => prueba.comando + " " + prueba.resultado)].join("\n");
-  const cloudflarePages = /cloudflare\s+pages|wrangler\s+pages|pages\.dev/i.test(evidencia);
+  const cloudflarePages = /cloudflare\s+pages|wrangler\s+pages|pages\.dev|CLOUDFLARE_API_TOKEN/i.test(evidencia);
   const faltaToken = /(?:CLOUDFLARE_API_TOKEN[\s\S]{0,100}(?:no\s+(?:está|se encuentra|hay|aparece|está configurado|está disponible)|falta|ausente|missing|not\s+(?:set|available|present))|(?:sin|falta|ausente|missing|not\s+(?:set|available|present))[\s\S]{0,100}CLOUDFLARE_API_TOKEN)/i;
   const faltaWorkspace = /\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b[\s\S]{0,120}(?:\bsin\b|\bno\s+(?:tiene|contiene|incluye|hay)\b|\bfalta(?:n)?\b|\bausente\b|\bmissing\b)[\s\S]{0,120}(?:package\.json|lockfile|fuentes?|dist\/)/i.test(evidencia)
     || /(?:package\.json|lockfile|fuentes?|archivos? esenciales|dist\/)[\s\S]{0,180}(?:\bfalta(?:n)?\b|\bausente\b|\bmissing\b|\bno\s+(?:está|se encuentra|existe|se encontraron|se hallaron))[\s\S]{0,180}\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b/i.test(evidencia)

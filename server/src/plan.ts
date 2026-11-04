@@ -108,7 +108,7 @@ function rutaValida(ruta: string): boolean {
 
 function detectarBloqueosExternos(textoReporte: string): string | null {
   const motivos: string[] = [];
-  const cloudflarePages = /cloudflare\s+pages|wrangler\s+pages|pages\.dev/i.test(textoReporte);
+  const cloudflarePages = /cloudflare\s+pages|wrangler\s+pages|pages\.dev|CLOUDFLARE_API_TOKEN/i.test(textoReporte);
   const faltaToken = /(?:CLOUDFLARE_API_TOKEN[\s\S]{0,100}(?:no\s+(?:está|se encuentra|hay|aparece|está configurado|está disponible)|falta|ausente|missing|not\s+(?:set|available|present))|(?:sin|falta|ausente|missing|not\s+(?:set|available|present))[\s\S]{0,100}CLOUDFLARE_API_TOKEN)/i;
   if (faltaToken.test(textoReporte) && cloudflarePages) motivos.push("La tarjeta Publicar en Cloudflare Pages usa el token guardado en Ajustes → Proveedores; no lo configures en el workspace.");
   else if (faltaToken.test(textoReporte)) motivos.push("Comprueba la credencial de Cloudflare en Ajustes → Proveedores.");
