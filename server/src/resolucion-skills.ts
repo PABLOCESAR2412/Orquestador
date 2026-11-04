@@ -110,7 +110,7 @@ function skillsAutomaticas(texto: string): string[] {
   const creaMovimiento = /\b(crea(?:r|ci[oó]n)?|gener(?:a|ar|aci[oó]n)|haz(?:me)?|hacer|diseñ(?:a|ar|o)|anima(?:r)?|edita(?:r)?|convierte|produce|mejora(?:r)?|corrige|arregla|revisa)\b/i.test(texto);
   const pideMovimiento = /\b(?:quiero|quisiera|necesito|me gustar[ií]a|puedes|podr[ií]as)\b[\s\S]{0,100}\b(?:hacer|crear|generar|producir|editar|animar|convertir)\b[\s\S]{0,100}\b(?:animaci[oó]n|video|v[ií]deo|mp4|gif)\b|\b(?:quiero|quisiera|necesito|me gustar[ií]a)\b[\s\S]{0,80}\b(?:un|una)\s+(?:video|v[ií]deo|animaci[oó]n)\b/i.test(texto);
   if (mencionaMovimiento && (creaMovimiento || pideMovimiento)) {
-    resultado.push("hyperframes");
+    resultado.push("edicion-video-social", "hyperframes");
   }
 
   if (/\b(?:instagram|reel|reels|story|stories|carrusel|publicacion|caption|biografia)\b/.test(textoNormalizado)) {
@@ -187,7 +187,7 @@ export function inyectarSkillsEnPrompt(
   const menciones = detectarMencionesSkills(encargo);
   const nombres = [...new Set([...menciones, ...skillsAutomaticas(encargo)])].slice(0, 8);
   if (nombres.length === 0) return { promptFinal: prompt, skillsInvocadas: [] };
-  const esVideo = nombres.some((nombre) => ["motion-design", "hyperframes", "hyperframes-cli", "instagram-agent", "ig-reel"].includes(nombre));
+  const esVideo = nombres.some((nombre) => ["edicion-video-social", "motion-design", "hyperframes", "hyperframes-cli", "instagram-agent", "ig-reel"].includes(nombre));
 
   const skills = resolverSkillsInvocadas(nombres, projectId);
   if (skills.length === 0 && !esVideo) return { promptFinal: prompt, skillsInvocadas: [] };
