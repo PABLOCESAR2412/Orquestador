@@ -504,7 +504,7 @@ Una skill lista tiene un disparador claro, un objetivo único, pasos accionables
 `;
 
 const SKILLS_UPSTREAM = [
-  "brainstorming", "code-review", "context7-mcp", "documentation-lookup", "hyperframes",
+  "brainstorming", "code-review", "context7-mcp", "documentation-lookup", "edicion-video-social", "hyperframes",
   "hyperframes-cli", "hyperframes-registry", "ig-caption", "ig-carousel", "ig-human",
   "ig-plan", "ig-reel", "ig-story", "job-application-assistant", "media-use", "obsidian-cli",
   "obsidian-markdown", "orca-cli", "orchestration", "prospecting", "strategic-compact",

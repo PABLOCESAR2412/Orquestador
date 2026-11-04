@@ -1,5 +1,5 @@
 import { afterAll, afterEach, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -163,6 +163,11 @@ test("los alias históricos resuelven a skills oficiales y las tareas de video u
   for (const nombre of ["hyperframes", "hyperframes-cli", "hyperframes-registry", "media-use"]) {
     escribirSkill("global", nombre, `---\nname: ${nombre}\ndescription: Skill oficial.\n---\n\nInstrucciones de ${nombre}.`);
   }
+
+  escribirSkill("global", "edicion-video-social", readFileSync(join(import.meta.dir, "../skills-upstream/edicion-video-social/SKILL.md"), "utf8"));
+  const montaje = inyectarSkillsEnPrompt("Edita un video sobre Graphify con estilo editorial oscuro.");
+  expect(montaje.skillsInvocadas).toContain("edicion-video-social");
+  expect(montaje.skillsInvocadas).toContain("hyperframes");
 
   const video = inyectarSkillsEnPrompt("Crea una animación para Instagram con HyperFrames.");
   expect(video.skillsInvocadas).toContain("hyperframes");
