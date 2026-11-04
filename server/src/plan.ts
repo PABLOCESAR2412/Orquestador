@@ -27,6 +27,7 @@ export type Plan = {
   riesgos: string[];
   preguntas: string[];
   secretos_requeridos?: string[];
+  secretos_revision?: string;
   // Notas o respuestas del usuario al aprobar. El obrero las recibe junto al plan.
   notas?: string;
 };

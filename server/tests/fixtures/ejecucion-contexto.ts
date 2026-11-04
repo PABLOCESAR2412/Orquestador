@@ -32,7 +32,7 @@ mock.module("../../src/runners/opencode", () => ({ ...originales, runOpenCode: r
 mock.module("../../src/runners/codex", () => ({ runCodex: runner }));
 const { db } = await import("../../src/db");
 const { ejecutarAgente } = await import("../../src/ejecutar");
-const { guardarSecreto } = await import("../../src/secretos");
+const { guardarSecreto, revisionSecretosProyecto } = await import("../../src/secretos");
 try {
   const cwd = join(raiz, "workspace");
   mkdirSync(cwd);
@@ -83,9 +83,15 @@ try {
   assert(plan.prompt.includes("Caveman lite/Ponytail"));
   guardarSecreto("proyecto-flujo", "OTHER_SECRET", "otro-secreto-ficticio");
   db.query("INSERT INTO tasks (id, title, prompt, model, status, project_id) VALUES ('tarea-secreta', 'Prueba', 'Prueba', 'opencode/prueba', 'running', 'proyecto-flujo')").run();
-  await ejecutarAgente({ ...base, taskId: "tarea-secreta", secretosAutorizados: ["PROJECT_SECRET"] });
+  const secretosAutorizados = ["PROJECT_SECRET"];
+  const secretosRevision = revisionSecretosProyecto(base.projectId, secretosAutorizados)!;
+  await ejecutarAgente({ ...base, taskId: "tarea-secreta", secretosAutorizados, secretosRevision });
   assert.equal(llamadas.at(-1).extraEnv.PROJECT_SECRET, "secreto-ficticio-proyecto");
   assert.equal(llamadas.at(-1).extraEnv.OTHER_SECRET, undefined);
+  guardarSecreto(base.projectId, "PROJECT_SECRET", "nuevo-secreto-ficticio");
+  const antesDeRotar = llamadas.length;
+  await assert.rejects(ejecutarAgente({ ...base, taskId: "tarea-secreta", secretosAutorizados, secretosRevision }), /credenciales del plan cambiaron/);
+  assert.equal(llamadas.length, antesDeRotar);
   await ejecutarAgente({ ...base, taskId: "tarea-secreta", soloLectura: true, secretosAutorizados: ["PROJECT_SECRET"] });
   assert.equal(llamadas.at(-1).extraEnv.PROJECT_SECRET, undefined);
   const {guardarImagenAdjunta} = await import("../../src/chat-adjuntos");

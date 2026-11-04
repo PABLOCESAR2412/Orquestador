@@ -186,6 +186,8 @@ const CODIGO_TAREA_TEXTO: Record<string, string> = {
   invalid_mensaje: "El mensaje de commit no es válido.",
   sin_cambios: "El agente no dejó cambios que guardar.",
   cambios_cambiaron: "Los cambios aprobados ya no son los mismos; revisa de nuevo el diff.",
+  sesion_no_disponible: "Telo no pudo guardar tu sesión. Vuelve a intentar en unos momentos.",
+  secretos_cambiaron: "Los secretos del plan cambiaron. Revisa el plan y apruébalo de nuevo o vuelve a analizar si se retiró un secreto.",
   secretos_no_confirmados: "Revisa y aprueba de nuevo los secretos solicitados por el plan.",
   archivo_sensible: "Un archivo modificado está marcado como sensible y no se puede guardar.",
   secreto_detectado: "El agente intentó guardar un secreto conocido; el commit fue rechazado.",

@@ -16,8 +16,30 @@ import {
 } from "../src/memoria";
 import { db } from "../src/db";
 import { config } from "../src/config";
+import { auth } from "../src/routes/auth";
 
 describe("sesiones dinámicas por dispositivo", () => {
+  test("login devuelve 503 sin cookie si SQLite no guarda la sesión", async () => {
+    const { clave, sinClave } = config;
+    config.clave = "clave-ficticia-de-prueba";
+    config.sinClave = false;
+    db.exec("CREATE TEMP TRIGGER impedir_alta_sesion BEFORE INSERT ON auth_sessions BEGIN SELECT RAISE(ABORT, 'fallo simulado'); END;");
+    try {
+      const respuesta = await auth.request("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clave: config.clave }),
+      });
+      expect(respuesta.status).toBe(503);
+      expect(respuesta.headers.get("set-cookie")).toBeNull();
+      expect(await respuesta.json()).toEqual({ error: "sesion_no_disponible" });
+    } finally {
+      db.exec("DROP TRIGGER impedir_alta_sesion");
+      config.clave = clave;
+      config.sinClave = sinClave;
+    }
+  });
+
   test("rechaza una sesión vencida antes de renovar su actividad sin depender del reinicio", () => {
     const sinClaveAnterior = config.sinClave;
     config.sinClave = false;

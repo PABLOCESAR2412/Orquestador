@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, mkdtemp, open, readdir, readlink, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -23,7 +24,7 @@ const MAX_PUBLICACION = 512 * 1024 * 1024;
 const NOMBRE_PROYECTO = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const ARCHIVO_PRIVADO = /^(?:\.(?:env|dev\.vars)(?:\.|$)|\.(?:git|npmrc|wrangler|yarnrc)(?:\.|$)|wrangler\.(?:toml|jsonc?)$|node_modules$)/i;
 
-export async function copiarArchivosPages(clon: string, directorio: string, destino: string, valores: string[]): Promise<void> {
+export async function copiarArchivosPages(clon: string, directorio: string, destino: string, valores: string[]) {
   const contieneSecreto = detectorDeSecretos(valores);
   const partes = normalizarRuta(directorio);
   if (!partes.length) throw new ArchivoError("invalid_project_path", 400);
@@ -38,19 +39,24 @@ export async function copiarArchivosPages(clon: string, directorio: string, dest
   let entradas = 0;
   let archivos = 0;
   let bytes = 0;
-  async function copiar(origen: string, salida: string) {
+  const lote = createHash("sha256");
+  const muestra: string[] = [];
+  async function copiar(origen: string, salida: string, ruta = "") {
     if (await realpath(origen) !== origen) throw new ArchivoError("invalid_project_path", 400);
     await mkdir(salida);
-    for (const entrada of await readdir(origen, { withFileTypes: true })) {
+    const listado = await readdir(origen, { withFileTypes: true });
+    listado.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    for (const entrada of listado) {
       if (++entradas > MAX_ARCHIVOS) throw new ArchivoError("pages_assets_too_large", 413);
       const nombre = entrada.name;
       if (contieneSecreto(nombre)) throw new ArchivoError("pages_assets_secret_detected", 400);
       if (ARCHIVO_PRIVADO.test(nombre) || esSensible(nombre) || /^_worker\.js$/i.test(nombre))
         throw new ArchivoError("pages_assets_unsupported", 400);
+      const relativa = ruta ? ruta + "/" + nombre : nombre;
       const archivo = join(origen, nombre);
       const copia = join(salida, nombre);
       if (entrada.isDirectory()) {
-        await copiar(archivo, copia);
+        await copiar(archivo, copia, relativa);
         continue;
       }
       if (!entrada.isFile()) throw new ArchivoError("pages_assets_unsupported", 400);
@@ -67,6 +73,8 @@ export async function copiarArchivosPages(clon: string, directorio: string, dest
         const datos = contenido.subarray(0, bytesRead);
         if (contieneSecreto(datos.toString("utf8"))) throw new ArchivoError("pages_assets_secret_detected", 400);
         await writeFile(copia, datos, { flag: "wx" });
+        lote.update(JSON.stringify([relativa, createHash("sha256").update(datos).digest("hex")]) + "\n");
+        if (muestra.length < 12) muestra.push(relativa);
         archivos++;
       } finally {
         await fd.close();
@@ -75,6 +83,7 @@ export async function copiarArchivosPages(clon: string, directorio: string, dest
   }
   await copiar(carpeta, destino);
   if (!archivos) throw new ArchivoError("pages_assets_empty", 400);
+  return { digest: lote.digest("hex"), archivos, bytes, muestra };
 }
 
 export const cloudflarePages = new Hono();
@@ -82,10 +91,13 @@ export const cloudflarePages = new Hono();
 // La sesión autenticada y la comprobación de origen de /api protegen esta confirmación.
 cloudflarePages.post("/tasks/:id/cloudflare-pages", async (c) => {
   const id = c.req.param("id");
-  const body = await c.req.json<{ proyecto?: unknown; directorio?: unknown }>().catch(() => null);
+  const body = await c.req.json<{ proyecto?: unknown; directorio?: unknown; preparar?: unknown; huella?: unknown }>().catch(() => null);
   const proyecto = typeof body?.proyecto === "string" ? body.proyecto.trim() : "";
   const directorio = typeof body?.directorio === "string" ? body.directorio.trim() : "";
   if (!NOMBRE_PROYECTO.test(proyecto) || !directorio) return c.json({ error: "pages_invalid_destination" }, 400);
+  const preparar = body?.preparar === true;
+  const huellaConfirmada = typeof body?.huella === "string" && /^[a-f0-9]{64}$/.test(body.huella) ? body.huella : null;
+  if (!preparar && !huellaConfirmada) return c.json({ error: "pages_review_required" }, 409);
   const tarea = esIdTarea(id) ? db.query<{ project_id: string | null }, [string]>("SELECT project_id FROM tasks WHERE id=?").get(id) : null;
   if (!tarea?.project_id) return c.json({ error: "task_without_repo" }, 404);
   sinLimiteDeInactividad(c);
@@ -108,7 +120,7 @@ cloudflarePages.post("/tasks/:id/cloudflare-pages", async (c) => {
       const clon = join(await realpath(config.dataDir), "tasks", id, "repo");
       if (await realpath(rutaClon(id)) !== clon) return c.json({ error: "invalid_project_path" }, 400);
       temporal = await mkdtemp(join(tmpdir(), "telo-pages-"));
-      await copiarArchivosPages(clon, directorio, join(temporal, "assets"), [...valoresDeProyecto(projectId), token]);
+      const { digest, ...lote } = await copiarArchivosPages(clon, directorio, join(temporal, "assets"), [...valoresDeProyecto(projectId), token]);
       const respuesta = await fetch(`https://api.cloudflare.com/client/v4/accounts/${cuenta}/pages/projects/${proyecto}`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(15_000),
@@ -121,6 +133,10 @@ cloudflarePages.post("/tasks/:id/cloudflare-pages", async (c) => {
       const rama = datos.result?.production_branch;
       if (typeof rama !== "string" || !rama || rama.length > 255 || /[\r\n\0]/.test(rama))
         return c.json({ error: "pages_remote_error" }, 502);
+
+      const huella = createHash("sha256").update(JSON.stringify([id, cuenta, proyecto, directorio, rama, digest])).digest("hex");
+      if (preparar) return c.json({ huella, rama, ...lote });
+      if (huellaConfirmada !== huella) return c.json({ error: "pages_assets_changed" }, 409);
 
       // Wrangler solo ve la configuración y los archivos estáticos preparados por Telo.
       await writeFile(join(temporal, "wrangler.json"), JSON.stringify({ name: proyecto, pages_build_output_dir: "assets" }));

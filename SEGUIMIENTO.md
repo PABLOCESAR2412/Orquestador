@@ -4,6 +4,12 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 3 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Confirmación de Pages, sesión y compositor móvil
+
+- Pages presenta la rama de producción, tamaño, nombres de muestra y huella del lote. Al confirmar vuelve a copiar y comparar los bytes que recibirá Wrangler. Cambios de archivo, cuenta, ruta, proyecto o rama invalidan la revisión.
+- Una rotación invalida la aprobación de los secretos del plan. Si la credencial sigue disponible, el worker devuelve el plan a aprobación con la nueva revisión. Un secreto retirado impide continuar con esa autorización.
+- Login devuelve 503 sin emitir una cookie si no puede guardar la sesión. El selector de modelos del chat flota sobre el botón como Uso. El envío a cola vacía el compositor y detiene el dictado de ese mensaje, incluso si guardar el borrador falla.
+
 ## Publicación segura, secretos por tarea y dependencias — 4 de noviembre de 2026
 
 - [x] Pages verifica nombres y contenido antes de invocar Wrangler con el detector de Git. Prueba con un secreto ficticio dentro de un bundle y publicación simulada de un directorio limpio. El escaneo cubre valores conocidos y patrones en contenido legible, no inspecciona el interior de archivos comprimidos.

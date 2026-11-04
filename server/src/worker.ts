@@ -1,6 +1,6 @@
 import { formatearPlan } from "./plan";
 import { esClaveDeInferencia } from "./claves-proveedor";
-import { listarSecretos, nombreSecretoValido, SECRETOS_SOLO_SERVIDOR } from "./secretos";
+import { ErrorSecretosCambiaron, listarSecretos, nombreSecretoValido, revisionSecretosProyecto, SECRETOS_SOLO_SERVIDOR } from "./secretos";
 import { createHash } from "node:crypto";
 import { comprobarHerramientas, revisarDependencias } from "./comprobaciones-tarea";
 import { itemDeLinea, registrarActividad } from "./actividad";
@@ -283,7 +283,7 @@ function historialRecienteParaPlan(task: Pick<QueuedTask, "conversation_id" | "m
 }
 
 // Una llamada del analizador u obrero: puede durar lo necesario y registra su uso.
-async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizarConSubagentes = false, secretosAutorizados?: readonly string[]): Promise<ResultadoAgente> {
+async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizarConSubagentes = false, permisos?: Pick<Plan, "secretos_requeridos" | "secretos_revision">): Promise<ResultadoAgente> {
   const { task, controller, salida } = ctx;
   // Una cancelación entre dos llamadas evita lanzar la siguiente: el runner no la vería abortada.
   if (controller.signal.aborted) throw new Error("Tarea cancelada.");
@@ -350,7 +350,8 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
       usageRole: estadoActual(task.id) === "analyzing" ? "analyzer" : "worker",
       soloLectura: estadoActual(task.id) === "analyzing",
       projectId: task.project_id,
-      secretosAutorizados,
+      secretosAutorizados: permisos?.secretos_requeridos,
+      secretosRevision: permisos?.secretos_revision,
       opencodeConfigDir: perfilesSubagente?.directorio,
       opencodeSubagentesTracePath: perfilesSubagente?.rutaCaptura,
       onSubagente: perfilesSubagente && task.conversation_id && turnoChat ? (linea) => {
@@ -473,6 +474,11 @@ async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Pr
   if (plan.secretos_requeridos?.some((nombre) => !nombresSecretos.includes(nombre))) {
     throw new ErrorFase("El plan solicitó un secreto que este proyecto no puede entregar al agente.");
   }
+  if (plan.secretos_requeridos?.length) {
+    const revision = revisionSecretosProyecto(task.project_id, plan.secretos_requeridos);
+    if (!revision) throw new ErrorFase("Los secretos solicitados ya no están disponibles.");
+    plan.secretos_revision = revision;
+  }
   const numero = contarPlanes(task.id) + 1;
   db.transaction(() => {
     const contenido = JSON.stringify(plan), hash = hashPlan(plan);
@@ -524,7 +530,7 @@ async function faseObrero(
   const prompt = correccion ? promptCorreccion(plan, correccion.reporte, correccion.texto) : promptObrero(plan);
   const secretos = plan.secretos_requeridos;
   if (secretos?.length && !aprobacion.plan_hash) throw new ErrorFase("El acceso a los secretos requiere aprobar el plan vigente.");
-  const respuesta = await llamar(ctx, promptDeFase(ctx, prompt), true, false, secretos);
+  const respuesta = await llamar(ctx, promptDeFase(ctx, prompt), true, false, plan);
   if (alcance) {
     const fuera = await comprobarAlcance(alcance);
     if (fuera.length) return { desviacion: "Se detectaron cambios fuera del plan: " + fuera.slice(0,20).join(", ") + ". Se conservan para revisión." };
@@ -734,6 +740,8 @@ async function ejecutarTarea(task: QueuedTask) {
       }
     } else if (pausaDespliegueSolicitada.has(task.id)) {
       finish(task.id, "interrupted", { error: MENSAJE_PAUSA_DESPLIEGUE });
+    } else if (err instanceof ErrorSecretosCambiaron && renovarPlanDeSecretos(task.id, task.project_id)) {
+      return;
     } else if (err instanceof ErrorCuota) {
       pausarPorCuota(task.id, err, task.provider_session_id !== null, task.conversation_id);
     } else if (err instanceof ErrorFase) {
@@ -865,13 +873,29 @@ export function cancelTask(id: string): CancelOutcome {
   return "not_cancellable";
 }
 
-export type ResultadoPlan = "ok" | "not_found" | "not_waiting" | "stale" | "secretos_no_confirmados";
+function renovarPlanDeSecretos(id: string, projectId: string | null): boolean {
+  const plan = planGuardado(id);
+  if (!plan?.secretos_requeridos?.length) return false;
+  const revision = revisionSecretosProyecto(projectId, plan.secretos_requeridos);
+  if (!revision || revision === plan.secretos_revision) return false;
+  plan.secretos_revision = revision;
+  db.transaction(() => {
+    db.query("UPDATE tasks SET status='waiting_approval', plan=?, plan_hash=?, approved_hash=NULL, plan_aprobado_en=NULL, provider_session_id=NULL, provider_session_model=NULL, continuar=0, error=NULL WHERE id=?")
+      .run(JSON.stringify(plan), hashPlan(plan), id);
+    registrarEvento(id, "plan_pendiente", "Cambiaron los secretos solicitados. Confirma la nueva revisión.");
+  })();
+  publicarEstado(id);
+  void avisarPush(id, "revisar", "Cambiaron los secretos solicitados. Aprueba el plan de nuevo.", hashPlan(plan));
+  return true;
+}
+
+export type ResultadoPlan = "ok" | "not_found" | "not_waiting" | "stale" | "secretos_no_confirmados" | "secretos_cambiaron";
 
 // El usuario aprueba el plan: la tarea vuelve a la cola y el obrero lo ejecuta.
 // Las notas se guardan en el plan y el obrero las recibe junto a él.
 export function aprobarPlan(id: string, notas: string | null, hash: string, secretosConfirmados: unknown = [], guardarFeedbackEnPrompt = false): ResultadoPlan {
   const fila = db
-    .query<{ status: string; plan: string | null; plan_hash:string|null }, [string]>("SELECT status, plan, plan_hash FROM tasks WHERE id = ?")
+    .query<{ status: string; plan: string | null; plan_hash: string | null; project_id: string | null }, [string]>("SELECT status, plan, plan_hash, project_id FROM tasks WHERE id = ?")
     .get(id);
   if (!fila) return "not_found";
   if (fila.status !== "waiting_approval" || !fila.plan) return "not_waiting";
@@ -881,6 +905,11 @@ export function aprobarPlan(id: string, notas: string | null, hash: string, secr
   const requeridos = plan.secretos_requeridos ?? [];
   if (!Array.isArray(secretosConfirmados) || secretosConfirmados.length !== requeridos.length ||
       requeridos.some((nombre, i) => secretosConfirmados[i] !== nombre)) return "secretos_no_confirmados";
+  if (requeridos.length && (!plan.secretos_revision ||
+      plan.secretos_revision !== revisionSecretosProyecto(fila.project_id, requeridos))) {
+    renovarPlanDeSecretos(id, fila.project_id);
+    return "secretos_cambiaron";
+  }
   if (notas) plan.notas = redactar(notas).slice(0, MAX_NOTAS);
   let resultado: ResultadoPlan = "ok";
   db.transaction(() => {

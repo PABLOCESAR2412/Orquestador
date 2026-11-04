@@ -1115,7 +1115,11 @@ export const api = {
   updateProject: (id: string, patch: { name?: string; pinned?: boolean; instrucciones?: string }) =>
     request<Project>(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   listTaskEvents: (id: string) => request<TaskEvent[]>(`/api/tasks/${id}/eventos`),
-  publicarPages: (id: string, body: { proyecto: string; directorio: string }) =>
+  prepararPages: (id: string, body: { proyecto: string; directorio: string }) =>
+    request<{ huella: string; rama: string; archivos: number; bytes: number; muestra: string[] }>(
+      `/api/tasks/${id}/cloudflare-pages`, { method: "POST", body: JSON.stringify({ ...body, preparar: true }) },
+    ),
+  publicarPages: (id: string, body: { proyecto: string; directorio: string; huella: string }) =>
     request<{ url: string | null }>(`/api/tasks/${id}/cloudflare-pages`, { method: "POST", body: JSON.stringify(body) }),
   taskOutput: (id: string) => request<{ texto: string; truncado: boolean }>(`/api/tasks/${id}/salida`),
   taskDiff: (id: string) => request<TaskDiff>(`/api/tasks/${id}/diff`),

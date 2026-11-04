@@ -5,7 +5,7 @@ import { registrarEvento } from "./eventos";
 import { rtkDisponible } from "./rtk";
 import { getModels, validateSelection } from "./models";
 import { getPreferences } from "./preferences";
-import { entornoDeProyecto } from "./secretos";
+import { entornoDeProyecto, ErrorSecretosCambiaron, revisionSecretosProyecto } from "./secretos";
 import { entornoProveedores, esClaveDeInferencia, proveedorConClave, valorClaveApiProveedor } from "./claves-proveedor";
 import { candidatosPorCuota, modeloSinCuota, modelosSinCuota, registrarCuotaModelo } from "./respaldos-cuota";
 import { redactar } from "./redaccion";
@@ -57,6 +57,7 @@ export type OpcionesAgente = {
   taskId?: string;
   projectId?: string | null;
   secretosAutorizados?: readonly string[];
+  secretosRevision?: string;
   conversationId?: string | null;
   turnId?: string | null;
   usageRole?: string;
@@ -399,11 +400,18 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
   const solicitudSkills = opts.solicitudSkills ?? opts.prompt;
   if (opts.workMode === "plan") opts = { ...opts, prompt: `Modo Planear: solo lectura. Entrega objetivo, observaciones con evidencia, pasos ordenados, archivos afectados si procede, pruebas propuestas, riesgos y preguntas bloqueantes. No ejecutes cambios ni instalaciones. El plan termina esta tarea; Construir requiere una nueva petición. Conserva JSON si la fase lo exige.\n\n${opts.prompt}` };
   const mcp = configuracionMcpParaAgente(requiereContext7(solicitudSkills), opts.soloLectura);
-  const secretosProyecto = opts.projectId ? entornoDeProyecto(opts.projectId) : {};
   const autorizados = opts.taskId && !opts.soloLectura ? opts.secretosAutorizados ?? [] : [];
-  if (autorizados.some((nombre) => !Object.hasOwn(secretosProyecto, nombre))) {
-    throw new Error("Un secreto autorizado ya no está disponible en el proyecto. Revisa sus ajustes antes de reintentar.");
-  }
+  const secretosProyecto = opts.projectId ? db.transaction(() => {
+    if (autorizados.length && (!opts.secretosRevision ||
+        opts.secretosRevision !== revisionSecretosProyecto(opts.projectId, autorizados))) {
+      throw new ErrorSecretosCambiaron("Las credenciales del plan cambiaron o se retiraron. Revisa los secretos del proyecto.");
+    }
+    const entorno = entornoDeProyecto(opts.projectId!);
+    if (autorizados.some((nombre) => !Object.hasOwn(entorno, nombre))) {
+      throw new Error("Un secreto autorizado ya no está disponible en el proyecto. Revisa sus ajustes antes de reintentar.");
+    }
+    return entorno;
+  })() : {};
   // Las claves de inferencia pasan por el filtro del proveedor. El obrero recibe solo los secretos operativos aprobados.
   const propias: Record<string, string> = {
     ...entornoProveedores(),

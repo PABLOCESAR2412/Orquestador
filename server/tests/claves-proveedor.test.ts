@@ -338,7 +338,7 @@ describe("rutas de claves de proveedor", () => {
     mkdirSync(carpeta, { recursive: true });
     writeFileSync(join(carpeta, "index.html"), "<h1>ProgramPulse</h1>");
     const which = spyOn(Bun, "which").mockImplementation((nombre) => join(tmpdir(), "tools", nombre));
-    const llamada = spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ result: { production_branch: "main" } }));
+    const llamada = spyOn(globalThis, "fetch").mockImplementation((async () => Response.json({ result: { production_branch: "main" } })) as unknown as typeof fetch);
     let argv: string[] = [];
     let env: Record<string, string> = {};
     let html = "";
@@ -350,10 +350,10 @@ describe("rutas de claves de proveedor", () => {
       configWrangler = readFileSync(join(opciones.cwd, "wrangler.json"), "utf8");
       return { exited: Promise.resolve(0), stdout: new Response("https://abcd.programpulse.pages.dev").body, stderr: new Response("").body };
     }) as unknown as typeof Bun.spawn);
-    const publicar = (directorio: string) => cloudflarePages.request(`/tasks/${id}/cloudflare-pages`, {
+    const publicar = (directorio: string, huella?: string) => cloudflarePages.request(`/tasks/${id}/cloudflare-pages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ proyecto: "programpulse", directorio }),
+      body: JSON.stringify({ proyecto: "programpulse", directorio, ...(huella ? { huella } : { preparar: true }) }),
     });
     try {
       expect((await publicar("../dist")).status).toBe(400);
@@ -369,7 +369,17 @@ describe("rutas de claves de proveedor", () => {
       rmSync(join(carpeta, "bundle.js"));
       expect(llamada).not.toHaveBeenCalled();
       expect(spawn).not.toHaveBeenCalled();
-      const res = await publicar("dist");
+      const revision = await publicar("dist");
+      expect(revision.status).toBe(200);
+      const { huella, archivos, muestra } = await revision.json() as { huella: string; archivos: number; muestra: string[] };
+      expect(archivos).toBe(1);
+      expect(muestra).toEqual(["index.html"]);
+      expect(spawn).not.toHaveBeenCalled();
+      writeFileSync(join(carpeta, "index.html"), "<h1>ProgramPxlse</h1>");
+      expect(await (await publicar("dist", huella)).json()).toEqual({ error: "pages_assets_changed" });
+      expect(spawn).not.toHaveBeenCalled();
+      writeFileSync(join(carpeta, "index.html"), "<h1>ProgramPulse</h1>");
+      const res = await publicar("dist", huella);
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ url: "https://abcd.programpulse.pages.dev" });
       expect(llamada).toHaveBeenCalledWith(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/programpulse`, expect.objectContaining({
