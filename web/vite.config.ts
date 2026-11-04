@@ -64,6 +64,17 @@ export default defineConfig({
             expiration: { maxEntries: 100, maxAgeSeconds: 30 * 24 * 60 * 60 },
             cacheableResponse: { statuses: [200] },
           },
+        }, {
+          // Sprites y plano de la Oficina: no se guardan al instalar (pesan ~400 KB y solo los usa esa pantalla).
+          // Sus nombres no llevan hash, así que se sirve lo guardado y se revalida en segundo plano:
+          // si se reemplazan los archivos, la siguiente visita ya los trae.
+          urlPattern: ({ url }) => url.pathname.startsWith("/oficina/") && url.pathname.endsWith(".webp"),
+          handler: "StaleWhileRevalidate",
+          options: {
+            cacheName: "telo-oficina",
+            expiration: { maxEntries: 40, maxAgeSeconds: 30 * 24 * 60 * 60 },
+            cacheableResponse: { statuses: [200] },
+          },
         }],
         manifestTransforms: [(entries) => ({
           manifest: entries.filter(({ url }) => {

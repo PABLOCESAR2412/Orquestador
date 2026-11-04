@@ -1,0 +1,14 @@
+{
+  "plano": "86530966-image.png",
+  "escritorio_apagado": "231ec6ec-image.png",
+  "escritorio_encendido": "30530a7e-image.png",
+  "mesa": "aacdc513-image.png",
+  "personajes": {
+    "ana":    { "caminar": "ac30b950-image.png", "trabajar": "da929ec8-image.png", "corte_trabajar": 0.76 },
+    "carla":  { "caminar": "45e30ef0-image.png", "trabajar": "14ce92cb-image.png", "corte_trabajar": 1.0 },
+    "diego":  { "caminar": "23417b09-image.png", "trabajar": "6febd3a8-image.png", "corte_trabajar": 0.76 },
+    "javier": { "caminar": "373e12cc-image.png", "trabajar": "cf59560b-image.png", "corte_trabajar": 0.72 },
+    "luis":   { "caminar": "4c999eee-image.png", "trabajar": "63e1450a-image.png", "corte_trabajar": 0.78 },
+    "sofia":  { "caminar": "8e10039d-image.png", "trabajar": "e6d2bfed-image.png", "corte_trabajar": 1.0 }
+  }
+}
