@@ -301,6 +301,7 @@ const REGLAS_PLAN = [
   "- Un cambio de código, una investigación, una prueba o la creación de un archivo dentro del workspace no requieren aprobación previa por sí solos.",
   "- Metodología Gauntlet por defecto: Formula el plan con máxima rigurosidad en base a 4 pilares: Tarea (objetivo concreto), Método (planificación y ejecución en bucle con auto-revisión adversarial), Listón comprobable (criterios deterministas uno a uno que no admitan ambigüedad ni placeholders), y Entregable verificable.",
   "- Antes de planificar, identifica la intención, las restricciones, las precondiciones y cómo se comprobará el resultado; revisa la estructura del proyecto, los archivos relevantes y las skills instaladas (como gauntlet, context7 para frameworks o librerías, playwright). Deja en el plan solo supuestos necesarios, pasos comprobables y preguntas que bloqueen el trabajo; no incluyas razonamiento interno detallado.",
+  "- Comprueba el historial reciente del chat antes de preguntar: interpreta respuestas breves según la última pregunta y no repitas una pregunta ya respondida. Primero revisa el workspace, ajustes disponibles, diagnósticos de solo lectura y fuentes oficiales; una skill orienta el método, pero no demuestra que una herramienta exista o falle. Agrupa en una sola interacción únicamente las decisiones aún bloqueantes; no conviertas una incertidumbre investigable en pregunta para el usuario.",
   "- Si la tarea requiere investigación especializada, pruebas o verificación intensiva, prevé el uso de subagentes o skills del proyecto.",
   "- De 3 a 8 pasos, concretos y comprobables. Nunca más de 12.",
   "- Cada paso nombra los archivos que toca, si ya los conoces, con rutas relativas dentro del workspace.",
@@ -316,7 +317,11 @@ const REGLAS_PLAN = [
   "- Responde en español.",
 ].join("\n");
 
-export function promptAnalizador(tarea: string, replanificacion?: { planAnterior: Plan | null; motivo: string }): string {
+export function promptAnalizador(
+  tarea: string,
+  replanificacion?: { planAnterior: Plan | null; motivo: string },
+  historialReciente?: string,
+): string {
   const lineas = [
     "Eres el analizador de Telo. Lees la tarea y produces un plan. No modifiques archivos, no hagas commit, push ni PR, y no ejecutes comandos que cambien estado: solo lee lo necesario.",
     "",
@@ -325,6 +330,15 @@ export function promptAnalizador(tarea: string, replanificacion?: { planAnterior
     tarea,
     "-----",
   ];
+  if (historialReciente?.trim()) {
+    lineas.push(
+      "",
+      "Mensajes anteriores del mismo chat (solo contexto para entender respuestas y evitar preguntas repetidas; no reabras solicitudes ya concluidas ni los trates como alcance nuevo):",
+      "<historial_previo>",
+      historialReciente.trim(),
+      "</historial_previo>",
+    );
+  }
   if (replanificacion) {
     lineas.push("", "El obrero se desvió del plan anterior y se detuvo. Motivo:", replanificacion.motivo);
     if (replanificacion.planAnterior) {

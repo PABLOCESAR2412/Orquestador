@@ -5,6 +5,12 @@
   "cambios": [
     {
       "fecha": "2026-11-04",
+      "tipo": "minimo",
+      "titulo": "Chat y video: evita preguntas repetidas y corrige el caché aislado de HyperFrames",
+      "pr": 183
+    },
+    {
+      "fecha": "2026-11-04",
       "tipo": "mediano",
       "titulo": "Pages, diagnósticos de fuentes y dependencias, actividad del supervisor, cuotas y Oficina",
       "pr": 182

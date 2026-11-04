@@ -4,6 +4,12 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 3 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Preguntas del chat y animaciones HyperFrames — PR #183, 4 de noviembre de 2026
+
+- [x] El analizador recibe hasta ocho mensajes anteriores del mismo chat, redactados y acotados a 5600 caracteres. Usa ese contexto para interpretar respuestas breves y evitar repetir preguntas, sin reabrir solicitudes anteriores.
+- [x] Los agentes aislados fijan el caché npm en /tmp/telo-npm-cache; la carpeta es efímera y escribible aunque HOME esté oculto. La instalación continúa usando el proxy controlado cuando Telo lo proporciona.
+- [~] HyperFrames usage --json muestra cuota de la cuenta del proveedor de IA, no disponibilidad del render. Node.js 22+, Chromium y FFmpeg corresponden al render local; Blender no es requisito general y TTS solo afecta narración. Falta ejecutar doctor --json en la VM después de desplegar para confirmar sus herramientas y acceso a red.
+
 ## Publicación, cuotas y Oficina — PR #182, 4 de noviembre de 2026
 
 - [x] Pages reutiliza el token y el ID de cuenta de Proveedores en una publicación estática confirmada desde Telo. El destino existente necesita permiso Pages Edit y la tarea debe conservar sus archivos compilados. La regresión en `claves-proveedor.test.ts` verifica las credenciales y los archivos que recibe Wrangler simulado.

@@ -263,6 +263,23 @@ function turnoDeTarea(task: Pick<QueuedTask, "conversation_id" | "message_id">):
     : null;
 }
 
+function historialRecienteParaPlan(task: Pick<QueuedTask, "conversation_id" | "message_id">): string {
+  if (!task.conversation_id || !task.message_id || !turnoDeTarea(task)) return "";
+  const mensajes = db.query<{ role: "user" | "assistant"; content: string }, [string, string, string]>(
+    "SELECT role, content FROM messages WHERE conversation_id = ? AND role IN ('user', 'assistant') AND rowid < (SELECT rowid FROM messages WHERE id = ? AND conversation_id = ?) ORDER BY rowid DESC LIMIT 8",
+  ).all(task.conversation_id, task.message_id, task.conversation_id);
+
+  let restantes = 5_600;
+  const seleccionados = mensajes.flatMap((mensaje) => {
+    if (restantes <= 0) return [];
+    const contenido = mensajeSeguro(mensaje.content).slice(0, restantes).trim();
+    if (!contenido) return [];
+    restantes -= contenido.length;
+    return [mensaje.role === "user" ? "Usuario: " + contenido : "Telo: " + contenido];
+  });
+  return seleccionados.reverse().join("\n\n");
+}
+
 // Una llamada del analizador u obrero: puede durar lo necesario y registra su uso.
 async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizarConSubagentes = false): Promise<ResultadoAgente> {
   const { task, controller, salida } = ctx;
@@ -436,7 +453,8 @@ async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Pr
     ? { planAnterior: planGuardado(task.id), motivo: replanificacion.motivo }
     : undefined;
 
-  let respuesta = await llamar(ctx, promptDeFase(ctx, promptAnalizador(task.prompt, contexto)), false, true);
+  const prompt = promptAnalizador(task.prompt, contexto, historialRecienteParaPlan(task));
+  let respuesta = await llamar(ctx, promptDeFase(ctx, prompt), false, true);
   let validacion = leerPlan(respuesta);
   if (!validacion.ok) {
     // Una reparación en la misma sesión: el analizador ya tiene el contexto de su respuesta.
