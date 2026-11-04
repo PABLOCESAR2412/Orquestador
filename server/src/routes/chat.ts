@@ -1209,17 +1209,16 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
         db.query("UPDATE conversations SET runner_session_id=?, runner_session_model=? WHERE id=?")
           .run(sessionId, sessionModel, conversationId);
       },
-      // Cada paso del agente (texto intermedio o acción) se guarda y se publica mientras corre.
+      // Solo las acciones observables entran al proceso; el texto de respuesta llega fragmentado.
       onLinea: (linea) => {
         const item = itemDeLinea(linea);
-        if (!item) return;
-        registrarActividad(conversationId, turno.id, item.tipo === "accion"
-          ? {
-              ...item,
-              titulo: `[Supervisor] ${item.titulo}`.slice(0, 160),
-              ...(item.callId ? { callId: `supervisor:${item.callId}` } : {}),
-            }
-          : item);
+        // El texto de OpenCode llega en fragmentos cortos durante la generación, no son acciones del supervisor.
+        if (!item || item.tipo !== "accion") return;
+        registrarActividad(conversationId, turno.id, {
+          ...item,
+          titulo: `[Supervisor] ${item.titulo}`.slice(0, 160),
+          ...(item.callId ? { callId: `supervisor:${item.callId}` } : {}),
+        });
       },
       onCambioModeloCuota: (agotado, siguiente) => {
         registrarActividad(conversationId, turno.id, {
