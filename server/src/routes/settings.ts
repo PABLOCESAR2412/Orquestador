@@ -10,6 +10,7 @@ type Body = {
   model?: string | null;
   effort?: string | null;
   title?: string;
+  apodo_oficina?: string | null;
   pinned?: boolean;
   work_mode?: "plan" | "build";
   orquestacion_habilitada?: boolean;
@@ -41,6 +42,9 @@ settings.patch("/conversations/:id", async (c) => {
   if (body.title !== undefined) {
     const titulo = typeof body.title === "string" ? body.title.trim() : "";
     if (!titulo || titulo.length > 80) return c.json({ error: "invalid_title" }, 400);
+  }
+  if (body.apodo_oficina != null && (typeof body.apodo_oficina !== "string" || body.apodo_oficina.trim().length > 60)) {
+    return c.json({ error: "invalid_office_alias" }, 400);
   }
 
   const cambiaConfiguracion = body.model !== undefined || body.effort !== undefined;
@@ -89,6 +93,7 @@ settings.patch("/conversations/:id", async (c) => {
   db.transaction(() => {
     if (body.work_mode !== undefined) db.query("UPDATE conversations SET work_mode=? WHERE id=?").run(body.work_mode, id);
     if (body.title !== undefined) db.query("UPDATE conversations SET title = ? WHERE id = ?").run(body.title.trim(), id);
+    if (body.apodo_oficina !== undefined) db.query("UPDATE conversations SET apodo_oficina=? WHERE id=?").run(body.apodo_oficina?.trim() || null, id);
     if (body.pinned !== undefined) db.query("UPDATE conversations SET pinned_at = CASE WHEN ? THEN COALESCE(pinned_at, datetime('now')) ELSE NULL END WHERE id = ?").run(body.pinned ? 1 : 0, id);
     if (cambiaConfiguracion) db.query("UPDATE conversations SET model = ?, effort = ? WHERE id = ?").run(body.model === undefined ? row.model : body.model, body.effort === undefined ? row.effort : body.effort, id);
     if (cambiaOrquestacion) {
@@ -101,11 +106,13 @@ settings.patch("/conversations/:id", async (c) => {
       if (campos.length) db.query(`UPDATE conversations SET ${campos.join(", ")} WHERE id=?`).run(...valores, id);
     }
   })();
-  if (cambiaConfiguracion || cambiaOrquestacion || body.work_mode !== undefined) publicar({ tipo: "configuracion_chat", conversacion_id: id });
+  if (cambiaConfiguracion || cambiaOrquestacion || body.work_mode !== undefined || body.apodo_oficina !== undefined) {
+    publicar({ tipo: "configuracion_chat", conversacion_id: id });
+  }
 
   const actual = db
-    .query<{ id: string; work_mode: "plan" | "build"; title: string; model: string | null; effort: string | null; pinned_at: string | null; orquestacion_habilitada: number; orquestacion_modelos_personalizados: number; orquestacion_seleccion_automatica: number; orquestacion_trabajadores: string }, [string]>(
-      "SELECT id, work_mode, title, model, effort, pinned_at, orquestacion_habilitada, orquestacion_modelos_personalizados, orquestacion_seleccion_automatica, orquestacion_trabajadores FROM conversations WHERE id = ?",
+    .query<{ id: string; work_mode: "plan" | "build"; title: string; apodo_oficina: string | null; model: string | null; effort: string | null; pinned_at: string | null; orquestacion_habilitada: number; orquestacion_modelos_personalizados: number; orquestacion_seleccion_automatica: number; orquestacion_trabajadores: string }, [string]>(
+      "SELECT id, work_mode, title, apodo_oficina, model, effort, pinned_at, orquestacion_habilitada, orquestacion_modelos_personalizados, orquestacion_seleccion_automatica, orquestacion_trabajadores FROM conversations WHERE id = ?",
     )
     .get(id);
   let trabajadores: Trabajador[] = [];

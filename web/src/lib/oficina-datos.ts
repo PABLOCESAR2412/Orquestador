@@ -4,6 +4,10 @@ import type { Entrada, EstadoEntrada } from "./oficina-motor";
 
 export const TEXTO_ACTIVIDAD_MAX = 26;
 
+export function nombreAgente(c: Conversation): string {
+  return c.apodo_oficina || c.subagent_agent || c.title;
+}
+
 export function recortarTexto(texto: string, max = TEXTO_ACTIVIDAD_MAX): string {
   const limpio = texto.replace(/\s+/g, " ").trim();
   return limpio.length > max ? `${limpio.slice(0, max - 1)}…` : limpio;
@@ -27,14 +31,14 @@ export function entradasDesdeConversaciones(conversaciones: Conversation[], acti
     if (c.parent_conversation_id) continue;
     const estado = estadoEntrada(c);
     res.push({
-      id: c.id, titulo: recortarTexto(c.title, 22), estado, reciente: instante(c),
+      id: c.id, titulo: recortarTexto(nombreAgente(c), 22), estado, reciente: instante(c),
       planificando: estado === "trabajando" && c.work_mode === "plan",
       actividad: estado === "trabajando" && actividad.has(c.id) ? recortarTexto(actividad.get(c.id)!) : null,
     });
     for (const h of c.subchats ?? []) {
       if (h.subagent_status !== "running") continue;
       res.push({
-        id: h.id, titulo: recortarTexto(h.subagent_agent || h.title, 22), padre: c.id, estado: "trabajando", reciente: instante(h),
+        id: h.id, titulo: recortarTexto(nombreAgente(h), 22), padre: c.id, estado: "trabajando", reciente: instante(h),
         actividad: actividad.has(h.id) ? recortarTexto(actividad.get(h.id)!) : null,
       });
     }

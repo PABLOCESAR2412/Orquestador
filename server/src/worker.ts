@@ -41,10 +41,12 @@ import type { Usage } from "./runners/opencode";
 import {
   abrirRegistroSalida,
   ErrorTarea,
+  esCarpetaReal,
   iniciarLimpieza,
   limpiarCopiaCancelada,
   mensajeSeguro,
   prepararCopia,
+  sanear,
   type RegistroSalida,
 } from "./workspace";
 import { avisarPush } from "./push";
@@ -84,6 +86,7 @@ type QueuedTask = {
   effort: string | null;
   repo_path: string | null;
   project_id: string | null;
+  workspace: string | null;
   provider_session_id: string | null;
   provider_session_model: string | null;
   conversation_id: string | null;
@@ -127,7 +130,7 @@ function nextQueued(): QueuedTask | null {
   if (enMantenimiento()) return null;
   const pendientes = db
     .query<QueuedTask, []>(
-      "SELECT t.id, t.work_mode, t.prompt, t.model, t.effort, t.provider_session_id, t.provider_session_model, t.conversation_id, t.message_id, t.project_id, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado, t.continuar FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC",
+      "SELECT t.id, t.work_mode, t.prompt, t.model, t.effort, t.provider_session_id, t.provider_session_model, t.conversation_id, t.message_id, t.project_id, t.workspace, p.repo_path AS repo_path, (t.plan_aprobado_en IS NOT NULL) AS aprobado, t.continuar FROM tasks t LEFT JOIN projects p ON p.id = t.project_id WHERE t.status = 'queued' ORDER BY t.created_at ASC, t.rowid ASC",
     )
     .all();
   const candidata = pendientes.find((task) => {
@@ -306,7 +309,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
       if (graphify.contexto) promptConGraphify = `${graphify.contexto}\n\n${promptConGraphify}`;
     }
     const promptAvisos = ctx.avisos?.length
-      ? `${promptConGraphify}\n\nComprobaciones previas de Telo (incorpora su resolución al plan antes de ejecutar pruebas):\n${ctx.avisos.join("\n")}`
+      ? `${promptConGraphify}\n\nComprobaciones previas de Telo para compilación o pruebas. Atiende solo las que correspondan al alcance de la petición:\n${ctx.avisos.join("\n")}`
       : promptConGraphify;
     const result = await ejecutarAgente({
       workMode: task.work_mode,
@@ -498,8 +501,18 @@ async function faseObrero(
     if (fuera.length) return { desviacion: "Se detectaron cambios fuera del plan: " + fuera.slice(0,20).join(", ") + ". Se conservan para revisión." };
   }
   const reporte = validarReporte(extraerJson(respuesta.textoFinal) ?? extraerJson(respuesta.text), respuesta.textoFinal);
-  if (reporte.desviacion) return { desviacion: reporte.desviacion };
-  return { reporte, texto: respuesta.text };
+  if (reporte.desviacion) return { desviacion: sanear(reporte.desviacion) };
+  return {
+    reporte: {
+      ...reporte,
+      resumen: sanear(reporte.resumen),
+      bloqueante_externo: reporte.bloqueante_externo ? sanear(reporte.bloqueante_externo) : null,
+      cambios: reporte.cambios.map((cambio) => ({ archivo: sanear(cambio.archivo), tipo: sanear(cambio.tipo) })),
+      pruebas: reporte.pruebas.map((prueba) => ({ comando: sanear(prueba.comando), resultado: sanear(prueba.resultado) })),
+      pendientes: reporte.pendientes.map((pendiente) => sanear(pendiente)),
+    },
+    texto: sanear(respuesta.text),
+  };
 }
 
 // El obrero se salió del plan: la tarea vuelve al analizador con su motivo. Sin el plan aprobado
@@ -525,6 +538,13 @@ async function runTask(task: QueuedTask) {
 
 async function ejecutarTarea(task: QueuedTask) {
   if (estadoActual(task.id) !== "queued") return;
+  if (task.workspace && !esCarpetaReal(task.workspace)) {
+    const mensaje = "La copia de trabajo ya no está disponible. Restaura su respaldo o crea otra tarea desde el proyecto original.";
+    if (finish(task.id, "failed", { error: "task_workspace_missing" })) {
+      avisarChat(task.id, respuestaDeFallo(mensaje), { model: task.model, effort: task.effort });
+    }
+    return;
+  }
   const errores = comprobarHerramientas(Boolean(task.project_id));
   if (errores.length) {
     const mensaje = errores.join("\n");

@@ -11,6 +11,7 @@ import {
   diffDeTarea,
   ErrorTarea,
   esIdTarea,
+  faltaCopiaDeTarea,
   leerSalida,
   mensajeSeguro,
 } from "../workspace";
@@ -86,6 +87,20 @@ function leerJson<T>(texto: string | null): T | null {
 function leerTarea(id: string) {
   const row = db.query<TaskRow, [string]>(`SELECT ${COLUMNS} ${DESDE} WHERE t.id = ?`).get(id);
   return row ? aTarea(row) : null;
+}
+
+function bloqueoParaContinuar(id: string) {
+  return bloqueoContinuacionDrive(id) ?? (faltaCopiaDeTarea(id) ? "task_workspace_missing" : null);
+}
+
+function detalleBloqueoContinuacion(codigo: string): string {
+  if (codigo === "task_workspace_archived") return "Restaura primero el espacio de trabajo desde Ajustes > Servidor > Almacenamiento.";
+  if (codigo === "task_workspace_missing") return "La copia de trabajo de esta tarea ya no está en el servidor. Restaura su respaldo si existe; si no, reinténtala desde el proyecto original. Los cambios locales que no se guardaron pueden haberse perdido.";
+  return "Espera a que termine el archivado antes de continuar.";
+}
+
+function respuestaBloqueoContinuacion(c: Context, codigo: string) {
+  return c.json({ error: codigo, detail: detalleBloqueoContinuacion(codigo) }, 409);
 }
 
 // Traduce los errores de tareas y de Git a la forma { error, detail? } de la API.
@@ -202,6 +217,9 @@ tasks.post("/tasks/:id/aprobar-plan", async (c) => {
   }
   if (typeof body.notas === "string" && body.notas.length > MAX_NOTAS) return c.json({ error: "invalid_notas" }, 400);
 
+  const bloqueo = bloqueoParaContinuar(id);
+  if (bloqueo) return respuestaBloqueoContinuacion(c, bloqueo);
+
   const notas = typeof body.notas === "string" && body.notas.trim() ? body.notas.trim() : null;
   const resultado = aprobarPlan(id, notas, body.plan_hash.toLowerCase());
   if (resultado === "not_found") return c.json({ error: "task_not_found" }, 404);
@@ -230,6 +248,10 @@ tasks.post("/tasks/:id/plan", async (c) => {
   if (!row) return c.json({ error: "task_not_found" }, 404);
   if (row.status !== "waiting_approval" || row.plan_hash !== hash) {
     return c.json({ error: "cambios_cambiaron" }, 409);
+  }
+  if (body.decision !== "reject") {
+    const bloqueo = bloqueoParaContinuar(id);
+    if (bloqueo) return respuestaBloqueoContinuacion(c, bloqueo);
   }
   if (body.feedback !== undefined && (typeof body.feedback !== "string" || body.feedback.length > 8000)) {
     return c.json({ error: "invalid_content" }, 400);
@@ -322,19 +344,19 @@ tasks.post("/tasks/:id/reanudar", (c) => {
   if (!row) return c.json({ error: "task_not_found" }, 404);
   if (!ESTADOS_REANUDABLES.includes(row.status)) return c.json({ error: "task_not_resumable" }, 409);
   if (!row.reanudable) return c.json({ error: "task_without_session" }, 409);
-  const bloqueo = bloqueoContinuacionDrive(id);
-  if (bloqueo) return c.json({ error: bloqueo, detail: bloqueo === "task_workspace_archived" ? "Restaura primero el espacio de trabajo desde Ajustes > Servidor > Almacenamiento." : "Espera a que termine el archivado antes de continuar." }, 409);
+  const bloqueo = bloqueoParaContinuar(id);
+  if (bloqueo) return respuestaBloqueoContinuacion(c, bloqueo);
 
   let bloqueoFinal: string | null = null;
   db.transaction(() => {
-    bloqueoFinal = bloqueoContinuacionDrive(id);
+    bloqueoFinal = bloqueoParaContinuar(id);
     if (bloqueoFinal) return;
     db.query(
       "UPDATE tasks SET status = 'queued', result = NULL, error = NULL, finished_at = NULL, continuar = CASE WHEN provider_session_id IS NULL THEN 0 ELSE 1 END WHERE id = ?",
     ).run(id);
     registrarEvento(id, "reanudada", `Estaba ${row.status === "interrupted" ? "interrumpida" : "fallida"}`);
   })();
-  if (bloqueoFinal) return c.json({ error: bloqueoFinal, detail: bloqueoFinal === "task_workspace_archived" ? "Restaura primero el espacio de trabajo desde Ajustes > Servidor > Almacenamiento." : "Espera a que termine el archivado antes de continuar." }, 409);
+  if (bloqueoFinal) return respuestaBloqueoContinuacion(c, bloqueoFinal);
 
   publicarEstado(id);
   notifyWorker();
@@ -349,6 +371,8 @@ tasks.post("/tasks/:id/seguir", async (c) => {
   const row = leerTarea(id);
   if (!row) return c.json({ error: "task_not_found" }, 404);
   if (row.status !== ESTADO_SEGUIBLE) return c.json({ error: "task_not_continuable" }, 409);
+  const bloqueo = bloqueoParaContinuar(id);
+  if (bloqueo) return respuestaBloqueoContinuacion(c, bloqueo);
 
   const body = await c.req
     .json<{ model?: unknown; effort?: unknown }>()
@@ -375,7 +399,7 @@ tasks.post("/tasks/:id/seguir", async (c) => {
   // La condición del UPDATE evita seguir una tarea que cambió de estado mientras se validaba el modelo.
   let bloqueoFinal: string | null = null;
   const encolada = db.transaction(() => {
-    bloqueoFinal = bloqueoContinuacionDrive(id);
+    bloqueoFinal = bloqueoParaContinuar(id);
     if (bloqueoFinal) return false;
     const r = db
       .query(
@@ -386,7 +410,7 @@ tasks.post("/tasks/:id/seguir", async (c) => {
     registrarEvento(id, "seguida", cambiaModelo ? `Modelo ${model} (antes ${row.model})` : `Modelo ${model}`);
     return true;
   })();
-  if (bloqueoFinal) return c.json({ error: bloqueoFinal, detail: bloqueoFinal === "task_workspace_archived" ? "Restaura primero el espacio de trabajo desde Ajustes > Servidor > Almacenamiento." : "Espera a que termine el archivado antes de continuar." }, 409);
+  if (bloqueoFinal) return respuestaBloqueoContinuacion(c, bloqueoFinal);
   if (!encolada) return c.json({ error: "task_not_continuable" }, 409);
 
   publicarEstado(id);

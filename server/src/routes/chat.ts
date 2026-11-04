@@ -13,7 +13,7 @@ import { sesionCompatible } from "../conversacion-contexto";
 import { ejecutarAnalisisOrquestado, leerTrabajadoresOrquestacion, type TrabajadorOrquestacion } from "../orquestacion-chat";
 import { getPreferences } from "../preferences";
 import { projectRepoPath } from "./projects";
-import { mensajeSeguro } from "../workspace";
+import { faltaCopiaDeTarea, mensajeSeguro } from "../workspace";
 import { carpetaEntregables } from "../entregables";
 import { actividadDelTurno, itemDeLinea, marcarRespuestaCompactada, registrarActividad } from "../actividad";
 import { crearTarea } from "../tareas";
@@ -91,6 +91,7 @@ type ConversationRow = {
 type Subchat = {
   id: string;
   title: string;
+  apodo_oficina: string | null;
   model: string | null;
   effort: string | null;
   project_id: string | null;
@@ -111,6 +112,7 @@ type Subchat = {
 type Conversation = {
   id: string;
   title: string;
+  apodo_oficina: string | null;
   model: string | null;
   effort: string | null;
   project_id: string | null;
@@ -175,7 +177,7 @@ chat.get("/conversations", (c) => {
                  created_at DESC, rowid DESC) AS rn
           FROM tasks WHERE conversation_id IS NOT NULL
       )
-      SELECT c.id, c.work_mode, c.title, c.model, c.effort, c.project_id, p.name AS project_name,
+      SELECT c.id, c.work_mode, c.title, c.apodo_oficina, c.model, c.effort, c.project_id, p.name AS project_name,
              c.pinned_at, c.cuota_modelo, c.created_at, m.last_msg_at, c.rowid AS conv_rowid,
              c.orquestacion_habilitada, c.orquestacion_modelos_personalizados, c.orquestacion_seleccion_automatica, c.orquestacion_trabajadores,
              c.runner_session_id IS NOT NULL AS tiene_sesion,
@@ -192,7 +194,7 @@ chat.get("/conversations", (c) => {
     .all();
 
   const hijos = db.query<Subchat, []>(`
-    SELECT c.id,c.work_mode,c.title,c.model,c.effort,c.project_id,p.name AS project_name,c.runner_session_id IS NOT NULL AS tiene_sesion,c.parent_conversation_id,c.parent_turn_id,
+    SELECT c.id,c.work_mode,c.title,c.apodo_oficina,c.model,c.effort,c.project_id,p.name AS project_name,c.runner_session_id IS NOT NULL AS tiene_sesion,c.parent_conversation_id,c.parent_turn_id,
            c.subagent_turn_id,c.subagent_agent,c.subagent_prompt,c.subagent_status,c.subagent_result,
            c.created_at,MAX(c.created_at,COALESCE((SELECT MAX(m.created_at) FROM messages m WHERE m.conversation_id=c.id),c.created_at)) AS last_message_at
       FROM conversations c
@@ -393,7 +395,7 @@ chat.get("/conversations/:id/turnos/:turno/subagentes", (c) => {
     return c.json({ error: "conversation_not_found" }, 404);
   }
   const filas = db.query<Subchat, [string, string]>(`
-    SELECT c.id,c.work_mode,c.title,c.model,c.effort,c.project_id,p.name AS project_name,c.parent_conversation_id,c.parent_turn_id,
+    SELECT c.id,c.work_mode,c.title,c.apodo_oficina,c.model,c.effort,c.project_id,p.name AS project_name,c.parent_conversation_id,c.parent_turn_id,
            c.subagent_turn_id,c.subagent_agent,c.subagent_prompt,c.subagent_status,c.subagent_result,
            c.created_at,MAX(c.created_at,COALESCE((SELECT MAX(m.created_at) FROM messages m WHERE m.conversation_id=c.id),c.created_at)) AS last_message_at
       FROM conversations c LEFT JOIN projects p ON p.id=c.project_id
@@ -1569,6 +1571,7 @@ chat.post("/conversations/:id/seguir", async (c) => {
 
   if (conv.project_id && !conv.parent_conversation_id) {
     if (!tarea || tarea.status !== "sin_cuota") return c.json({ error: "chat_sin_cuota" }, 409);
+    if (faltaCopiaDeTarea(tarea.id)) return c.json({ error: "task_workspace_missing" }, 409);
     const turno = guardarMensajeUsuario(conversationId, SEGUIR_VISIBLE);
     db.transaction(() => {
       db.query("UPDATE tasks SET status='queued',model=?,effort=?,modelo_agotado=NULL,error=NULL,finished_at=NULL,continuar=1,message_id=? WHERE id=?")

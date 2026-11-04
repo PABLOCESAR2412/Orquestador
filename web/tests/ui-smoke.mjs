@@ -397,6 +397,18 @@ try {
           { id: "ampliada", nombre: "Ventana ampliada", usadoPorcentaje: 15, restantePorcentaje: 85, duracionMinutos: 10_080, reiniciaEn: new Date(Date.now() + 7 * 86_400_000).toISOString() },
         ],
       };
+      else if (path === "/api/providers/antigravity/usage") data = {
+        estado: "activo", plan: "Google AI Plus", comprobadoEn: now,
+        grupos: [
+          { nombre: "Gemini Models", ventanas: [{ id: "gemini-weekly", nombre: "Semanal · 7 d", restantePorcentaje: 71, reiniciaEn: now }] },
+          { nombre: "Claude and GPT models", ventanas: [{ id: "3p-weekly", nombre: "Semanal · 7 d", restantePorcentaje: 40, reiniciaEn: now }] },
+        ],
+      };
+      else if (path === "/api/providers/ollama/balance") data = {
+        estado: "activo", comprobadoEn: now, compradosUsd: 0,
+        incluidos: { restanteUsd: 15, limiteUsd: 60, reiniciaEn: now },
+        ventanas: [],
+      };
       else if (path === "/api/jev" && route.request().method() === "GET") data = { disponible: true, configurada: jevConfigurada, actualizada_en: jevConfigurada ? now : null };
       else if (path === "/api/jev" && route.request().method() === "PUT") {
         jevConfigurada = true;
@@ -1352,13 +1364,10 @@ try {
     const panelUso = page.getByRole("dialog", { name: "Uso del proveedor" });
     await panelUso.waitFor();
     await panelUso.getByRole("region", { name: "Estado de conexión con Google AI Studio" }).getByText("Disponible", { exact: true }).waitFor();
-    await panelUso.getByRole("region", { name: "Uso registrado por modelo" }).waitFor();
     const textoUso = await panelUso.textContent();
-    assert.equal(await panelUso.locator(".usage-window").count(), 4, "el panel muestra la comprobación de Google y las tres ventanas de uso de Telo");
+    assert.equal(await panelUso.locator(".usage-window").count(), 1, "el panel muestra solo la comprobación de Google");
     assert.equal(textoUso.includes("Google aplica límites por proyecto y modelo"), true);
-    assert.equal(textoUso.includes("Últimos 7 días"), true);
-    assert.equal(textoUso.includes("Últimas 5 horas"), true);
-    assert.equal(textoUso.includes("Mes actual (UTC)"), true);
+    assert.doesNotMatch(textoUso, /Últimos 7 días|Últimas 5 horas|Mes actual \(UTC\)|Uso registrado por modelo/);
     assert.equal(await panelUso.getByRole("link", { name: "Google AI Studio · Usage" }).getAttribute("href"), "https://aistudio.google.com/usage");
     await page.keyboard.press("Escape");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
@@ -1367,6 +1376,9 @@ try {
     task.started_at = new Date(Date.now() - 12_000).toISOString();
     const pensando = page.locator(".tl-pensando");
     await pensando.waitFor();
+    const historialTelo = page.locator("details.task-historial").filter({ hasText: "Actividad de Telo: Graphify y skills" }).last();
+    await historialTelo.waitFor();
+    assert.equal(await historialTelo.evaluate(el => el.open), false, "la actividad empieza contraída aun cuando la tarea está en curso");
     const duracionEnCurso = page.locator(".tl-msg-procesando .tl-msg-duracion").last();
     await duracionEnCurso.waitFor();
     if (width === 390) {
@@ -1577,7 +1589,7 @@ try {
     await proveedoresInferencia.getByRole("tab", { name: "Ollama Cloud", exact: true }).click();
     const panelOllama = page.getByRole("tabpanel", { name: "Ollama Cloud" });
     await panelOllama.getByLabel("Clave API").waitFor();
-    await panelOllama.getByText(/Telo registra las llamadas y tokens/).waitFor();
+    await panelOllama.getByText(/Consulta los créditos de tu cuenta desde Uso/).waitFor();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     assert.equal(await page.locator('article[aria-labelledby="aj-wrangler-titulo"]').count(), 0, "Wrangler instalado aparece en la lista y oculta su tarjeta de instalación");
     assert.equal(await page.locator('article[aria-labelledby="aj-vercel-titulo"]').count(), 0, "Vercel instalado aparece en la lista y oculta su tarjeta de instalación");
@@ -1716,6 +1728,29 @@ try {
     assert.equal(textoCodex.includes("Uso registrado por modelo"), false);
     assert.equal(textoCodex.includes("Mes actual (UTC)"), false);
     await page.screenshot({ path: `scratch/capturas-ci/cuota-codex-${width}.png` });
+    await page.keyboard.press("Escape");
+    modeloC1 = "antigravity/gemini-3.8-flash";
+    await page.goto(`${base}/chat`);
+    await page.locator(".tl-inicio-recientes").getByRole("button").filter({ hasText: "Prueba de flujo" }).click();
+    await page.getByRole("button", { name: "Uso y límites", exact: true }).click();
+    const usoAntigravity = page.getByRole("dialog", { name: "Uso del proveedor" });
+    await usoAntigravity.getByRole("progressbar", { name: "Semanal · 7 d: 71% restante" }).waitFor();
+    const textoAntigravity = await usoAntigravity.textContent();
+    assert.match(textoAntigravity, /Google AI Plus/);
+    assert.match(textoAntigravity, /Gemini Models/);
+    assert.match(textoAntigravity, /Claude and GPT models/);
+    assert.match(textoAntigravity, /Uso 29%/);
+    assert.doesNotMatch(textoAntigravity, /5 h|Mes actual|Uso por modelo/);
+    await page.screenshot({ path: `scratch/capturas-ci/cuota-antigravity-${width}.png` });
+    await page.keyboard.press("Escape");
+    modeloC1 = "ollama/deepseek-v4-pro";
+    await page.goto(`${base}/chat`);
+    await page.locator(".tl-inicio-recientes").getByRole("button").filter({ hasText: "Prueba de flujo" }).click();
+    await page.getByRole("button", { name: "Uso y límites", exact: true }).click();
+    const usoOllama = page.getByRole("dialog", { name: "Uso del proveedor" });
+    await usoOllama.getByText("Créditos incluidos restantes", { exact: true }).waitFor();
+    assert.match(await usoOllama.textContent(), /Créditos comprados restantes/);
+    await page.screenshot({ path: `scratch/capturas-ci/cuota-ollama-${width}.png` });
     await page.keyboard.press("Escape");
     modeloC1 = modeloC1Anterior;
     console.log(`${width}px: código de acceso comprobado`);

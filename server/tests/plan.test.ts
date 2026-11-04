@@ -192,7 +192,7 @@ describe("validarReporte", () => {
       pendientes: ["Configurar Cloudflare y preparar el proyecto"],
     }, "");
     expect(r.estado).toBe("fallo");
-    expect(r.bloqueante_externo).toContain("CLOUDFLARE_API_TOKEN");
+    expect(r.bloqueante_externo).toContain("Publicar en Cloudflare Pages");
     expect(r.bloqueante_externo).toContain("workspace");
     expect(r.desviacion).toBeNull();
   });

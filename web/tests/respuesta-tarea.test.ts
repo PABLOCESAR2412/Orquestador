@@ -37,7 +37,8 @@ test("clasifica reportes antiguos bloqueados por workspace y credenciales", () =
     pruebas: [],
     pendientes: ["Configurar Cloudflare en el servicio"],
   }));
-  expect(datos?.bloqueante_externo).toContain("CLOUDFLARE_API_TOKEN");
+  expect(datos?.bloqueante_externo).toContain("Publicar en Cloudflare Pages");
+  expect(datos?.bloqueante_externo).toContain("fuentes necesarios");
 });
 
 test("conserva el bloqueante explícito en reportes nuevos", () => {

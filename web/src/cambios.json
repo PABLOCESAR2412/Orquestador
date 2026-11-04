@@ -4,6 +4,12 @@
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
     {
+      "fecha": "2026-11-04",
+      "tipo": "mediano",
+      "titulo": "Publicación en Pages con la credencial guardada, cuotas de proveedor y controles de agentes en Oficina",
+      "pr": 182
+    },
+    {
       "fecha": "2026-11-03",
       "tipo": "mediano",
       "titulo": "Oficina: plano pixel art con un personaje por chat, escritorios para 30 agentes, tres salas de reuniones y zoom táctil",

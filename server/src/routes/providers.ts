@@ -9,6 +9,7 @@ import { listarModelosCodex } from "../modelos-codex";
 import { obtenerCuotaCodex } from "../cuota-codex";
 import { listarModelosAntigravity, sesionAntigravityConectada } from "../antigravity";
 import { obtenerCuotaAntigravity } from "../cuota-antigravity";
+import { obtenerBalanceOllama } from "../cuota-ollama";
 import { commandCodeConectado } from "../runners/aislamiento";
 import { cancelarLoginAntigravity, enviarCodigoAntigravity, estadoLoginAntigravityEnVivo, iniciarLoginAntigravity, LoginAntigravityError } from "../login-antigravity";
 
@@ -186,7 +187,7 @@ async function estadoProveedores(): Promise<ProviderStatus[]> {
       "Clave de OpenRouter. Se guarda aquí, cifrada, o viene del archivo de entorno del servidor.",
       enAgente,
     ),
-    proveedorGuardable("ollama", "Ollama Cloud", "API key de Ollama Cloud. Telo consulta el catálogo y mide el uso local; revisa el saldo y las tarifas en tu cuenta.", enAgente),
+    proveedorGuardable("ollama", "Ollama Cloud", "API key de Ollama Cloud. Telo consulta el catálogo y los créditos de la cuenta.", enAgente),
   ];
 }
 
@@ -300,6 +301,7 @@ providers.get("/providers/codex/models", async (c) => {
 });
 providers.get("/providers/codex/usage", async (c) => c.json(await obtenerCuotaCodex(c.req.query("refresh") === "1")));
 providers.get("/providers/antigravity/usage", async (c) => c.json(await obtenerCuotaAntigravity(c.req.query("refresh") === "1")));
+providers.get("/providers/ollama/balance", async (c) => c.json(await obtenerBalanceOllama()));
 providers.get("/providers/antigravity/models", async (c) => {
   if (!await sesionAntigravityConectada()) return c.json({ error: "antigravity_no_conectado", mensaje: "Inicia agy por SSH como usuario orquestador; una sesión que solo vive en el keyring no puede usarse dentro del aislamiento." }, 409);
   try { return c.json(await listarModelosAntigravity(c.req.query("refresh") === "1")); }

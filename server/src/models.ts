@@ -351,7 +351,7 @@ export async function getModels(force = false): Promise<ModelInfo[]> {
       if (!models.some((existente) => existente.id === id)) models.push({
         id, provider: "ollama", name: modelo.nombre, inputUsd: 0, outputUsd: 0, context: 0, variants: [],
         free: false, priceKnown: false, costTier: "desconocido",
-        costWarning: "La tarifa depende del plan y del modelo de Ollama Cloud. Telo registra el uso, pero no consulta el saldo de la cuenta.",
+        costWarning: "El catálogo de Ollama Cloud no incluye tarifas. Consulta las tarifas por modelo en Ollama y tus créditos desde Uso.",
         group: "Ollama Cloud", recommended: true,
       });
     }

@@ -6,7 +6,17 @@ import { MotorOficina, type Actor, type Entrada } from "../lib/oficina-motor";
 const E = manifiesto.escala_atlas;
 const C = manifiesto.caminar;
 const T = manifiesto.trabajar;
-const COLUMNA_DIR = { frente: 0, espalda: 1, derecha: 2, izquierda: 3 } as const;
+const ALTO_CAMINANDO = 112;
+const ALTO_ESCRITORIO = 86;
+// Alturas medianas de los píxeles opacos en cada atlas. Cuatro hojas traen los perfiles laterales invertidos.
+const PERSONAJES: Record<string, { caminar: number; trabajar: number; lateralesInvertidos?: boolean }> = {
+  ana: { caminar: 109.5, trabajar: 81 },
+  carla: { caminar: 86, trabajar: 79, lateralesInvertidos: true },
+  diego: { caminar: 84, trabajar: 62 },
+  javier: { caminar: 91.5, trabajar: 70, lateralesInvertidos: true },
+  luis: { caminar: 80.5, trabajar: 68, lateralesInvertidos: true },
+  sofia: { caminar: 86, trabajar: 84, lateralesInvertidos: true },
+};
 const ZOOM_MAX = 2.5;
 const ZOOM_CERCA = 0.85;   // desde aquí se muestran todas las etiquetas
 const FPS = 30;
@@ -22,22 +32,30 @@ type Props = {
 
 // Imagen y recorte del cuadro que corresponde a cada pose (en píxeles del plano)
 function cuadro(a: Actor, t: number) {
-  const base = { ancho: C.celda[0] / E, atlas: `/oficina/${a.personaje}-caminar.webp` };
-  const tamanoC = `${(C.celda[0] * 4) / E}px ${(C.celda[1] * 4 + C.sentado.celda[1]) / E}px`;
+  const personaje = PERSONAJES[a.personaje];
   if (a.pose === "teclea" || a.pose === "escritorio") {
     const col = a.pose === "teclea" ? Math.floor(t * 6 + (a.semilla % 4)) % 4 : 0;
-    const w = T.celda[0] / E, h = T.celda[1] / E;
-    return { clave: `t${col}`, atlas: `/oficina/${a.personaje}-trabajar.webp`, w, h, ax: T.ancla[0] / E, ay: T.ancla[1] / E, tamano: `${w * 4}px ${h}px`, pos: `${-col * w}px 0px` };
+    const escala = (personaje ? ALTO_ESCRITORIO / personaje.trabajar : 1) / E;
+    const w = T.celda[0] * escala, h = T.celda[1] * escala;
+    return { clave: `t${col}`, atlas: `/oficina/${a.personaje}-trabajar.webp`, w, h, ax: T.ancla[0] * escala, ay: T.ancla[1] * escala, tamano: `${w * 4}px ${h}px`, pos: `${-col * w}px 0px` };
   }
+  let direccion = a.dir;
+  if (personaje?.lateralesInvertidos && (direccion === "derecha" || direccion === "izquierda")) {
+    direccion = direccion === "derecha" ? "izquierda" : "derecha";
+  }
+  const escala = (personaje ? ALTO_CAMINANDO / personaje.caminar : 1) / E;
+  const atlas = `/oficina/${a.personaje}-caminar.webp`;
+  const w = C.celda[0] * escala;
+  const tamano = `${w * 4}px ${(C.celda[1] * 4 + C.sentado.celda[1]) * escala}px`;
   if (a.pose === "sentado") {
-    const col = COLUMNA_DIR[a.dir];
-    const h = C.sentado.celda[1] / E;
-    return { clave: `s${col}`, atlas: base.atlas, w: base.ancho, h, ax: C.sentado.ancla[0] / E, ay: C.sentado.ancla[1] / E, tamano: tamanoC, pos: `${-col * base.ancho}px ${-C.sentado.y / E}px` };
+    const col = C.filas[direccion];
+    const h = C.sentado.celda[1] * escala;
+    return { clave: `s${col}`, atlas, w, h, ax: C.sentado.ancla[0] * escala, ay: C.sentado.ancla[1] * escala, tamano, pos: `${-col * w}px ${-C.sentado.y * escala}px` };
   }
-  const fila = COLUMNA_DIR[a.dir];
+  const fila = C.filas[direccion];
   const col = a.pose === "camina" ? Math.floor(t * 8 + (a.semilla % 4)) % 4 : 0;
-  const h = C.celda[1] / E;
-  return { clave: `c${fila}${col}`, atlas: base.atlas, w: base.ancho, h, ax: C.ancla[0] / E, ay: C.ancla[1] / E, tamano: tamanoC, pos: `${-col * base.ancho}px ${-fila * h}px` };
+  const h = C.celda[1] * escala;
+  return { clave: `c${fila}${col}`, atlas, w, h, ax: C.ancla[0] * escala, ay: C.ancla[1] * escala, tamano, pos: `${-col * w}px ${-fila * h}px` };
 }
 
 // Segunda línea de la etiqueta: aprobación, error o el último paso. Si aún no llegó ningún paso, el estado.

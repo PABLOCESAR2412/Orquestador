@@ -983,6 +983,10 @@ const migrations: Migration[] = [
       );
       CREATE INDEX provider_limit_events_model_date ON provider_limit_events(provider, model, created_at DESC);`,
   },
+  {
+    name: "060_apodos_oficina",
+    sql: `ALTER TABLE conversations ADD COLUMN apodo_oficina TEXT;`,
+  },
 ];
 
 function copiarAntesDeMigrar(base: Database, dir: string, primera: string) {

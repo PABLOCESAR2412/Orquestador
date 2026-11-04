@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -28,8 +28,10 @@ const {
 const { clasificarTareaJev, conservarMemoriaSegunJev, ordenarSugerenciasJev, puntuarMemoriaJev, probarClaveJev } = await import("../src/jev");
 const { ocultarValores, valoresAOcultar } = await import("../src/ejecutar");
 const { clavesProveedor } = await import("../src/routes/claves-proveedor");
+const { cloudflarePages } = await import("../src/routes/cloudflare-pages");
 const { jevRoute } = await import("../src/routes/jev");
 const { providers } = await import("../src/routes/providers");
+const { rutaClon } = await import("../src/workspace");
 
 const CLAVE_VALIDA = randomBytes(32).toString("base64");
 const CLAVE_ORIGINAL = process.env.TELO_CLAVE_CIFRADO;
@@ -323,6 +325,61 @@ describe("rutas de claves de proveedor", () => {
       expect(await res.json()).toEqual({ ok: true, modelos: 1 });
       expect(llamada).toBe(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/models/search?per_page=100`);
     } finally { globalThis.fetch = original; }
+  });
+
+  test("Pages usa el token y cuenta guardados en Ajustes al confirmar la publicación", async () => {
+    const accountId = "d".repeat(32);
+    const id = crypto.randomUUID(), projectId = crypto.randomUUID();
+    expect((await put("cloudflare-workers-ai", { valor: VALOR, accountId })).status).toBe(200);
+    db.query("INSERT INTO projects (id, name) VALUES (?, 'ProgramPulse')").run(projectId);
+    db.query("INSERT INTO tasks (id, title, prompt, model, project_id, status, work_mode) VALUES (?, 'Publicar', 'Cloudflare Pages', 'codex/prueba', ?, 'done', 'build')").run(id, projectId);
+    const carpeta = join(rutaClon(id), "dist");
+    mkdirSync(carpeta, { recursive: true });
+    writeFileSync(join(carpeta, "index.html"), "<h1>ProgramPulse</h1>");
+    const which = spyOn(Bun, "which").mockImplementation((nombre) => join(tmpdir(), "tools", nombre));
+    const llamada = spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ result: { production_branch: "main" } }));
+    let argv: string[] = [];
+    let env: Record<string, string> = {};
+    let html = "";
+    let configWrangler = "";
+    const spawn = spyOn(Bun, "spawn").mockImplementation(((comando: string[], opciones: { env: Record<string, string>; cwd: string }) => {
+      argv = comando;
+      env = opciones.env;
+      html = readFileSync(join(opciones.cwd, "assets", "index.html"), "utf8");
+      configWrangler = readFileSync(join(opciones.cwd, "wrangler.json"), "utf8");
+      return { exited: Promise.resolve(0), stdout: new Response("https://abcd.programpulse.pages.dev").body, stderr: new Response("").body };
+    }) as unknown as typeof Bun.spawn);
+    const publicar = (directorio: string) => cloudflarePages.request(`/tasks/${id}/cloudflare-pages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ proyecto: "programpulse", directorio }),
+    });
+    try {
+      expect((await publicar("../dist")).status).toBe(400);
+      writeFileSync(join(carpeta, ".env"), "API_TOKEN=protegido");
+      expect(await (await publicar("dist")).json()).toEqual({ error: "pages_assets_unsupported" });
+      rmSync(join(carpeta, ".env"));
+      expect(llamada).not.toHaveBeenCalled();
+      expect(spawn).not.toHaveBeenCalled();
+      const res = await publicar("dist");
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ url: "https://abcd.programpulse.pages.dev" });
+      expect(llamada).toHaveBeenCalledWith(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/programpulse`, expect.objectContaining({
+        headers: { Authorization: `Bearer ${VALOR}` }, redirect: "error",
+      }));
+      expect(argv.slice(1)).toEqual(["pages", "deploy", "assets", "--project-name", "programpulse", "--branch=main"]);
+      expect(env).toMatchObject({ CLOUDFLARE_ACCOUNT_ID: accountId, CLOUDFLARE_API_TOKEN: VALOR, CI: "1" });
+      expect(env.TELO_CLAVE_CIFRADO).toBeUndefined();
+      expect(html).toBe("<h1>ProgramPulse</h1>");
+      expect(JSON.parse(configWrangler)).toEqual({ name: "programpulse", pages_build_output_dir: "assets" });
+    } finally {
+      which.mockRestore();
+      llamada.mockRestore();
+      spawn.mockRestore();
+      rmSync(rutaClon(id), { recursive: true, force: true });
+      db.query("DELETE FROM tasks WHERE id=?").run(id);
+      db.query("DELETE FROM projects WHERE id=?").run(projectId);
+    }
   });
 
   test("PUT con proveedor desconocido da 404", async () => {
