@@ -5,6 +5,12 @@
   "cambios": [
     {
       "fecha": "2026-11-03",
+      "tipo": "mediano",
+      "titulo": "Oficina: plano pixel art con un personaje por chat, escritorios para 30 agentes, tres salas de reuniones y zoom táctil",
+      "pr": 181
+    },
+    {
+      "fecha": "2026-11-03",
       "tipo": "minimo",
       "titulo": "Antigravity y Command Code: recupera modelos y guía el callback OAuth por SSH",
       "pr": 179
