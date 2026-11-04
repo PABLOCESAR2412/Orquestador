@@ -15,7 +15,7 @@ Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar
 ## Catálogo de modelos OpenCode v2 — 3 de noviembre de 2026
 
 - [x] OpenCode 2 retiró `opencode models --verbose`, que Telo todavía exigía. El catálogo conserva compatibilidad con versiones anteriores, consulta `GET /api/model` en un servidor OpenCode temporal limitado a loopback y usa `opencode models` como respaldo si la API local no responde. El selector conserva IDs incluso cuando el CLI solo publica el listado corto; contexto, variantes y precios solo se muestran cuando el catálogo los publica. Un precio ausente nunca se interpreta como gratuito.
-- [x] Siete pruebas focalizadas de modelos aprobadas; `models.ts` y sus dependencias locales pasan TypeScript. El typecheck completo del servidor no se pudo cerrar en el worktree aislado porque faltan paquetes instalados; los diagnósticos restantes corresponden a imports/tipos ajenos al cambio.
+- [x] Siete pruebas focalizadas de modelos aprobadas; CI 41744670137 también pasó el typecheck y la suite completa del servidor, el worker aislado, build y pruebas de interfaz. El primer CI falló porque el fixture del broker simulaba `Bun.spawn` pero no la presencia del ejecutable; ahora simula ambos. Checks `servidor` e `interfaz` verdes.
 - [ ] Falta desplegarlo en la VM y confirmar allí el catálogo real con la sesión del usuario; el cambio del repo por sí solo no actualiza el servicio.
 
 ## Antigravity CLI, Command Code Go y Ollama Cloud — PR #176
