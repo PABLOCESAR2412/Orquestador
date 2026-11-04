@@ -47,6 +47,21 @@ test("un PATCH rechazado no cambia título ni anclado", async () => {
  expect((await valida.json() as { title: string }).title).toBe("Actualizado");
 });
 
+test("el apodo de oficina persiste en el listado sin renombrar el chat y se puede borrar", async () => {
+  const id = conversacion();
+  const cambiarApodo = (apodo: unknown) => settings.request(`/conversations/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ apodo_oficina: apodo }),
+  });
+  expect((await cambiarApodo("  Nora  ")).status).toBe(200);
+  expect((await cambiarApodo("a".repeat(61))).status).toBe(400);
+  const listado = await (await chat.request("/conversations")).json() as { id: string; title: string; apodo_oficina: string | null }[];
+  expect(listado.find((item) => item.id === id)).toMatchObject({ title: "Original", apodo_oficina: "Nora" });
+  expect((await cambiarApodo(null)).status).toBe(200);
+  expect(db.query("SELECT title, apodo_oficina FROM conversations WHERE id=?").get(id)).toEqual({ title: "Original", apodo_oficina: null });
+});
+
 test("heredar el modelo desactiva selecciones antiguas sin perderlas ni validarlas", async () => {
  const id=conversacion();
  const anteriores=[{rol:"seguridad",model:"opencode/modelo-retirado"}];

@@ -304,6 +304,18 @@ describe("migración 020", () => {
 });
 
 describe("seguir una tarea sin cuota", () => {
+  test("conserva el estado si la copia de trabajo ya no está disponible", async () => {
+    for (const [status, accion] of [["failed", "reanudar"], ["sin_cuota", "seguir"]]) {
+      const id = tarea(status, { modeloAgotado: "opencode/a", sesion: "s-1" });
+      const workspace = join(process.env.DATA_DIR!, "tasks", id, "repo");
+      db.query("UPDATE tasks SET workspace=? WHERE id=?").run(workspace, id);
+      const res = await post(`/api/tasks/${id}/${accion}`, { model: "opencode/b" });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ error: "task_workspace_missing" });
+      expect(db.query("SELECT status FROM tasks WHERE id=?").get(id)).toEqual({ status });
+    }
+  });
+
   test("una tarea que no está sin cuota no se puede seguir", async () => {
     const id = tarea("done", { sesion: "s-1" });
     const res = await post(`/api/tasks/${id}/seguir`);

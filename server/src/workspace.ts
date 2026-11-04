@@ -379,12 +379,17 @@ async function existeCommit(clon: string, sha: string): Promise<boolean> {
   return r.code === 0;
 }
 
-function esCarpetaReal(ruta: string): boolean {
+export function esCarpetaReal(ruta: string): boolean {
   try {
     return lstatSync(ruta).isDirectory();
   } catch {
     return false;
   }
+}
+
+export function faltaCopiaDeTarea(id: string): boolean {
+  const tarea = db.query<{ workspace: string | null }, [string]>("SELECT workspace FROM tasks WHERE id=?").get(id);
+  return Boolean(tarea?.workspace && !esCarpetaReal(tarea.workspace));
 }
 
 function prepararDestinoSkills(ruta: string): void {

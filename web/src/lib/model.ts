@@ -41,6 +41,8 @@ export const nombreProveedor = (id: string) =>
 export function proveedorDeModelo(modelo: string | null): string {
   if (!modelo) return "google";
   const m = modelo.toLowerCase();
+  const prefijo = m.split("/")[0];
+  if (m.includes("/") && (prefijo === "codex" || Object.hasOwn(PROVEEDOR_LABEL, prefijo))) return prefijo;
   if (m.startsWith("google/") || m.includes("/google/") || m.includes("gemini") || m.includes("argon")) return "google";
   if (m.startsWith("codex/") || m === "codex" || m.includes("/codex/")) return "codex";
   if (m.startsWith("openai/") || m.includes("/openai/")) return "openai";
@@ -95,6 +97,7 @@ export const STATUS_LABEL: Record<TaskStatus, string> = {
 export const EVENT_LABEL: Record<TaskEventKind, string> = {
   comprobacion_fallida: "Comprobación previa fallida",
   comprobacion_aviso: "Aviso de preparación",
+  pages_publicadas: "Publicado en Cloudflare Pages",
   creada: "Creada",
   iniciada: "Iniciada",
   sesion_asignada: "Sesión del agente asignada",
@@ -173,6 +176,7 @@ export function sanearDetalle(texto: string, maximo = 160): string {
 // pasa por sanearDetalle, que también deja su redacción segura.
 const CODIGO_TAREA_TEXTO: Record<string, string> = {
   task_not_found: "La tarea ya no existe.",
+  task_workspace_missing: "La copia de trabajo ya no está disponible. Restaura su respaldo o crea otra tarea desde el proyecto original.",
   task_running: "La tarea ya está en ejecución.",
   task_without_repo: "El proyecto de esta tarea no tiene repositorio Git.",
   proyecto_sin_git: "El proyecto no es un repositorio Git.",
@@ -389,6 +393,8 @@ export function errorText(err: unknown): string {
         return "Solo se pueden reanudar tareas interrumpidas o fallidas.";
       case "task_without_session":
         return "Esta tarea no llegó a iniciar una sesión. Puedes reintentarla.";
+      case "task_workspace_missing":
+        return err.detail ?? CODIGO_TAREA_TEXTO.task_workspace_missing;
       case "cuota_agotada":
         return "Se acabó la cuota de este modelo. Cambia de modelo y pulsa Seguir.";
       case "modelo_sin_cambio":

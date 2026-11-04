@@ -110,7 +110,7 @@ function detectarBloqueosExternos(textoReporte: string): string | null {
   const motivos: string[] = [];
   const faltaToken = /(?:CLOUDFLARE_API_TOKEN[\s\S]{0,100}(?:no\s+(?:está|se encuentra|hay|aparece|está configurado|está disponible)|falta|ausente|missing|not\s+(?:set|available|present))|(?:sin|falta|ausente|missing|not\s+(?:set|available|present))[\s\S]{0,100}CLOUDFLARE_API_TOKEN)/i;
   if (faltaToken.test(textoReporte)) {
-    motivos.push("Falta configurar CLOUDFLARE_API_TOKEN en el servicio que ejecuta la tarea.");
+    motivos.push("Publica los archivos estáticos desde la tarjeta Publicar en Cloudflare Pages con el token de Ajustes → Proveedores.");
   }
   const faltaWorkspace = /\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b[\s\S]{0,120}(?:\bsin\b|\bno\s+(?:tiene|contiene|incluye|hay)\b|\bfalta(?:n)?\b|\bausente\b|\bmissing\b)[\s\S]{0,120}(?:package\.json|lockfile|fuentes?|dist\/)/i.test(textoReporte)
     || /(?:package\.json|lockfile|fuentes?|dist\/)[\s\S]{0,120}(?:\bfalta(?:n)?\b|\bausente\b|\bmissing\b|\bno\s+(?:está|se encuentra|existe))[\s\S]{0,120}\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b/i.test(textoReporte);
@@ -298,6 +298,8 @@ const REGLAS_PLAN = [
   "- Nunca incluyas rutas absolutas, rutas con .. ni archivos o carpetas dentro de .git. Las acciones Git se declaran en requiere_aprobacion; .git no es un archivo del plan.",
   '- "requiere_aprobacion": incluye "commit", "push" o "pr" solo si el plan necesita alguna de esas acciones. Si no, [].',
   "- Telo ejecuta commit, push y PR mediante tarjetas de autorización al terminar. No incluyas su ejecución como pasos del obrero; los pasos solo preparan y comprueban los cambios.",
+  "- Si solo se pide guardar o subir cambios existentes con Git, comprueba el estado y prepara la autorización. Omite instalación, compilación y pruebas de aplicación salvo que formen parte de la petición.",
+  "- Si se pide publicar en Cloudflare Pages, prepara los archivos estáticos e indica la carpeta de salida y el proyecto de Pages. La tarjeta de Telo publica con la credencial de Ajustes → Proveedores tras la confirmación del usuario.",
   "- Telo conserva el remoto fuera del clon por seguridad. Que git remote esté vacío no prueba que falte configuración: Telo valida el destino al preparar la autorización.",
   '- Si falta información crítica, ponla en "preguntas". No la inventes.',
   "- Responde en español.",
@@ -378,7 +380,8 @@ export function promptObrero(plan: Plan): string {
     "- No hagas commit, push ni PR. Deja los cambios listos para revisión.",
     "- Si el plan menciona commit, push o PR, prepara y verifica los cambios: Telo ejecutará esas operaciones al autorizar el usuario. Esa separación no es una desviación del plan.",
     "- El clon puede no tener origin: Telo conserva el remoto fuera del workspace. No declares una desviación solo porque git remote esté vacío.",
-    "- Ejecuta las pruebas del proyecto. Si no hay pruebas, dilo en el reporte.",
+    "- Ejecuta las pruebas del proyecto que requiere el plan. Si el trabajo es solo preparar un commit, push o PR de cambios existentes, comprueba Git y no instales dependencias. Si el registro de paquetes devuelve HTTP 5xx, informa el código y el registro: ese código por sí solo no prueba falta de acceso a Internet.",
+    "- Para Cloudflare Pages, deja lista la carpeta de archivos estáticos y menciona su ruta relativa en el resumen. Telo usa el token de Ajustes → Proveedores al publicar desde su tarjeta; no busques la credencial en tu entorno ni ejecutes la publicación.",
     '- Si algo falla y no puedes terminar, responde con "estado": "fallo" y explica qué pasó y qué intentaste.',
     "- Si falta una precondición externa que no puedes configurar desde el workspace (credencial, proyecto de hosting, acceso o archivos fuente), no repitas intentos. Detente, conserva los cambios y marca el requisito en bloqueante_externo; nunca incluyas valores secretos.",
     "- Responde en español.",

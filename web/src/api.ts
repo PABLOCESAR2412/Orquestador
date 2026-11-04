@@ -6,6 +6,7 @@ export type Conversation = {
   requiere_continuar?: boolean;
   id: string;
   title: string;
+  apodo_oficina?: string | null;
   model: string | null;
   effort: string | null;
   orquestacion_habilitada?: boolean;
@@ -280,7 +281,17 @@ export type BalanceDeepSeek = {
 export type CuotaAntigravity = {
   estado: "activo" | "sin_cli" | "sin_sesion" | "no_disponible";
   respuesta: string | null;
+  plan: string | null;
+  grupos: { nombre: string; ventanas: { id: string; nombre: string; restantePorcentaje: number | null; restante: number | null; unidad: string | null; reiniciaEn: string | null }[] }[];
   detalle: string | null;
+  comprobadoEn: string;
+};
+
+export type BalanceOllama = {
+  estado: "activo" | "sin_clave" | "clave_invalida" | "rate_limit" | "no_disponible";
+  incluidos: { restanteUsd: number; limiteUsd: number | null; reiniciaEn: string | null } | null;
+  compradosUsd: number | null;
+  ventanas: { nombre: string; restantePorcentaje: number; reiniciaEn: string | null }[];
   comprobadoEn: string;
 };
 
@@ -633,6 +644,7 @@ export type Task = {
 };
 
 export type TaskEventKind =
+  | "pages_publicadas"
   | "creada"
   | "iniciada"
   | "sesion_asignada"
@@ -1067,6 +1079,7 @@ export const api = {
       model?: string | null;
       effort?: string | null;
       title?: string;
+      apodo_oficina?: string | null;
       pinned?: boolean;
       work_mode?: "plan" | "build";
       orquestacion_habilitada?: boolean;
@@ -1078,6 +1091,7 @@ export const api = {
     request<{
       id: string;
       title: string;
+      apodo_oficina?: string | null;
       model: string | null;
       effort: string | null;
       pinned_at: string | null;
@@ -1099,6 +1113,8 @@ export const api = {
   updateProject: (id: string, patch: { name?: string; pinned?: boolean; instrucciones?: string }) =>
     request<Project>(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   listTaskEvents: (id: string) => request<TaskEvent[]>(`/api/tasks/${id}/eventos`),
+  publicarPages: (id: string, body: { proyecto: string; directorio: string }) =>
+    request<{ url: string | null }>(`/api/tasks/${id}/cloudflare-pages`, { method: "POST", body: JSON.stringify(body) }),
   taskOutput: (id: string) => request<{ texto: string; truncado: boolean }>(`/api/tasks/${id}/salida`),
   taskDiff: (id: string) => request<TaskDiff>(`/api/tasks/${id}/diff`),
   approveTask: (id: string, body: { accion: "commit" | "push"; hash: string; mensaje?: string }) =>
@@ -1181,6 +1197,7 @@ export const api = {
   usage: (forzar = false) => request<{ generado: string; proveedores: UsoProveedor[]; googleLive?: GoogleLiveMetrics; openaiLimits?: LimitesOpenAI; openaiUsage?: UsoOpenAIAdmin; openCodeLimits?: LimitesOpenCode; openRouterLimits?: LimitesOpenRouter }>(`/api/uso${forzar ? "?refresh=1" : ""}`),
   codexUsage: (forzar = false) => request<CuotaCodex>(`/api/providers/codex/usage${forzar ? "?refresh=1" : ""}`),
   antigravityUsage: (forzar = false) => request<CuotaAntigravity>(`/api/providers/antigravity/usage${forzar ? "?refresh=1" : ""}`),
+  ollamaBalance: () => request<BalanceOllama>("/api/providers/ollama/balance"),
   deepseekBalance: () => request<BalanceDeepSeek>("/api/providers/deepseek/balance"),
   serverStatus: () => request<ServidorEstado>("/api/servidor"),
   googleDriveArchives: () => request<AlmacenamientoDrive>("/api/google-drive/archives"),

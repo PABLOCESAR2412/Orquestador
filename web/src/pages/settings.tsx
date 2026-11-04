@@ -1153,7 +1153,7 @@ function TarjetaProveedor({
         </div>
       )}
       {nota && <p className="aj-nota aj-nota-aviso">{nota}</p>}
-      {p.id === "ollama" && <p className="aj-nota">Telo registra las llamadas y tokens que pasan por esta app. El saldo/cuota real de Ollama no tiene consulta disponible aquí; revisa tu cuenta de <a href="https://ollama.com/settings" target="_blank" rel="noreferrer">Ollama</a>.</p>}
+      {p.id === "ollama" && <p className="aj-nota">Consulta los créditos de tu cuenta desde Uso en el chat y las <a href="https://ollama.com/pricing#model-pricing" target="_blank" rel="noreferrer">tarifas por modelo de Ollama</a>.</p>}
       {esMotorDirecto && <details className="aj-modelos-detalle"><summary>Modelos del selector</summary><ModelosVisibles key={p.id} proveedor={p.id} /></details>}
       {p.id === "opencode" && (
         <InstalarHerramienta id="opencode" nombre="OpenCode">

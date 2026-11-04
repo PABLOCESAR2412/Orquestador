@@ -1,9 +1,8 @@
 import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { api, type BalanceDeepSeek, type LimitesOpenAI, type LimitesOpenCode, type LimitesOpenRouter, type ModelInfo, type UsoModeloProveedor, type UsoOpenAIAdmin, type UsoProveedor, type UsoVentanaProveedor } from "../api";
-import { errorText, formatPrice, formatUsd, proveedorDeModelo } from "../lib/model";
-import { compact } from "./charts";
+import { api, type LimitesOpenAI, type LimitesOpenCode, type LimitesOpenRouter, type UsoProveedor } from "../api";
+import { errorText, nombreProveedor, proveedorDeModelo } from "../lib/model";
 import { useDialogo } from "./controls";
 
 type Props = {
@@ -13,27 +12,6 @@ type Props = {
   // Botón que abrió el panel: recibe el foco al cerrar.
   disparador?: RefObject<HTMLElement | null>;
 };
-
-type Ventana = UsoVentanaProveedor;
-
-function etiquetaRechazo(rechazo: NonNullable<UsoModeloProveedor["ultimoRechazo"]>): string {
-  const categoria = rechazo.categoria === "cuota"
-    ? "Cuota o saldo agotado"
-    : rechazo.categoria === "limite_temporal"
-      ? "Límite temporal"
-      : rechazo.categoria === "acceso"
-        ? "Acceso rechazado"
-        : "Modelo no disponible";
-  return rechazo.estadoHttp ? `${categoria} · HTTP ${rechazo.estadoHttp}` : categoria;
-}
-
-function fechaRechazo(fecha: string): string {
-  const iso = fecha.includes("T") ? fecha : `${fecha.replace(" ", "T")}Z`;
-  const instante = new Date(iso);
-  return Number.isNaN(instante.getTime())
-    ? fecha
-    : new Intl.DateTimeFormat("es-EC", { dateStyle: "short", timeStyle: "short" }).format(instante);
-}
 
 export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
   const ref = useRef<HTMLDivElement>(null);
@@ -47,30 +25,30 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
   };
   useDialogo(ref, cerrar);
 
-  // Solo consulta mientras el panel está abierto; recoge el uso que registra cada paso del agente.
+  const usaDatosCompartidos = ["google", "openai", "opencode", "openrouter"].includes(proveedorId ?? "");
   const uso = useQuery({
     queryKey: ["uso"],
     queryFn: () => api.usage(),
-    enabled: proveedorId !== null && proveedorId !== "codex",
-    refetchInterval: 30_000,
+    enabled: usaDatosCompartidos,
+    refetchInterval: 60_000,
   });
-  const catalogo = useQuery({
-    queryKey: ["models"],
-    queryFn: api.listModels,
-    enabled: proveedorId !== null && proveedorId !== "codex",
+  const requiereApi = ["google", "openai", "groq", "xai", "nvidia", "openrouter"].includes(proveedorId ?? "");
+  const requiereSesion = proveedorId === "opencode" || proveedorId === "commandcode";
+  const proveedores = useQuery({
+    queryKey: ["providers"],
+    queryFn: api.listProviders,
     staleTime: 5 * 60_000,
+    enabled: requiereApi || requiereSesion,
   });
-  const proveedores = useQuery({ queryKey: ["providers"], queryFn: api.listProviders, staleTime: 5 * 60_000, enabled: proveedorId !== null && proveedorId !== "codex" });
   const actualizarUso = useMutation({
     mutationFn: () => api.usage(true),
     onSuccess: (datos) => queryClient.setQueryData(["uso"], datos),
   });
   const proveedor: UsoProveedor | null =
     uso.data?.proveedores.find((p) => p.id === proveedorId) ?? null;
-  const requiereApi = ["google", "openai", "groq", "xai", "nvidia", "openrouter", "deepseek"].includes(proveedorId ?? "");
   const estadoProveedor = proveedores.data?.find((p) => p.id === proveedorId);
   const faltaClave = (requiereApi && estadoProveedor && !estadoProveedor.configured) ||
-    ((proveedorId === "opencode" || proveedorId === "commandcode") && estadoProveedor && (!estadoProveedor.configured || !estadoProveedor.sesion));
+    (requiereSesion && estadoProveedor && (!estadoProveedor.configured || !estadoProveedor.sesion));
 
   useLayoutEffect(() => {
     const panel = ref.current;
@@ -104,7 +82,13 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
 
   let cuerpo: ReactNode;
   if (proveedorId === "codex") {
-    cuerpo = null;
+    cuerpo = <CuotaSesionCodex />;
+  } else if (proveedorId === "antigravity") {
+    cuerpo = <CuotaSesionAntigravity />;
+  } else if (proveedorId === "ollama") {
+    cuerpo = <BalanceOllamaPanel />;
+  } else if (proveedorId === "deepseek") {
+    cuerpo = <BalanceDeepSeekPanel />;
   } else if (!proveedorId) {
     cuerpo = (
       <p className="usage-note">
@@ -113,9 +97,9 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
           : "El modelo predeterminado lo elige el servidor. Elige un modelo para ver el uso de su proveedor."}
       </p>
     );
-  } else if (uso.isPending) {
+  } else if (usaDatosCompartidos && uso.isPending) {
     cuerpo = <p className="usage-note">Cargando uso…</p>;
-  } else if (uso.isError) {
+  } else if (usaDatosCompartidos && uso.isError) {
     cuerpo = (
       <div className="estado-linea">
         <p className="error" role="alert">
@@ -128,10 +112,6 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
     );
   } else {
     const googleLive = proveedor?.googleLive ?? (proveedorId === "google" ? uso.data?.googleLive : undefined);
-    const ventanaVacia: Ventana = { costoUsd: 0, costoEstimadoUsd: 0, costesEstimados: 0, costesNoDisponibles: 0, costesDesconocidos: 0, tokens: 0, tokensMedidos: 0, tokensEstimados: 0, tokensNoDisponibles: 0, tokensDesconocidos: 0, llamadasSinTokens: 0, llamadas: 0 };
-    const ultimos7d = proveedor?.ultimos7d ?? ventanaVacia;
-    const ultimas5h = proveedor?.ultimas5h ?? ventanaVacia;
-    const mesActual = proveedor?.mesActual ?? ventanaVacia;
     cuerpo = (
       <>
         {googleLive && (
@@ -157,47 +137,18 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
             </div>
           </div>
         )}
-        {proveedorId === "openai" && <LimitesOpenAILive datos={proveedor?.openaiLimits ?? uso.data?.openaiLimits} consumo={proveedor?.openaiUsage ?? uso.data?.openaiUsage} usos={proveedor?.porModelo ?? []} />}
+        {proveedorId === "openai" && <LimitesOpenAILive datos={proveedor?.openaiLimits ?? uso.data?.openaiLimits} />}
         {proveedorId === "opencode" && <LimitesOpenCodeLive datos={proveedor?.openCodeLimits ?? uso.data?.openCodeLimits} />}
         {proveedorId === "openrouter" && <LimitesOpenRouterLive datos={proveedor?.openRouterLimits ?? uso.data?.openRouterLimits} alActualizar={() => actualizarUso.mutate()} actualizando={actualizarUso.isPending} />}
         {proveedorId === "commandcode" && <LimitesCommandCodeGo />}
-        <VentanaUso
-          titulo="Últimos 7 días"
-          datos={ultimos7d}
-          costeIncluido={proveedorId === "codex"}
-        />
-        <VentanaUso
-          titulo="Últimas 5 horas"
-          datos={ultimas5h}
-          costeIncluido={proveedorId === "codex"}
-        />
-        <VentanaUso
-          titulo="Mes actual (UTC)"
-          datos={mesActual}
-          costeIncluido={proveedorId === "codex"}
-        />
-        <UsoPorModelo proveedor={proveedor} modeloSeleccionado={modelo} proveedorId={proveedorId} modelosCatalogo={catalogo.data?.models ?? []} />
-        <p className="usage-note">
-          {proveedorId === "google"
-            ? <>Google aplica límites por proyecto y modelo; los valores activos se consultan en <a href="https://aistudio.google.com/usage" target="_blank" rel="noopener noreferrer">Google AI Studio · Usage</a>. El contador de Telo solo ve ejecuciones desde Telo y no puede calcular el saldo restante. La cuota de Antigravity/Google AI Plus es aparte.</>
-            : proveedorId === "anthropic"
-              ? <>Aquí ves las llamadas a Anthropic API que registra Telo. No se consulta la cuota de Claude.ai/Claude Code; la suscripción de Claude y la facturación de API son productos separados. <a href="https://support.claude.com/en/articles/9876003-why-is-claude-api-usage-billed-separately-from-my-paid-claude-plan" target="_blank" rel="noopener noreferrer">Detalles de facturación de Anthropic</a>.</>
-            : proveedorId === "openai"
-              ? <>OpenAI API va aparte de ChatGPT y Codex CLI. Con una Admin API key, Telo consulta costes y tokens oficiales de la organización en los últimos 30 días; el ID del proyecto habilita además los topes por modelo. Sin ella, Telo sigue midiendo sus propias llamadas. <a href="https://platform.openai.com/usage" target="_blank" rel="noopener noreferrer">Uso de la cuenta</a>.</>
-              : proveedorId === "xai"
-                ? <>La API de Grok va aparte de la app/web. xAI publica límites por modelo y consumo en su consola; además, la API usa créditos prepago y rechaza peticiones al agotarse. Telo mide lo que envía este servidor. Revisa <a href="https://docs.x.ai/developers/rate-limits" target="_blank" rel="noopener noreferrer">límites por modelo</a>, <a href="https://docs.x.ai/console/usage" target="_blank" rel="noopener noreferrer">uso</a> y <a href="https://docs.x.ai/console/billing" target="_blank" rel="noopener noreferrer">saldo</a>.</>
-                : proveedorId === "nvidia"
-                  ? <>NVIDIA ofrece acceso sin coste para prototipos a miembros de Developer Program, pero exige cuenta y API key; “gratis” no es acceso anónimo ni ilimitado. No encontré un endpoint público de saldo restante. Telo cuenta el uso local y registra rechazos 401/402/429 por modelo. Consulta el <a href="https://docs.api.nvidia.com/nim/docs/api-quickstart" target="_blank" rel="noopener noreferrer">acceso y API key de NIM</a>.</>
-              : proveedorId === "openrouter"
-                ? <>OpenRouter entrega saldo y solicitudes gratis restantes para la clave configurada. Los proveedores individuales pueden aplicar límites adicionales; Telo registra solo las llamadas que hace este servidor. <a href="https://openrouter.ai/docs/api/api-reference/api-keys/get-current-api-key" target="_blank" rel="noopener noreferrer">Qué informa la consulta oficial</a>.</>
-                : proveedorId === "commandcode"
-                ? <>Command Code Go comparte créditos mensuales y topes móviles de 5 horas y 7 días. No publica una API para que Telo lea tu saldo de cuenta: consulta <code>/usage</code> en la CLI o la página Usage de Studio. Telo mide sus propias llamadas y tokens por modelo. <a href="https://commandcode.ai/docs/resources/pricing-limits" target="_blank" rel="noopener noreferrer">Límites de Go</a>.</>
-                : proveedorId === "deepseek"
-                  ? <>El balance de la API de DeepSeek aparece arriba; los contadores de abajo cubren solo llamadas desde Telo.</>
-              : proveedorId === "opencode"
-                    ? <>El precio $0 del catálogo no garantiza acceso. Si el CLI conserva una sesión de Console, Telo consulta su allowance y presupuesto en el endpoint experimental local; si no, muestra el registro de este servidor. Revisa <a href="https://opencode.ai/v2/docs/console/billing/" target="_blank" rel="noopener noreferrer">saldo y facturación</a>.</>
-                  : "Telo registra sus llamadas, no el uso hecho fuera de Telo. El proveedor no ofrece a esta clave un saldo restante que Telo pueda consultar; revisa el panel de la cuenta."}
-        </p>
+        {proveedorId === "google" && <p className="usage-note">Google aplica límites por proyecto y modelo. Consulta la cuota en <a href="https://aistudio.google.com/usage" target="_blank" rel="noopener noreferrer">Google AI Studio · Usage</a>.</p>}
+        {proveedorId === "anthropic" && <p className="usage-note">Consulta el saldo y los límites en la <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer">consola de Anthropic</a>.</p>}
+        {proveedorId === "xai" && <p className="usage-note">Consulta el <a href="https://docs.x.ai/console/usage" target="_blank" rel="noopener noreferrer">uso de tu cuenta xAI</a> y sus <a href="https://docs.x.ai/developers/rate-limits" target="_blank" rel="noopener noreferrer">límites por modelo</a>.</p>}
+        {proveedorId === "groq" && <p className="usage-note">Consulta los límites de tu organización en <a href="https://console.groq.com/settings/limits" target="_blank" rel="noopener noreferrer">Groq Cloud</a>.</p>}
+        {proveedorId === "nvidia" && <p className="usage-note">Consulta el acceso de tu cuenta en el <a href="https://build.nvidia.com/" target="_blank" rel="noopener noreferrer">catálogo de NVIDIA</a>.</p>}
+        {!usaDatosCompartidos && !["commandcode", "anthropic", "xai", "groq", "nvidia"].includes(proveedorId) && (
+          <p className="usage-note">La cuota de la cuenta se consulta en el panel del proveedor.</p>
+        )}
       </>
     );
   }
@@ -208,66 +159,36 @@ export function UsoPanel({ modelo, onCerrar, disparador }: Props) {
       <div className={`usage-popover${proveedorId === "codex" ? " is-codex-usage" : ""}${proveedorId === "antigravity" ? " is-antigravity-usage" : ""}`} role="dialog" aria-label="Uso del proveedor" ref={ref}>
         <div className="usage-title-row">
           <span className="usage-title">
-            {proveedorId === "codex" ? "Codex" : proveedor?.nombre ?? (proveedorId === "google" ? "Google (Gemini)" : proveedorId ?? "Uso de proveedor")}
+            {proveedor?.nombre ?? (proveedorId ? nombreProveedor(proveedorId) : "Uso de proveedor")}
           </span>
-          <button type="button" className="ghost task-mini-btn" onClick={cerrar}>
+          <button type="button" className="ghost task-mini-btn" aria-label="Cerrar uso del proveedor" onClick={cerrar}>
             ✕
           </button>
         </div>
 
-        {proveedorId === "deepseek" && <BalanceDeepSeekPanel />}
         {faltaClave && <p className="usage-note" role="status">{proveedorId === "opencode" ? "Telo no detecta una sesión de OpenCode Console en el servidor." : proveedorId === "commandcode" ? "Telo no detecta la sesión de Command Code Go en el servidor." : `Falta la clave API para usar ${proveedor?.nombre ?? proveedorId}. El precio $0 no evita este requisito.`} <Link to="/ajustes" search={{ pestana: proveedorId === "opencode" || proveedorId === "commandcode" ? "servidor" : "proveedores" }}>Revisar proveedor</Link></p>}
         {cuerpo}
-        {proveedorId === "codex" && (
-          <CuotaSesionCodex />
-        )}
-        {proveedorId === "antigravity" && <CuotaSesionAntigravity />}
-
       </div>
     </>
   );
 }
 
-function LimitesOpenAILive({ datos, consumo, usos }: { datos?: LimitesOpenAI; consumo?: UsoOpenAIAdmin; usos: UsoModeloProveedor[] }) {
+function LimitesOpenAILive({ datos }: { datos?: LimitesOpenAI }) {
   const t = (valor: number | null) => valor === null ? "—" : valor.toLocaleString("es-EC");
-  const usd = (valor: number | null) => valor === null ? "No informado" : `$${valor.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
-  const nombreRecurso = (id: string) => id.split("/").at(-1)?.toLowerCase() ?? id.toLowerCase();
   return (
     <section className="usage-models" aria-label="Límites de OpenAI por proyecto">
       <div className="usage-models-heading">
         <span className="window-label">Límites de OpenAI</span>
         <span className="window-meta">{datos?.mensaje ?? "Consultando el proyecto…"}</span>
       </div>
-      {consumo?.estado === "consultado" && (
-        <>
-          <div className="usage-window-totals">
-            <div><span>Coste API · 30 días</span><strong>{usd(consumo.costoUsd30d)}</strong></div>
-            <div><span>Solicitudes de texto</span><strong>{consumo.solicitudes30d.toLocaleString("es-EC")}</strong></div>
-            <div><span>Tokens entrada / salida</span><strong>{compact(consumo.tokensEntrada30d)} / {compact(consumo.tokensSalida30d)}</strong></div>
-          </div>
-          {consumo.porModelo.length > 0 && (
-            <ul className="usage-model-list" aria-label="Solicitudes de texto OpenAI por modelo en los últimos 30 días">
-              {consumo.porModelo.map((fila) => <li className="usage-model-row" key={fila.modelo}>
-                <code className="usage-model-name">{fila.modelo}</code>
-                <span className="window-meta">{fila.solicitudes.toLocaleString("es-EC")} solicitudes · {compact(fila.tokensEntrada)} tokens entrada · {compact(fila.tokensSalida)} salida</span>
-              </li>)}
-            </ul>
-          )}
-        </>
-      )}
-      {consumo && consumo.estado !== "consultado" && <p className="usage-note usage-models-empty" role="status">{consumo.mensaje}</p>}
       {datos?.estado === "consultado" && datos.limites.length > 0 ? (
         <ul className="usage-model-list" aria-label="Topes configurados por modelo">
-          {datos.limites.map((limite) => {
-            const uso = usos.find((fila) => nombreRecurso(fila.modelo) === nombreRecurso(limite.modelo));
-            return (
+          {datos.limites.map((limite) => (
               <li className="usage-model-row" key={limite.modelo}>
                 <code className="usage-model-name">{limite.modelo}</code>
                 <span className="window-meta">Tope: {t(limite.rpm)} RPM · {t(limite.tpm)} TPM{limite.rpd === null ? "" : ` · ${t(limite.rpd)} RPD`}</span>
-                <span className="window-meta">Telo, último minuto: {uso?.ejecucionesUltimoMinuto ?? 0} ejec. · {compact(uso?.tokensUltimoMinuto ?? 0)} tokens</span>
               </li>
-            );
-          })}
+          ))}
         </ul>
       ) : datos?.estado === "consultado" ? (
         <p className="usage-note usage-models-empty">OpenAI no devolvió límites para este proyecto.</p>
@@ -276,7 +197,7 @@ function LimitesOpenAILive({ datos, consumo, usos }: { datos?: LimitesOpenAI; co
       ) : datos ? (
         <p className="usage-note usage-models-empty" role="status">{datos.mensaje}</p>
       ) : null}
-      <p className="usage-models-footnote">El coste y los tokens oficiales cubren toda la organización, incluidos clientes fuera de Telo; no representan saldo restante. Los topes por modelo requieren también un ID de proyecto. <a href="https://developers.openai.com/api/reference/resources/admin/subresources/organization/subresources/usage/methods/costs" target="_blank" rel="noopener noreferrer">API de costes y uso</a> · <a href="https://developers.openai.com/api/docs/guides/rate-limits" target="_blank" rel="noopener noreferrer">límites y remanentes</a>.</p>
+      <p className="usage-models-footnote">Consulta los <a href="https://developers.openai.com/api/docs/guides/rate-limits" target="_blank" rel="noopener noreferrer">límites de la API</a> y el <a href="https://platform.openai.com/usage" target="_blank" rel="noopener noreferrer">uso de tu cuenta</a>.</p>
     </section>
   );
 }
@@ -360,70 +281,6 @@ function LimitesCommandCodeGo() {
   );
 }
 
-function UsoPorModelo({ proveedor, modeloSeleccionado, proveedorId, modelosCatalogo }: { proveedor: UsoProveedor | null; modeloSeleccionado: string | null; proveedorId: string | null; modelosCatalogo: ModelInfo[] }) {
-  const modelos = proveedor?.porModelo ?? [];
-  const corteDiario = proveedorId === "google" ? "desde medianoche Pacífico" : "desde medianoche UTC";
-  const seleccionado = modeloSeleccionado && proveedor?.id === proveedorDeModelo(modeloSeleccionado)
-    ? modeloSeleccionado
-    : null;
-  const lista = [...modelos];
-  if (seleccionado && !lista.some((uso) => uso.modelo === seleccionado)) {
-    lista.unshift({
-      modelo: seleccionado,
-      ejecucionesDesdeReinicioDiario: 0,
-      tokensDesdeReinicioDiario: 0,
-      tokensMedidosDesdeReinicioDiario: 0,
-      tokensEstimadosDesdeReinicioDiario: 0,
-      ejecucionesUltimas24h: 0,
-      tokensUltimas24h: 0,
-      tokensMedidosUltimas24h: 0,
-      tokensEstimadosUltimas24h: 0,
-      ejecucionesUltimoMinuto: 0,
-      tokensUltimoMinuto: 0,
-      ejecucionesUltimos30d: 0,
-      ultimoRechazo: null,
-    });
-  }
-
-  return (
-    <section className="usage-models" aria-label="Uso registrado por modelo">
-      <div className="usage-models-heading">
-        <span className="window-label">Uso por modelo</span>
-        <span className="window-meta">Registro de Telo · {corteDiario}</span>
-      </div>
-      {lista.length === 0 ? (
-        <p className="usage-note usage-models-empty">Aún no hay ejecuciones registradas por modelo.</p>
-      ) : (
-        <ul className="usage-model-list">
-          {lista.map((uso) => {
-            const precio = modelosCatalogo.find((fila) => fila.id === uso.modelo);
-            return (
-              <li className="usage-model-row" key={uso.modelo}>
-              <div className="usage-model-summary">
-                <code className="usage-model-name">{uso.modelo}</code>
-                <strong>{uso.ejecucionesDesdeReinicioDiario.toLocaleString("es-EC")} hoy · {compact(uso.tokensDesdeReinicioDiario)} tok.</strong>
-              </div>
-              {(uso.tokensMedidosDesdeReinicioDiario > 0 || uso.tokensEstimadosDesdeReinicioDiario > 0) && <span className="window-meta">Hoy: {compact(uso.tokensMedidosDesdeReinicioDiario)} medidos · {compact(uso.tokensEstimadosDesdeReinicioDiario)} estimados</span>}
-              {precio && <span className="window-meta">Precio de catálogo: {formatPrice(precio)} por millón de tokens</span>}
-              {(uso.tokensMedidosUltimas24h > 0 || uso.tokensEstimadosUltimas24h > 0) && <span className="window-meta">24 h: {compact(uso.tokensMedidosUltimas24h)} medidos · {compact(uso.tokensEstimadosUltimas24h)} estimados</span>}
-              {uso.modelo === seleccionado && <span className="window-meta">Modelo seleccionado</span>}
-              <span className="window-meta">Últimas 24 h: {uso.ejecucionesUltimas24h} ejec. · {compact(uso.tokensUltimas24h)} tokens</span>
-              <span className="window-meta">Último minuto: {uso.ejecucionesUltimoMinuto} ejec. · {compact(uso.tokensUltimoMinuto)} tokens</span>
-              {uso.ultimoRechazo && (
-                <span className="usage-model-rejection" role="status">
-                  Último rechazo: {etiquetaRechazo(uso.ultimoRechazo)} · {fechaRechazo(uso.ultimoRechazo.fecha)}
-                </span>
-              )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      <p className="usage-models-footnote">Los contadores cubren ejecuciones registradas por Telo; no equivalen a los límites ni al saldo total de la cuenta.</p>
-    </section>
-  );
-}
-
 function CuotaSesionAntigravity() {
   const queryClient = useQueryClient();
   const cuota = useQuery({
@@ -438,21 +295,101 @@ function CuotaSesionAntigravity() {
     onSuccess: (datos) => queryClient.setQueryData(["antigravity-usage"], datos),
   });
   const datos = cuota.data;
+  const grupos = datos?.grupos ?? [];
   return (
     <section className="usage-codex-quota" aria-label="Cuota de Antigravity CLI">
       <div className="usage-window-heading">
         <div className="usage-window-copy">
           <span className="window-label">Cuota de Antigravity</span>
-          <span className="window-meta">{cuota.isPending ? "Consultando /usage…" : datos?.comprobadoEn ? `Consultado ${new Intl.DateTimeFormat("es-EC", { hour: "2-digit", minute: "2-digit" }).format(new Date(datos.comprobadoEn))}` : "Sin consulta"}</span>
+          {cuota.isPending && <span className="window-meta">Consultando Antigravity…</span>}
+          {datos?.plan && <span className="window-meta">{datos.plan}</span>}
         </div>
         <button type="button" className="ghost task-mini-btn" aria-label="Actualizar cuota de Antigravity" title="Consultar ahora" disabled={actualizar.isPending} onClick={() => actualizar.mutate()}>{actualizar.isPending ? "…" : "↻"}</button>
       </div>
-      {datos?.estado === "activo" && datos.respuesta && <pre className="usage-antigravity-texto">{datos.respuesta}</pre>}
+      {datos?.comprobadoEn && <span className="window-meta">Consultado {formatearFechaCuota(datos.comprobadoEn)}</span>}
+      {datos?.estado === "activo" && grupos.map((grupo, indice) => (
+        <section className="usage-antigravity-grupo" aria-label={grupo.nombre} key={`${grupo.nombre}-${indice}`}>
+          <strong className="window-label">{grupo.nombre}</strong>
+          {grupo.ventanas.map((ventana) => (
+            <VentanaCuota key={ventana.id} {...ventana} />
+          ))}
+        </section>
+      ))}
+      {datos?.estado === "activo" && grupos.length === 0 && <p className="usage-note">La CLI no devolvió ventanas de cuota en un formato reconocido. Consulta <code>/usage</code> en Antigravity.</p>}
       {datos?.estado === "sin_cli" && <p className="usage-note">Antigravity CLI no está instalada en el servidor.</p>}
       {datos?.estado === "sin_sesion" && <p className="usage-note">El proceso del servidor no puede leer la sesión o el keyring de Google. Revisa el login de Antigravity en Ajustes.</p>}
-      {datos?.estado === "no_disponible" && <p className="usage-note">Antigravity no devolvió una cuota legible. {datos.detalle ?? "Vuelve a consultar."}</p>}
+      {datos?.estado === "no_disponible" && <p className="usage-note">Antigravity no devolvió una cuota legible. Vuelve a consultar.</p>}
       {(cuota.isError || actualizar.isError) && <p className="usage-note" role="alert">No se pudo consultar /usage en este momento.</p>}
-      <p className="usage-note">/usage informa la cuota de la cuenta Antigravity; es diferente de la Gemini API.</p>
+    </section>
+  );
+}
+
+function formatearFechaCuota(valor: string | null): string | null {
+  if (!valor) return null;
+  const fecha = new Date(valor);
+  return Number.isNaN(fecha.getTime()) ? null : new Intl.DateTimeFormat("es-EC", { dateStyle: "medium", timeStyle: "short" }).format(fecha);
+}
+
+function VentanaCuota({ nombre, restantePorcentaje, reiniciaEn, restante = null, unidad = null }: {
+  nombre: string;
+  restantePorcentaje: number | null;
+  reiniciaEn: string | null;
+  restante?: number | null;
+  unidad?: string | null;
+}) {
+  const porcentaje = restantePorcentaje === null ? null : Math.round(restantePorcentaje);
+  const reinicio = formatearFechaCuota(reiniciaEn);
+  return (
+    <div className="usage-codex-window">
+      <div className="usage-window-heading">
+        <span className="window-label">{nombre}</span>
+        {porcentaje !== null ? <strong>{porcentaje}% restante</strong> : restante !== null && <strong>{restante.toLocaleString("es-EC")}{unidad ? ` ${unidad}` : ""} restante</strong>}
+      </div>
+      {restantePorcentaje !== null && <progress className={restantePorcentaje <= 10 ? "is-low" : ""} max={100} value={restantePorcentaje} aria-label={`${nombre}: ${porcentaje}% restante`} />}
+      {(porcentaje !== null || reinicio) && <div className="usage-codex-window-meta">
+        <span className="window-meta">{porcentaje !== null && `Uso ${100 - porcentaje}%`}</span>
+        {reinicio && <span className="window-meta">Reinicia {reinicio}</span>}
+      </div>}
+    </div>
+  );
+}
+
+function BalanceOllamaPanel() {
+  const balance = useQuery({
+    queryKey: ["ollama-balance"],
+    queryFn: api.ollamaBalance,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+    retry: false,
+  });
+  const datos = balance.data;
+  const incluido = datos?.incluidos;
+  const consultado = formatearFechaCuota(datos?.comprobadoEn ?? null);
+  const reinicio = formatearFechaCuota(incluido?.reiniciaEn ?? null);
+  const dinero = (valor: number) => formatearSaldo(String(valor), "USD");
+  return (
+    <section className="usage-codex-quota" aria-label="Créditos de Ollama Cloud">
+      <div className="usage-window-heading">
+        <div className="usage-window-copy">
+          <span className="window-label">Créditos de la cuenta</span>
+          {consultado && <span className="window-meta">Consultado {consultado}</span>}
+        </div>
+        <button type="button" className="ghost task-mini-btn" aria-label="Actualizar créditos de Ollama" disabled={balance.isFetching} onClick={() => void balance.refetch()}>{balance.isFetching ? "…" : "↻"}</button>
+      </div>
+      {balance.isPending && <p className="usage-note">Consultando créditos…</p>}
+      {(balance.isError || datos?.estado === "no_disponible") && <p className="usage-note" role="status">Ollama no devolvió el saldo. Puedes revisarlo en tu cuenta.</p>}
+      {datos?.estado === "sin_clave" && <p className="usage-note">Configura una clave de Ollama en Ajustes → Proveedores IA.</p>}
+      {datos?.estado === "clave_invalida" && <p className="usage-note">Ollama rechazó la clave. Revísala en Ajustes → Proveedores IA.</p>}
+      {datos?.estado === "rate_limit" && <p className="usage-note">Ollama limitó la consulta. Vuelve a intentar en un minuto.</p>}
+      {incluido && <div className="usage-account-balance">
+        <span className="window-meta">Créditos incluidos restantes</span>
+        <strong>{dinero(incluido.restanteUsd)}</strong>
+        {incluido.limiteUsd !== null && incluido.limiteUsd >= incluido.restanteUsd && <span className="window-meta">Uso {dinero(incluido.limiteUsd - incluido.restanteUsd)} de {dinero(incluido.limiteUsd)}</span>}
+        {reinicio && <span className="window-meta">Reinicia {reinicio}</span>}
+      </div>}
+      {datos?.ventanas.map((ventana) => <VentanaCuota key={ventana.nombre} {...ventana} />)}
+      {datos?.compradosUsd != null && <span className="window-meta">Créditos comprados restantes · {dinero(datos.compradosUsd)}</span>}
+      <p className="usage-note">Cada modelo consume créditos según su tarifa. <a href="https://ollama.com/pricing#model-pricing" target="_blank" rel="noopener noreferrer">Tarifas por modelo</a> · <a href="https://ollama.com/settings" target="_blank" rel="noopener noreferrer">Uso de tu cuenta</a></p>
     </section>
   );
 }
@@ -589,63 +526,5 @@ function CuotaSesionCodex() {
         La cuota mostrada pertenece a la sesión de ChatGPT Plus/Codex, no a la clave de OpenAI API. Las llamadas por API se facturan y consultan por separado.
       </p>
     </section>
-  );
-}
-
-function VentanaUso({
-  titulo,
-  datos,
-  costeIncluido = false,
-}: {
-  titulo: string;
-  datos: Ventana | null;
-  costeIncluido?: boolean;
-}) {
-  const gastoUsd = datos?.costoEstimadoUsd ?? 0;
-  const costosCompletos = Boolean(datos && datos.llamadas > 0 && datos.costesEstimados === datos.llamadas && datos.costesNoDisponibles === 0 && datos.costesDesconocidos === 0);
-
-  const tieneUso = datos && (datos.tokens > 0 || datos.llamadas > 0);
-  const precisionTokens = datos
-    ? [
-        datos.tokensMedidos > 0 ? `${compact(datos.tokensMedidos)} medidos` : "",
-        datos.tokensEstimados > 0 ? `${compact(datos.tokensEstimados)} estimados` : "",
-        datos.llamadasSinTokens > 0 ? `${datos.llamadasSinTokens} llamadas sin tokens confirmados` : "",
-      ].filter(Boolean).join(" · ")
-    : "";
-  const etiquetaCoste = costeIncluido
-    ? "Incluido en el plan; no se calcula por llamada"
-    : datos?.costesEstimados
-    ? `≈ ${formatUsd(gastoUsd)} estimado${costosCompletos ? "" : " (parcial)"}`
-    : "Sin dato fiable";
-  const promedioPorMil = !costeIncluido && datos && costosCompletos && datos.tokensMedidos === datos.tokens && datos.tokens > 0
-    ? gastoUsd / datos.tokens * 1000
-    : null;
-  const etiquetaPromedio = promedioPorMil === null
-    ? "No disponible"
-    : `≈ ${new Intl.NumberFormat("es", { minimumFractionDigits: 4, maximumFractionDigits: 6 }).format(promedioPorMil)} US$/1.000 tokens`;
-
-  return (
-    <div className="usage-window" role="group" aria-label={`${titulo}: uso registrado`}>
-      <div className="usage-window-heading">
-        <div className="usage-window-copy">
-          <span className="window-label">{titulo}</span>
-          <span className="window-meta">
-            {tieneUso
-              ? `${compact(datos.tokens)} tokens · ${datos.llamadas} llamada${datos.llamadas === 1 ? "" : "s"}${precisionTokens ? ` · ${precisionTokens}` : ""}`
-              : "0 tokens · 0 llamadas registradas"}
-          </span>
-        </div>
-      </div>
-      <div className="usage-window-totals">
-        <div>
-          <span>Estimación de coste</span>
-          <strong>{etiquetaCoste}</strong>
-        </div>
-        <div>
-          <span>Estimación por 1.000 tokens</span>
-          <strong>{etiquetaPromedio}</strong>
-        </div>
-      </div>
-    </div>
   );
 }

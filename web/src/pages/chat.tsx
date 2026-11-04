@@ -22,6 +22,7 @@ import { MenuComandosChat, type ComandoChat } from "../components/chat-comandos"
 import { MenuSkillsChat, type SkillOpcion } from "../components/chat-skills-picker";
 import { PlanRevision } from "../components/plan-revision";
 import { HistorialTarea } from "../components/task-history";
+import { PublicarPages } from "../components/publicar-pages";
 import { AccionesRepositorioChat } from "../components/repository-approval";
 import { sugerenciasChat } from "../lib/sugerencias";
 import { duracionEntre } from "../lib/tiempo";
@@ -1852,10 +1853,10 @@ export function ChatPage() {
                     </details>
                   )}
                   <PlanRevision key={`${tareaChat.id}:${tareaChat.plan_hash}`} tarea={tareaChat} />
+                  <PublicarPages key={`pages-${tareaChat.id}`} tarea={tareaChat} />
                   <HistorialTarea
                     key={`actividad-${tareaChat.id}`}
                     id={tareaChat.id}
-                    abiertoInicial={["queued", "analyzing", "running", "waiting_approval"].includes(tareaChat.status)}
                     titulo="Actividad de Telo: Graphify y skills"
                   />
                   {selectedId && tareaChat.reanudable && (tareaChat.status === "failed" || tareaChat.status === "interrupted") && (

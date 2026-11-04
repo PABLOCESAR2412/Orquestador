@@ -4,6 +4,15 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 3 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Publicación, cuotas y Oficina — 4 de noviembre de 2026
+
+- [x] Pages reutiliza el token y el ID de cuenta de Proveedores en una publicación estática confirmada desde Telo. El destino existente necesita permiso Pages Edit y la tarea debe conservar sus archivos compilados. La regresión en `claves-proveedor.test.ts` verifica las credenciales y los archivos que recibe Wrangler simulado.
+- [x] Un push de cambios ya preparados se planifica con comprobaciones Git. Las advertencias del monorepo sugieren instalar desde la raíz cuando corresponde compilar o probar. Si falta la copia de trabajo, Telo protege la reanudación y redacta rutas internas en los nuevos informes. Cobertura en `comprobaciones-tarea.test.ts`, `plan.test.ts` y `cuota.test.ts`.
+- [x] Uso muestra cuota y saldo publicados por cada servicio. Antigravity presenta las ventanas que devuelve su CLI. Ollama consulta los créditos de la cuenta y enlaza sus tarifas vigentes. Casos en `cuota-antigravity.test.ts` y `cuota-ollama.test.ts`.
+- [x] Oficina ajusta la altura visible y corrige la orientación de los personajes. Sus apodos se guardan por conversación en la migración 060. La acción de detener usa la cancelación del supervisor para los auxiliares. Verificación con SQLite y Playwright a 390 y 1440 px con datos simulados.
+- [x] La actividad de Graphify empieza contraída. La comprobación de tipos del servidor y el build web pasaron, así como 124 pruebas focalizadas del servidor y 101 de la interfaz.
+- [ ] Validar la publicación de ProgramPulse en la VM después de recuperar su repositorio y comprobar el alcance del token guardado.
+
 ## Ajustes de conexiones y skills — 3 de noviembre de 2026
 
 - [~] Conexiones muestra las integraciones externas Meta y búsqueda de empleo/clientes con acceso al formulario MCP genérico. El estado confirma que el MCP está registrado, no que responda.

@@ -10,13 +10,15 @@ export type InformeTareaChat = {
 };
 
 function detectarBloqueoAntiguo(valor: Record<string, unknown>, pendientes: string[], pruebas: { comando: string; resultado: string }[]): string | null {
+  if (valor.estado !== "fallo") return null;
   const evidencia = [String(valor.resumen ?? ""), ...pendientes, ...pruebas.map((prueba) => prueba.comando + " " + prueba.resultado)].join("\n");
   const faltaToken = /(?:CLOUDFLARE_API_TOKEN[\s\S]{0,100}(?:no\s+(?:está|se encuentra|hay|aparece|está configurado|está disponible)|falta|ausente|missing|not\s+(?:set|available|present))|(?:sin|falta|ausente|missing|not\s+(?:set|available|present))[\s\S]{0,100}CLOUDFLARE_API_TOKEN)/i;
-  if (valor.estado === "fallo" && faltaToken.test(evidencia)) return "Falta configurar CLOUDFLARE_API_TOKEN en el servicio que ejecuta la tarea.";
   const faltaWorkspace = /\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b[\s\S]{0,120}(?:\bsin\b|\bno\s+(?:tiene|contiene|incluye|hay)\b|\bfalta(?:n)?\b|\bausente\b|\bmissing\b)[\s\S]{0,120}(?:package\.json|lockfile|fuentes?|dist\/)/i.test(evidencia)
     || /(?:package\.json|lockfile|fuentes?|dist\/)[\s\S]{0,120}(?:\bfalta(?:n)?\b|\bausente\b|\bmissing\b|\bno\s+(?:está|se encuentra|existe))[\s\S]{0,120}\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b/i.test(evidencia);
-  if (valor.estado === "fallo" && faltaWorkspace) return "El workspace no contiene los archivos o fuentes necesarios para compilar la app.";
-  return null;
+  const motivos = [];
+  if (faltaWorkspace) motivos.push("El workspace no contiene los archivos o fuentes necesarios para compilar la app.");
+  if (faltaToken.test(evidencia)) motivos.push("La tarjeta Publicar en Cloudflare Pages usa el token de Ajustes → Proveedores.");
+  return motivos.join(" ") || null;
 }
 
 // Acepta el contrato actual y reportes JSON antiguos que ya quedaron guardados en el chat.
