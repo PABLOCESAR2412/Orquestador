@@ -367,7 +367,9 @@ describe("rutas de claves de proveedor", () => {
       expect(bloqueado.status).toBe(400);
       expect(await bloqueado.json()).toEqual({ error: "pages_assets_secret_detected" });
       rmSync(join(carpeta, "bundle.js"));
-      expect(llamada).not.toHaveBeenCalled();
+      expect(spawn).not.toHaveBeenCalled();
+      llamada.mockResolvedValueOnce(new Response(null, { status: 404 }));
+      expect(await (await publicar("sin-dist")).json()).toEqual({ error: "pages_project_missing" });
       expect(spawn).not.toHaveBeenCalled();
       const revision = await publicar("dist");
       expect(revision.status).toBe(200);

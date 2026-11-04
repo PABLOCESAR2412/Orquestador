@@ -90,6 +90,12 @@ export async function runAntigravity(opts: OpcionesAntigravity): Promise<RunResu
       if (sesionValida(id) && id !== sessionId) { sessionId = id; opts.onSesion?.(id); }
     };
     const emitirLinea = (evento: unknown) => { try { opts.onLinea?.(JSON.stringify(evento)); } catch { /* La UI no interrumpe el registro de uso. */ } };
+    let narracion = "";
+    let indiceNarracion: unknown;
+    const cerrarNarracion = () => {
+      if (narracion.trim()) emitirLinea({ type: "text", sessionID: sessionId, part: { type: "text", text: narracion } });
+      narracion = "";
+    };
     const lectura = leerLineasAcotadas(proc.stdout, 2 * 1024 * 1024, linea => {
       vigilante.patada();
       let evento: any;
@@ -111,9 +117,13 @@ export async function runAntigravity(opts: OpcionesAntigravity): Promise<RunResu
         if (paso.text_delta || paso.step_type === "tool") primera.detener();
         if (typeof paso.text_delta === "string") {
           texto = (texto + paso.text_delta).slice(-1024 * 1024);
-          emitirLinea({ type: "text", sessionID: sessionId, part: { type: "text", text: paso.text_delta } });
+          if (indiceNarracion !== paso.step_index) cerrarNarracion();
+          indiceNarracion = paso.step_index;
+          narracion = (narracion + paso.text_delta).slice(0, 64 * 1024);
         }
+        if (paso.state === "DONE" && paso.step_index === indiceNarracion) cerrarNarracion();
         if (paso.step_type === "tool") {
+          cerrarNarracion();
           const herramienta = paso.tool_info ?? {};
           emitirLinea({ type: "tool_use", sessionID: sessionId, part: { type: "tool", callID: `agy-${paso.step_index}`, tool: paso.tool_name ?? herramienta.name ?? "herramienta", state: { status: paso.state === "DONE" ? herramienta.error ? "error" : "completed" : "running", input: herramienta.parameters ?? {}, output: herramienta.output ?? "", error: herramienta.error?.message } } });
         }
@@ -128,6 +138,7 @@ export async function runAntigravity(opts: OpcionesAntigravity): Promise<RunResu
       } else if (evento.event === "result" && !resultado) {
         resultado = evento.result && typeof evento.result === "object" ? evento.result : null;
         if (!resultado) return;
+        cerrarNarracion();
         primera.detener();
         alSesion(resultado.conversation_id);
         const totales = usoAntigravity(resultado.usage);
@@ -143,6 +154,7 @@ export async function runAntigravity(opts: OpcionesAntigravity): Promise<RunResu
     const finalizado = proc.exited.then(codigo => { cortar(); relojDrenaje = setTimeout(() => drenaje.abort(), 4000); return codigo; });
     try {
       const [, stderr, codigo] = await Promise.all([lectura, leerConTope(proc.stderr, 1024 * 1024, drenaje.signal), finalizado]);
+      cerrarNarracion();
       if (opts.signal?.aborted) throw new Error("Ejecución cancelada");
       if (falloPolitica || !politicaVerificada) throw new Error("Antigravity no confirmó el modo de permisos aislado y el modelo seleccionado. Se detuvo la ejecución; actualiza el CLI antes de reintentar.");
       if (primera.silenciado()) throw new ErrorAgente(ERROR_PRIMERA_RESPUESTA, "");

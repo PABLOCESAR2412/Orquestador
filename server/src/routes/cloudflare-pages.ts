@@ -117,10 +117,6 @@ cloudflarePages.post("/tasks/:id/cloudflare-pages", async (c) => {
 
     let temporal: string | undefined;
     try {
-      const clon = join(await realpath(config.dataDir), "tasks", id, "repo");
-      if (await realpath(rutaClon(id)) !== clon) return c.json({ error: "invalid_project_path" }, 400);
-      temporal = await mkdtemp(join(tmpdir(), "telo-pages-"));
-      const { digest, ...lote } = await copiarArchivosPages(clon, directorio, join(temporal, "assets"), [...valoresDeProyecto(projectId), token]);
       const respuesta = await fetch(`https://api.cloudflare.com/client/v4/accounts/${cuenta}/pages/projects/${proyecto}`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(15_000),
@@ -133,6 +129,11 @@ cloudflarePages.post("/tasks/:id/cloudflare-pages", async (c) => {
       const rama = datos.result?.production_branch;
       if (typeof rama !== "string" || !rama || rama.length > 255 || /[\r\n\0]/.test(rama))
         return c.json({ error: "pages_remote_error" }, 502);
+
+      const clon = join(await realpath(config.dataDir), "tasks", id, "repo");
+      if (await realpath(rutaClon(id)) !== clon) return c.json({ error: "invalid_project_path" }, 400);
+      temporal = await mkdtemp(join(tmpdir(), "telo-pages-"));
+      const { digest, ...lote } = await copiarArchivosPages(clon, directorio, join(temporal, "assets"), [...valoresDeProyecto(projectId), token]);
 
       const huella = createHash("sha256").update(JSON.stringify([id, cuenta, proyecto, directorio, rama, digest])).digest("hex");
       if (preparar) return c.json({ huella, rama, ...lote });

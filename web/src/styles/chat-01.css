@@ -1464,18 +1464,15 @@
     margin-left: 26px;
     justify-content: flex-start;
   }
+  .tl-composer-barra:has(.tl-composer-decisiones) { gap: 4px; }
+  .tl-composer-barra:has(.tl-composer-decisiones) .tl-composer-izq { flex-wrap: nowrap; gap: 3px; }
+  .tl-composer-decisiones { gap: 3px; }
+  .tl-composer-decisiones button { width: 32px; height: 32px; padding: 0; border-radius: 8px; }
+  .tl-composer-decisiones .tl-plan-label { display: none; }
+  .tl-composer-barra:has(.tl-composer-decisiones) .tl-modelo-boton { min-width: 0; padding-inline: 3px; }
   .tl-msg-procesando { align-items: flex-start; flex-direction: column; gap: 2px; }
   .tl-msg-duracion::before { content: none; }
-  .tl-composer-barra:has(.tl-composer-decisiones) { flex-wrap: wrap; }
-  .tl-composer-barra:has(.tl-composer-decisiones) .tl-composer-izq { flex: 1 1 100%; width: 100%; }
-  .tl-composer-barra:has(.tl-composer-decisiones) .tl-composer-der { flex: 1 1 100%; width: 100%; justify-content: flex-end; }
-  .tl-composer-decisiones {
-    display: flex;
-    flex: 1 1 auto;
-    justify-content: flex-end;
-    width: 100%;
-  }
-  .tl-composer-decisiones button { min-width: 40px; min-height: 40px; padding: 0; }
+
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1559,7 +1556,7 @@
   .tl-build-label,
   .tl-composer-izq > .tl-boton-compacto kbd { display: none; }
   .tl-build-icono { display: block; }
-  .tl-composer-decisiones { gap: 8px; }
+
   .tl-composer-izq > .tl-modelo-boton { flex: 0 1 auto; width: auto; min-width: 76px; min-height: 32px; height: 32px; gap: 5px; padding-inline: 8px; border-radius: 8px; }
   .tl-enviar { width: 32px; height: 32px; }
   .tl-detener { flex: 0 0 32px; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 8px; font-size: 0; }
