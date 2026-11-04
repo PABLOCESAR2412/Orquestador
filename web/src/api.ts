@@ -596,6 +596,7 @@ export type TaskPlan = {
   requiere_aprobacion: ("commit" | "push" | "pr")[];
   riesgos: string[];
   preguntas: string[];
+  secretos_requeridos?: string[];
   notas?: string;
 };
 
@@ -944,7 +945,7 @@ export const api = {
   conversationTasks: (id: string) => request<Task[]>(`/api/conversations/${id}/tasks`),
   decidePlan: (
     id: string,
-    optsOrHash: string | { decision: "approve" | "revise"; plan_hash: string; feedback?: string },
+    optsOrHash: string | { decision: "approve" | "revise"; plan_hash: string; feedback?: string; secretos?: string[] },
     decision?: "approve" | "revise",
     feedback?: string,
   ) => {
@@ -956,6 +957,7 @@ export const api = {
             hash: optsOrHash.plan_hash,
             plan_hash: optsOrHash.plan_hash,
             feedback: optsOrHash.feedback,
+            secretos: optsOrHash.secretos,
           };
     return request<Task>(`/api/tasks/${id}/plan`, {
       method: "POST",
@@ -1123,7 +1125,7 @@ export const api = {
       { method: "POST", body: JSON.stringify(body) },
     ),
   // El plan espera al usuario: aprobarlo lo pone en la cola; las notas llegan al obrero.
-  approveTaskPlan: (id: string, body: { notas?: string; plan_hash: string }) =>
+  approveTaskPlan: (id: string, body: { notas?: string; plan_hash: string; secretos?: string[] }) =>
     request<Task>(`/api/tasks/${id}/aprobar-plan`, { method: "POST", body: JSON.stringify(body) }),
   rejectTaskPlan: (id: string, body: { motivo?: string }) =>
     request<Task>(`/api/tasks/${id}/rechazar-plan`, { method: "POST", body: JSON.stringify(body) }),

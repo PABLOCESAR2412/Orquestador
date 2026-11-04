@@ -13,6 +13,7 @@ const ERRORES_PAGES: Record<string, string> = {
   pages_assets_missing: "Falta la copia de trabajo o la carpeta compilada. Restaura la tarea o vuelve a compilar desde el proyecto.",
   pages_assets_empty: "La carpeta de publicación está vacía.",
   pages_assets_unsupported: "La carpeta incluye enlaces, archivos privados o un Worker. Elige una carpeta con archivos estáticos.",
+  pages_assets_secret_detected: "La carpeta compilada contiene una credencial. Retírala del código y vuelve a compilar antes de publicar.",
   pages_assets_too_large: "La carpeta compilada excede el límite de esta publicación.",
   pages_remote_error: "No se pudo comprobar el proyecto en Cloudflare. Revisa el destino y la conexión.",
   pages_publish_failed: "Wrangler no completó la publicación. Revisa el proyecto y los despliegues en Cloudflare antes de reintentar.",

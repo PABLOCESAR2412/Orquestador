@@ -26,6 +26,7 @@ export type Plan = {
   requiere_aprobacion: Aprobacion[];
   riesgos: string[];
   preguntas: string[];
+  secretos_requeridos?: string[];
   // Notas o respuestas del usuario al aprobar. El obrero las recibe junto al plan.
   notas?: string;
 };
@@ -171,10 +172,16 @@ export function validarPlan(valor: unknown): Validacion<Plan> {
     ? [...new Set(valor.requiere_aprobacion.filter(esAprobacion))]
     : [];
 
+  const secretos = listaDeTextos(valor.secretos_requeridos, 64);
+  if (secretos.some((nombre) => !/^[A-Z_][A-Z0-9_]{1,63}$/.test(nombre))) {
+    return { ok: false, motivo: "los secretos requeridos deben indicarse solo por su nombre de variable" };
+  }
+
   return {
     ok: true,
     valor: {
       objetivo,
+      ...(secretos.length ? { secretos_requeridos: [...new Set(secretos)] } : {}),
       supuestos: listaDeTextos(valor.supuestos),
       pasos,
       criterios_de_aceptacion: criterios,
@@ -187,7 +194,7 @@ export function validarPlan(valor: unknown): Validacion<Plan> {
 
 // El plan espera al usuario si pide commit, push o PR, o si trae preguntas sin responder.
 export function requiereAprobacion(plan: Plan): boolean {
-  return plan.requiere_aprobacion.length > 0 || plan.preguntas.length > 0;
+  return plan.requiere_aprobacion.length > 0 || plan.preguntas.length > 0 || !!plan.secretos_requeridos?.length;
 }
 
 // Sin el reporte JSON, el texto libre no demuestra que el plan se haya completado.
@@ -291,7 +298,8 @@ const FORMA_PLAN = `{
   "criterios_de_aceptacion": ["..."],
   "requiere_aprobacion": [],
   "riesgos": ["..."],
-  "preguntas": ["..."]
+  "preguntas": ["..."],
+  "secretos_requeridos": []
 }`;
 
 const REGLAS_PLAN = [
@@ -321,6 +329,7 @@ export function promptAnalizador(
   tarea: string,
   replanificacion?: { planAnterior: Plan | null; motivo: string },
   historialReciente?: string,
+  nombresSecretos: readonly string[] = [],
 ): string {
   const lineas = [
     "Eres el analizador de Telo. Lees la tarea y produces un plan. No modifiques archivos, no hagas commit, push ni PR, y no ejecutes comandos que cambien estado: solo lee lo necesario.",
@@ -349,6 +358,8 @@ export function promptAnalizador(
       "Propón un plan nuevo que resuelva ese motivo. Si cambias el enfoque, dilo en \"supuestos\".",
     );
   }
+  lineas.push("", "Secretos del proyecto disponibles para solicitar (solo nombres):", nombresSecretos.join(", ") || "Ninguno.");
+  lineas.push("Solicita en secretos_requeridos solo los nombres de esa lista imprescindibles para ejecutar este plan. Pedirlos requiere aprobación. Para publicación y acciones Git usa las tarjetas de Telo.");
   lineas.push("", "Responde solo con un objeto JSON, sin texto antes ni después, con esta forma:", FORMA_PLAN, "", REGLAS_PLAN);
   return lineas.join("\n");
 }

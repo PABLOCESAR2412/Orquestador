@@ -5,6 +5,12 @@
   "cambios": [
     {
       "fecha": "2026-11-04",
+      "tipo": "mediano",
+      "titulo": "Seguridad: escanea los archivos de Pages, autoriza secretos por tarea y actualiza dependencias",
+      "pr": 184
+    },
+    {
+      "fecha": "2026-11-04",
       "tipo": "minimo",
       "titulo": "Chat y video: evita preguntas repetidas y corrige el caché aislado de HyperFrames",
       "pr": 183

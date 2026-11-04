@@ -160,12 +160,17 @@ export function archivosConSecretos(diff: string, valores: string[]): string[] {
 // no muestra, por ejemplo un archivo marcado binario con `.gitattributes`. Devuelve
 // rutas, nunca el valor del secreto.
 export type BlobEscaneo = { ruta: string; contenido: string };
-export function archivosConSecretosEnBlobs(blobs: readonly BlobEscaneo[] | string, valores: string[]): string[] {
+export function detectorDeSecretos(valores: string[]): (contenido: string) => boolean {
   const todos = [...valores, ...valoresDeConfiguracion(), ...valoresSecretosServidor()];
+  return (contenido) => contieneSecreto(contenido, todos);
+}
+
+export function archivosConSecretosEnBlobs(blobs: readonly BlobEscaneo[] | string, valores: string[]): string[] {
+  const contiene = detectorDeSecretos(valores);
   const hallados = new Set<string>();
   if (typeof blobs !== "string") {
     for (const { ruta, contenido } of blobs) {
-      if (contieneSecreto(contenido, todos)) hallados.add(ruta);
+      if (contiene(contenido)) hallados.add(ruta);
     }
     return [...hallados];
   }
@@ -177,7 +182,7 @@ export function archivosConSecretosEnBlobs(blobs: readonly BlobEscaneo[] | strin
       archivo = linea.slice(1, linea.indexOf("\0", 1));
       continue;
     }
-    if (contieneSecreto(linea, todos)) hallados.add(archivo);
+    if (contiene(linea)) hallados.add(archivo);
   }
   return [...hallados];
 }

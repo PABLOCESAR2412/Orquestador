@@ -85,6 +85,9 @@ describe("requiereAprobacion", () => {
   test("pide aprobación con commit, push, pr o preguntas", () => {
     expect(requiereAprobacion({ ...base, requiere_aprobacion: ["pr"] })).toBe(true);
     expect(requiereAprobacion({ ...base, preguntas: ["¿Qué carpeta?"] })).toBe(true);
+    const conSecreto = { ...base, secretos_requeridos: ["SERVICE_TOKEN"] };
+    expect(requiereAprobacion(conSecreto)).toBe(true);
+    expect(hashPlan(conSecreto)).not.toBe(hashPlan(base));
   });
 
   test("no pide aprobación si el plan es solo de lectura y trabajo en el espacio de la tarea", () => {

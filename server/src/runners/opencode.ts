@@ -260,7 +260,7 @@ export function entornoDelAgente(propias?: Record<string, string>, modelosPermit
   }
   if (modelosPermitidos) {
     const proveedores = new Set(modelosPermitidos.map((modelo) => modelo.split("/")[0]));
-    const claves = [...PROVEEDORES_CON_CLAVE, { id: "openai", variables: ["OPENAI_API_KEY"] }];
+    const claves = [...PROVEEDORES_CON_CLAVE, { id: "anthropic", variables: ["ANTHROPIC_API_KEY"] }];
     for (const proveedor of claves) {
       if (!proveedores.has(proveedor.id)) for (const variable of proveedor.variables) delete env[variable];
     }

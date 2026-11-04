@@ -732,10 +732,11 @@ export function ChatPage() {
   });
 
   const decidirPlanMutation = useMutation({
-    mutationFn: ({ decision, feedback, taskId, planHash }: { decision: "approve" | "revise"; feedback?: string; id: string; texto: string; taskId: string; planHash: string }) => {
+    mutationFn: ({ decision, feedback, taskId, planHash, secretos }: { decision: "approve" | "revise"; feedback?: string; id: string; texto: string; taskId: string; planHash: string; secretos?: string[] }) => {
       return api.decidePlan(taskId, {
         decision,
         plan_hash: planHash,
+        secretos,
         feedback: feedback?.trim() || undefined,
       });
     },
@@ -748,7 +749,10 @@ export function ChatPage() {
   });
   const decidirPlan = (decision: "approve" | "revise", feedback?: string) => {
     if (!selectedId || !tareaChat?.id || !tareaChat.plan_hash) return;
-    decidirPlanMutation.mutate({ decision, feedback, id: selectedId, texto: draft, taskId: tareaChat.id, planHash: tareaChat.plan_hash });
+    decidirPlanMutation.mutate({
+      decision, feedback, id: selectedId, texto: draft, taskId: tareaChat.id, planHash: tareaChat.plan_hash,
+      secretos: decision === "approve" ? tareaChat.plan?.secretos_requeridos : undefined,
+    });
   };
 
   const cancelarPlanMutation = useMutation({
@@ -2489,10 +2493,10 @@ export function ChatPage() {
                           decidirPlan("approve", draft.trim() || undefined);
                         }}
                         title={draft.trim() ? "Aprobar el plan incluyendo tus notas" : "Aprobar el plan"}
-                        aria-label="Aprobar plan"
+                        aria-label={tareaChat?.plan?.secretos_requeridos?.length ? "Aprobar plan y permitir los secretos indicados" : "Aprobar plan"}
                       >
                         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>
-                        <span className="tl-plan-label">{decidirPlanMutation.isPending ? "Aprobando…" : "Aprobar"}</span>
+                        <span className="tl-plan-label">{decidirPlanMutation.isPending ? "Aprobando…" : tareaChat?.plan?.secretos_requeridos?.length ? "Aprobar con secretos" : "Aprobar"}</span>
                       </button>
                     </div>
                   ) : (

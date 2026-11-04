@@ -83,6 +83,10 @@ export function PlanTarea({
         </div>
       )}
 
+      {!!plan.secretos_requeridos?.length && (
+        <p>Aprobar este plan permitirá al obrero usar estas credenciales: <strong>{plan.secretos_requeridos.join(", ")}</strong>.</p>
+      )}
+
       {plan.preguntas.length > 0 && (
         <div className="tarea-bloque">
           <span className="tarea-etiqueta">Preguntas sin responder</span>
@@ -144,7 +148,7 @@ export function PlanTarea({
           )}
           <div className="tr-acciones-fila">
             <button type="button" className="primary task-mini-btn" disabled={ocupado} onClick={() => onAprobar(notas.trim())}>
-              {ocupado ? "Enviando…" : "Aprobar plan"}
+              {ocupado ? "Enviando…" : plan.secretos_requeridos?.length ? "Aprobar con secretos" : "Aprobar plan"}
             </button>
             <button type="button" className="ghost task-mini-btn" disabled={ocupado} onClick={() => onRechazar(notas.trim())}>
               Rechazar plan
