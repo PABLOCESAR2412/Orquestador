@@ -95,7 +95,7 @@ try {
     let chatDetenido = false;
     let conversacionesDisponibles = false;
     let modoC1 = "build";
-    let ocupadaC1 = false;
+    let ocupadaC5 = false;
     let modeloC1 = "google/prueba";
     let esfuerzoC1 = null;
     let orquestacionC1 = false;
@@ -170,11 +170,11 @@ try {
       else if (path === "/api/media/capacidades") data = {};
       else if (path === "/api/conversations") {
         const lista = conversacionesDisponibles ? [
-        { id: "c1", work_mode: modoC1, title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, orquestacion_habilitada: orquestacionC1, orquestacion_modelos_personalizados: modelosPersonalizadosC1, orquestacion_seleccion_automatica: seleccionAutomaticaC1, orquestacion_trabajadores: trabajadoresC1, project_id: "p1", project_name: "Pruebas", ocupada: ocupadaC1, en_proceso: true, tiene_sesion: true, created_at: now, subchats: [{ id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true }] },
+        { id: "c1", work_mode: modoC1, title: "Prueba de flujo", model: modeloC1, effort: esfuerzoC1, orquestacion_habilitada: orquestacionC1, orquestacion_modelos_personalizados: modelosPersonalizadosC1, orquestacion_seleccion_automatica: seleccionAutomaticaC1, orquestacion_trabajadores: trabajadoresC1, project_id: "p1", project_name: "Pruebas", en_proceso: true, tiene_sesion: true, created_at: now, subchats: [{ id: "c-child", title: "Auditar API", model: "google/prueba", effort: "high", project_id: "p1", project_name: "Pruebas", parent_conversation_id: "c1", parent_turn_id: "u1", subagent_turn_id: "child-u1", subagent_agent: "telo-google-prueba-1", subagent_prompt: "Revisa las rutas y reporta riesgos", subagent_status: "running", subagent_result: null, created_at: now, last_message_at: now, ocupada: true, en_proceso: true }] },
         { id: "c2", title: "Chat paralelo", model: "nvidia/nemotron-test", project_id: null, project_name: null, created_at: now },
         { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, pendiente_aprobacion: true, estado_tarea: "pendiente_aprobacion", estado_tarea_id: "review-c3", estado_tarea_version: "hash-c3", created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
         { id: "c4", title: "Chat anterior", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() },
-        { id: "c5", title: "Chat libre", model: "google/prueba", project_id: null, project_name: null, created_at: now },
+        { id: "c5", title: "Chat libre", model: "google/prueba", project_id: null, project_name: null, ocupada: ocupadaC5, created_at: now },
         ...(mostrarHistorialExtenso ? [{ id: "c6", title: "Historial extenso", model: "google/prueba", project_id: null, created_at: now }] : []),
       ] : [];
         // Con paginación por servidor, la primera tanda (?limite=) es un objeto; sin limite sigue siendo array.
@@ -1080,36 +1080,6 @@ try {
     await colaVisible.getByRole("textbox", { name: "Editar mensaje en cola", exact: true }).fill("Segundo mensaje corregido");
     await colaVisible.getByRole("button", { name: "Guardar", exact: true }).click();
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("telo:cola:c1") ?? "[]")[0].texto), "Segundo mensaje corregido");
-    if (width === 390) {
-      ocupadaC1 = true;
-      const esperarOcupacion = (ocupada) => page.waitForResponse(async respuesta => {
-        if (!new URL(respuesta.url()).pathname.endsWith("/api/conversations")) return false;
-        const datos = await respuesta.json().catch(() => null);
-        const lista = Array.isArray(datos) ? datos : datos?.conversations ?? [];
-        return lista.some(chat => chat.id === "c1" && chat.ocupada === ocupada);
-      });
-      await esperarOcupacion(true);
-      const opcionesCola = () => colaVisible.getByRole("button", { name: "Más opciones para mensaje 1", exact: true }).click();
-      await opcionesCola();
-      await page.getByRole("menuitem", { name: "Activar cola", exact: true }).click();
-      await page.evaluate(() => {
-        window.__guardarBorradorOriginal = Storage.prototype.setItem;
-        Storage.prototype.setItem = function (clave, valor) {
-          if (clave === "telo:borrador:c1") throw new DOMException("Sin espacio", "QuotaExceededError");
-          return window.__guardarBorradorOriginal.call(this, clave, valor);
-        };
-      });
-      await inputChat.fill("Mensaje nuevo para la cola");
-      await page.getByRole("button", { name: "Enviar", exact: true }).click();
-      await colaVisible.locator('.tl-cola-texto[title="Mensaje nuevo para la cola"]').waitFor();
-      assert.equal(await inputChat.inputValue(), "", "la cola limpia el compositor aunque falle localStorage");
-      await page.evaluate(() => { Storage.prototype.setItem = window.__guardarBorradorOriginal; });
-      await colaVisible.locator(".tl-cola-item").filter({ has: page.locator('.tl-cola-texto[title="Mensaje nuevo para la cola"]') }).locator(".tl-cola-quitar").click();
-      await opcionesCola();
-      await page.getByRole("menuitem", { name: "Desactivar cola", exact: true }).click();
-      ocupadaC1 = false;
-      await esperarOcupacion(false);
-    }
     await colaVisible.getByRole("button", { name: "Redirigir mensaje 1 al compositor", exact: true }).click();
     assert.equal(await inputChat.inputValue(), "Segundo mensaje corregido");
     await inputChat.fill("");
@@ -1905,6 +1875,22 @@ try {
     });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "la oficina cabe en el ancho disponible");
     await page.screenshot({ path: `scratch/capturas-ci/oficina-${width}.png` });
+    if (width === 390) {
+      ocupadaC5 = true;
+      await page.goto(`${base}/chat?conversacion=c5`);
+      await botonDetener.waitFor();
+      await page.evaluate(() => {
+        const setItem = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (clave, valor) {
+          if (clave === "telo:borrador:c5") throw new DOMException("Sin espacio", "QuotaExceededError");
+          return setItem.call(this, clave, valor);
+        };
+      });
+      await inputChat.fill("Mensaje nuevo para la cola");
+      await page.getByRole("button", { name: "Enviar", exact: true }).click();
+      await page.locator('.tl-cola-texto[title="Mensaje nuevo para la cola"]').waitFor();
+      assert.equal(await inputChat.inputValue(), "", "la cola limpia el compositor aunque falle localStorage");
+    }
     assert.deepEqual(errors, []);
     await context.close();
     console.log(`PASS ${width}px: login, mensajes, aprobación Git, código copiable y métricas.`);
