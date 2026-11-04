@@ -95,6 +95,7 @@ try {
     let chatDetenido = false;
     let conversacionesDisponibles = false;
     let modoC1 = "build";
+    let ocupadaC5 = false;
     let modeloC1 = "google/prueba";
     let esfuerzoC1 = null;
     let orquestacionC1 = false;
@@ -173,7 +174,7 @@ try {
         { id: "c2", title: "Chat paralelo", model: "nvidia/nemotron-test", project_id: null, project_name: null, created_at: now },
         { id: "c3", title: "Chat de esta semana", model: "google/prueba", project_id: null, project_name: null, pendiente_aprobacion: true, estado_tarea: "pendiente_aprobacion", estado_tarea_id: "review-c3", estado_tarea_version: "hash-c3", created_at: new Date(Date.now() - 4 * 86_400_000).toISOString() },
         { id: "c4", title: "Chat anterior", model: "google/prueba", project_id: null, project_name: null, created_at: new Date(Date.now() - 10 * 86_400_000).toISOString() },
-        { id: "c5", title: "Chat libre", model: "google/prueba", project_id: null, project_name: null, created_at: now },
+        { id: "c5", title: "Chat libre", model: "google/prueba", project_id: null, project_name: null, ocupada: ocupadaC5, created_at: now },
         ...(mostrarHistorialExtenso ? [{ id: "c6", title: "Historial extenso", model: "google/prueba", project_id: null, created_at: now }] : []),
       ] : [];
         // Con paginación por servidor, la primera tanda (?limite=) es un objeto; sin limite sigue siendo array.
@@ -769,6 +770,14 @@ try {
     }
     await page.locator(".tl-modelo-boton").click();
     const selectorModelo = page.getByRole("dialog", { name: "Elegir modelo" });
+    await selectorModelo.getByRole("button", { name: "Cerrar selector de modelos" }).waitFor();
+    const ventanaModelo = await selectorModelo.boundingBox();
+    const botonModelo = await page.locator(".tl-modelo-boton").boundingBox();
+    assert.ok(ventanaModelo && botonModelo && ventanaModelo.y + ventanaModelo.height <= botonModelo.y,
+      "el selector de modelos flota por encima del botón");
+    if (width === 390) assert.ok(ventanaModelo.x >= 8 && ventanaModelo.x + ventanaModelo.width <= width - 8,
+      "el selector móvil conserva margen a los dos lados");
+    await page.screenshot({ path: `scratch/capturas-ci/selector-modelos-${width}.png` });
     assert.match(await selectorModelo.locator(".picker-tus-modelos").innerText(), /Llama Test/);
     assert.match(await selectorModelo.locator(".picker-tus-modelos").innerText(), /Google Test/);
     assert.equal(await selectorModelo.locator(".picker-intelligence").count(), 0, "el índice de Artificial Analysis ya no ocupa el selector");
@@ -1866,6 +1875,22 @@ try {
     });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "la oficina cabe en el ancho disponible");
     await page.screenshot({ path: `scratch/capturas-ci/oficina-${width}.png` });
+    if (width === 390) {
+      ocupadaC5 = true;
+      await page.goto(`${base}/chat?conversacion=c5`);
+      await botonDetener.waitFor();
+      await page.evaluate(() => {
+        const setItem = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (clave, valor) {
+          if (clave === "telo:borrador:c5") throw new DOMException("Sin espacio", "QuotaExceededError");
+          return setItem.call(this, clave, valor);
+        };
+      });
+      await inputChat.fill("Mensaje nuevo para la cola");
+      await page.getByRole("button", { name: "Enviar", exact: true }).click();
+      await page.locator('.tl-cola-texto[title="Mensaje nuevo para la cola"]').waitFor();
+      assert.equal(await inputChat.inputValue(), "", "la cola limpia el compositor aunque falle localStorage");
+    }
     assert.deepEqual(errors, []);
     await context.close();
     console.log(`PASS ${width}px: login, mensajes, aprobación Git, código copiable y métricas.`);

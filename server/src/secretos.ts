@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { db } from "./db";
 
 // Secretos por proyecto, cifrados con AES-256-GCM. La clave viene de TELO_CLAVE_CIFRADO (32 bytes
@@ -191,6 +191,19 @@ export function entornoDeProyecto(projectId: string): Record<string, string> {
   } catch {
     return {};
   }
+}
+
+export class ErrorSecretosCambiaron extends Error {}
+
+// Huella del cifrado, no del valor, para distinguir rotaciones incluso si se guarda el mismo valor.
+export function revisionSecretosProyecto(projectId: string | null | undefined, nombres: readonly string[]): string | null {
+  if (!projectId || !nombres.length) return null;
+  const leer = db.query<FilaSecreto, [string, string]>(
+    "SELECT name, iv, tag, value_enc FROM project_secrets WHERE project_id = ? AND name = ?",
+  );
+  const filas = [...nombres].sort().map((nombre) => leer.get(projectId, nombre));
+  if (filas.some((fila) => !fila)) return null;
+  return createHash("sha256").update(JSON.stringify([projectId, filas])).digest("hex");
 }
 
 // Valor de un secreto para uso del servidor (por ejemplo GITHUB_TOKEN en el push), o null.

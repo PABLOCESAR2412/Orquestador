@@ -74,7 +74,7 @@ auth.post("/login", async (c) => {
 
   const body = await c.req.json<{ clave?: string }>().catch(() => ({}) as { clave?: string });
   // Solo texto: un número o una lista en el cuerpo cuenta como intento fallido, no como error del servidor.
-  const claveValida = typeof body.clave === "string" && claveCorrecta(body.clave);
+  const claveValida = typeof body?.clave === "string" && claveCorrecta(body.clave);
   if (bloquearIntento(limites, claveValida)) return c.json({ error: "demasiados_intentos" }, 429);
   if (!claveValida) {
     limitadorLogin.registrarFallo(ip);
@@ -85,7 +85,12 @@ auth.post("/login", async (c) => {
   limitadorLogin.limpiar(ip);
 
   const userAgent = c.req.header("user-agent");
-  const sesion = crearSesionDispositivo({ userAgent, ip: ip !== "desconocida" ? ip : undefined });
+  let sesion: ReturnType<typeof crearSesionDispositivo>;
+  try {
+    sesion = crearSesionDispositivo({ userAgent, ip: ip !== "desconocida" ? ip : undefined });
+  } catch {
+    return c.json({ error: "sesion_no_disponible" }, 503);
+  }
 
   setCookie(c, COOKIE_SESION, sesion.token, {
     httpOnly: true,

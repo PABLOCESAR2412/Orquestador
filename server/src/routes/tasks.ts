@@ -223,7 +223,7 @@ tasks.post("/tasks/:id/aprobar-plan", async (c) => {
 
   const notas = typeof body.notas === "string" && body.notas.trim() ? body.notas.trim() : null;
   const resultado = aprobarPlan(id, notas, body.plan_hash.toLowerCase(), body.secretos);
-  if (resultado === "secretos_no_confirmados") return c.json({ error: resultado }, 409);
+  if (resultado === "secretos_no_confirmados" || resultado === "secretos_cambiaron") return c.json({ error: resultado }, 409);
   if (resultado === "not_found") return c.json({ error: "task_not_found" }, 404);
   if (resultado === "not_waiting") return c.json({ error: "task_not_waiting_plan" }, 409);
   if (resultado === "stale") return c.json({ error: "cambios_cambiaron" }, 409);
@@ -262,7 +262,7 @@ tasks.post("/tasks/:id/plan", async (c) => {
     if (row.error) return c.json({ error: "plan_needs_revision" }, 409);
     const feedbackTexto = typeof body.feedback === "string" && body.feedback.trim() ? body.feedback.trim() : null;
     const resultado = aprobarPlan(id, feedbackTexto, hash, body.secretos, true);
-    if (resultado === "secretos_no_confirmados") return c.json({ error: resultado }, 409);
+    if (resultado === "secretos_no_confirmados" || resultado === "secretos_cambiaron") return c.json({ error: resultado }, 409);
     if (resultado !== "ok") return c.json({ error: "cambios_cambiaron" }, 409);
   } else if (body.decision === "reject") {
     const feedbackTexto = typeof body.feedback === "string" && body.feedback.trim() ? body.feedback.trim() : null;

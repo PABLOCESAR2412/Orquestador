@@ -16,6 +16,7 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 process.env.PATH = `${join(import.meta.dir, "fixtures", "bin")}${delimiter}${process.env.PATH ?? ""}`;
 
 const { db } = await import("../src/db");
+const { guardarSecreto, revisionSecretosProyecto } = await import("../src/secretos");
 const { ErrorCuota, esErrorDeCuota, esErrorTransitorioDelProveedor } = await import("../src/ejecutar");
 const { ErrorAgente, detalleDelProveedor, explicarErrorProveedor } = await import("../src/runners/opencode");
 const { tasks } = await import("../src/routes/tasks");
@@ -272,20 +273,34 @@ describe("aprobación del plan con hash revisado", () => {
   });
 
   test("exige confirmar los nombres de secretos tanto en la tarjeta del chat como en la tarea", async () => {
-    const id = pendiente();
+    const id = pendiente(), projectId = crypto.randomUUID();
+    const claveAnterior = process.env.TELO_CLAVE_CIFRADO;
+    process.env.TELO_CLAVE_CIFRADO = Buffer.alloc(32, 7).toString("base64");
+    db.query("INSERT INTO projects (id, name) VALUES (?, 'Prueba de rotación')").run(projectId);
     try {
-      db.query("UPDATE tasks SET plan=? WHERE id=?").run(JSON.stringify({
-        ...JSON.parse(plan), secretos_requeridos: ["SERVICE_TOKEN"],
-      }), id);
+      guardarSecreto(projectId, "SERVICE_TOKEN", "ficticio-v1");
+      const revision = revisionSecretosProyecto(projectId, ["SERVICE_TOKEN"]);
+      db.query("UPDATE tasks SET plan=?, project_id=? WHERE id=?").run(JSON.stringify({
+        ...JSON.parse(plan), secretos_requeridos: ["SERVICE_TOKEN"], secretos_revision: revision,
+      }), projectId, id);
       const tareaUrl = "/api/tasks/" + id;
       expect(await (await post(tareaUrl + "/aprobar-plan", { plan_hash: hash })).json())
         .toEqual({ error: "secretos_no_confirmados" });
       expect(await (await post(tareaUrl + "/plan", { hash, decision: "approve", secretos: ["OTRO_TOKEN"] })).json())
         .toEqual({ error: "secretos_no_confirmados" });
-      const respuesta = await post(tareaUrl + "/plan", { hash, decision: "approve", secretos: ["SERVICE_TOKEN"] });
+      guardarSecreto(projectId, "SERVICE_TOKEN", "ficticio-v2");
+      const vencida = await post(tareaUrl + "/plan", { hash, decision: "approve", secretos: ["SERVICE_TOKEN"] });
+      expect(await vencida.json()).toEqual({ error: "secretos_cambiaron" });
+      const nueva = db.query<{ status: string; plan_hash: string }, [string]>("SELECT status, plan_hash FROM tasks WHERE id=?").get(id)!;
+      expect(nueva.status).toBe("waiting_approval");
+      expect(nueva.plan_hash).not.toBe(hash);
+      const respuesta = await post(tareaUrl + "/plan", { hash: nueva.plan_hash, decision: "approve", secretos: ["SERVICE_TOKEN"] });
       expect(respuesta.status).toBe(200);
     } finally {
       db.query("DELETE FROM tasks WHERE id=?").run(id);
+      db.query("DELETE FROM projects WHERE id=?").run(projectId);
+      if (claveAnterior === undefined) delete process.env.TELO_CLAVE_CIFRADO;
+      else process.env.TELO_CLAVE_CIFRADO = claveAnterior;
     }
   });
 

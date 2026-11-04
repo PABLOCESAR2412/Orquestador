@@ -231,3 +231,24 @@
 .picker-esfuerzo-barra { display: grid; gap: 12px; min-width: 0; text-align: left; }
 .picker-esfuerzo-barra input { width: 100%; accent-color: var(--primary); cursor: pointer; }
 .picker-esfuerzo-barra input:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+
+.picker.picker-flotante {
+  position: absolute;
+  inset: auto auto calc(100% + 10px) 8px;
+  z-index: 50;
+  width: min(420px, calc(100% - 16px));
+  max-height: min(66dvh, 540px);
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-2);
+  box-shadow: 0 4px 20px var(--shadow);
+}
+.picker-titulo-ventana { flex: none; padding: 4px 8px 4px 12px; }
+.picker-titulo-ventana button { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; }
+.picker-flotante .picker-head { flex: none; }
+.picker-flotante .picker-list { min-height: 0; overscroll-behavior: contain; }
+@media (max-width: 760px) {
+  .picker-titulo-ventana button { width: 44px; height: 44px; }
+  .picker-flotante .picker-search { font-size: 16px; }
+}

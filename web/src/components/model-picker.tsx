@@ -19,6 +19,7 @@ type Props = {
   onClose: () => void;
   // Chip o botón que abrió el selector: recibe el foco al cerrar.
   disparador?: RefObject<HTMLElement | null>;
+  flotante?: boolean;
   cargando?: boolean;
   error?: string | null;
   onReintentar?: () => void;
@@ -48,6 +49,7 @@ export function ModelPicker({
   onSelect,
   onClose,
   disparador,
+  flotante = false,
   cargando = false,
   error = null,
   onReintentar,
@@ -97,7 +99,22 @@ export function ModelPicker({
     const ancla = el?.offsetParent as HTMLElement | null | undefined;
     if (!el || !ancla) return;
     const ajustar = () => {
-      // En móvil es una hoja fija: no se mide contra el compositor de escritorio.
+      const trigger = disparador?.current;
+      if (flotante && trigger) {
+        const caja = ancla.getBoundingClientRect();
+        const boton = trigger.getBoundingClientRect();
+        const altura = window.visualViewport?.height ?? window.innerHeight;
+        const bordeSuperior = Math.max(limiteVisible(ancla), window.visualViewport?.offsetTop ?? 0);
+        const ancho = el.offsetWidth;
+        const centro = boton.left + boton.width / 2 - caja.left;
+        const izquierda = Math.max(8, Math.min(caja.width - ancho - 8, centro - ancho / 2));
+        el.style.left = izquierda + "px";
+        el.style.bottom = (caja.bottom - boton.top + 10) + "px";
+        el.style.maxHeight = Math.min(altura * 0.66, Math.max(116, boton.top - bordeSuperior - 18)) + "px";
+        el.style.setProperty("--picker-origin-x", (centro - izquierda) + "px");
+        return;
+      }
+      // Fuera del chat, el selector móvil conserva su hoja fija.
       if (window.matchMedia("(max-width: 760px)").matches) {
         el.style.maxHeight = `${Math.floor((window.visualViewport?.height ?? window.innerHeight) * 0.85)}px`;
         const boton = disparador?.current?.getBoundingClientRect();
@@ -119,13 +136,16 @@ export function ModelPicker({
       }
     };
     ajustar();
+    const observer = flotante ? new ResizeObserver(ajustar) : null;
+    observer?.observe(ancla);
     window.addEventListener("resize", ajustar);
     window.visualViewport?.addEventListener("resize", ajustar);
     return () => {
+      observer?.disconnect();
       window.removeEventListener("resize", ajustar);
       window.visualViewport?.removeEventListener("resize", ajustar);
     };
-  }, [disparador]);
+  }, [disparador, flotante]);
 
   const elegir = (m: ModelInfo | null, esfuerzo: string | null = null) => {
     devolverFoco();
@@ -290,7 +310,15 @@ export function ModelPicker({
   return (
     <>
       <div className="scrim" onClick={cerrar} />
-      <div className={`picker${conEsfuerzo ? " picker-con-esfuerzo" : ""}`} role="dialog" aria-modal="true" aria-label="Elegir modelo" ref={dialogRef}>
+      <div className={`picker${conEsfuerzo ? " picker-con-esfuerzo" : ""}${flotante ? " picker-flotante" : ""}`} role="dialog" aria-modal="true" aria-label="Elegir modelo" ref={dialogRef}>
+        {flotante && <div className="usage-title-row picker-titulo-ventana">
+          <span className="usage-title">Modelos</span>
+          <button type="button" className="ghost" aria-label="Cerrar selector de modelos" onClick={cerrar}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="m6 6 12 12M18 6 6 18" />
+            </svg>
+          </button>
+        </div>}
         {!eligiendoEsfuerzo && <><div className="picker-head">
           <label className="picker-buscar">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

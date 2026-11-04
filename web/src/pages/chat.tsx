@@ -170,11 +170,14 @@ export function ChatPage() {
     setColasPorChat(siguiente);
     guardarCola(id, mensajes);
   };
+  const borradoresActivos = useRef(new Map<string, string>());
+  const leerBorradorActual = (id: string) => borradoresActivos.current.get(id) ?? leerBorrador(id);
   // Al cambiar de chat, carga el borrador de ese chat (no se guarda en un efecto para no mezclar chats).
   useEffect(() => {
-    if (selectedId) setDraft(leerBorrador(selectedId));
+    if (selectedId) setDraft(leerBorradorActual(selectedId));
   }, [selectedId]);
   const cambiarBorradorChat = (id: string, texto: string) => {
+    borradoresActivos.current.set(id, texto);
     guardarBorrador(id, texto);
     if (selectedIdRef.current !== id) return;
     setDraft(texto);
@@ -677,7 +680,7 @@ export function ChatPage() {
       if (colaId) setFalloCola({ conversacionId: id, mensajeId: colaId });
       else setErroresEnvio((prev) => ({ ...prev, [id]: errorText(err) }));
       if (!restaurar) return;
-      const previo = leerBorrador(id);
+      const previo = leerBorradorActual(id);
       cambiarBorradorChat(id, restaurar.texto && previo.trim() ? `${restaurar.texto}\n${previo}` : restaurar.texto || previo);
       cambiarPendientes(id, (prev) => [...restaurar.pendientes, ...prev]);
     },
@@ -740,8 +743,12 @@ export function ChatPage() {
         feedback: feedback?.trim() || undefined,
       });
     },
+    onError: (_error, { taskId }) => {
+      void qc.invalidateQueries({ queryKey: ["conversation-tasks"] });
+      void qc.invalidateQueries({ queryKey: ["task", taskId] });
+    },
     onSuccess: (_respuesta, { id, texto, taskId }) => {
-      if (leerBorrador(id) === texto) cambiarBorradorChat(id, "");
+      if (leerBorradorActual(id) === texto) cambiarBorradorChat(id, "");
       void qc.invalidateQueries({ queryKey: ["tasks"] });
       void qc.invalidateQueries({ queryKey: ["conversation-tasks"] });
       void qc.invalidateQueries({ queryKey: ["task", taskId] });
@@ -818,7 +825,7 @@ export function ChatPage() {
     // Las operaciones asíncronas conservan su chat y su revisión del compositor.
     // Si el usuario escribe o adjunta algo mientras sube, ese contenido permanece.
     const limpiarEnviado = () => {
-      if (leerBorrador(idEnvio) === textoEnvio) cambiarBorradorChat(idEnvio, "");
+      if (leerBorradorActual(idEnvio) === textoEnvio) cambiarBorradorChat(idEnvio, "");
       const claves = new Set(pendientesEnvio.map((pendiente) => pendiente.key));
       cambiarPendientes(idEnvio, (prev) => prev.filter((pendiente) => !claves.has(pendiente.key)));
     };
@@ -859,6 +866,7 @@ export function ChatPage() {
           creado: Date.now(),
         },
       ]);
+      if (selectedIdRef.current === idEnvio) dictadorRef.current?.detener();
       limpiarEnviado();
       if (selectedIdRef.current === idEnvio) {
         seguirHiloAlFinalRef.current = true;
@@ -866,7 +874,7 @@ export function ChatPage() {
       }
       return;
     }
-    const restaurar: Restaurar = { texto: leerBorrador(idEnvio) === textoEnvio ? textoEnvio : "", pendientes: pendientesEnvio };
+    const restaurar: Restaurar = { texto: leerBorradorActual(idEnvio) === textoEnvio ? textoEnvio : "", pendientes: pendientesEnvio };
     // El dictado se corta del todo: sus resultados tardíos no deben volver a llenar el compositor.
     if (selectedIdRef.current === idEnvio) dictadorRef.current?.detener();
     // Marcador de envío en vuelo: si la app muere antes de que el servidor confirme,
@@ -979,7 +987,7 @@ export function ChatPage() {
     const ultimoUsuario = [...messages.data].reverse().find((mensaje) => mensaje.role === "user");
     if (ultimoUsuario?.content === envio.contenido) return;
     // El borrador veraz de este chat es el persistido (el estado puede venir del chat anterior).
-    const actual = leerBorrador(selectedId);
+    const actual = leerBorradorActual(selectedId);
     if (envio.texto) cambiarBorrador(actual.trim() ? `${envio.texto}\n${actual}` : envio.texto);
   }, [selectedId, messages.data, enviandoActual]);
 
@@ -2162,6 +2170,7 @@ export function ChatPage() {
                   onSelect={elegirModelo}
                   onClose={() => setPickerOpen(false)}
                   disparador={chipRef}
+                  flotante
                   cargando={models.isPending}
                   error={models.isError ? errorText(models.error) : null}
                   onReintentar={() => void models.refetch()}

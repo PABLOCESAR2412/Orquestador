@@ -35,13 +35,9 @@ export function crearSesionDispositivo(opts: { userAgent?: string; ip?: string }
   const secreto = randomBytes(24).toString("hex");
   const token = `telo-ses-${id}-${secreto}`;
   const th = hashToken(token);
-  try {
-    db.query(
-      "INSERT INTO auth_sessions (id, token_hash, user_agent, ip, created_at, last_seen_at) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
-    ).run(id, th, opts.userAgent?.slice(0, 500) ?? null, opts.ip?.slice(0, 100) ?? null);
-  } catch {
-    // Si la tabla no está creada aún en migraciones muy tempranas, no falla
-  }
+  db.query(
+    "INSERT INTO auth_sessions (id, token_hash, user_agent, ip, created_at, last_seen_at) VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))",
+  ).run(id, th, opts.userAgent?.slice(0, 500) ?? null, opts.ip?.slice(0, 100) ?? null);
   return { id, token };
 }
 
