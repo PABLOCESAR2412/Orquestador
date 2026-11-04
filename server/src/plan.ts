@@ -117,7 +117,7 @@ function detectarBloqueosExternos(textoReporte: string): string | null {
     || /\bno\s+se\s+(?:encontraron|hallaron)\b[\s\S]{0,280}\b(?:archivos?|fuentes?|package\.json|lockfile|dist\/|src\/)[\s\S]{0,280}\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b/i.test(textoReporte);
   if (faltaWorkspace) {
     motivos.push(cloudflarePages
-      ? "No se encontraron las fuentes de la app en el workspace. Vincula el proyecto correcto o restaura su código antes de reintentar; la publicación usa la tarjeta de Cloudflare Pages y la credencial de Ajustes → Proveedores."
+      ? "No se encontraron en el workspace los archivos o fuentes necesarios para la app. Vincula el proyecto correcto o restaura su código antes de reintentar; la publicación usa la tarjeta de Cloudflare Pages y la credencial de Ajustes → Proveedores."
       : "El workspace no contiene los archivos o fuentes necesarios para completar la tarea. Vincula el proyecto correcto o restaura su código antes de reintentar.");
   }
   return motivos.length ? motivos.join(" ") : null;
@@ -256,7 +256,7 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
   const bloqueoDetectado = estadoFinal === "completado" ? null : detectarBloqueosExternos(evidenciaReporte);
   const bloqueanteDeclarado = texto(valor.bloqueante_externo, 1000);
   // Si falta la fuente, la credencial del modelo no es una comprobación válida: Pages la consulta en Telo.
-  const bloqueanteExterno = bloqueoDetectado?.includes("No se encontraron las fuentes de la app")
+  const bloqueanteExterno = bloqueoDetectado?.includes("archivos o fuentes necesarios para la app")
     ? bloqueoDetectado
     : bloqueanteDeclarado ?? bloqueoDetectado;
   return {

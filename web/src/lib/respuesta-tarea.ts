@@ -19,7 +19,7 @@ function detectarBloqueoAntiguo(valor: Record<string, unknown>, pendientes: stri
     || /\bno\s+se\s+(?:encontraron|hallaron)\b[\s\S]{0,280}\b(?:archivos?|fuentes?|package\.json|lockfile|dist\/|src\/)[\s\S]{0,280}\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b/i.test(evidencia);
   const motivos = [];
   if (faltaWorkspace) motivos.push(cloudflarePages
-    ? "No se encontraron las fuentes de la app en el workspace. Vincula el proyecto correcto o restaura su código antes de reintentar; la publicación usa la tarjeta de Cloudflare Pages y la credencial de Ajustes → Proveedores."
+    ? "No se encontraron en el workspace los archivos o fuentes necesarios para la app. Vincula el proyecto correcto o restaura su código antes de reintentar; la publicación usa la tarjeta de Cloudflare Pages y la credencial de Ajustes → Proveedores."
     : "El workspace no contiene los archivos o fuentes necesarios para completar la tarea. Vincula el proyecto correcto o restaura su código antes de reintentar.");
   if (faltaToken.test(evidencia) && cloudflarePages) motivos.push("La tarjeta Publicar en Cloudflare Pages usa el token guardado en Ajustes → Proveedores; no lo configures en el workspace.");
   return motivos.join(" ") || null;
@@ -58,7 +58,7 @@ export function interpretarRespuestaTarea(texto: string): InformeTareaChat | nul
       cambios,
       pruebas,
       pendientes,
-      bloqueante_externo: bloqueoDetectado?.includes("No se encontraron las fuentes de la app")
+      bloqueante_externo: bloqueoDetectado?.includes("archivos o fuentes necesarios para la app")
         ? bloqueoDetectado
         : bloqueanteDeclarado ?? bloqueoDetectado,
       detalles: JSON.stringify(valor, null, 2),
