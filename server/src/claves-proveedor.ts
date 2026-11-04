@@ -41,7 +41,7 @@ export function guardarCuentaCloudflare(cuenta: string): void {
 }
 
 export function esClaveDeInferencia(variable: string): boolean {
-  return variable === "OPENAI_API_KEY" || PROVEEDORES_CON_CLAVE.some((proveedor) => proveedor.variables.includes(variable));
+  return variable === "ANTHROPIC_API_KEY" || PROVEEDORES_CON_CLAVE.some((proveedor) => proveedor.variables.includes(variable));
 }
 
 const MIN_CLAVE = 8;

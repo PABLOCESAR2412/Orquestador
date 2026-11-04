@@ -186,6 +186,7 @@ const CODIGO_TAREA_TEXTO: Record<string, string> = {
   invalid_mensaje: "El mensaje de commit no es válido.",
   sin_cambios: "El agente no dejó cambios que guardar.",
   cambios_cambiaron: "Los cambios aprobados ya no son los mismos; revisa de nuevo el diff.",
+  secretos_no_confirmados: "Revisa y aprueba de nuevo los secretos solicitados por el plan.",
   archivo_sensible: "Un archivo modificado está marcado como sensible y no se puede guardar.",
   secreto_detectado: "El agente intentó guardar un secreto conocido; el commit fue rechazado.",
   sin_remoto: "No hay un remoto de GitHub configurado en el proyecto.",

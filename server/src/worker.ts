@@ -1,4 +1,6 @@
 import { formatearPlan } from "./plan";
+import { esClaveDeInferencia } from "./claves-proveedor";
+import { listarSecretos, nombreSecretoValido, SECRETOS_SOLO_SERVIDOR } from "./secretos";
 import { createHash } from "node:crypto";
 import { comprobarHerramientas, revisarDependencias } from "./comprobaciones-tarea";
 import { itemDeLinea, registrarActividad } from "./actividad";
@@ -281,7 +283,7 @@ function historialRecienteParaPlan(task: Pick<QueuedTask, "conversation_id" | "m
 }
 
 // Una llamada del analizador u obrero: puede durar lo necesario y registra su uso.
-async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizarConSubagentes = false): Promise<ResultadoAgente> {
+async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizarConSubagentes = false, secretosAutorizados?: readonly string[]): Promise<ResultadoAgente> {
   const { task, controller, salida } = ctx;
   // Una cancelación entre dos llamadas evita lanzar la siguiente: el runner no la vería abortada.
   if (controller.signal.aborted) throw new Error("Tarea cancelada.");
@@ -348,6 +350,7 @@ async function llamar(ctx: Contexto, prompt: string, aprender: boolean, analizar
       usageRole: estadoActual(task.id) === "analyzing" ? "analyzer" : "worker",
       soloLectura: estadoActual(task.id) === "analyzing",
       projectId: task.project_id,
+      secretosAutorizados,
       opencodeConfigDir: perfilesSubagente?.directorio,
       opencodeSubagentesTracePath: perfilesSubagente?.rutaCaptura,
       onSubagente: perfilesSubagente && task.conversation_id && turnoChat ? (linea) => {
@@ -453,7 +456,10 @@ async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Pr
     ? { planAnterior: planGuardado(task.id), motivo: replanificacion.motivo }
     : undefined;
 
-  const prompt = promptAnalizador(task.prompt, contexto, historialRecienteParaPlan(task));
+  const nombresSecretos = task.project_id ? listarSecretos(task.project_id)
+    .map(({ nombre }) => nombre)
+    .filter((nombre) => nombreSecretoValido(nombre) && !esClaveDeInferencia(nombre) && !SECRETOS_SOLO_SERVIDOR.includes(nombre) && nombre !== "CLOUDFLARE_ACCOUNT_ID") : [];
+  const prompt = promptAnalizador(task.prompt, contexto, historialRecienteParaPlan(task), nombresSecretos);
   let respuesta = await llamar(ctx, promptDeFase(ctx, prompt), false, true);
   let validacion = leerPlan(respuesta);
   if (!validacion.ok) {
@@ -464,6 +470,9 @@ async function fasePlan(ctx: Contexto, replanificacion?: { motivo: string }): Pr
   }
 
   const plan = validacion.valor;
+  if (plan.secretos_requeridos?.some((nombre) => !nombresSecretos.includes(nombre))) {
+    throw new ErrorFase("El plan solicitó un secreto que este proyecto no puede entregar al agente.");
+  }
   const numero = contarPlanes(task.id) + 1;
   db.transaction(() => {
     const contenido = JSON.stringify(plan), hash = hashPlan(plan);
@@ -513,7 +522,9 @@ async function faseObrero(
   }
 
   const prompt = correccion ? promptCorreccion(plan, correccion.reporte, correccion.texto) : promptObrero(plan);
-  const respuesta = await llamar(ctx, promptDeFase(ctx, prompt), true);
+  const secretos = plan.secretos_requeridos;
+  if (secretos?.length && !aprobacion.plan_hash) throw new ErrorFase("El acceso a los secretos requiere aprobar el plan vigente.");
+  const respuesta = await llamar(ctx, promptDeFase(ctx, prompt), true, false, secretos);
   if (alcance) {
     const fuera = await comprobarAlcance(alcance);
     if (fuera.length) return { desviacion: "Se detectaron cambios fuera del plan: " + fuera.slice(0,20).join(", ") + ". Se conservan para revisión." };
@@ -854,11 +865,11 @@ export function cancelTask(id: string): CancelOutcome {
   return "not_cancellable";
 }
 
-export type ResultadoPlan = "ok" | "not_found" | "not_waiting" | "stale";
+export type ResultadoPlan = "ok" | "not_found" | "not_waiting" | "stale" | "secretos_no_confirmados";
 
 // El usuario aprueba el plan: la tarea vuelve a la cola y el obrero lo ejecuta.
 // Las notas se guardan en el plan y el obrero las recibe junto a él.
-export function aprobarPlan(id: string, notas: string | null, hash: string): ResultadoPlan {
+export function aprobarPlan(id: string, notas: string | null, hash: string, secretosConfirmados: unknown = [], guardarFeedbackEnPrompt = false): ResultadoPlan {
   const fila = db
     .query<{ status: string; plan: string | null; plan_hash:string|null }, [string]>("SELECT status, plan, plan_hash FROM tasks WHERE id = ?")
     .get(id);
@@ -867,14 +878,18 @@ export function aprobarPlan(id: string, notas: string | null, hash: string): Res
 
   if (!hash || hash !== fila.plan_hash) return "stale";
   const plan = JSON.parse(fila.plan) as Plan;
+  const requeridos = plan.secretos_requeridos ?? [];
+  if (!Array.isArray(secretosConfirmados) || secretosConfirmados.length !== requeridos.length ||
+      requeridos.some((nombre, i) => secretosConfirmados[i] !== nombre)) return "secretos_no_confirmados";
   if (notas) plan.notas = redactar(notas).slice(0, MAX_NOTAS);
   let resultado: ResultadoPlan = "ok";
   db.transaction(() => {
     const actualizado = db.query(
-      "UPDATE tasks SET status = 'queued', plan = ?, plan_aprobado_en = datetime('now'), approved_hash = ? WHERE id = ? AND status = 'waiting_approval' AND plan_hash = ? AND plan IS NOT NULL",
+      "UPDATE tasks SET status = 'queued', plan = ?, plan_aprobado_en = datetime('now'), approved_hash = ?, prompt = prompt || ? WHERE id = ? AND status = 'waiting_approval' AND plan_hash = ? AND plan IS NOT NULL",
     ).run(
       JSON.stringify(plan),
       hash,
+      guardarFeedbackEnPrompt && plan.notas ? "\nAclaraciones de aprobación del usuario: " + plan.notas : "",
       id,
       hash,
     );

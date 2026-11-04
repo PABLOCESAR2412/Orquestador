@@ -56,6 +56,7 @@ export type OpcionesAgente = {
   // Solo para la tarea: registra el cambio de modelo en su historial.
   taskId?: string;
   projectId?: string | null;
+  secretosAutorizados?: readonly string[];
   conversationId?: string | null;
   turnId?: string | null;
   usageRole?: string;
@@ -399,10 +400,14 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
   if (opts.workMode === "plan") opts = { ...opts, prompt: `Modo Planear: solo lectura. Entrega objetivo, observaciones con evidencia, pasos ordenados, archivos afectados si procede, pruebas propuestas, riesgos y preguntas bloqueantes. No ejecutes cambios ni instalaciones. El plan termina esta tarea; Construir requiere una nueva petición. Conserva JSON si la fase lo exige.\n\n${opts.prompt}` };
   const mcp = configuracionMcpParaAgente(requiereContext7(solicitudSkills), opts.soloLectura);
   const secretosProyecto = opts.projectId ? entornoDeProyecto(opts.projectId) : {};
-  // Claves de proveedor (Ajustes) y secretos del proyecto. Si un nombre se repite, gana el del proyecto.
+  const autorizados = opts.taskId && !opts.soloLectura ? opts.secretosAutorizados ?? [] : [];
+  if (autorizados.some((nombre) => !Object.hasOwn(secretosProyecto, nombre))) {
+    throw new Error("Un secreto autorizado ya no está disponible en el proyecto. Revisa sus ajustes antes de reintentar.");
+  }
+  // Las claves de inferencia pasan por el filtro del proveedor. El obrero recibe solo los secretos operativos aprobados.
   const propias: Record<string, string> = {
     ...entornoProveedores(),
-    ...Object.fromEntries(Object.entries(secretosProyecto).filter(([nombre]) => !opts.soloLectura || esClaveDeInferencia(nombre))),
+    ...Object.fromEntries(Object.entries(secretosProyecto).filter(([nombre]) => esClaveDeInferencia(nombre) || nombre === "CLOUDFLARE_ACCOUNT_ID" || autorizados.includes(nombre))),
     ...mcp.variables,
   };
   const ocultos = valoresAOcultar({ ...secretosProyecto, ...propias });

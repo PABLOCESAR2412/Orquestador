@@ -41,6 +41,9 @@ export function PlanRevision({ tarea }: { tarea: Task }) {
           {p.requiere_aprobacion.join(", ")}.
         </p>
       )}
+      {!!p.secretos_requeridos?.length && (
+        <p>Aprobar este plan permitirá al obrero usar estas credenciales: <strong>{p.secretos_requeridos.join(", ")}</strong>.</p>
+      )}
       {tarea.error && <p role="alert">{tarea.error}</p>}
       <div className="tl-plan-aviso-composer">
         <span>Responde a las preguntas o indica qué cambiar en el compositor de abajo antes de aprobar.</span>

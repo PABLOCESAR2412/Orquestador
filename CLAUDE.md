@@ -116,7 +116,7 @@ Integraciones nuevas: `antigravity/*` ejecuta `agy` con su sesión SSH de archiv
 - Antes de un commit se escanea el diff: si tiene un secreto conocido o un archivo sensible (`.env`, llaves), la aprobación se rechaza con `secreto_detectado` o `archivo_sensible`, sin mostrar el valor.
 - El push solo va a `github.com` por HTTPS. El token sale solo por variable de entorno al helper de credenciales, nunca por argumentos ni por la URL.
 - Variables que el agente no puede sobrescribir: `PATH`, `HOME`, `LD_*`, `GIT_*`, `TELO_*`, `NODE_*`, `PYTHON*`, `BASH_ENV`, `ENV`, `IFS`, `TERM`, `LANG`, `SSL_CERT_FILE`, proxies y `OPENCODE_*`.
-- Un secreto inyectado sí lo ve el agente de ese proyecto (lo necesita para trabajar). Guarda solo lo que el agente necesita.
+- El obrero recibe secretos operativos solo cuando se confirman por nombre en su plan aprobado. El agente puede leer los valores autorizados. Cloudflare Pages escanea el contenido estático antes de invocar Wrangler.
 - El servidor escucha en `127.0.0.1` (`TELO_ESCUCHAR` lo cambia). La IP de conexión viene del socket; `CF-Connecting-IP`, `X-Forwarded-For` y `X-Real-IP` solo se aceptan si el peer figura en `TELO_PROXIES_CONFIABLES` (IPs exactas, separadas por coma) y el proxy sobrescribe esas cabeceras. Cabeceras: CSP estricta sin scripts en línea, `X-Frame-Options: DENY`, `nosniff`. Cuerpos de petición de máximo 64 KB. El SSE tiene límite de conexiones y memoria por cliente; la interfaz usa el endpoint de sondeo corto.
 - Pruebas de seguridad: `server/tests/seguridad.test.ts`. Ver también la sección de comandos.
 

@@ -12,7 +12,8 @@ import { registrarEvento } from "../eventos";
 import { hallarEjecutable } from "../ejecutable";
 import { conProyectoRevisado } from "../ocupacion";
 import { leerConTope } from "../runners/proteccion";
-import { entornoDeProyecto } from "../secretos";
+import { detectorDeSecretos } from "../redaccion";
+import { entornoDeProyecto, valoresDeProyecto } from "../secretos";
 import { conTarea, esIdTarea, esSensible, rutaClon } from "../workspace";
 import { ArchivoError, normalizarRuta } from "../archivos-proyecto";
 
@@ -22,7 +23,8 @@ const MAX_PUBLICACION = 512 * 1024 * 1024;
 const NOMBRE_PROYECTO = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const ARCHIVO_PRIVADO = /^(?:\.(?:env|dev\.vars)(?:\.|$)|\.(?:git|npmrc|wrangler|yarnrc)(?:\.|$)|wrangler\.(?:toml|jsonc?)$|node_modules$)/i;
 
-export async function copiarArchivosPages(clon: string, directorio: string, destino: string): Promise<void> {
+export async function copiarArchivosPages(clon: string, directorio: string, destino: string, valores: string[]): Promise<void> {
+  const contieneSecreto = detectorDeSecretos(valores);
   const partes = normalizarRuta(directorio);
   if (!partes.length) throw new ArchivoError("invalid_project_path", 400);
   if (!(await lstat(clon)).isDirectory()) throw new ArchivoError("project_path_not_directory", 400);
@@ -42,6 +44,7 @@ export async function copiarArchivosPages(clon: string, directorio: string, dest
     for (const entrada of await readdir(origen, { withFileTypes: true })) {
       if (++entradas > MAX_ARCHIVOS) throw new ArchivoError("pages_assets_too_large", 413);
       const nombre = entrada.name;
+      if (contieneSecreto(nombre)) throw new ArchivoError("pages_assets_secret_detected", 400);
       if (ARCHIVO_PRIVADO.test(nombre) || esSensible(nombre) || /^_worker\.js$/i.test(nombre))
         throw new ArchivoError("pages_assets_unsupported", 400);
       const archivo = join(origen, nombre);
@@ -61,7 +64,9 @@ export async function copiarArchivosPages(clon: string, directorio: string, dest
         const contenido = Buffer.alloc(info.size + 1);
         const { bytesRead } = await fd.read(contenido, 0, contenido.length, 0);
         if (bytesRead !== info.size) throw new ArchivoError("pages_assets_unsupported", 400);
-        await writeFile(copia, contenido.subarray(0, bytesRead), { flag: "wx" });
+        const datos = contenido.subarray(0, bytesRead);
+        if (contieneSecreto(datos.toString("utf8"))) throw new ArchivoError("pages_assets_secret_detected", 400);
+        await writeFile(copia, datos, { flag: "wx" });
         archivos++;
       } finally {
         await fd.close();
@@ -103,7 +108,7 @@ cloudflarePages.post("/tasks/:id/cloudflare-pages", async (c) => {
       const clon = join(await realpath(config.dataDir), "tasks", id, "repo");
       if (await realpath(rutaClon(id)) !== clon) return c.json({ error: "invalid_project_path" }, 400);
       temporal = await mkdtemp(join(tmpdir(), "telo-pages-"));
-      await copiarArchivosPages(clon, directorio, join(temporal, "assets"));
+      await copiarArchivosPages(clon, directorio, join(temporal, "assets"), [...valoresDeProyecto(projectId), token]);
       const respuesta = await fetch(`https://api.cloudflare.com/client/v4/accounts/${cuenta}/pages/projects/${proyecto}`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(15_000),

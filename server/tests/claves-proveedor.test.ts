@@ -15,6 +15,7 @@ process.env.TELO_PROYECTOS_DIR = join(RAIZ_PRUEBAS, "proyectos");
 mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 
 const { db } = await import("../src/db");
+const { guardarSecreto } = await import("../src/secretos");
 const {
   borrarClaveProveedor,
   claveJevActualizadaEn,
@@ -359,6 +360,13 @@ describe("rutas de claves de proveedor", () => {
       writeFileSync(join(carpeta, ".env"), "API_TOKEN=protegido");
       expect(await (await publicar("dist")).json()).toEqual({ error: "pages_assets_unsupported" });
       rmSync(join(carpeta, ".env"));
+      const secreto = "credencial-ficticia-proyecto-pages";
+      guardarSecreto(projectId, "SERVICE_TOKEN", secreto);
+      writeFileSync(join(carpeta, "bundle.js"), JSON.stringify({ key: secreto }));
+      const bloqueado = await publicar("dist");
+      expect(bloqueado.status).toBe(400);
+      expect(await bloqueado.json()).toEqual({ error: "pages_assets_secret_detected" });
+      rmSync(join(carpeta, "bundle.js"));
       expect(llamada).not.toHaveBeenCalled();
       expect(spawn).not.toHaveBeenCalled();
       const res = await publicar("dist");

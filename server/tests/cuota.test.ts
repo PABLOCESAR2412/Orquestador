@@ -271,6 +271,24 @@ describe("aprobación del plan con hash revisado", () => {
     }
   });
 
+  test("exige confirmar los nombres de secretos tanto en la tarjeta del chat como en la tarea", async () => {
+    const id = pendiente();
+    try {
+      db.query("UPDATE tasks SET plan=? WHERE id=?").run(JSON.stringify({
+        ...JSON.parse(plan), secretos_requeridos: ["SERVICE_TOKEN"],
+      }), id);
+      const tareaUrl = "/api/tasks/" + id;
+      expect(await (await post(tareaUrl + "/aprobar-plan", { plan_hash: hash })).json())
+        .toEqual({ error: "secretos_no_confirmados" });
+      expect(await (await post(tareaUrl + "/plan", { hash, decision: "approve", secretos: ["OTRO_TOKEN"] })).json())
+        .toEqual({ error: "secretos_no_confirmados" });
+      const respuesta = await post(tareaUrl + "/plan", { hash, decision: "approve", secretos: ["SERVICE_TOKEN"] });
+      expect(respuesta.status).toBe(200);
+    } finally {
+      db.query("DELETE FROM tasks WHERE id=?").run(id);
+    }
+  });
+
   test("aprueba y registra el mismo hash revisado", async () => {
     const id = pendiente();
     try {

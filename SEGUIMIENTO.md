@@ -4,6 +4,13 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 3 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Publicación segura, secretos por tarea y dependencias — 4 de noviembre de 2026
+
+- [x] Pages verifica nombres y contenido antes de invocar Wrangler con el detector de Git. Prueba con un secreto ficticio dentro de un bundle y publicación simulada de un directorio limpio. El escaneo cubre valores conocidos y patrones en contenido legible, no inspecciona el interior de archivos comprimidos.
+- [x] El analizador ve nombres de secretos operativos del proyecto. Solo el obrero recibe los solicitados y confirmados explícitamente con el hash del plan. Los planes antiguos sin solicitud siguen siendo válidos y no conceden secretos operativos. El filtro de claves de inferencia conserva la integración seleccionada.
+- [x] Actualizadas dependencias transitivas. El servidor queda sin avisos de bun audit. En la web queda el aviso de deepmerge sin versión corregida; el parche local bloquea la clave de prototipo al copiar y fusionar. Se comprobaron la exportación y vista previa XLSX, la compilación PWA y las dos entradas de la prueba de deepmerge.
+- [ ] Confirmar en la VM la aprobación de una tarea con un secreto y el rechazo de un artefacto que lo contenga.
+
 ## Preguntas del chat y animaciones HyperFrames — PR #183, 4 de noviembre de 2026
 
 - [x] El analizador recibe hasta ocho mensajes anteriores del mismo chat, redactados y acotados a 5600 caracteres. Usa ese contexto para interpretar respuestas breves y evitar repetir preguntas, sin reabrir solicitudes anteriores.

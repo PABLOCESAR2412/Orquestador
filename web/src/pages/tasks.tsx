@@ -246,7 +246,7 @@ function DetalleTarea({ id }: { id: string }) {
   const aprobarPlan = useMutation({
     mutationFn: (notas: string) => {
       if (!t?.plan_hash) throw new Error("No hay un plan vigente para aprobar");
-      return api.approveTaskPlan(id, { ...(notas ? { notas } : {}), plan_hash: t.plan_hash });
+      return api.approveTaskPlan(id, { ...(notas ? { notas } : {}), plan_hash: t.plan_hash, secretos: t.plan?.secretos_requeridos });
     },
     onSettled: refrescar,
   });
