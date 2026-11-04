@@ -464,6 +464,9 @@ description: Diseña y verifica animaciones, videos y piezas audiovisuales con e
 
 # Diseño de movimiento y video
 
+- Comprueba las herramientas disponibles en el entorno real antes de afirmar que no puedes renderizar: usa npx hyperframes doctor --json. npx hyperframes usage --json solo refleja cuota de la cuenta del proveedor de IA; un estado unknown no bloquea por sí mismo la composición o el render.
+- Para HyperFrames local, verifica Node.js 22+, Chromium y FFmpeg. No exijas Blender para animaciones HTML; TTS es opcional salvo que el pedido requiera narración. Si la voz no está disponible, termina el video sin voz cuando el usuario no la haya pedido como requisito.
+
 - Antes de producir, define el público, el formato, la proporción, la duración y una secuencia breve de escenas. Ajusta la composición a las zonas seguras del formato social solicitado.
 - Si el contenido contiene títulos, fechas, nombres o datos, dibújalos como texto vectorial con cadenas revisadas en español. Usa fuentes con glifos latinos y tildes; no agregues pseudoescritura, caracteres asiáticos ni adornos que parezcan letras.
 - Construye cada fotograma desde una escena completa sobre un fondo opaco. No dibujes sobre el fotograma anterior ni conserves capas de escenas que ya terminaron; limita los fundidos a la transición y deja desaparecer por completo la escena saliente.

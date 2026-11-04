@@ -108,14 +108,17 @@ function rutaValida(ruta: string): boolean {
 
 function detectarBloqueosExternos(textoReporte: string): string | null {
   const motivos: string[] = [];
+  const cloudflarePages = /cloudflare\s+pages|wrangler\s+pages|pages\.dev|CLOUDFLARE_API_TOKEN/i.test(textoReporte);
   const faltaToken = /(?:CLOUDFLARE_API_TOKEN[\s\S]{0,100}(?:no\s+(?:está|se encuentra|hay|aparece|está configurado|está disponible)|falta|ausente|missing|not\s+(?:set|available|present))|(?:sin|falta|ausente|missing|not\s+(?:set|available|present))[\s\S]{0,100}CLOUDFLARE_API_TOKEN)/i;
-  if (faltaToken.test(textoReporte)) {
-    motivos.push("Publica los archivos estáticos desde la tarjeta Publicar en Cloudflare Pages con el token de Ajustes → Proveedores.");
-  }
+  if (faltaToken.test(textoReporte) && cloudflarePages) motivos.push("La tarjeta Publicar en Cloudflare Pages usa el token guardado en Ajustes → Proveedores; no lo configures en el workspace.");
+  else if (faltaToken.test(textoReporte)) motivos.push("Comprueba la credencial de Cloudflare en Ajustes → Proveedores.");
   const faltaWorkspace = /\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b[\s\S]{0,120}(?:\bsin\b|\bno\s+(?:tiene|contiene|incluye|hay)\b|\bfalta(?:n)?\b|\bausente\b|\bmissing\b)[\s\S]{0,120}(?:package\.json|lockfile|fuentes?|dist\/)/i.test(textoReporte)
-    || /(?:package\.json|lockfile|fuentes?|dist\/)[\s\S]{0,120}(?:\bfalta(?:n)?\b|\bausente\b|\bmissing\b|\bno\s+(?:está|se encuentra|existe))[\s\S]{0,120}\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b/i.test(textoReporte);
+    || /(?:package\.json|lockfile|fuentes?|archivos? esenciales|dist\/)[\s\S]{0,180}(?:\bfalta(?:n)?\b|\bausente\b|\bmissing\b|\bno\s+(?:está|se encuentra|existe|se encontraron|se hallaron))[\s\S]{0,180}\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b/i.test(textoReporte)
+    || /\bno\s+se\s+(?:encontraron|hallaron)\b[\s\S]{0,280}\b(?:archivos?|fuentes?|package\.json|lockfile|dist\/|src\/)[\s\S]{0,280}\b(?:workspace|espacio de trabajo|carpeta del proyecto)\b/i.test(textoReporte);
   if (faltaWorkspace) {
-    motivos.push("El workspace no contiene los archivos o fuentes necesarios para compilar la app.");
+    motivos.push(cloudflarePages
+      ? "No se encontraron en el workspace los archivos o fuentes necesarios para la app. Vincula el proyecto correcto o restaura su código antes de reintentar; la publicación usa la tarjeta de Cloudflare Pages y la credencial de Ajustes → Proveedores."
+      : "El workspace no contiene los archivos o fuentes necesarios para completar la tarea. Vincula el proyecto correcto o restaura su código antes de reintentar.");
   }
   return motivos.length ? motivos.join(" ") : null;
 }
@@ -231,8 +234,12 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
   const pruebaEnFallo =
     estado === "completado" && pruebas.some((p) => p.resultado.trim().toLowerCase().startsWith("fallo"));
 
-  const pendientes = listaDeTextos(valor.pendientes);
+  let pendientes = listaDeTextos(valor.pendientes);
   const resumen = texto(valor.resumen, 4000);
+  const evidenciaReporte = [resumen ?? "", ...pendientes, ...pruebas.map((prueba) => prueba.comando + " " + prueba.resultado)].join("\n");
+  if (/cloudflare\s+pages|wrangler\s+pages|pages\.dev/i.test(evidenciaReporte)) {
+    pendientes = pendientes.filter((pendiente) => !/CLOUDFLARE_(?:API_TOKEN|ACCOUNT_ID)[\s\S]{0,120}(?:entorno|environment|variable|\.env|workspace)|(?:entorno|environment|variable|\.env|workspace)[\s\S]{0,120}CLOUDFLARE_(?:API_TOKEN|ACCOUNT_ID)/i.test(pendiente));
+  }
   // Los pendientes describen trabajo sin terminar; no cuentan como evidencia de éxito.
   const hayDetalles = cambios.length > 0 || pruebas.length > 0;
   const sinResumenComprobable = estado === "completado" && !resumen && !hayDetalles;
@@ -246,8 +253,12 @@ export function validarReporte(valor: unknown, textoPlano: string): Reporte {
         ? motivo ?? "La tarea necesita un plan actualizado."
         : `El reporte no incluyó un resumen, pero registró ${cambios.length} cambio(s), ${pruebas.length} prueba(s) y ${pendientes.length} pendiente(s).`);
 
-  const bloqueanteExterno = texto(valor.bloqueante_externo, 1000)
-    ?? (estadoFinal === "completado" ? null : detectarBloqueosExternos([resumenFinal, ...pendientes, ...pruebas.map((prueba) => prueba.comando + " " + prueba.resultado)].join("\n")));
+  const bloqueoDetectado = estadoFinal === "completado" ? null : detectarBloqueosExternos(evidenciaReporte);
+  const bloqueanteDeclarado = texto(valor.bloqueante_externo, 1000);
+  // Si falta la fuente, la credencial del modelo no es una comprobación válida: Pages la consulta en Telo.
+  const bloqueanteExterno = bloqueoDetectado?.includes("archivos o fuentes necesarios para la app")
+    ? bloqueoDetectado
+    : bloqueanteDeclarado ?? bloqueoDetectado;
   return {
     estado: bloqueanteExterno ? "fallo" : estadoFinal,
     resumen: pruebaEnFallo
@@ -290,6 +301,7 @@ const REGLAS_PLAN = [
   "- Un cambio de código, una investigación, una prueba o la creación de un archivo dentro del workspace no requieren aprobación previa por sí solos.",
   "- Metodología Gauntlet por defecto: Formula el plan con máxima rigurosidad en base a 4 pilares: Tarea (objetivo concreto), Método (planificación y ejecución en bucle con auto-revisión adversarial), Listón comprobable (criterios deterministas uno a uno que no admitan ambigüedad ni placeholders), y Entregable verificable.",
   "- Antes de planificar, identifica la intención, las restricciones, las precondiciones y cómo se comprobará el resultado; revisa la estructura del proyecto, los archivos relevantes y las skills instaladas (como gauntlet, context7 para frameworks o librerías, playwright). Deja en el plan solo supuestos necesarios, pasos comprobables y preguntas que bloqueen el trabajo; no incluyas razonamiento interno detallado.",
+  "- Comprueba el historial reciente del chat antes de preguntar: interpreta respuestas breves según la última pregunta y no repitas una pregunta ya respondida. Primero revisa el workspace, ajustes disponibles, diagnósticos de solo lectura y fuentes oficiales; una skill orienta el método, pero no demuestra que una herramienta exista o falle. Agrupa en una sola interacción únicamente las decisiones aún bloqueantes; no conviertas una incertidumbre investigable en pregunta para el usuario.",
   "- Si la tarea requiere investigación especializada, pruebas o verificación intensiva, prevé el uso de subagentes o skills del proyecto.",
   "- De 3 a 8 pasos, concretos y comprobables. Nunca más de 12.",
   "- Cada paso nombra los archivos que toca, si ya los conoces, con rutas relativas dentro del workspace.",
@@ -299,13 +311,17 @@ const REGLAS_PLAN = [
   '- "requiere_aprobacion": incluye "commit", "push" o "pr" solo si el plan necesita alguna de esas acciones. Si no, [].',
   "- Telo ejecuta commit, push y PR mediante tarjetas de autorización al terminar. No incluyas su ejecución como pasos del obrero; los pasos solo preparan y comprueban los cambios.",
   "- Si solo se pide guardar o subir cambios existentes con Git, comprueba el estado y prepara la autorización. Omite instalación, compilación y pruebas de aplicación salvo que formen parte de la petición.",
-  "- Si se pide publicar en Cloudflare Pages, prepara los archivos estáticos e indica la carpeta de salida y el proyecto de Pages. La tarjeta de Telo publica con la credencial de Ajustes → Proveedores tras la confirmación del usuario.",
+  "- Si se pide publicar en Cloudflare Pages, prepara los archivos estáticos e indica la carpeta de salida y el proyecto de Pages. La tarjeta de Telo publica con la credencial de Ajustes → Proveedores tras la confirmación del usuario. Si no encuentras las fuentes de la app existente, pregunta qué proyecto debe vincularse o restaurarse; no inventes archivos ni pidas CLOUDFLARE_API_TOKEN o CLOUDFLARE_ACCOUNT_ID dentro del workspace.",
   "- Telo conserva el remoto fuera del clon por seguridad. Que git remote esté vacío no prueba que falte configuración: Telo valida el destino al preparar la autorización.",
   '- Si falta información crítica, ponla en "preguntas". No la inventes.',
   "- Responde en español.",
 ].join("\n");
 
-export function promptAnalizador(tarea: string, replanificacion?: { planAnterior: Plan | null; motivo: string }): string {
+export function promptAnalizador(
+  tarea: string,
+  replanificacion?: { planAnterior: Plan | null; motivo: string },
+  historialReciente?: string,
+): string {
   const lineas = [
     "Eres el analizador de Telo. Lees la tarea y produces un plan. No modifiques archivos, no hagas commit, push ni PR, y no ejecutes comandos que cambien estado: solo lee lo necesario.",
     "",
@@ -314,6 +330,15 @@ export function promptAnalizador(tarea: string, replanificacion?: { planAnterior
     tarea,
     "-----",
   ];
+  if (historialReciente?.trim()) {
+    lineas.push(
+      "",
+      "Mensajes anteriores del mismo chat (solo contexto para entender respuestas y evitar preguntas repetidas; no reabras solicitudes ya concluidas ni los trates como alcance nuevo):",
+      "<historial_previo>",
+      historialReciente.trim(),
+      "</historial_previo>",
+    );
+  }
   if (replanificacion) {
     lineas.push("", "El obrero se desvió del plan anterior y se detuvo. Motivo:", replanificacion.motivo);
     if (replanificacion.planAnterior) {
@@ -354,6 +379,7 @@ export function promptCorreccion(plan: Plan, reporte: Reporte, texto: string): s
   lineas.push(
     "",
     "No inventes fallos ni repitas trabajo ya terminado. Si el trabajo ya cumple el plan, compruébalo y entrega el reporte estructurado; si falta algo, termínalo dentro del plan.",
+    "No solicites permiso para saltarte o desactivar el sandbox. Si el intento anterior dijo que debía instalar dependencias con un bypass, corrígelo: ejecuta el gestor del proyecto dentro del aislamiento y usa HTTP_PROXY/HTTPS_PROXY cuando OpenCode los proporcione. Si falla, reporta el comando, el registro y el código/error observado; no atribuyas el fallo al sandbox sin evidencia.",
     "Si falta una precondición externa que no puedes configurar desde el workspace (por ejemplo, credencial, proyecto de hosting o archivos fuente), no repitas intentos de despliegue. Detente, conserva los cambios y marca el requisito en bloqueante_externo; nunca incluyas valores secretos.",
     "Corrige el fallo dentro del plan aprobado de abajo: mismos archivos y pasos, sin salirte del alcance.",
     'Si el fallo solo se arregla saliéndote del plan, responde con "estado": "desviacion" y el motivo, igual que antes.',
@@ -381,6 +407,7 @@ export function promptObrero(plan: Plan): string {
     "- Si el plan menciona commit, push o PR, prepara y verifica los cambios: Telo ejecutará esas operaciones al autorizar el usuario. Esa separación no es una desviación del plan.",
     "- El clon puede no tener origin: Telo conserva el remoto fuera del workspace. No declares una desviación solo porque git remote esté vacío.",
     "- Ejecuta las pruebas del proyecto que requiere el plan. Si el trabajo es solo preparar un commit, push o PR de cambios existentes, comprueba Git y no instales dependencias. Si el registro de paquetes devuelve HTTP 5xx, informa el código y el registro: ese código por sí solo no prueba falta de acceso a Internet.",
+    "- Nunca pidas permiso para saltarte o desactivar el sandbox. En OpenCode, usa HTTP_PROXY/HTTPS_PROXY del puente controlado de Telo para descargar dependencias públicas. Si la instalación falla, informa el comando, el registro y el código/error observado; no afirmes que la red está bloqueada sin comprobarlo.",
     "- Para Cloudflare Pages, deja lista la carpeta de archivos estáticos y menciona su ruta relativa en el resumen. Telo usa el token de Ajustes → Proveedores al publicar desde su tarjeta; no busques la credencial en tu entorno ni ejecutes la publicación.",
     '- Si algo falla y no puedes terminar, responde con "estado": "fallo" y explica qué pasó y qué intentaste.',
     "- Si falta una precondición externa que no puedes configurar desde el workspace (credencial, proyecto de hosting, acceso o archivos fuente), no repitas intentos. Detente, conserva los cambios y marca el requisito en bloqueante_externo; nunca incluyas valores secretos.",

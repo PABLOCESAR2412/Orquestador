@@ -266,6 +266,9 @@ export function entornoDelAgente(propias?: Record<string, string>, modelosPermit
     }
     if (!proveedores.has("cloudflare-workers-ai")) delete env.CLOUDFLARE_ACCOUNT_ID;
   }
+  // El aislamiento da a cada ejecución un /tmp vacío y oculta HOME; npm no puede crear ~/.npm.
+  // Guarda su caché efímero en el /tmp escribible sin exponer cachés del host.
+  if (aislamientoActivo()) env.npm_config_cache = "/tmp/telo-npm-cache";
   return env;
 }
 

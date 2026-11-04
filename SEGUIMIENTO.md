@@ -4,9 +4,16 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 3 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## Preguntas del chat y animaciones HyperFrames — PR #183, 4 de noviembre de 2026
+
+- [x] El analizador recibe hasta ocho mensajes anteriores del mismo chat, redactados y acotados a 5600 caracteres. Usa ese contexto para interpretar respuestas breves y evitar repetir preguntas, sin reabrir solicitudes anteriores.
+- [x] Los agentes aislados fijan el caché npm en /tmp/telo-npm-cache; la carpeta es efímera y escribible aunque HOME esté oculto. La instalación continúa usando el proxy controlado cuando Telo lo proporciona.
+- [~] HyperFrames usage --json muestra cuota de la cuenta del proveedor de IA, no disponibilidad del render. Node.js 22+, Chromium y FFmpeg corresponden al render local; Blender no es requisito general y TTS solo afecta narración. Falta ejecutar doctor --json en la VM después de desplegar para confirmar sus herramientas y acceso a red.
+
 ## Publicación, cuotas y Oficina — PR #182, 4 de noviembre de 2026
 
 - [x] Pages reutiliza el token y el ID de cuenta de Proveedores en una publicación estática confirmada desde Telo. El destino existente necesita permiso Pages Edit y la tarea debe conservar sus archivos compilados. La regresión en `claves-proveedor.test.ts` verifica las credenciales y los archivos que recibe Wrangler simulado.
+- [x] Los informes reconocen «no se encontraron archivos … en el workspace», orientan a vincular el proyecto o restaurar fuentes y retiran pendientes que pedían copiar el token a variables del workspace. El contrato impide pedir que se salte el sandbox y dirige las instalaciones de OpenCode al proxy controlado de Telo. La actividad del supervisor descarta los fragmentos de texto y conserva las acciones observables. CI del PR #183 aprobada (run 524).
 - [x] Un push de cambios ya preparados se planifica con comprobaciones Git. Las advertencias del monorepo sugieren instalar desde la raíz cuando corresponde compilar o probar. Si falta la copia de trabajo, Telo protege la reanudación y redacta rutas internas en los nuevos informes. Cobertura en `comprobaciones-tarea.test.ts`, `plan.test.ts` y `cuota.test.ts`.
 - [x] Uso muestra cuota y saldo publicados por cada servicio. Antigravity presenta las ventanas que devuelve su CLI. Ollama consulta los créditos de la cuenta y enlaza sus tarifas vigentes. Casos en `cuota-antigravity.test.ts` y `cuota-ollama.test.ts`.
 - [x] Oficina ajusta la altura visible y corrige la orientación de los personajes. Sus apodos se guardan por conversación en la migración 060. La acción de detener usa la cancelación del supervisor para los auxiliares. Verificación con SQLite y Playwright a 390 y 1440 px con datos simulados.
