@@ -144,7 +144,7 @@ type Message = {
   effort: string | null;
   sesion_compactada?: number;
 };
-type TurnoUsuario = { work_mode?: "plan" | "build"; id: string; role: "user"; content: string };
+type TurnoUsuario = { work_mode?: "plan" | "build"; id: string; role: "user"; content: string; contextMessageId?: string };
 
 export const chat = new Hono();
 
@@ -1088,7 +1088,7 @@ const pausasDespliegueTurnos = new Set<string>();
 chat.post("/conversations/:id/detener", c => {
   const conv = leerConversacion(c.req.param("id"));
   if (!conv) return c.json({ error: "conversation_not_found" }, 404);
-  if (conv.parent_conversation_id) return c.json({ error: "subagent_readonly" }, 403);
+  if (conv.parent_conversation_id) return c.json({ error: "subagent_read_only" }, 403);
   const control = controlesTurno.get(conv.id);
   if (control) {
     control.abort();
@@ -1186,6 +1186,7 @@ async function correrTurno(conv: ConversationRow, turno: TurnoUsuario, prompt: s
       projectId: conv.project_id,
       conversationId,
       turnId: turno.id,
+      contextMessageId: turno.contextMessageId ?? turno.id,
       usageRole: "supervisor",
       estilo: "chat",
       opencodeConfigDir: configSubagentes,
@@ -1403,19 +1404,26 @@ export function arrancarSiguienteEnCola(conversationId: string): void {
 // Al arrancar el servidor no hay turnos en curso. Si el último mensaje de un chat es del usuario, la
 // respuesta se perdió al reiniciarse: se avisa en el chat para que el usuario lo envíe de nuevo.
 export function avisarTurnosInterrumpidos(): number {
-  // Los pendientes en cola pasan a mensajes guardados sin bandera: un reinicio no ejecuta turnos
-  // por su cuenta y el aviso de abajo ya pide volver a enviar lo que quedó a medias.
-  db.query("UPDATE messages SET en_cola = 0").run();
   const chats = db
-    .query<{ id: string }, []>(
-      `SELECT c.id FROM conversations c
+    .query<{ id: string; pendientes: number }, []>(
+      `SELECT c.id,
+         (SELECT COUNT(*) FROM messages q WHERE q.conversation_id=c.id AND q.role='user' AND q.en_cola=1) AS pendientes
+       FROM conversations c
        WHERE c.parent_conversation_id IS NULL
        AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.conversation_id=c.id)
-       AND (SELECT m.role FROM messages m WHERE m.conversation_id = c.id ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) = 'user'`,
+       AND (
+         (SELECT m.role FROM messages m WHERE m.conversation_id=c.id ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1) = 'user'
+         OR EXISTS (SELECT 1 FROM messages q WHERE q.conversation_id=c.id AND q.role='user' AND q.en_cola=1)
+       )`,
     )
     .all();
-  for (const { id } of chats) {
-    guardarAviso(id, "La respuesta se interrumpió porque el servidor se reinició. Envía el mensaje de nuevo para intentarlo.");
+  // Se cuenta antes de limpiar: un reinicio conserva los textos, pero no ejecuta cola automáticamente.
+  db.query("UPDATE messages SET en_cola = 0").run();
+  for (const { id, pendientes } of chats) {
+    const detalle = pendientes > 0
+      ? ` Había ${pendientes} mensaje${pendientes === 1 ? "" : "s"} en cola; se conservaron en el historial y no se ejecutaron. Revisa el historial y reenvía los que quieras retomar.`
+      : " Envía el último mensaje de nuevo si quieres intentarlo.";
+    guardarAviso(id, `La respuesta se interrumpió porque el servidor se reinició.${detalle}`);
   }
   return chats.length;
 }
@@ -1589,18 +1597,21 @@ chat.post("/conversations/:id/seguir", async (c) => {
 
   const ultimoMensaje = conv.runner_session_id === null
     ? db
-        .query<{ content: string }, [string]>(
-          "SELECT content FROM messages WHERE conversation_id = ? AND role = 'user' ORDER BY created_at DESC, rowid DESC LIMIT 1",
+        .query<{ id: string; content: string }, [string]>(
+          "SELECT id, content FROM messages WHERE conversation_id = ? AND role = 'user' ORDER BY rowid DESC LIMIT 1",
         )
-        .get(conversationId)?.content
+        .get(conversationId)
     : undefined;
   const turno = guardarMensajeUsuario(conversationId, SEGUIR_VISIBLE);
+  if (ultimoMensaje?.id) turno.contextMessageId = ultimoMensaje.id;
   const prompt = conv.runner_session_id !== null
     ? promptContinuacion(
         SEGUIR_INSTRUCCION,
         sesionCompatible(conv.runner_session_id, conv.runner_session_model, model),
       )
-    : (ultimoMensaje ?? SEGUIR_INSTRUCCION);
+    : (ultimoMensaje?.content ?? SEGUIR_INSTRUCCION);
+  // Quita el bloqueo al comenzar; si la cuota vuelve a fallar, correrTurno lo restaura.
+  db.query("UPDATE conversations SET cuota_modelo=NULL WHERE id=?").run(conversationId);
   iniciarTurno(conv, turno, prompt, model);
   return c.json({ messages: [turno] }, 202);
 });

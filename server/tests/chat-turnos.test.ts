@@ -50,6 +50,7 @@ for a in "$@"; do
 done
 case "$ultimo" in *LENTO*) sleep 1.5 ;; esac
 case "$ultimo" in *FALLO-143*) echo '{"type":"step_finish","timestamp":1,"sessionID":"ses_fallo143","part":{"type":"tool-calls","snapshot":"CAPTURA-JSON-PRUEBA"}}'; exit 143 ;; esac
+case "$ultimo" in *CUOTA-PRUEBA*) echo '{"type":"error","error":{"data":{"statusCode":402,"message":"insufficient funds"}}}'; exit 1 ;; esac
 case "$ultimo" in *FALLO*) echo "error interno del agente" >&2; exit 1 ;; esac
 case "$ultimo" in *CAMBIO-MODELO*) printf '{"type":"text","sessionID":"ses_turno01","part":{"type":"text","text":"modelo=%s;sesion=%s;variante=%s;historial=%s"}}\\n' "$modelo" "\${sesion:-nueva}" "\${variante:-auto}" "\${historial:-no}"; exit 0 ;; esac
 case "$ultimo" in *MODO-TRABAJO*) modo="build"; case "$ultimo" in *"Modo Planear: solo lectura"*) modo="plan" ;; esac; printf '{"type":"text","sessionID":"ses_turno01","part":{"text":"modo=%s"}}\\n' "$modo"; exit 0 ;; esac
@@ -612,6 +613,34 @@ describe.skipIf(!Bun.which("setsid"))("turno del chat en segundo plano", () => {
     expect(mensajes(id).map((m) => m.role)).toEqual(["user", "user", "assistant", "assistant"]);
   });
 
+  test("seguir quita la cuota al arrancar para aceptar mensajes nuevos mientras trabaja", async () => {
+    const id = conversacion("opencode/modelo-nuevo");
+    const mensajeId = crypto.randomUUID();
+    db.query("UPDATE conversations SET cuota_modelo='opencode/agotado' WHERE id=?").run(id);
+    db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,'user','Continuar LENTO')").run(mensajeId, id);
+
+    const continuar = await app.request(`/api/conversations/${id}/seguir`, { method: "POST" });
+    expect(continuar.status).toBe(202);
+    expect(db.query<{ cuota_modelo: string | null }, [string]>("SELECT cuota_modelo FROM conversations WHERE id=?").get(id)?.cuota_modelo).toBeNull();
+    expect((await enviar(id, "Mensaje durante la continuación")).status).toBe(202);
+    await esperar(() => mensajes(id).filter((m) => m.role === "assistant").length === 2);
+    expect(mensajes(id).map((m) => m.role)).toEqual(["user", "user", "user", "assistant", "assistant"]);
+  });
+
+  test("seguir vuelve a mostrar el bloqueo si el modelo seleccionado también agota cuota", async () => {
+    const id = conversacion("opencode/modelo-nuevo");
+    db.query("UPDATE conversations SET cuota_modelo='opencode/agotado' WHERE id=?").run(id);
+    db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,'user','CUOTA-PRUEBA')").run(crypto.randomUUID(), id);
+
+    const continuar = await app.request(`/api/conversations/${id}/seguir`, { method: "POST" });
+
+    expect(continuar.status).toBe(202);
+    await esperar(() => db.query<{ cuota_modelo: string | null }, [string]>(
+      "SELECT cuota_modelo FROM conversations WHERE id=?",
+    ).get(id)?.cuota_modelo === "opencode/modelo-nuevo");
+    expect(mensajes(id).some((m) => m.role === "system" && m.content.includes("cuota"))).toBe(false);
+  });
+
   test("un fallo del agente queda como aviso del sistema en el chat", async () => {
     const id = conversacion();
     expect((await enviar(id, "Haz algo FALLO")).status).toBe(202);
@@ -784,10 +813,11 @@ describe("cola de mensajes del chat sin corredor", () => {
     ocuparConversacion(id);
     try {
       await enviar(id, "Cola perdida en el reinicio");
+      await enviar(id, "Segundo mensaje en cola");
     } finally { liberarConversacion(id); }
     expect(avisarTurnosInterrumpidos()).toBeGreaterThanOrEqual(1);
     expect(mensajes(id).every((m) => m.en_cola === 0)).toBe(true);
-    expect(mensajes(id).some((m) => m.role === "system" && m.content.includes("se reinició"))).toBe(true);
+    expect(mensajes(id).some((m) => m.role === "system" && m.content.includes("2 mensajes en cola"))).toBe(true);
     db.query("DELETE FROM messages WHERE conversation_id = ? AND role = 'system'").run(id);
   });
 });

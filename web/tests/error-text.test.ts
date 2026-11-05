@@ -30,6 +30,28 @@ describe("mensajes de error", () => {
     expect(errorText(new ApiError(503, "codex_models_unavailable"))).toContain("modelos de Codex");
   });
 
+  test("explica los errores de chat y subagentes con una instrucción útil", () => {
+    const casos: [string, number, string][] = [
+      ["image_type_unsupported", 415, "formato de imagen"],
+      ["image_size_invalid", 413, "imagen está vacía"],
+      ["invalid_image", 400, "imagen válido"],
+      ["invalid_attachment", 400, "Vuelve a adjuntarla"],
+      ["unsupported_file_type", 415, "solo permite archivos HTML"],
+      ["file_too_large", 413, "tamaño máximo"],
+      ["invalid_cursor", 400, "posición ya no es válida"],
+      ["invalid_retry", 400, "identificar el mensaje"],
+      ["message_not_found", 404, "ya no está disponible"],
+      ["message_not_retryable", 409, "ya no se puede reintentar"],
+      ["preview_expired", 410, "venció"],
+      ["turn_not_found", 404, "turno ya no está disponible"],
+      ["subagent_readonly", 403, "subchat solo permite revisar"],
+    ];
+
+    for (const [code, status, fragmento] of casos) {
+      expect(errorText(new ApiError(status, code))).toContain(fragmento);
+    }
+  });
+
   test("da pasos concretos cuando la subida no incluye el detalle del remoto", () => {
     const texto = errorText(new ApiError(502, "push_fallido"));
     expect(texto).toContain("remoto sea el repositorio correcto");
