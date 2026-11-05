@@ -950,13 +950,14 @@ export function ChatPage() {
     setMenuColaAbierto(null);
   };
 
-  // El servidor serializa y persiste cada entrada; la cola local no depende de que el chat
-  // seleccionado alcance a mostrar los estados ocupado/libre.
+  // El servidor serializa y persiste cada entrada; la cola local usa el estado más reciente
+  // por chat y no depende de haber observado la transición ocupado/libre en el seleccionado.
   useEffect(() => {
-    const idsDisponibles = new Set((conversations.data ?? []).map((chat) => chat.id));
+    const conversaciones = new Map((conversations.data ?? []).map((chat) => [chat.id, chat]));
     for (const [id, mensajes] of Object.entries(colasPorChat)) {
       const primero = mensajes[0];
-      if (!primero || !idsDisponibles.has(id) || !colaActivaPara(id) || enviosPorChatRef.current[id]) continue;
+      const chat = conversaciones.get(id);
+      if (!primero || !chat || chat.ocupada || !colaActivaPara(id) || enviosPorChatRef.current[id]) continue;
       if (falloCola?.conversacionId === id && mensajes.some((item) => item.id === falloCola.mensajeId)) continue;
       iniciarEnvio({ id, content: primero.texto, colaId: primero.id });
     }
