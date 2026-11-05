@@ -4,7 +4,7 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 4 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
-## Fiabilidad de chat, reanudación y cola — PR pendiente, 4 de noviembre de 2026
+## Fiabilidad de chat, reanudación y cola — PR #189, 4 de noviembre de 2026
 
 - [x] «Seguir» libera al inicio el bloqueo de cuota para aceptar mensajes nuevos; si el modelo vuelve a agotar la cuota, el turno restaura el bloqueo.
 - [x] El contexto de un mensaje se corta antes de su fila persistida: no duplica el mensaje actual ni incorpora avisos posteriores. Los errores de imágenes, adjuntos, cursor, reintento, vista previa y subchats tienen mensajes específicos; `/detener` comparte el código `subagent_read_only`.
