@@ -397,6 +397,16 @@ export function leerVideo(
   return { ...archivo, nombre: archivo.ruta.split("/").at(-1)!, mime: "video/mp4" };
 }
 
+export function leerZip(raizProyecto: string, segmentos: string[]): BinarioAbierto & { nombre: string; mime: string } {
+  const archivo = validarBinario(raizProyecto, segmentos, ["zip"], LIMITE_VIDEO, "unsupported_file_type");
+  const firma = archivo.cabeza.subarray(0, 4).toString("hex");
+  if (firma !== "504b0304" && firma !== "504b0506") {
+    archivo.cerrar();
+    throw new ArchivoError("unsupported_file_type", 415);
+  }
+  return { ...archivo, nombre: archivo.ruta.split("/").at(-1)!, mime: "application/zip" };
+}
+
 const MIME_RECURSO_HTML: Record<string, string> = {
   css: "text/css; charset=utf-8", js: "text/javascript; charset=utf-8", mjs: "text/javascript; charset=utf-8",
   json: "application/json; charset=utf-8", woff: "font/woff", woff2: "font/woff2", ttf: "font/ttf", otf: "font/otf",

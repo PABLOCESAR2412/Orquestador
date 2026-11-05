@@ -14,7 +14,7 @@ import { ejecutarAnalisisOrquestado, leerTrabajadoresOrquestacion, type Trabajad
 import { getPreferences } from "../preferences";
 import { projectRepoPath } from "./projects";
 import { faltaCopiaDeTarea, mensajeSeguro } from "../workspace";
-import { carpetaEntregables } from "../entregables";
+import { carpetaEntregables, resolverReferenciaEntregable } from "../entregables";
 import { actividadDelTurno, itemDeLinea, marcarRespuestaCompactada, registrarActividad } from "../actividad";
 import { crearTarea } from "../tareas";
 import { cancelTask, notifyWorker } from "../worker";
@@ -28,7 +28,7 @@ import {
 } from "../ocupacion";
 import { eliminarPerfilSubagentes, pideSubagentes, prepararSubagentes } from "../subagentes";
 import { cerrarSubagentesDelTurno, registrarEventoSubagente } from "../subagentes-chat";
-import { ArchivoError, buscarArchivosPorNombre, leerArchivo, leerImagen, leerPdf, leerVideo, leerRecursoHtml, normalizarRuta } from "../archivos-proyecto";
+import { ArchivoError, buscarArchivosPorNombre, leerArchivo, leerImagen, leerPdf, leerVideo, leerZip, leerRecursoHtml, normalizarRuta } from "../archivos-proyecto";
 import { contarImagenesMarcadas, eliminarImagenesConversacion, guardarImagenAdjunta, idsImagenesMarcadas, leerImagenAdjunta, MAX_IMAGENES_MENSAJE } from "../chat-adjuntos";
 import { anexarEnlaceVideo, buscarVideoVerificado, promptRecuperarEntregaVideo, requiereEntregaVideo } from "../entrega-video";
 
@@ -789,8 +789,8 @@ chat.get("/conversations/:id/archivo-imagen", (c) => {
   }
 });
 
-// Vista previa y descarga de MP4 del workspace; admite rangos para reproducción y búsqueda.
-chat.get("/conversations/:id/archivo-video", async (c) => {
+// Reproduce MP4 por rangos y descarga ZIP desde las raíces autorizadas del chat.
+chat.get("/conversations/:id/:binario{archivo-video|archivo-zip}", async (c) => {
   const id = c.req.param("id");
   const conversacion = leerConversacion(id);
   if (!conversacion) return c.json({ error: "conversation_not_found" }, 404);
@@ -798,15 +798,17 @@ chat.get("/conversations/:id/archivo-video", async (c) => {
   if (!raices.length) return c.json({ error: "project_path_not_found" }, 404);
 
   try {
-    const ruta = normalizarRuta(c.req.query("ruta"));
+    const esZip = c.req.param("binario") === "archivo-zip";
+    const leer = esZip ? leerZip : leerVideo;
+    const destino = resolverReferenciaEntregable(c.req.query("ruta"), raices);
+    const { ruta } = destino;
     let archivo: ReturnType<typeof leerVideo>;
     try {
-      archivo = leerEnRaices(raices, (raiz) => leerVideo(raiz, ruta));
+      archivo = leerEnRaices(destino.raices, (raiz) => leer(raiz, ruta));
     } catch (err) {
-      if (!(err instanceof ArchivoError) || err.code !== "project_path_not_found" || ruta.length !== 1) throw err;
+      if (!(err instanceof ArchivoError) || err.code !== "project_path_not_found" || ruta.length !== 1 || destino.referencia) throw err;
 
-      // Los agentes suelen guardar videos en carpetas como `renders/` o `entregables/` y luego
-      // citan solo el nombre. Resuelve ese caso dentro de las raíces autorizadas del chat.
+      // Si el agente cita solo el nombre, búscalo en las carpetas autorizadas del chat.
       let archivoEncontrado: ReturnType<typeof leerVideo> | null = null;
       for (const raiz of raices) {
         let busqueda: Awaited<ReturnType<typeof buscarArchivosPorNombre>>;
@@ -827,10 +829,10 @@ chat.get("/conversations/:id/archivo-video", async (c) => {
           }, 409);
         }
         if (busqueda.truncada) {
-          return c.json({ error: "project_search_incomplete", detail: "La búsqueda alcanzó su límite; abre el video con su ruta completa." }, 409);
+          return c.json({ error: "project_search_incomplete", detail: "La búsqueda alcanzó su límite; abre el archivo con su ruta completa." }, 409);
         }
         if (busqueda.rutas.length === 1) {
-          archivoEncontrado = leerVideo(raiz, normalizarRuta(busqueda.rutas[0]!));
+          archivoEncontrado = leer(raiz, normalizarRuta(busqueda.rutas[0]!));
           break;
         }
       }
@@ -848,10 +850,11 @@ chat.get("/conversations/:id/archivo-video", async (c) => {
       "Cross-Origin-Resource-Policy": "same-origin",
       "Cache-Control": "private, no-store",
     };
+    if (esZip) cabeceras["Content-Disposition"] = `attachment; filename="${nombreAscii}"; filename*=UTF-8''${nombreUtf8}`;
 
     if (c.req.query("meta") === "1") {
       archivo.cerrar();
-      return new Response(JSON.stringify({ ruta: archivo.ruta, nombre: archivo.nombre, mime: archivo.mime, tamano: archivo.tamano }), {
+      return new Response(JSON.stringify({ ruta: destino.referencia ?? archivo.ruta, nombre: archivo.nombre, mime: archivo.mime, tamano: archivo.tamano }), {
         headers: { ...cabeceras, "Content-Type": "application/json; charset=utf-8" },
       });
     }

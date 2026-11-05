@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, ApiError, urlImagenConversacion, urlPdfConversacion, urlVideoConversacion } from "../api";
+import { api, ApiError, urlImagenConversacion, urlPdfConversacion, urlBinarioConversacion } from "../api";
 import { LoadingSkeleton } from "./loading-skeleton";
 import { errorText } from "../lib/model";
 import { PdfPreview } from "./pdf-preview";
@@ -23,14 +23,16 @@ export function ChatArchivoPreview({
 }) {
   const esPdf = /\.pdf$/i.test(referencia.ruta);
   const esImagen = /\.(?:png|jpe?g|webp|gif)$/i.test(referencia.ruta);
+  const esZip = /\.zip$/i.test(referencia.ruta);
   const esVideo = /\.mp4$/i.test(referencia.ruta);
+  const esBinario = esVideo || esZip;
   const esHtml = /\.html?$/i.test(referencia.ruta);
   const [verCodigo, setVerCodigo] = useState(Boolean(referencia.linea));
   useEffect(() => setVerCodigo(Boolean(referencia.linea)), [referencia.ruta, referencia.linea]);
   const archivo = useQuery({
     queryKey: ["conversation-file", conversationId, referencia.ruta],
     queryFn: () => api.chatFile(conversationId, referencia.ruta),
-    enabled: !esPdf && !esImagen && !esVideo,
+    enabled: !esPdf && !esImagen && !esBinario,
     retry: reintentarArchivo,
   });
   const pdf = useQuery({
@@ -53,35 +55,35 @@ export function ChatArchivoPreview({
   });
   const video = useQuery({
     queryKey: ["conversation-video", conversationId, referencia.ruta],
-    queryFn: () => api.chatVideoInfo(conversationId, referencia.ruta),
-    enabled: esVideo,
+    queryFn: () => api.chatBinaryInfo(conversationId, referencia.ruta),
+    enabled: esBinario,
     retry: reintentarArchivo,
   });
   const cuerpoRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const cuerpo = cuerpoRef.current;
-    if (!cuerpo || !archivo.data || esPdf || esImagen || esVideo) return;
+    if (!cuerpo || !archivo.data || esPdf || esImagen || esBinario) return;
     if (!referencia.linea) {
       cuerpo.scrollTop = 0;
       return;
     }
     const objetivo = cuerpo.querySelector<HTMLElement>(`[data-linea="${referencia.linea}"]`);
     if (objetivo) cuerpo.scrollTop = Math.max(0, objetivo.offsetTop - cuerpo.offsetTop - cuerpo.clientHeight / 2);
-  }, [archivo.data, referencia.linea, esPdf, esImagen, esVideo]);
+  }, [archivo.data, referencia.linea, esPdf, esImagen, esBinario]);
 
   const lineas = archivo.data?.texto.split("\n") ?? [];
-  const rutaActual = (esPdf ? pdf.data?.ruta : esImagen ? imagen.data?.ruta : esVideo ? video.data?.ruta : archivo.data?.ruta) ?? referencia.ruta;
-  const nombre = (esPdf || esImagen || esVideo ? referencia.ruta : rutaActual).split(/[\\/]/).at(-1) || rutaActual;
+  const rutaActual = (esPdf ? pdf.data?.ruta : esImagen ? imagen.data?.ruta : esBinario ? video.data?.ruta : archivo.data?.ruta) ?? referencia.ruta;
+  const nombre = (esPdf || esImagen || esBinario ? referencia.ruta : rutaActual).split(/[\\/]/).at(-1) || rutaActual;
   const tipoArchivo = describirTipoArchivo(rutaActual);
   const lineaExiste = Boolean(referencia.linea && referencia.linea > 0 && referencia.linea <= lineas.length);
-  const archivoError = esPdf ? pdf.error : esImagen ? imagen.error : esVideo ? video.error : archivo.error;
+  const archivoError = esPdf ? pdf.error : esImagen ? imagen.error : esBinario ? video.error : archivo.error;
   const coincidencias = archivoError instanceof ApiError && archivoError.code === "project_path_ambiguous"
     ? archivoError.matches ?? []
     : [];
   const mensajeErrorVideo = video.error instanceof ApiError
     && ["archivo_chat_no_encontrado", "project_path_not_found"].includes(video.error.code)
-    ? "No encontramos este MP4 en las carpetas accesibles de la conversación. Comprueba que el agente lo haya guardado en el workspace antes de enlazarlo."
+    ? `No encontramos este ${esZip ? "ZIP" : "MP4"} en las carpetas accesibles de la conversación.`
     : errorText(video.error);
   const puedeReintentar = !(archivoError instanceof ApiError) || archivoError.status >= 500;
   return (
@@ -127,11 +129,16 @@ export function ChatArchivoPreview({
               Descargar imagen
             </a>
           )}
+          {esZip && video.data && (
+            <a className="tl-boton tl-boton-compacto" href={urlBinarioConversacion(conversationId, video.data.ruta, true)} download={video.data.nombre}>
+              Descargar ZIP
+            </a>
+          )}
           {esVideo && video.data && (
             <>
               <a
                 className="tl-boton tl-boton-compacto"
-                href={urlVideoConversacion(conversationId, video.data.ruta)}
+                href={urlBinarioConversacion(conversationId, video.data.ruta)}
                 target="_blank"
                 rel="noreferrer"
                 title={`Abrir ${video.data.nombre} en otra pestaña`}
@@ -140,7 +147,7 @@ export function ChatArchivoPreview({
               </a>
               <a
                 className="tl-boton tl-boton-compacto"
-                href={urlVideoConversacion(conversationId, video.data.ruta, true)}
+                href={urlBinarioConversacion(conversationId, video.data.ruta, true)}
                 download={video.data.nombre}
                 title={`Descargar ${video.data.nombre}`}
               >
@@ -187,12 +194,12 @@ export function ChatArchivoPreview({
             </div>
           )}
         </>
-      ) : esVideo ? (
+      ) : esBinario ? (
         <>
           {video.isPending && <p className="tl-chat-archivo-estado" role="status">Comprobando video…</p>}
           {video.isError && (
             <div className="tl-chat-archivo-estado" role="alert">
-              <p>No se pudo abrir este video. {mensajeErrorVideo}</p>
+              <p>No se pudo abrir este {esZip ? "ZIP" : "video"}. {mensajeErrorVideo}</p>
               {coincidencias.length > 0 && (
                 <ul className="tl-chat-archivo-coincidencias" aria-label="Videos con ese nombre">
                   {coincidencias.map((ruta) => (
@@ -208,11 +215,12 @@ export function ChatArchivoPreview({
               {puedeReintentar && <button type="button" className="tl-boton tl-boton-compacto" onClick={() => void video.refetch()}>Reintentar</button>}
             </div>
           )}
-          {video.data && (
+          {esZip && video.data && <p className="tl-chat-archivo-estado">Proyecto o recursos en un archivo ZIP.</p>}
+          {esVideo && video.data && (
             <div className="tl-chat-archivo-video-marco">
               <video
                 className="tl-chat-archivo-video"
-                src={urlVideoConversacion(conversationId, video.data.ruta)}
+                src={urlBinarioConversacion(conversationId, video.data.ruta)}
                 controls
                 playsInline
                 preload="metadata"

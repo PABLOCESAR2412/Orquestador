@@ -4,6 +4,10 @@ Registro central de fases, revisiones y hallazgos. Actualizado: 3 de noviembre d
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
 
+## MP4 y ZIP en entregables del chat
+
+- Las referencias `../entregables/<id>/archivo` se resuelven solo cuando la carpeta corresponde a un workspace de la conversación. El MP4 conserva la reproducción por rangos y el ZIP se sirve como descarga. La prueba de rutas rechaza identificadores ajenos y rutas que intentan salir de la carpeta.
+
 ## Aprobación móvil, actividad y destino de Cloudflare
 
 - La aprobación, cancelación y reanálisis comparten la fila de herramientas del compositor móvil. La prueba de Chromium comprueba posición y tamaño de los botones.
