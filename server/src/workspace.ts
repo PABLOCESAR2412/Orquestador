@@ -253,6 +253,34 @@ async function origenDelProyecto(repoPath: string): Promise<string> {
 
 const TIEMPO_SINCRONIZAR_MS = 15_000;
 
+async function completarRamaRemotaSinHead(repoPath: string, rama: string): Promise<boolean> {
+  const noSeguidos = await gitOkSeguro(["ls-files", "--others", "--exclude-standard", "-z"], {
+    cwd: repoPath,
+    timeoutMs: TIEMPO_SINCRONIZAR_MS,
+  });
+  const ajenos = noSeguidos.split("\0").filter((ruta) => {
+    if (!ruta) return false;
+    // Estas carpetas locales las sincroniza Telo aparte y no forman parte del código del repo.
+    return ![".opencode", "skills"].some((raiz) => ruta === raiz || ruta.startsWith(`${raiz}/`));
+  });
+  if (ajenos.length) return false;
+
+  await gitOkSeguro(["checkout", "-B", rama, `refs/remotes/origin/${rama}`], {
+    cwd: repoPath,
+    timeoutMs: TIEMPO_SINCRONIZAR_MS,
+  });
+  return true;
+}
+
+/** @internal Recupera una rama cuyo remoto ya tiene commit, pero el clon local quedó sin HEAD. */
+export async function recuperarRamaRemotaSinHead(repoPath: string, rama: string): Promise<boolean> {
+  const localHead = await gitSeguro(["rev-parse", "--verify", "HEAD^{commit}"], {
+    cwd: repoPath,
+    timeoutMs: TIEMPO_SINCRONIZAR_MS,
+  });
+  return localHead.code !== 0 ? completarRamaRemotaSinHead(repoPath, rama) : false;
+}
+
 // Token de lectura para traer la punta del remoto a la copia local: la misma cadena de credenciales
 // del proyecto (App vinculada, sesión de GitHub o GITHUB_TOKEN del proyecto). Sin remoto de GitHub
 // o sin credencial, se intenta la conexión sin autenticación (solo alcanza en repositorios públicos).
@@ -293,8 +321,20 @@ async function traerRepoLocalAlDia(repoPath: string, projectId: string | null): 
     const punta = (
       await gitOkSeguro(["rev-parse", `refs/remotes/origin/${rama}`], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS })
     ).trim();
-    const local = (await gitOkSeguro(["rev-parse", "HEAD"], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS })).trim();
-    if (!punta || punta === local) return null;
+    if (!punta) return null;
+
+    // Si el remoto recibió su primer commit después de clonar el repo, la rama local aún no tiene HEAD.
+    // Crear la rama desde origin antes de clonar el workspace de tarea evita publicar una copia vacía.
+    const localHead = await gitSeguro(["rev-parse", "--verify", "HEAD^{commit}"], {
+      cwd: repoPath,
+      timeoutMs: TIEMPO_SINCRONIZAR_MS,
+    });
+    if (localHead.code !== 0) {
+      if (!(await completarRamaRemotaSinHead(repoPath, rama))) return null;
+      return punta;
+    }
+    const local = localHead.stdout.trim();
+    if (punta === local) return null;
     await gitOkSeguro(["merge", "--ff-only", `origin/${rama}`], { cwd: repoPath, timeoutMs: TIEMPO_SINCRONIZAR_MS, env: credenciales.env });
     return punta;
   } catch {

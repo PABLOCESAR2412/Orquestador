@@ -4,6 +4,12 @@
   "nota": "Versión X.Y.Z. X = 1 + grandes; Y = medianos / 5 (entero); Z = mínimos / 10 (entero). Los conteos son acumulados desde la base, sin reinicios. Cada cambio terminado agrega una entrada a cambios.",
   "cambios": [
     {
+      "fecha": "2026-11-05",
+      "tipo": "minimo",
+      "titulo": "Git: recupera proyectos cuyo remoto recibió su primer commit después del clon",
+      "pr": 190
+    },
+    {
       "fecha": "2026-11-04",
       "tipo": "mediano",
       "titulo": "Chat: corrige la reanudación por cuota, el historial y la recuperación de colas",
