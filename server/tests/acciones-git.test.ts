@@ -15,7 +15,7 @@ mkdirSync(process.env.TELO_PROYECTOS_DIR, { recursive: true });
 const { db } = await import("../src/db");
 const { config } = await import("../src/config");
 const { gitOk } = await import("../src/git");
-const { aprobarTarea, detectarConflictosPullRequest, diffDeTarea, limpiarCopiaCancelada, prepararCopia, reintegrarSobrePunta } = await import("../src/workspace");
+const { aprobarTarea, detectarConflictosPullRequest, diffDeTarea, limpiarCopiaCancelada, prepararCopia, recuperarRamaRemotaSinHead, reintegrarSobrePunta } = await import("../src/workspace");
 const { repositoryActions } = await import("../src/routes/repository-actions");
 const { guardarSecreto, entornoDeProyecto } = await import("../src/secretos");
 const { fuenteAutenticacionGithub, githubApiPr } = await import("../src/routes/proyecto-config");
@@ -956,6 +956,49 @@ for (const credencial of ["global", "proyecto"] as const) {
     }
   });
 }
+
+test("recuperarRamaRemotaSinHead restaura el primer commit del remoto y conserva skills locales", { timeout: 20000 }, async () => {
+  const sufijo = randomUUID().slice(0, 8);
+  const id = `repo-vacio-${sufijo}`;
+  const cwd = join(config.projectsDir!, id);
+  mkdirSync(cwd, { recursive: true });
+  db.query("INSERT INTO projects(id,name,repo_path) VALUES (?,?,?)").run(id, id, cwd);
+  const p: { id: string; cwd: string; taskId?: string } = { id, cwd };
+  proyectos.push(p);
+  await gitOk(["init", "-b", "seed"], { cwd: p.cwd });
+  mkdirSync(join(p.cwd, "src"), { recursive: true });
+  mkdirSync(join(p.cwd, "skills"), { recursive: true });
+  mkdirSync(join(p.cwd, ".opencode", "skills"), { recursive: true });
+  writeFileSync(join(p.cwd, "package.json"), '{"scripts":{"build":"vite build"}}\n');
+  writeFileSync(join(p.cwd, "src", "main.ts"), "export const app = true;\n");
+  writeFileSync(join(p.cwd, "skills", "keep.md"), "skill local\n");
+  writeFileSync(join(p.cwd, ".opencode", "skills", "keep.md"), "skill opencode\n");
+  await gitOk(["add", "package.json", "src/main.ts"], { cwd: p.cwd });
+  await gitOk([
+    "-c", "user.name=Prueba", "-c", "user.email=prueba@example.test",
+    "commit", "-m", "Código inicial",
+  ], { cwd: p.cwd });
+  const punta = (await gitOk(["rev-parse", "HEAD"], { cwd: p.cwd })).trim();
+  await gitOk(["update-ref", "refs/remotes/origin/main", punta], { cwd: p.cwd });
+  await gitOk(["read-tree", "--empty"], { cwd: p.cwd });
+  rmSync(join(p.cwd, "package.json"), { force: true });
+  rmSync(join(p.cwd, "src"), { recursive: true, force: true });
+  await gitOk(["update-ref", "-d", "refs/heads/seed"], { cwd: p.cwd });
+  await gitOk(["symbolic-ref", "HEAD", "refs/heads/main"], { cwd: p.cwd });
+
+  expect((await gitOk(["status", "--porcelain", "--untracked-files=no"], { cwd: p.cwd })).trim()).toBe("");
+  const datoLocal = join(p.cwd, "no-perder.txt");
+  writeFileSync(datoLocal, "dato sin seguimiento\n");
+  expect(await recuperarRamaRemotaSinHead(p.cwd, "main")).toBe(false);
+  expect(existsSync(join(p.cwd, "package.json"))).toBe(false);
+  rmSync(datoLocal, { force: true });
+  expect(await recuperarRamaRemotaSinHead(p.cwd, "main")).toBe(true);
+  expect((await gitOk(["rev-parse", "HEAD"], { cwd: p.cwd })).trim()).toBe(punta);
+  expect(readFileSync(join(p.cwd, "package.json"), "utf8")).toContain("vite build");
+  expect(readFileSync(join(p.cwd, "src", "main.ts"), "utf8")).toContain("app = true");
+  expect(readFileSync(join(p.cwd, "skills", "keep.md"), "utf8")).toContain("skill local");
+  expect(readFileSync(join(p.cwd, ".opencode", "skills", "keep.md"), "utf8")).toContain("skill opencode");
+});
 
 test("prepararCopia trae la copia local al día con el avance del origin", { timeout: 20000 }, async () => {
   const { p, origen, base } = await proyectoLocalConOrigen(randomUUID().slice(0, 8));
