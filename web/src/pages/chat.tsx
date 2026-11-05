@@ -160,7 +160,6 @@ export function ChatPage() {
   const [destinoArrastreColaId, setDestinoArrastreColaId] = useState<string | null>(null);
   const [hitosPorChat, setHitosPorChat] = useState<Record<string, string[]>>(leerHitos);
   const [promptActivoId, setPromptActivoId] = useState<string | null>(null);
-  const colaEsperandoTurnoRef = useRef<Record<string, { vioAgenteOcupado: boolean; texto: string }>>({});
   const cambiarCola = (id: string, transformar: (mensajes: MensajeEnCola[]) => MensajeEnCola[]) => {
     const mensajes = transformar(colasPorChatRef.current[id] ?? []);
     const siguiente = { ...colasPorChatRef.current };
@@ -659,7 +658,7 @@ export function ChatPage() {
         throw err;
       }
     },
-    onSuccess: (_data, { id, content, colaId }) => {
+    onSuccess: (_data, { id, colaId }) => {
       // Guardado confirmado: el marcador de envío en vuelo ya no hace falta.
       borrarEnvio(id);
       setErroresEnvio((prev) => {
@@ -669,8 +668,6 @@ export function ChatPage() {
       });
       if (colaId) {
         cambiarCola(id, (mensajes) => mensajes.filter((item) => item.id !== colaId));
-        const ocupada = qc.getQueryData<Conversation[]>(["conversations"])?.find((chat) => chat.id === id)?.ocupada ?? false;
-        colaEsperandoTurnoRef.current[id] = { vioAgenteOcupado: ocupada, texto: content };
         setFalloCola((prev) => (prev?.mensajeId === colaId ? null : prev));
       }
     },
@@ -953,23 +950,17 @@ export function ChatPage() {
     setMenuColaAbierto(null);
   };
 
-  // Envía una sola entrada a la vez. La siguiente espera a que el agente haya ocupado
-  // y liberado el chat, aunque la respuesta HTTP se complete antes de actualizar la vista.
+  // El servidor serializa y persiste cada entrada; la cola local no depende de que el chat
+  // seleccionado alcance a mostrar los estados ocupado/libre.
   useEffect(() => {
-    if (!selectedId) return;
-    const esperando = colaEsperandoTurnoRef.current[selectedId];
-    if (esperando) {
-      if (agenteOcupado) esperando.vioAgenteOcupado = true;
-      const ultimoUsuario = [...lista].reverse().find((mensaje) => mensaje.role === "user");
-      const respuestaRecibida = lista.at(-1)?.role === "assistant" && ultimoUsuario?.content === esperando.texto;
-      if (!agenteOcupado && (esperando.vioAgenteOcupado || respuestaRecibida)) {
-        delete colaEsperandoTurnoRef.current[selectedId];
-      }
-      else return;
+    const idsDisponibles = new Set((conversations.data ?? []).map((chat) => chat.id));
+    for (const [id, mensajes] of Object.entries(colasPorChat)) {
+      const primero = mensajes[0];
+      if (!primero || !idsDisponibles.has(id) || !colaActivaPara(id) || enviosPorChatRef.current[id]) continue;
+      if (falloCola?.conversacionId === id && mensajes.some((item) => item.id === falloCola.mensajeId)) continue;
+      iniciarEnvio({ id, content: primero.texto, colaId: primero.id });
     }
-    if (!colaActiva || agenteOcupado || enviandoActual || errorCola || cola.length === 0) return;
-    iniciarEnvio({ id: selectedId, content: cola[0].texto, colaId: cola[0].id });
-  }, [selectedId, colaActiva, agenteOcupado, enviandoActual, errorCola, cola, lista]);
+  }, [colasPorChat, conversations.data, colaRevision, falloCola, enviosPorChat]);
 
   // Un envío interrumpido (recarga o cierre justo tras enviar) deja un marcador con el texto que
   // era el borrador y el contenido enviado. Cuando la lista de mensajes carga, se decide una vez:

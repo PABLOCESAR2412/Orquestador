@@ -37,6 +37,7 @@ describe("contrapresión del stream de eventos", () => {
     expect(reconexion.status).toBe(200);
     const lectorReconexion = reconexion.body!.getReader();
     expect(new TextDecoder().decode((await lectorReconexion.read()).value)).toContain(": ok");
+    expect(new TextDecoder().decode((await lectorReconexion.read()).value)).toContain("event: hueco");
     const eventosRecuperados: string[] = [];
     for (let i = 0; i < 100; i++) {
       const parte = await lectorReconexion.read();
@@ -72,5 +73,19 @@ describe("contrapresión del stream de eventos", () => {
     expect((await app.request("/api/eventos-vivos/poll?espera=-1")).status).toBe(400);
     expect((await app.request("/api/eventos-vivos/poll?espera=1.5")).status).toBe(400);
     expect((await app.request("/api/eventos-vivos/poll?espera=no-es-numero")).status).toBe(400);
+  });
+
+  test("el sondeo declara cuando el cliente quedó detrás del buffer", async () => {
+    const cursor = publicar({ tipo: "chat", conversacion_id: "cursor-antiguo", estado: "terminado" });
+    for (let i = 0; i < 101; i++) {
+      publicar({ tipo: "chat", conversacion_id: `conv-${i}`, estado: "en_curso" });
+    }
+
+    const response = await app.request(`/api/eventos-vivos/poll?desde=${cursor}&espera=0`);
+    const lote = await response.json() as { hueco?: boolean; eventos: unknown[] };
+
+    expect(response.status).toBe(200);
+    expect(lote.hueco).toBe(true);
+    expect(lote.eventos).toHaveLength(100);
   });
 });

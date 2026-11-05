@@ -23,16 +23,29 @@ export function sesionCompatible(
   return Boolean(sessionId && sessionModel === model);
 }
 
-export function promptConHistorial(conversationId: string, prompt: string): string {
-  const mensajes = db
-    .query<MensajeHistorial, [number, number, string, string, number]>(
-      "SELECT role, substr(content, 1, ?) AS content, length(content) > ? AS supera_limite, content = ? AS es_prompt_actual FROM messages WHERE conversation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?",
-    )
-    .all(MAX_CARACTERES_POR_MENSAJE + 1, MAX_CARACTERES_POR_MENSAJE, prompt, conversationId, MAX_MENSAJES_HISTORIAL + 2)
-    .reverse();
+export function promptConHistorial(conversationId: string, prompt: string, currentMessageId?: string | null): string {
+  const filaActual = currentMessageId
+    ? db.query<{ rowid: number }, [string, string]>(
+        "SELECT rowid FROM messages WHERE id = ? AND conversation_id = ? AND role = 'user'",
+      ).get(currentMessageId, conversationId)
+    : null;
+  const mensajes = filaActual
+    ? db
+        .query<MensajeHistorial, [number, number, string, number, number]>(
+          "SELECT role, substr(content, 1, ?) AS content, length(content) > ? AS supera_limite, 0 AS es_prompt_actual FROM messages WHERE conversation_id = ? AND rowid < ? ORDER BY rowid DESC LIMIT ?",
+        )
+        .all(MAX_CARACTERES_POR_MENSAJE + 1, MAX_CARACTERES_POR_MENSAJE, conversationId, filaActual.rowid, MAX_MENSAJES_HISTORIAL + 1)
+        .reverse()
+    : db
+        .query<MensajeHistorial, [number, number, string, string, number]>(
+          "SELECT role, substr(content, 1, ?) AS content, length(content) > ? AS supera_limite, content = ? AS es_prompt_actual FROM messages WHERE conversation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?",
+        )
+        .all(MAX_CARACTERES_POR_MENSAJE + 1, MAX_CARACTERES_POR_MENSAJE, prompt, conversationId, MAX_MENSAJES_HISTORIAL + 2)
+        .reverse();
   const ultimo = mensajes.at(-1);
-  const promptYaGuardado = ultimo?.role === "user" && ultimo.es_prompt_actual === 1;
+  const promptYaGuardado = !filaActual && ultimo?.role === "user" && ultimo.es_prompt_actual === 1;
 
+  if (filaActual && mensajes.length === 0) return prompt;
   if (mensajes.length <= 1 && promptYaGuardado) return prompt;
 
   const anteriores = promptYaGuardado ? mensajes.slice(0, -1) : mensajes;

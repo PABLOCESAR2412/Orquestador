@@ -89,6 +89,25 @@ describe("contexto cuando cambia el modelo del chat", () => {
     expect(promptConHistorial(id, "Primera pregunta")).toBe("Primera pregunta");
   });
 
+  test("usa el ID del turno para excluir avisos posteriores y no duplicar el mensaje actual", () => {
+    const id = conversacion();
+    db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,'user','Pregunta anterior')")
+      .run(crypto.randomUUID(), id);
+    db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,'assistant','Respuesta anterior')")
+      .run(crypto.randomUUID(), id);
+    const mensajeActual = crypto.randomUUID();
+    db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,'user','SEGUNDO-B')")
+      .run(mensajeActual, id);
+    db.query("INSERT INTO messages (id,conversation_id,role,content) VALUES (?,?,'system','Aviso posterior')")
+      .run(crypto.randomUUID(), id);
+
+    const prompt = promptConHistorial(id, "SEGUNDO-B", mensajeActual);
+
+    expect(prompt.match(/SEGUNDO-B/g)).toHaveLength(1);
+    expect(prompt.indexOf("Respuesta anterior")).toBeLessThan(prompt.indexOf("SEGUNDO-B"));
+    expect(prompt).not.toContain("Aviso posterior");
+  });
+
   test("al reanudar una sesión antigua desconocida no afirma que el modelo conoce su contexto", () => {
     const prompt = promptContinuacion("Termina el cambio", false);
     expect(prompt).toContain("La sesión anterior no se puede reutilizar");

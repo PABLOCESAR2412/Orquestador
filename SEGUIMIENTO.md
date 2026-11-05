@@ -1,8 +1,17 @@
 # Seguimiento de Telo
 
-Registro central de fases, revisiones y hallazgos. Actualizado: 3 de noviembre de 2026.
+Registro central de fases, revisiones y hallazgos. Actualizado: 4 de noviembre de 2026.
 
 Estados: [x] resuelto con evidencia; [ ] pendiente; [~] implementado sin validar. Los estados históricos describen su fecha y no certifican el despliegue actual. Registra aquí nuevos hallazgos y actualiza cada resolución con su prueba.
+
+## Fiabilidad de chat, reanudación y cola — PR pendiente, 4 de noviembre de 2026
+
+- [x] «Seguir» libera al inicio el bloqueo de cuota para aceptar mensajes nuevos; si el modelo vuelve a agotar la cuota, el turno restaura el bloqueo.
+- [x] El contexto de un mensaje se corta antes de su fila persistida: no duplica el mensaje actual ni incorpora avisos posteriores. Los errores de imágenes, adjuntos, cursor, reintento, vista previa y subchats tienen mensajes específicos; `/detener` comparte el código `subagent_read_only`.
+- [x] La cola local despacha chats disponibles aunque el usuario cambie de conversación y ya no depende de observar ocupado/libre para avanzar. Tras reinicio, conserva los textos, limpia las marcas ejecutables y avisa cuántos mensajes quedaron pendientes.
+- [x] El canal en vivo señala cuando el cliente quedó detrás del búfer; la interfaz invalida consultas y recupera el estado persistido. OpenCode cierra el grupo de procesos también si falla el registro de uso.
+- [x] Revisados Codex, Command Code, Antigravity, aislamiento, respaldos de cuota y registro de uso: no se encontró otro fallo concreto que requiera cambio en esta tarea. La cola del servidor sigue avanzando después de un error genérico; se conserva el comportamiento actual porque no hay un control explícito de pausa/reanudación para esos mensajes.
+- [x] Pruebas enfocadas de contexto, eventos, traducción de errores, recuperación de cola y limpieza de OpenCode; typecheck del servidor, build web y actualización de Graphify aprobados. La suite completa en Windows tuvo 88 fallos de entorno al crear/configurar repositorios Git temporales y un timeout de limpieza (637 aprobadas, 103 omitidas); Playwright no inició porque Chromium no está instalado. Dos pruebas nuevas de runner de chat se omiten en Windows por requerir `setsid`.
 
 ## MP4 y ZIP en entregables del chat
 

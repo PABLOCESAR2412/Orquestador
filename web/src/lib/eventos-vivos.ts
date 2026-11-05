@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { EventoVivo } from "../api";
 
 // Filtro del canal: con tareaId solo llegan los eventos de esa tarea.
@@ -8,6 +9,7 @@ type Suscriptor = {
   filtro: () => FiltroVivo;
   onEvento: (evento: EventoVivo) => void;
   onEstado: (conectado: boolean) => void;
+  onHueco: () => void;
 };
 
 const ESPERA_MIN_MS = 1_000;
@@ -87,12 +89,17 @@ async function conectar() {
       const lote = await response.json() as {
         cursor?: unknown;
         eventos?: { id?: unknown; evento?: EventoVivo }[];
+        hueco?: unknown;
       };
       if (!Number.isSafeInteger(lote.cursor) || !Array.isArray(lote.eventos)) {
         throw new Error("Respuesta inválida del canal de eventos");
       }
       // El cursor vive en memoria del servidor y vuelve a cero tras un reinicio.
-      if (ultimoEventoId !== null && (lote.cursor as number) < ultimoEventoId) ultimoEventoId = null;
+      const cursorReiniciado = ultimoEventoId !== null && (lote.cursor as number) < ultimoEventoId;
+      if (cursorReiniciado) ultimoEventoId = null;
+      if (lote.hueco === true || cursorReiniciado) {
+        for (const s of suscriptores) s.onHueco();
+      }
 
       for (const registro of lote.eventos) {
         if (!Number.isSafeInteger(registro.id) || !registro.evento) continue;
@@ -157,6 +164,7 @@ export function useEventosVivos(
   filtro: FiltroVivo,
   onEvento: (evento: EventoVivo) => void,
 ): { conectado: boolean } {
+  const queryClient = useQueryClient();
   const [estaConectado, setEstaConectado] = useState(conectado);
   const filtroRef = useRef(filtro);
   const onEventoRef = useRef(onEvento);
@@ -180,6 +188,7 @@ export function useEventosVivos(
       filtro: () => filtroRef.current,
       onEvento: (ev) => onEventoRef.current(ev),
       onEstado: (c) => setEstaConectado(c),
+      onHueco: () => { void queryClient.invalidateQueries(); },
     };
 
     suscriptores.add(suscriptor);

@@ -60,6 +60,7 @@ export type OpcionesAgente = {
   secretosRevision?: string;
   conversationId?: string | null;
   turnId?: string | null;
+  contextMessageId?: string | null;
   usageRole?: string;
   soloLectura?: boolean;
   // Solo para la tarea: pide al agente escribir la memoria del proyecto al final y la guarda.
@@ -469,7 +470,7 @@ async function ejecutarAgenteReservado(opts: OpcionesAgente): Promise<ResultadoA
     const promptBase = sesion || perfilAuxiliar(opts)
       ? opts.prompt
       : opts.conversationId
-        ? promptConHistorial(opts.conversationId, opts.prompt)
+        ? promptConHistorial(opts.conversationId, opts.prompt, opts.contextMessageId ?? opts.turnId)
         : opts.prompt;
     const prompt = `${guiaRtk}\n\n${promptBase}`;
     const visuales = imagenesDelPrompt(opts.conversationId, prompt, solicitudSkills);

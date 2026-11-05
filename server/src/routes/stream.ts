@@ -49,6 +49,7 @@ stream.get("/eventos-vivos/poll", async (c) => {
     let timerLote: ReturnType<typeof setTimeout> | undefined;
     let iniciales: EventoConSecuencia[] = [];
     const nuevos: EventoConSecuencia[] = [];
+    let hueco = false;
 
     const finalizar = () => {
       if (terminado) return;
@@ -58,7 +59,7 @@ stream.get("/eventos-vivos/poll", async (c) => {
       baja();
       c.req.raw.signal.removeEventListener("abort", finalizar);
       const eventos = [...iniciales, ...nuevos].sort((a, b) => a.id - b.id);
-      resolve(c.json({ cursor: eventos.at(-1)?.id ?? cursor, eventos }));
+      resolve(c.json({ cursor: eventos.at(-1)?.id ?? cursor, eventos, ...(hueco ? { hueco: true } : {}) }));
     };
 
     const suscripcion = suscribirConEventosDesde(desde, (evento, id) => {
@@ -68,6 +69,7 @@ stream.get("/eventos-vivos/poll", async (c) => {
     baja = suscripcion.baja;
     cursor = suscripcion.cursor;
     iniciales = suscripcion.eventos;
+    hueco = suscripcion.hueco;
     c.req.raw.signal.addEventListener("abort", finalizar, { once: true });
     if (c.req.raw.signal.aborted) {
       finalizar();
@@ -200,6 +202,7 @@ stream.get("/eventos-vivos", (c) => {
       // para que una reconexión lenta pueda recuperar estados desde el buffer circular.
       try {
         controller.enqueue(encoder.encode(lastEventId === null ? `id: ${suscripcion.cursor}\n: ok\n\n` : ": ok\n\n"));
+        if (suscripcion.hueco) controller.enqueue(encoder.encode("event: hueco\ndata: {}\n\n"));
       } catch {
         limpiar();
         return;

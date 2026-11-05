@@ -318,6 +318,7 @@ export function errorText(err: unknown): string {
       case "proyecto_ocupado":
         return "El proyecto está ocupado por una tarea. Intenta de nuevo cuando termine.";
       case "subagent_read_only":
+      case "subagent_readonly":
         return "Este subchat solo permite revisar la actividad. Vuelve al chat principal para dar instrucciones.";
       case "github_access":
         return textoErrorConAyuda(
@@ -418,6 +419,31 @@ export function errorText(err: unknown): string {
         return "Las notas son demasiado largas. El máximo es de 2000 caracteres.";
       case "conversation_busy":
         return "Este chat todavía está respondiendo. Espera a que termine.";
+      case "image_type_unsupported":
+        return "Este formato de imagen no es compatible. Sube PNG, JPG, GIF o WebP.";
+      case "image_size_invalid":
+        return "La imagen está vacía o supera el límite permitido.";
+      case "invalid_image":
+        return "Selecciona un archivo de imagen válido.";
+      case "invalid_attachment":
+        return "La imagen adjunta ya no está disponible. Vuelve a adjuntarla.";
+      case "unsupported_file_type":
+        return "La vista previa solo permite archivos HTML.";
+      case "file_too_large":
+        return "El archivo supera el tamaño máximo permitido para mostrarlo.";
+      case "invalid_cursor":
+      case "invalid_cursor_or_wait":
+        return "El historial cambió y esa posición ya no es válida. Recarga los mensajes.";
+      case "invalid_retry":
+        return "No se pudo identificar el mensaje que quieres reintentar. Actualiza el chat e inténtalo de nuevo.";
+      case "message_not_found":
+        return "Ese mensaje ya no está disponible en el chat.";
+      case "message_not_retryable":
+        return "Ese mensaje ya no se puede reintentar. Actualiza el chat y revisa el turno más reciente.";
+      case "preview_expired":
+        return "El permiso de vista previa venció. Abre de nuevo el archivo desde el chat.";
+      case "turn_not_found":
+        return "Ese turno ya no está disponible en el chat.";
       case "no_esta_en_cola":
         return "Ese mensaje ya no está en cola: su turno arrancó o se retiró.";
       case "aislamiento_no_disponible":

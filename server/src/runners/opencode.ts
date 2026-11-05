@@ -532,24 +532,30 @@ async function ejecutarOpenCode(opts: {
     stdout: "pipe",
     stderr: "pipe",
   });
+  let grupoCerrado = false;
+  const cerrarGrupo = () => {
+    if (grupoCerrado) return;
+    grupoCerrado = true;
+    terminarGrupo(proc.pid);
+  };
   const monitorSubagentes = vigilarSubagentes(opts.subagentesTracePath, opts.onSubagente);
-  const timer = opts.timeoutMs === null ? null : setTimeout(() => terminarGrupo(proc.pid), opts.timeoutMs ?? 120_000);
+  const timer = opts.timeoutMs === null ? null : setTimeout(cerrarGrupo, opts.timeoutMs ?? 120_000);
   // Vigilante de actividad compartido con codex: el reloj se reinicia con cada línea del agente.
   // Si se corta por silencio, la ejecución falla con un mensaje claro en vez de retener el slot.
   const vigilante = iniciarVigilante({
     tiempoSinActividadMs: opts.tiempoSinActividadMs,
-    cortar: () => terminarGrupo(proc.pid),
+    cortar: cerrarGrupo,
   });
   // Al terminar el agente, se cierra lo que quedó de su grupo (procesos en segundo plano). Así nada
   // sigue escribiendo en la carpeta de trabajo después de la ejecución, y las tuberías se cierran.
-  void proc.exited.then(() => terminarGrupo(proc.pid));
+  void proc.exited.then(cerrarGrupo);
 
   // Al cancelar se cierra el grupo entero. No se espera a las tuberías, porque
   // un proceso del agente puede seguir abriéndolas y dejaría la tarea en "running".
   let onAbort: (() => void) | undefined;
   const aborted = new Promise<never>((_, reject) => {
     onAbort = () => {
-      terminarGrupo(proc.pid);
+      cerrarGrupo();
       reject(new Error("ejecución cancelada"));
     };
     if (opts.signal?.aborted) onAbort();
@@ -559,7 +565,7 @@ async function ejecutarOpenCode(opts: {
   void aborted.catch(() => {});
 
   let sesionAvisada: string | null = null;
-  const primeraRespuesta = iniciarVigilante({ tiempoSinActividadMs: opts.tiempoPrimeraRespuestaMs ?? TIEMPO_PRIMERA_RESPUESTA_MS, cortar: () => terminarGrupo(proc.pid) });
+  const primeraRespuesta = iniciarVigilante({ tiempoSinActividadMs: opts.tiempoPrimeraRespuestaMs ?? TIEMPO_PRIMERA_RESPUESTA_MS, cortar: cerrarGrupo });
   const usosVistos = new Set<string>();
   const alLeerLinea = (linea: string) => {
     vigilante.patada();
@@ -611,7 +617,7 @@ async function ejecutarOpenCode(opts: {
         JSON.stringify({ message: String(ev.message || "Error temporal del proveedor").slice(0, 1000) }),
         true,
       );
-      terminarGrupo(proc.pid);
+      cerrarGrupo();
       rechazarReintentos(errorReintentos);
     }
   });
@@ -628,6 +634,7 @@ async function ejecutarOpenCode(opts: {
       reintentosAgotados,
     ]);
   } finally {
+    cerrarGrupo();
     if (timer) clearTimeout(timer);
     vigilante.detener();
     primeraRespuesta.detener();

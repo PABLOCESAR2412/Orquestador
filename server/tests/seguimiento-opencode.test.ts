@@ -74,6 +74,33 @@ test("un cierre exitoso de OpenCode sin respuesta visible se informa como error 
   } finally { spawn.mockRestore(); }
 });
 
+test("cierra el grupo del runner si falla el registro de uso antes de que termine el proceso", async () => {
+  const pid = 2147483647;
+  const matar = spyOn(process, "kill").mockImplementation(() => true);
+  const spawn = spyOn(Bun, "spawn").mockImplementation((() => ({
+    pid,
+    stdout: new Blob([JSON.stringify({
+      type: "step_finish", sessionID: "ses_cleanup", part: { id: "paso", tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0 } }, cost: 0 },
+    }) + "\n"]).stream(),
+    stderr: new Blob([]).stream(),
+    exited: new Promise(() => {}),
+  })) as unknown as typeof Bun.spawn);
+  try {
+    await expect(runOpenCode({
+      cwd: raiz,
+      model: "opencode/prueba",
+      prompt: "Analiza",
+      timeoutMs: null,
+      tiempoSinActividadMs: null,
+      onUso: () => { throw new Error("falló el registro de uso"); },
+    })).rejects.toThrow("falló el registro de uso");
+    expect(matar).toHaveBeenCalledWith(-pid, "SIGTERM");
+  } finally {
+    spawn.mockRestore();
+    matar.mockRestore();
+  }
+});
+
 test("tres fallos internos explícitos cierran con error recuperable sin esperar indefinidamente", async () => {
   let sesion: string | null = null;
   const spawn = spyOn(Bun, "spawn").mockImplementation(((_args: unknown, opts: { env: Record<string, string> }) => {
