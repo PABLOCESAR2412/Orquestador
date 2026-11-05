@@ -154,7 +154,7 @@ const EXTENSIONES_CODIGO = new Set([
   "json", "css", "scss", "html", "htm",
   "md", "markdown", "py", "sql", "sh", "bash",
   "yaml", "yml", "toml", "lock", "svg", "png", "jpg", "jpeg",
-  "env", "dockerfile", "gitignore", "txt", "conf", "ini", "pdf", "webp", "gif", "mp4"
+  "env", "dockerfile", "gitignore", "txt", "conf", "ini", "pdf", "webp", "gif", "mp4", "zip"
 ]);
 const EXTENSIONES_IMAGEN_RASTER = new Set(["png", "jpg", "jpeg", "webp", "gif"]);
 const EXTENSIONES_VIDEO = new Set(["mp4"]);
@@ -314,7 +314,9 @@ export function PastillaArchivo({
   const referenciaAbierta = separarReferenciaArchivo(etiquetaReferencia);
   const triggerKey = JSON.stringify([referenciaAbierta.ruta, referenciaAbierta.linea ?? null]);
   const rutaAbsoluta = /^(?:[a-z]:[\\/]|[\\/]|file:)/i.test(referenciaAbierta.ruta);
-  const puedeAbrir = Boolean(onAbrir && permitirAbrir?.(referenciaAbierta) !== false && !rutaAbsoluta && !referenciaAbierta.ruta.split(/[\\/]/).includes(".."));
+  const entregable = /^\.\.[\\/]entregables[\\/][a-f0-9]{64}[\\/][^\r\n]+\.(?:mp4|zip)$/i.test(referenciaAbierta.ruta);
+  const segmentos = referenciaAbierta.ruta.split(/[\\/]/);
+  const puedeAbrir = Boolean(onAbrir && permitirAbrir?.(referenciaAbierta) !== false && !rutaAbsoluta && !(entregable ? segmentos.slice(1) : segmentos).includes(".."));
   const partes = ruta.split(/[/\\]/);
   const nombreArchivo = referenciaAbierta.ruta.split(/[\\/]/).at(-1) || partes[partes.length - 1];
   const carpetaArchivo = referenciaAbierta.ruta.split(/[\\/]/).slice(0, -1).join("/") || "Raíz del proyecto";

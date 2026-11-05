@@ -73,7 +73,7 @@ try {
       { id: "u1", role: "user", content: "git commit y push", created_at: now },
       { id: "a1", role: "assistant", content: '{"estado":"fallo","resumen":"Faltan dependencias","desviacion":"Instala antes de probar","pendientes":["x".replace("x","y")]}<telo-memoria>MEMORIA_INTERNA</telo-memoria>', model: "groq/llama-test", effort: "low", created_at: now },
       { id: "u2", role: "user", content: "prepara de nuevo el git commit y push", created_at: now },
-      { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\nAbre `server/src/ejecutar.ts:3-20` para ver el ejemplo. También revisa `Chat.tsx` y `Gone.tsx`.\n\nPDF generado: `informe revisión.pdf`.\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Uso por área\",\"unit\":\"tokens\",\"data\":[{\"label\":\"Chat\",\"value\":120},{\"label\":\"Tareas\",\"value\":80}]}\n```\n\n```chart\n{\"type\":\"line\",\"title\":\"Uso diario\",\"data\":[{\"label\":\"Lun\",\"value\":20},{\"label\":\"Mar\",\"value\":35}]}\n```\n\n```chart\n{\"type\":\"pie\",\"title\":\"Distribución\",\"data\":[{\"label\":\"A\",\"value\":3},{\"label\":\"B\",\"value\":2}]}\n```\n\n```chart\n{\"type\":\"donut\",\"title\":\"Resultados\",\"data\":[{\"label\":\"Correcto\",\"value\":9},{\"label\":\"Pendiente\",\"value\":1}]}\n```\n\n```chart\n{\"type\":\"stats\",\"title\":\"Resumen\",\"unit\":\"pruebas\",\"data\":[{\"label\":\"Correctas\",\"value\":11,\"detail\":\"En verde\"}]}\n```\n\n```chart\nesto no es JSON\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Balance\",\"data\":[{\"label\":\"Ingresos\",\"value\":5},{\"label\":\"Ajustes\",\"value\":-2}]}\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", model: "nvidia/nemotron-test", effort: "high", created_at: now },
+      { id: "a2", role: "assistant", content: "El segundo intento está listo para revisar.\n\nAbre `server/src/ejecutar.ts:3-20` para ver el ejemplo. También revisa `Chat.tsx` y `Gone.tsx`.\n\nPDF generado: `informe revisión.pdf`.\n\n[Ver video](../entregables/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/final.mp4) · [Proyecto editable](../entregables/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/editable.zip)\n\n```mermaid\nflowchart TD\n  Chat --> API\n  API --> DB\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Uso por área\",\"unit\":\"tokens\",\"data\":[{\"label\":\"Chat\",\"value\":120},{\"label\":\"Tareas\",\"value\":80}]}\n```\n\n```chart\n{\"type\":\"line\",\"title\":\"Uso diario\",\"data\":[{\"label\":\"Lun\",\"value\":20},{\"label\":\"Mar\",\"value\":35}]}\n```\n\n```chart\n{\"type\":\"pie\",\"title\":\"Distribución\",\"data\":[{\"label\":\"A\",\"value\":3},{\"label\":\"B\",\"value\":2}]}\n```\n\n```chart\n{\"type\":\"donut\",\"title\":\"Resultados\",\"data\":[{\"label\":\"Correcto\",\"value\":9},{\"label\":\"Pendiente\",\"value\":1}]}\n```\n\n```chart\n{\"type\":\"stats\",\"title\":\"Resumen\",\"unit\":\"pruebas\",\"data\":[{\"label\":\"Correctas\",\"value\":11,\"detail\":\"En verde\"}]}\n```\n\n```chart\nesto no es JSON\n```\n\n```chart\n{\"type\":\"bar\",\"title\":\"Balance\",\"data\":[{\"label\":\"Ingresos\",\"value\":5},{\"label\":\"Ajustes\",\"value\":-2}]}\n```\n\n| Capa | Uso |\n| --- | --- |\n| API | Datos |\n\n```text\nproyecto/\n└── src/\n```", model: "nvidia/nemotron-test", effort: "high", created_at: now },
       { id: "u-compact-old", role: "user", content: "Continúa el trabajo anterior", created_at: now },
       { id: "a-compact-old", role: "assistant", content: resumenCompactacion, created_at: now },
       { id: "u-compact-new", role: "user", content: "Termina después de resumir el contexto", created_at: now },
@@ -274,6 +274,20 @@ try {
       else if (path.startsWith("/api/conversations/c1/adjuntos/")) {
         const imagen = imagenesSubidas.get(path.split("/").at(-1));
         return imagen ? route.fulfill({body:imagen.contenido,contentType:imagen.mime}) : route.fulfill({status:404});
+      }
+      else if (path === "/api/conversations/c1/archivo-video" || path === "/api/conversations/c1/archivo-zip") {
+        const url = new URL(route.request().url());
+        const ruta = url.searchParams.get("ruta");
+        const esZip = path.endsWith("-zip");
+        const nombre = esZip ? "editable.zip" : "final.mp4";
+        const mime = esZip ? "application/zip" : "video/mp4";
+        if (url.searchParams.get("meta") === "1") data = { ruta, nombre, mime, tamano: 22 };
+        else if (esZip) return route.fulfill({
+          contentType: mime,
+          headers: { "Content-Disposition": 'attachment; filename="editable.zip"' },
+          body: Buffer.from("504b0506" + "00".repeat(18), "hex"),
+        });
+        else return route.fulfill({ contentType: mime, path: "tests/fixtures/referencia.mp4" });
       }
       else if (path === "/api/conversations/c1/archivo-pdf" || path === "/api/conversations/c2/archivo-pdf") {
         const params = new URL(route.request().url()).searchParams;
@@ -1017,6 +1031,17 @@ try {
     assert.equal(await vistaBorrada.getByRole("button", { name: "Reintentar", exact: true }).count(), 0);
     await vistaBorrada.getByRole("button", { name: "Cerrar vista de archivo", exact: true }).click();
     await vistaBorrada.waitFor({ state: "detached" });
+    await page.locator(".tl-archivo-chip-abrir").filter({ hasText: "final.mp4" }).click();
+    const vistaVideoEntregado = page.getByRole("complementary", { name: "Vista del archivo ../entregables/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/final.mp4" });
+    const reproductorEntregado = vistaVideoEntregado.locator("video");
+    await reproductorEntregado.waitFor();
+    await page.waitForFunction(() => document.querySelector(".tl-chat-archivo-video")?.readyState >= 1);
+    await vistaVideoEntregado.getByRole("button", { name: "Cerrar vista de archivo" }).click();
+    await page.locator(".tl-archivo-chip-abrir").filter({ hasText: "editable.zip" }).click();
+    const vistaZip = page.getByRole("complementary", { name: "Vista del archivo ../entregables/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/editable.zip" });
+    const [descargaZip] = await Promise.all([page.waitForEvent("download"), vistaZip.getByRole("link", { name: "Descargar ZIP" }).click()]);
+    assert.equal(descargaZip.suggestedFilename(), "editable.zip");
+    await vistaZip.getByRole("button", { name: "Cerrar vista de archivo" }).click();
     const referenciaPdf = page.locator(".tl-archivo-chip-abrir").filter({ hasText: "informe revisión.pdf" }).first();
     await referenciaPdf.hover();
     const ayudaPdf = referenciaPdf.locator("xpath=..").getByRole("tooltip");

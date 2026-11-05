@@ -172,11 +172,12 @@ export function urlImagenConversacion(conversationId: string, ruta: string, desc
   return `/api/conversations/${encodeURIComponent(conversationId)}/archivo-imagen?${query}`;
 }
 
-export function urlVideoConversacion(conversationId: string, ruta: string, descargar = false, meta = false): string {
+export function urlBinarioConversacion(conversationId: string, ruta: string, descargar = false, meta = false): string {
   const query = new URLSearchParams({ ruta });
   if (descargar) query.set("descargar", "1");
   if (meta) query.set("meta", "1");
-  return `/api/conversations/${encodeURIComponent(conversationId)}/archivo-video?${query}`;
+  const tipo = /\.zip$/i.test(ruta) ? "zip" : "video";
+  return `/api/conversations/${encodeURIComponent(conversationId)}/archivo-${tipo}?${query}`;
 }
 
 export function urlAdjuntoImagenChat(conversationId: string, adjuntoId: string): string {
@@ -1050,7 +1051,7 @@ export const api = {
   chatPdf: (id: string, ruta: string) => requestPdf(urlPdfConversacion(id, ruta)),
   chatFile: (id: string, ruta: string) => request<{ ruta: string; tamano: number; texto: string; truncado: boolean }>(urlArchivoConversacion(id, ruta)),
   chatImageInfo: (id: string, ruta: string) => request<ChatImageInfo>(urlImagenConversacion(id, ruta, false, true)),
-  chatVideoInfo: (id: string, ruta: string) => request<ChatVideoInfo>(urlVideoConversacion(id, ruta, false, true)),
+  chatBinaryInfo: (id: string, ruta: string) => request<ChatVideoInfo>(urlBinarioConversacion(id, ruta, false, true)),
   // Pasos del agente de un turno (el id es el del mensaje del usuario).
   listTurnoActividad: (conversacionId: string, turnoId: string) =>
     request<PasoActividad[]>(`/api/conversations/${conversacionId}/turnos/${turnoId}/actividad`),

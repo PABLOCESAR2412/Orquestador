@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { basename, delimiter, join } from "node:path";
 import { Hono } from "hono";
 
 // Turnos del chat en segundo plano: el POST guarda el mensaje y responde 202; la respuesta llega después,
@@ -980,6 +980,30 @@ describe("imágenes de una conversación", () => {
     expect(reporte.status).toBe(200);
     expect(await reporte.json()).toMatchObject({ texto: "# Reporte independiente" });
     expect(entregables.startsWith(workspaceAnterior)).toBe(false);
+
+    const prefijo = `../entregables/${basename(entregables)}`;
+    const rutaMp4 = `${prefijo}/final.mp4`;
+    writeFileSync(join(entregables, "final.mp4"), videoBytes);
+    writeFileSync(join(entregables, "editable.zip"), Buffer.from("504b0506" + "00".repeat(18), "hex"));
+    const { buscarVideoVerificado } = await import("../src/entrega-video");
+    expect(buscarVideoVerificado(`[Ver video](${rutaMp4})`, [entregables])).toBe(rutaMp4);
+    const recurso = (tipo: string, ruta: string) => `/api/conversations/${conversacionId}/archivo-${tipo}?ruta=${encodeURIComponent(ruta)}`;
+    const info = await app.request(recurso("video", rutaMp4) + "&meta=1");
+    expect(info.status).toBe(200);
+    expect(await info.json()).toMatchObject({ ruta: rutaMp4, mime: "video/mp4" });
+    const rango = await app.request(recurso("video", rutaMp4), { headers: { Range: "bytes=0-11" } });
+    expect(rango.status).toBe(206);
+    expect(Buffer.from(await rango.arrayBuffer())).toEqual(videoBytes.subarray(0, 12));
+    const zip = await app.request(recurso("zip", `${prefijo}/editable.zip`));
+    expect(zip.status).toBe(200);
+    expect(zip.headers.get("Content-Type")).toBe("application/zip");
+    expect(zip.headers.get("Content-Disposition")).toStartWith("attachment;");
+    expect((await zip.arrayBuffer()).byteLength).toBe(22);
+    const ajena = carpetaEntregables(join(workspaceAnterior, "otro-workspace"));
+    mkdirSync(ajena, { recursive: true });
+    writeFileSync(join(ajena, "final.mp4"), videoBytes);
+    expect((await app.request(recurso("video", `../entregables/${basename(ajena)}/final.mp4`))).status).toBe(404);
+    expect((await app.request(recurso("video", `${prefijo}/../final.mp4`))).status).toBe(400);
 
     const ausente = await app.request(`/api/conversations/${conversacionId}/archivo?ruta=Gone.tsx`);
     expect(ausente.status).toBe(404);

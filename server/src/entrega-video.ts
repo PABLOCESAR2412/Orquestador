@@ -1,4 +1,5 @@
-import { leerVideo, normalizarRuta } from "./archivos-proyecto";
+import { leerVideo } from "./archivos-proyecto";
+import { resolverReferenciaEntregable } from "./entregables";
 
 const PATRONES_RUTA_MP4 = [
   /`([^`\r\n]{1,1024}\.mp4)`/giu,
@@ -27,18 +28,19 @@ export function buscarVideoVerificado(texto: string, raices: string[]): string |
   }
 
   for (const candidato of candidatos) {
-    let segmentos: string[];
+    let destino: ReturnType<typeof resolverReferenciaEntregable>;
     try {
-      segmentos = normalizarRuta(candidato);
+      destino = resolverReferenciaEntregable(candidato, raices);
     } catch {
       continue;
     }
+    const segmentos = destino.ruta;
     if (segmentos.length === 0 || !segmentos.at(-1)!.toLowerCase().endsWith(".mp4")) continue;
-    for (const raiz of raices) {
+    for (const raiz of destino.raices) {
       try {
         const archivo = leerVideo(raiz, segmentos);
         archivo.cerrar();
-        return segmentos.join("/");
+        return destino.referencia ?? segmentos.join("/");
       } catch {
         // Las rutas de salida citadas por un agente pueden no existir o no ser MP4 válidos.
       }
